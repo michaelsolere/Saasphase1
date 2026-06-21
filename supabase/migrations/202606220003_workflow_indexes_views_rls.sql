@@ -244,10 +244,8 @@ create or replace function public.submit_public_application(
   p_user_agent text default null
 )
 returns table (
-  submission_id uuid,
-  contact_id uuid,
-  application_id uuid,
-  processing_status text
+  status text,
+  public_submission_reference uuid
 )
 language plpgsql
 security definer
@@ -256,11 +254,13 @@ as $$
 declare
   v_form public.public_forms%rowtype;
   v_submission_id uuid;
+  v_public_submission_reference uuid;
   v_contact_id uuid;
   v_application_id uuid;
   v_candidate_contact_id uuid;
-  v_matches uuid[];
-  v_status text;
+  v_email_matches uuid[];
+  v_phone_matches uuid[];
+  v_internal_status text;
   v_email text := nullif(lower(btrim(p_email)), '');
   v_phone text := nullif(regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g'), '');
   v_display_name text;
@@ -299,6 +299,24 @@ begin
   if not found then
     raise exception 'Active public form not found'
       using errcode = 'P0002';
+  end if;
+
+  if v_email is not null then
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        'public_application:email:' || v_form.organization_id::text || ':' || v_email,
+        0
+      )
+    );
+  end if;
+
+  if v_phone is not null then
+    perform pg_catalog.pg_advisory_xact_lock(
+      pg_catalog.hashtextextended(
+        'public_application:phone:' || v_form.organization_id::text || ':' || v_phone,
+        0
+      )
+    );
   end if;
 
   insert into public.form_submissions (
@@ -351,20 +369,24 @@ begin
     p_consent_data_processing,
     p_consent_contact
   )
-  returning id into v_submission_id;
+  returning id, public_reference
+  into v_submission_id, v_public_submission_reference;
 
   select array_agg(c.id order by c.created_at, c.id)
-  into v_matches
+  into v_email_matches
   from public.contacts c
   where c.organization_id = v_form.organization_id
     and c.deleted_at is null
-    and (
-      (v_email is not null and lower(c.email) = v_email)
-      or (
-        v_phone is not null
-        and regexp_replace(coalesce(c.phone, ''), '[^0-9+]', '', 'g') = v_phone
-      )
-    );
+    and v_email is not null
+    and lower(c.email) = v_email;
+
+  select array_agg(c.id order by c.created_at, c.id)
+  into v_phone_matches
+  from public.contacts c
+  where c.organization_id = v_form.organization_id
+    and c.deleted_at is null
+    and v_phone is not null
+    and regexp_replace(coalesce(c.phone, ''), '[^0-9+]', '', 'g') = v_phone;
 
   v_display_name := public.build_contact_display_name(
     p_first_name,
@@ -373,37 +395,15 @@ begin
     coalesce(v_email, p_phone, 'Contact sans nom')
   );
 
-  if coalesce(cardinality(v_matches), 0) = 1 then
-    v_contact_id := v_matches[1];
-
-    update public.contacts
-    set
-      first_name = coalesce(first_name, nullif(btrim(p_first_name), '')),
-      last_name = coalesce(last_name, nullif(btrim(p_last_name), '')),
-      family_or_structure_name = coalesce(
-        family_or_structure_name,
-        nullif(btrim(p_family_or_structure_name), '')
-      ),
-      email = coalesce(email, v_email),
-      phone = coalesce(phone, nullif(btrim(p_phone), '')),
-      address_line1 = coalesce(address_line1, nullif(btrim(p_address_line1), '')),
-      address_line2 = coalesce(address_line2, nullif(btrim(p_address_line2), '')),
-      postal_code = coalesce(postal_code, nullif(btrim(p_postal_code), '')),
-      city = coalesce(city, nullif(btrim(p_city), '')),
-      country = coalesce(country, nullif(upper(btrim(p_country)), ''), 'FR'),
-      last_interaction_at = now(),
-      updated_at = now()
-    where id = v_contact_id;
-
-    v_status := 'contact_updated';
-  else
-    if coalesce(cardinality(v_matches), 0) > 1 then
-      v_candidate_contact_id := v_matches[1];
-      v_status := 'duplicate_suspected';
-    else
-      v_status := 'contact_created';
-    end if;
-
+  if coalesce(cardinality(v_email_matches), 0) = 1
+    and coalesce(cardinality(v_phone_matches), 0) = 1
+    and v_email_matches[1] = v_phone_matches[1]
+  then
+    v_contact_id := v_email_matches[1];
+    v_internal_status := 'matched_existing_contact';
+  elsif coalesce(cardinality(v_email_matches), 0) = 0
+    and coalesce(cardinality(v_phone_matches), 0) = 0
+  then
     insert into public.contacts (
       organization_id,
       first_name,
@@ -439,6 +439,30 @@ begin
       now()
     )
     returning id into v_contact_id;
+
+    v_internal_status := 'created_new_contact';
+  else
+    if coalesce(cardinality(v_email_matches), 0) = 1
+      and coalesce(cardinality(v_phone_matches), 0) = 0
+    then
+      v_candidate_contact_id := v_email_matches[1];
+    elsif coalesce(cardinality(v_phone_matches), 0) = 1
+      and coalesce(cardinality(v_email_matches), 0) = 0
+    then
+      v_candidate_contact_id := v_phone_matches[1];
+    end if;
+
+    update public.form_submissions
+    set
+      duplicate_candidate_contact_id = v_candidate_contact_id,
+      duplicate_resolution = 'pending_human_review',
+      status = 'duplicate_suspected',
+      updated_at = now()
+    where id = v_submission_id;
+
+    return query
+    select 'accepted'::text, v_public_submission_reference;
+    return;
   end if;
 
   insert into public.applications (
@@ -493,23 +517,13 @@ begin
   set
     contact_id = v_contact_id,
     application_id = v_application_id,
-    duplicate_candidate_contact_id = v_candidate_contact_id,
-    status = case
-      when v_status = 'duplicate_suspected' then 'duplicate_suspected'
-      else 'application_created'
-    end,
+    status = 'application_created',
+    duplicate_resolution = v_internal_status,
     updated_at = now()
   where id = v_submission_id;
 
   return query
-  select
-    v_submission_id,
-    v_contact_id,
-    v_application_id,
-    case
-      when v_status = 'duplicate_suspected' then v_status
-      else 'application_created'
-    end;
+  select 'accepted'::text, v_public_submission_reference;
 end;
 $$;
 
@@ -522,6 +536,23 @@ grant execute on function public.submit_public_application(
   text, text, text, text, text, text, text, text, text, text, text, text,
   text, text, text, boolean, boolean, jsonb, inet, text
 ) to anon, authenticated;
+
+create or replace view public.public_form_public_view
+with (security_barrier = true)
+as
+select
+  pf.slug,
+  pf.title,
+  pf.description,
+  pf.species,
+  pf.breed,
+  pf.success_message
+from public.public_forms pf
+join public.organizations o
+  on o.id = pf.organization_id
+where pf.is_active
+  and pf.deleted_at is null
+  and o.deleted_at is null;
 
 create or replace view public.contact_overview
 with (security_invoker = true)
@@ -536,7 +567,6 @@ select
   c.last_interaction_at,
   coalesce(a.application_count, 0) as application_count,
   coalesce(rv.reservation_count, 0) as reservation_count,
-  c.restriction_level,
   c.created_at,
   c.updated_at
 from public.contacts c
@@ -593,9 +623,15 @@ select
   a.created_at,
   a.updated_at
 from public.applications a
-join public.contacts c on c.id = a.contact_id
-left join public.form_submissions fs on fs.id = a.form_submission_id
-left join public.public_forms pf on pf.id = fs.public_form_id
+join public.contacts c
+  on c.id = a.contact_id
+  and c.organization_id = a.organization_id
+left join public.form_submissions fs
+  on fs.id = a.form_submission_id
+  and fs.organization_id = a.organization_id
+left join public.public_forms pf
+  on pf.id = fs.public_form_id
+  and pf.organization_id = a.organization_id
 where a.deleted_at is null
   and c.deleted_at is null;
 
@@ -627,10 +663,18 @@ select
   r.created_at,
   r.updated_at
 from public.reservations r
-join public.contacts c on c.id = r.contact_id
-left join public.litter_groups lg on lg.id = r.litter_group_id
-left join public.litters l on l.id = r.litter_id
-left join public.animals an on an.id = r.animal_id
+join public.contacts c
+  on c.id = r.contact_id
+  and c.organization_id = r.organization_id
+left join public.litter_groups lg
+  on lg.id = r.litter_group_id
+  and lg.organization_id = r.organization_id
+left join public.litters l
+  on l.id = r.litter_id
+  and l.organization_id = r.organization_id
+left join public.animals an
+  on an.id = r.animal_id
+  and an.organization_id = r.organization_id
 left join lateral (
   select
     coalesce(sum(pay.amount_cents) filter (
@@ -680,9 +724,15 @@ select
   l.created_at,
   l.updated_at
 from public.litters l
-left join public.litter_groups lg on lg.id = l.litter_group_id
-left join public.animals mother on mother.id = l.mother_id
-left join public.animals father on father.id = l.father_id
+left join public.litter_groups lg
+  on lg.id = l.litter_group_id
+  and lg.organization_id = l.organization_id
+left join public.animals mother
+  on mother.id = l.mother_id
+  and mother.organization_id = l.organization_id
+left join public.animals father
+  on father.id = l.father_id
+  and father.organization_id = l.organization_id
 left join lateral (
   select count(*)::integer as animal_count
   from public.animals animal
@@ -767,6 +817,16 @@ begin
       using errcode = '23514';
   end if;
 
+  insert into public.profiles (id, display_name, email, phone)
+  select
+    u.id,
+    coalesce(u.raw_user_meta_data ->> 'display_name', u.raw_user_meta_data ->> 'full_name'),
+    u.email,
+    u.phone
+  from auth.users u
+  where u.id = v_user_id
+  on conflict (id) do nothing;
+
   insert into public.organizations (name, slug)
   values (btrim(p_name), p_slug)
   returning id into v_organization_id;
@@ -803,12 +863,266 @@ begin
 end;
 $$;
 
+create or replace function public.shares_organization_with(other_profile_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+set row_security = off
+as $$
+  select exists (
+    select 1
+    from public.memberships mine
+    join public.memberships theirs
+      on theirs.organization_id = mine.organization_id
+    where mine.profile_id = auth.uid()
+      and theirs.profile_id = other_profile_id
+      and mine.status = 'active'
+      and theirs.status = 'active'
+      and mine.deleted_at is null
+      and theirs.deleted_at is null
+  );
+$$;
+
+create or replace function public.protect_owner_membership()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+set row_security = off
+as $$
+declare
+  v_other_active_owner_exists boolean;
+begin
+  if tg_op = 'UPDATE'
+    and (
+      new.organization_id <> old.organization_id
+      or new.profile_id <> old.profile_id
+    )
+  then
+    raise exception 'Membership organization and profile are immutable'
+      using errcode = '23514';
+  end if;
+
+  if old.role = 'owner'
+    and not public.has_organization_role(old.organization_id, array['owner'])
+  then
+    raise exception 'Only an owner can modify an owner membership'
+      using errcode = '42501';
+  end if;
+
+  if tg_op = 'UPDATE'
+    and new.role = 'owner'
+    and old.role <> 'owner'
+    and not public.has_organization_role(old.organization_id, array['owner'])
+  then
+    raise exception 'Only an owner can promote another owner'
+      using errcode = '42501';
+  end if;
+
+  if old.role = 'owner'
+    and old.status = 'active'
+    and old.deleted_at is null
+    and (
+      tg_op = 'DELETE'
+      or new.role <> 'owner'
+      or new.status <> 'active'
+      or new.deleted_at is not null
+    )
+  then
+    select exists (
+      select 1
+      from public.memberships m
+      where m.organization_id = old.organization_id
+        and m.id <> old.id
+        and m.role = 'owner'
+        and m.status = 'active'
+        and m.deleted_at is null
+    )
+    into v_other_active_owner_exists;
+
+    if not v_other_active_owner_exists then
+      raise exception 'An organization must retain at least one active owner'
+        using errcode = '23514';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger memberships_protect_owner
+before update or delete on public.memberships
+for each row execute function public.protect_owner_membership();
+
+revoke all on function public.protect_owner_membership() from public;
+
+create or replace function public.use_credit(
+  p_organization_id uuid,
+  p_credit_id uuid,
+  p_amount_used_cents integer,
+  p_target_reservation_id uuid default null,
+  p_target_payment_id uuid default null,
+  p_notes text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_credit public.credits%rowtype;
+  v_reservation public.reservations%rowtype;
+  v_payment public.payments%rowtype;
+  v_usage_id uuid;
+begin
+  if not public.has_organization_role(
+    p_organization_id,
+    array['owner', 'admin', 'member']
+  ) then
+    raise exception 'Insufficient organization permissions'
+      using errcode = '42501';
+  end if;
+
+  if p_amount_used_cents is null or p_amount_used_cents <= 0 then
+    raise exception 'Credit usage amount must be positive'
+      using errcode = '23514';
+  end if;
+
+  if p_target_reservation_id is null and p_target_payment_id is null then
+    raise exception 'A target reservation or payment is required'
+      using errcode = '23514';
+  end if;
+
+  select c.*
+  into v_credit
+  from public.credits c
+  where c.organization_id = p_organization_id
+    and c.id = p_credit_id
+    and c.deleted_at is null
+  for update;
+
+  if not found then
+    raise exception 'Credit not found'
+      using errcode = 'P0002';
+  end if;
+
+  if v_credit.status not in ('active', 'partially_used') then
+    raise exception 'Credit is not usable'
+      using errcode = '23514';
+  end if;
+
+  if p_amount_used_cents > v_credit.amount_remaining_cents then
+    raise exception 'Credit usage exceeds remaining amount'
+      using errcode = '23514';
+  end if;
+
+  if p_target_reservation_id is not null then
+    select r.*
+    into v_reservation
+    from public.reservations r
+    where r.organization_id = p_organization_id
+      and r.id = p_target_reservation_id
+      and r.deleted_at is null;
+
+    if not found then
+      raise exception 'Target reservation not found'
+        using errcode = 'P0002';
+    end if;
+
+    if v_reservation.contact_id <> v_credit.contact_id
+      or v_reservation.currency <> v_credit.currency
+    then
+      raise exception 'Credit and reservation are inconsistent'
+        using errcode = '23514';
+    end if;
+  end if;
+
+  if p_target_payment_id is not null then
+    select p.*
+    into v_payment
+    from public.payments p
+    where p.organization_id = p_organization_id
+      and p.id = p_target_payment_id
+      and p.deleted_at is null;
+
+    if not found then
+      raise exception 'Target payment not found'
+        using errcode = 'P0002';
+    end if;
+
+    if v_payment.contact_id <> v_credit.contact_id
+      or v_payment.currency <> v_credit.currency
+    then
+      raise exception 'Credit and payment are inconsistent'
+        using errcode = '23514';
+    end if;
+
+    if p_target_reservation_id is not null
+      and v_payment.reservation_id is not null
+      and v_payment.reservation_id <> p_target_reservation_id
+    then
+      raise exception 'Payment does not belong to the target reservation'
+        using errcode = '23514';
+    end if;
+  end if;
+
+  insert into public.credit_usages (
+    organization_id,
+    credit_id,
+    contact_id,
+    target_reservation_id,
+    target_payment_id,
+    amount_used_cents,
+    notes,
+    created_by,
+    updated_by
+  )
+  values (
+    p_organization_id,
+    v_credit.id,
+    v_credit.contact_id,
+    p_target_reservation_id,
+    p_target_payment_id,
+    p_amount_used_cents,
+    nullif(btrim(p_notes), ''),
+    auth.uid(),
+    auth.uid()
+  )
+  returning id into v_usage_id;
+
+  update public.credits
+  set
+    amount_remaining_cents = amount_remaining_cents - p_amount_used_cents,
+    status = case
+      when amount_remaining_cents - p_amount_used_cents = 0 then 'used'
+      else 'partially_used'
+    end,
+    updated_by = auth.uid(),
+    updated_at = now()
+  where organization_id = p_organization_id
+    and id = p_credit_id;
+
+  return v_usage_id;
+end;
+$$;
+
 revoke all on function public.is_member_of(uuid) from public;
 revoke all on function public.has_organization_role(uuid, text[]) from public;
 revoke all on function public.create_organization_with_owner(text, text) from public;
+revoke all on function public.shares_organization_with(uuid) from public;
+revoke all on function public.use_credit(uuid, uuid, integer, uuid, uuid, text) from public;
 grant execute on function public.is_member_of(uuid) to authenticated;
 grant execute on function public.has_organization_role(uuid, text[]) to authenticated;
 grant execute on function public.create_organization_with_owner(text, text) to authenticated;
+grant execute on function public.shares_organization_with(uuid) to authenticated;
+grant execute on function public.use_credit(uuid, uuid, integer, uuid, uuid, text)
+  to authenticated;
 
 alter table public.organizations enable row level security;
 alter table public.profiles enable row level security;
@@ -845,30 +1159,13 @@ to authenticated
 using (public.has_organization_role(id, array['owner', 'admin']))
 with check (public.has_organization_role(id, array['owner', 'admin']));
 
-create policy organizations_delete_owner
-on public.organizations
-for delete
-to authenticated
-using (public.has_organization_role(id, array['owner']));
-
 create policy profiles_select_related
 on public.profiles
 for select
 to authenticated
 using (
   id = auth.uid()
-  or exists (
-    select 1
-    from public.memberships mine
-    join public.memberships theirs
-      on theirs.organization_id = mine.organization_id
-    where mine.profile_id = auth.uid()
-      and theirs.profile_id = profiles.id
-      and mine.status = 'active'
-      and theirs.status = 'active'
-      and mine.deleted_at is null
-      and theirs.deleted_at is null
-  )
+  or public.shares_organization_with(id)
 );
 
 create policy profiles_insert_self
@@ -896,6 +1193,10 @@ for insert
 to authenticated
 with check (
   public.has_organization_role(organization_id, array['owner', 'admin'])
+  and (
+    role <> 'owner'
+    or public.has_organization_role(organization_id, array['owner'])
+  )
 );
 
 create policy memberships_update_admin
@@ -903,13 +1204,13 @@ on public.memberships
 for update
 to authenticated
 using (public.has_organization_role(organization_id, array['owner', 'admin']))
-with check (public.has_organization_role(organization_id, array['owner', 'admin']));
-
-create policy memberships_delete_admin
-on public.memberships
-for delete
-to authenticated
-using (public.has_organization_role(organization_id, array['owner', 'admin']));
+with check (
+  public.has_organization_role(organization_id, array['owner', 'admin'])
+  and (
+    role <> 'owner'
+    or public.has_organization_role(organization_id, array['owner'])
+  )
+);
 
 do $$
 declare
@@ -923,27 +1224,70 @@ begin
   ]
   loop
     execute format(
-      'create policy %I on public.%I for all to authenticated using (public.is_member_of(organization_id)) with check (public.is_member_of(organization_id))',
-      table_name || '_member_access',
+      'create policy %I on public.%I for select to authenticated using (public.is_member_of(organization_id))',
+      table_name || '_select_member',
       table_name
     );
   end loop;
 end;
 $$;
 
-create policy public_forms_read_active
-on public.public_forms
-for select
-to anon
-using (is_active and deleted_at is null);
+do $$
+declare
+  table_name text;
+begin
+  foreach table_name in array array[
+    'litter_groups', 'animals', 'litters', 'public_forms', 'contacts',
+    'form_submissions', 'contact_roles', 'applications', 'reservations',
+    'document_templates', 'payments', 'documents', 'media', 'notes', 'events'
+  ]
+  loop
+    execute format(
+      'create policy %I on public.%I for insert to authenticated with check (public.has_organization_role(organization_id, array[''owner'', ''admin'', ''member'']))',
+      table_name || '_insert_writer',
+      table_name
+    );
+    execute format(
+      'create policy %I on public.%I for update to authenticated using (public.has_organization_role(organization_id, array[''owner'', ''admin'', ''member''])) with check (public.has_organization_role(organization_id, array[''owner'', ''admin'', ''member'']))',
+      table_name || '_update_writer',
+      table_name
+    );
+  end loop;
+end;
+$$;
+
+create policy organization_settings_insert_admin
+on public.organization_settings
+for insert
+to authenticated
+with check (
+  public.has_organization_role(organization_id, array['owner', 'admin'])
+);
+
+create policy organization_settings_update_admin
+on public.organization_settings
+for update
+to authenticated
+using (public.has_organization_role(organization_id, array['owner', 'admin']))
+with check (public.has_organization_role(organization_id, array['owner', 'admin']));
+
+create policy credits_insert_writer
+on public.credits
+for insert
+to authenticated
+with check (
+  public.has_organization_role(organization_id, array['owner', 'admin', 'member'])
+);
 
 grant usage on schema public to anon, authenticated;
-grant select on public.public_forms to anon;
-grant select, insert, update, delete on table
-  public.organizations,
-  public.profiles,
-  public.memberships,
-  public.organization_settings,
+revoke all on all tables in schema public from anon;
+revoke all on all tables in schema public from authenticated;
+grant select on public.public_form_public_view to anon, authenticated;
+grant select, update on public.organizations to authenticated;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update on public.memberships to authenticated;
+grant select, insert, update on public.organization_settings to authenticated;
+grant select, insert, update on table
   public.litter_groups,
   public.animals,
   public.litters,
@@ -955,14 +1299,40 @@ grant select, insert, update, delete on table
   public.reservations,
   public.document_templates,
   public.payments,
-  public.credits,
-  public.credit_usages,
   public.documents,
   public.media,
   public.notes,
   public.events
 to authenticated;
+grant select, insert on public.credits to authenticated;
+grant select on public.credit_usages to authenticated;
 grant select on public.contact_overview to authenticated;
 grant select on public.application_overview to authenticated;
 grant select on public.reservation_overview to authenticated;
 grant select on public.litter_overview to authenticated;
+
+revoke all on function public.set_updated_at() from public;
+revoke all on function public.build_contact_display_name(text, text, text, text)
+  from public;
+revoke all on function public.fill_contact_display_name() from public;
+revoke all on function public.submit_public_application(
+  text, text, text, text, text, text, text, text, text, text, text, text,
+  text, text, text, boolean, boolean, jsonb, inet, text
+) from public;
+revoke all on function public.is_member_of(uuid) from public;
+revoke all on function public.has_organization_role(uuid, text[]) from public;
+revoke all on function public.create_organization_with_owner(text, text) from public;
+revoke all on function public.shares_organization_with(uuid) from public;
+revoke all on function public.protect_owner_membership() from public;
+revoke all on function public.use_credit(uuid, uuid, integer, uuid, uuid, text)
+  from public;
+grant execute on function public.submit_public_application(
+  text, text, text, text, text, text, text, text, text, text, text, text,
+  text, text, text, boolean, boolean, jsonb, inet, text
+) to anon, authenticated;
+grant execute on function public.is_member_of(uuid) to authenticated;
+grant execute on function public.has_organization_role(uuid, text[]) to authenticated;
+grant execute on function public.create_organization_with_owner(text, text) to authenticated;
+grant execute on function public.shares_organization_with(uuid) to authenticated;
+grant execute on function public.use_credit(uuid, uuid, integer, uuid, uuid, text)
+  to authenticated;

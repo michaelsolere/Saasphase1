@@ -47,7 +47,7 @@ create table public.profiles (
 
 create table public.memberships (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null references public.organizations(id) on delete cascade,
+  organization_id uuid not null references public.organizations(id) on delete restrict,
   profile_id uuid not null references public.profiles(id) on delete cascade,
   role text not null default 'member',
   status text not null default 'invited',
@@ -65,7 +65,7 @@ create table public.memberships (
 
 create table public.organization_settings (
   id uuid primary key default gen_random_uuid(),
-  organization_id uuid not null unique references public.organizations(id) on delete cascade,
+  organization_id uuid not null unique references public.organizations(id) on delete restrict,
   default_species text not null default 'dog',
   default_dog_breed text not null default 'Golden Retriever',
   default_currency text not null default 'EUR',
@@ -158,6 +158,8 @@ begin
   return new;
 end;
 $$;
+
+revoke all on function public.handle_new_auth_user() from public;
 
 create trigger on_auth_user_created
 after insert or update of email, phone, raw_user_meta_data on auth.users
