@@ -75,7 +75,7 @@ create table public.animals (
   constraint animals_status_check
     check (status in (
       'planned', 'born', 'active', 'available', 'reserved', 'adopted',
-      'kept', 'breeding', 'retired', 'deceased', 'archived'
+      'kept', 'breeding', 'retired', 'deceased', 'stillborn', 'archived'
     )),
   constraint animals_ownership_status_check
     check (ownership_status in (
@@ -139,8 +139,9 @@ create table public.litters (
   constraint litters_status_check
     check (status in (
       'planned', 'mating_done', 'pregnancy_unconfirmed', 'pregnancy_confirmed',
-      'birth_expected', 'birth_in_progress', 'born', 'puppies_created',
-      'choice_period', 'ready_to_leave', 'closed', 'cancelled', 'archived'
+      'not_pregnant', 'pregnancy_lost', 'birth_expected', 'birth_in_progress',
+      'born', 'puppies_created', 'choice_period', 'ready_to_leave', 'closed',
+      'cancelled', 'archived'
     )),
   constraint litters_distinct_parents_check
     check (father_id is null or mother_id is null or father_id <> mother_id),
@@ -900,9 +901,21 @@ create table public.events (
       'post_adoption_follow_up', 'other'
     )),
   constraint events_status_check
-    check (status in ('planned', 'todo', 'done', 'late', 'cancelled', 'postponed', 'not_applicable')),
+    check (status in (
+      'planned', 'todo', 'in_progress', 'done', 'late', 'cancelled',
+      'postponed', 'not_applicable'
+    )),
   constraint events_priority_check
     check (priority in ('low', 'normal', 'high', 'urgent')),
   constraint events_schedule_check
     check (planned_at is not null or planned_date is not null or actual_at is not null)
 );
+
+comment on column public.animals.status is
+  'stillborn = animal mort-né.';
+
+comment on column public.litters.status is
+  'not_pregnant = saillie réalisée mais gestation non confirmée; pregnancy_lost = gestation confirmée puis interrompue ou perdue.';
+
+comment on column public.events.status is
+  'in_progress = événement ou tâche en cours.';
