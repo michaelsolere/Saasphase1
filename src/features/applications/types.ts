@@ -22,6 +22,7 @@ export type ApplicationDetail = Pick<
   ApplicationOverviewRow,
   | "id"
   | "organization_id"
+  | "contact_id"
   | "contact_display_name"
   | "contact_email"
   | "contact_phone"

@@ -93,7 +93,7 @@ export default async function ApplicationDetailPage({
   const { data, error } = await supabase
     .from("application_overview")
     .select(
-      "id, organization_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
+      "id, organization_id, contact_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -308,10 +308,21 @@ export default async function ApplicationDetailPage({
                     value={application.contact_phone}
                   />
                 </dl>
-                <p className="mt-7 border-t pt-5 text-xs leading-5 text-muted">
-                  La gestion complète du contact sera ajoutée dans un module
-                  dédié.
-                </p>
+                {application.contact_id ? (
+                  <div className="mt-7 border-t pt-5">
+                    <Link
+                      href={`/contacts/${application.contact_id}`}
+                      className="inline-flex w-full justify-center rounded-xl bg-accent px-4 py-2.5 text-center text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      Voir le contact
+                    </Link>
+                  </div>
+                ) : (
+                  <p className="mt-7 border-t pt-5 text-xs leading-5 text-muted">
+                    La gestion complète du contact sera ajoutée dans un module
+                    dédié.
+                  </p>
+                )}
               </aside>
             </div>
           </>
