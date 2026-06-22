@@ -1,38 +1,14 @@
+import Link from "next/link";
+
+import {
+  formatApplicationDate,
+  getApplicationStatusLabel,
+  getSexPreferenceLabel,
+} from "@/features/applications/formatters";
 import type {
   ApplicationFilter,
   ApplicationOverview,
 } from "@/features/applications/types";
-
-const statusLabels: Record<string, string> = {
-  new: "Nouvelle",
-  to_review: "À relire",
-  to_call: "À appeler",
-  qualified: "Qualifiée",
-  waiting_litter: "En attente de portée",
-  rejected: "Refusée",
-  withdrawn: "Retirée",
-  archived: "Archivée",
-};
-
-const sexPreferenceLabels: Record<string, string> = {
-  male_only: "Mâle uniquement",
-  female_only: "Femelle uniquement",
-  male_preferred_female_possible: "Mâle préféré, femelle possible",
-  female_preferred_male_possible: "Femelle préférée, mâle possible",
-  no_preference: "Sans préférence",
-  unknown: "Non précisé",
-};
-
-function formatDate(value: string | null) {
-  if (!value) {
-    return "Date inconnue";
-  }
-
-  return new Intl.DateTimeFormat("fr-FR", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-}
 
 function getProjectExcerpt(value: string | null) {
   if (!value) {
@@ -40,22 +16,6 @@ function getProjectExcerpt(value: string | null) {
   }
 
   return value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
-}
-
-function getStatusLabel(value: string | null) {
-  if (!value) {
-    return "Statut inconnu";
-  }
-
-  return statusLabels[value] ?? value.replaceAll("_", " ");
-}
-
-function getSexPreferenceLabel(value: string | null) {
-  if (!value) {
-    return "Non précisé";
-  }
-
-  return sexPreferenceLabels[value] ?? value.replaceAll("_", " ");
 }
 
 export function ApplicationList({
@@ -93,6 +53,9 @@ export function ApplicationList({
               <th className="px-5 py-4">Projet</th>
               <th className="px-5 py-4">Source</th>
               <th className="px-5 py-4">Statut</th>
+              <th className="px-5 py-4">
+                <span className="sr-only">Ouvrir</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -105,7 +68,7 @@ export function ApplicationList({
                   className={isToReview ? "bg-accent-soft/35" : undefined}
                 >
                   <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
-                    {formatDate(
+                    {formatApplicationDate(
                       application.submitted_at ?? application.created_at,
                     )}
                   </td>
@@ -137,8 +100,22 @@ export function ApplicationList({
                           : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
                       }
                     >
-                      {getStatusLabel(application.status)}
+                      {getApplicationStatusLabel(application.status)}
                     </span>
+                  </td>
+                  <td className="px-5 py-5 text-right align-top">
+                    {application.id ? (
+                      <Link
+                        href={`/candidatures/${application.id}`}
+                        aria-label={`Ouvrir la candidature de ${
+                          application.contact_display_name ??
+                          "ce contact"
+                        }`}
+                        className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               );
