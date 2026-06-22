@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : PR9 fusionnée
-Dernier commit connu : `03141e9 Add application qualification actions`
+Dernier état connu : PR11 fusionnée
+Dernier commit connu : `87d488b Add internal application notes`
 
 Le dépôt contient désormais :
 
@@ -27,7 +27,9 @@ Le dépôt contient désormais :
 * une authentification minimale ;
 * un compte Auth local de développement ;
 * une fiche détail candidature en lecture seule ;
-* des actions de qualification de candidature.
+* des actions de qualification de candidature ;
+* un journal de projet `docs/PROJECT_LOG.md` ;
+* des notes internes sur la fiche détail d’une candidature.
 
 ## Historique des PR
 
@@ -215,6 +217,77 @@ Hors périmètre :
 * aucune modification RLS ;
 * aucune création de réservation ;
 * aucun module contact complet.
+
+### PR10 — docs: add project log
+
+Objectif : ajouter un journal de projet durable pour faciliter les reprises de contexte.
+
+Contenu principal :
+
+* création de `docs/PROJECT_LOG.md` ;
+* résumé de l’état du projet ;
+* historique des PR déjà fusionnées ;
+* rappel des décisions techniques importantes ;
+* rappel des commandes de validation habituelles ;
+* indication des prochaines étapes possibles.
+
+Utilité :
+
+* permettre aux agents IA de reprendre le projet avec un contexte fiable ;
+* éviter de dépendre uniquement de l’historique des conversations ;
+* faciliter les transitions entre ChatGPT, Codex, Antigravity et Cursor.
+
+Validation :
+
+* PR documentaire uniquement ;
+* aucun changement applicatif ;
+* aucune migration Supabase ;
+* aucune modification RLS.
+
+### PR11 — Add internal application notes
+
+Objectif : ajouter les notes internes sur la fiche détail d’une candidature.
+
+Contenu principal :
+
+* affichage des notes internes liées à une candidature ;
+* ajout d’un formulaire simple d’ajout de note interne ;
+* ajout de l’action serveur `createApplicationNote` ;
+* association des notes à `application_id`, `organization_id` et `created_by` ;
+* insertion des notes avec `note_type = 'internal'` et `visibility = 'internal'` ;
+* affichage des notes de la plus récente à la plus ancienne ;
+* affichage de messages utilisateur neutres en cas de succès ou d’erreur.
+
+Fichiers principaux :
+
+* `src/app/candidatures/[id]/page.tsx`
+* `src/features/applications/actions.ts`
+* `src/features/applications/note-form.tsx`
+* `src/features/applications/types.ts`
+
+Validation :
+
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+
+* aucune migration Supabase ;
+* aucune modification RLS ;
+* aucun upload de document ;
+* aucune édition de note ;
+* aucune suppression de note ;
+* aucun module contact complet ;
+* aucune logique de réservation.
+
+Tests manuels recommandés :
+
+* ouvrir une candidature depuis `/candidatures` ;
+* vérifier l’affichage du bloc “Notes internes” ;
+* ajouter une note valide ;
+* vérifier que la note apparaît en haut de liste ;
+* vérifier l’affichage de la date et de l’auteur ;
+* vérifier qu’une note vide n’est pas insérée.
 
 ## Décisions techniques à conserver
 
