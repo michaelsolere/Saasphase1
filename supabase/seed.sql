@@ -1,4 +1,5 @@
 -- Development-only fixtures. No real personal data or production credentials.
+-- Local login: owner@saasphase1.invalid / LocalDevOwner-2026!
 
 insert into auth.users (
   id,
@@ -6,7 +7,16 @@ insert into auth.users (
   aud,
   role,
   email,
+  encrypted_password,
   email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change,
+  phone_change_token,
+  email_change_token_current,
+  reauthentication_token,
   raw_app_meta_data,
   raw_user_meta_data,
   created_at,
@@ -18,9 +28,43 @@ values (
   'authenticated',
   'authenticated',
   'owner@saasphase1.invalid',
+  extensions.crypt('LocalDevOwner-2026!', extensions.gen_salt('bf')),
   now(),
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
   '{"provider":"email","providers":["email"]}'::jsonb,
   '{"display_name":"Owner développement"}'::jsonb,
+  now(),
+  now()
+);
+
+-- Supabase Auth password login requires a matching email identity.
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  created_at,
+  updated_at
+)
+values (
+  '11000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  jsonb_build_object(
+    'sub', '10000000-0000-4000-8000-000000000001',
+    'email', 'owner@saasphase1.invalid',
+    'email_verified', true,
+    'phone_verified', false
+  ),
+  'email',
   now(),
   now()
 );
