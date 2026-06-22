@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Module Contacts achevé (PR13 à PR21 fusionnées)
-Dernier commit connu : `ad5da83 Add back link to contacts list`
+Dernier état connu : Module Réservations en lecture seule achevé (PR23 à PR25 fusionnées)
+Dernier commit connu : `4028f467 feat(contacts): add related reservations to contact detail`
 
 Le dépôt contient désormais :
 
@@ -35,7 +35,10 @@ Le dépôt contient désormais :
 * des liens de navigation croisés entre candidatures et contacts dans l’espace privé ;
 * l'affichage des candidatures liées sur la fiche détail d'un contact ;
 * la création et l'affichage sécurisé de notes internes sur la fiche d'un contact ;
-* un lien direct de retour vers la liste des contacts depuis la fiche détail.
+* un lien direct de retour vers la liste des contacts depuis la fiche détail ;
+* une liste privée des réservations en lecture seule (`/reservations`) ;
+* une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
+* l'affichage des réservations liées sur la fiche détail d'un contact.
 
 ## Historique des PR
 
@@ -470,6 +473,56 @@ Validation :
 Hors périmètre :
 * aucune modification fonctionnelle autre que l'amélioration de la navigation.
 
+### PR23 — Add read-only reservations list
+
+Objectif : ajouter un écran privé de liste des réservations en lecture seule.
+
+Contenu principal :
+* création de la route privée `/reservations` ;
+* récupération de la liste des réservations depuis la vue `reservation_overview` ;
+* affichage des données sous forme de liste en lecture seule ;
+* gestion neutre de l'état vide ("Aucune réservation trouvée") et d'un message d'erreur neutre en cas de problème de chargement ;
+* intégration de liens de navigation minimaux depuis les fiches Contacts et Candidatures.
+
+Hors périmètre :
+* aucune action d'écriture ;
+* aucune migration de base de données ;
+* aucune modification de politique RLS.
+
+### PR24 — Add read-only reservation detail screen
+
+Objectif : ajouter une fiche de consultation détaillée pour une réservation spécifique.
+
+Contenu principal :
+* création de la route privée `/reservations/[id]` ;
+* récupération d'une réservation unique depuis la vue `reservation_overview` ;
+* affichage des détails de la réservation en lecture seule (statut, portée, tarifs, acomptes, dates de planification/adoption, animal assigné) ;
+* lien de retour vers la liste des réservations ;
+* liens de navigation vers le contact et la candidature associés lorsque disponibles ;
+* gestion des cas de réservation non trouvée ou inaccessible ;
+* message d'erreur neutre en cas d'échec de chargement.
+
+Hors périmètre :
+* aucune action d'écriture ;
+* aucune migration de base de données ;
+* aucune modification de politique RLS.
+
+### PR25 — Add contact related reservations
+
+Objectif : afficher les réservations liées à un contact directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Réservations liées` sur la fiche détail d'un contact (`/contacts/[id]`) ;
+* récupération des réservations associées via la vue `reservation_overview` filtrée par `contact_id` ;
+* affichage en lecture seule des caractéristiques de la réservation (portée, statut, préférence de sexe, tarif, animal attribué, date de création) ;
+* lien "Consulter" redirigeant vers `/reservations/[id]` pour chaque réservation de la liste ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune action d'écriture ;
+* aucune migration de base de données ;
+* aucune modification de politique RLS.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -561,11 +614,11 @@ git status
 
 ## Prochaine étape logique
 
-Le module des Contacts privés est désormais exploitable en consultation, avec navigation dédiée, candidatures liées et notes internes.
+Le module des Réservations privées est désormais exploitable en consultation (liste, détails et association sur la fiche contact).
 
 Pistes possibles :
-* ajouter la gestion des réservations de chiots associées à une candidature ou à un contact (Phase 1) ;
-* ajouter la gestion simple des paiements liés à une réservation ou à un contact ;
-* préparer le système de génération et d'upload de documents (Phase 1) ;
-* ajouter des notes internes ou des documents au niveau de la fiche candidature (compléter l'existant).
+* ajouter l'affichage des réservations liées sur la fiche détail d'une candidature, si approprié ;
+* ajouter la visibilité en lecture seule des paiements ou le module de paiement dans un second temps ;
+* n'ajouter la création/édition contrôlée de réservations qu'une fois le flux de lecture validé ;
+* conserver les migrations et modifications de RLS séparées et explicitement justifiées.
 
