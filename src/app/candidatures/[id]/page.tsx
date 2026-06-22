@@ -6,6 +6,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -72,10 +73,13 @@ function DetailItem({
 
 export default async function ApplicationDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ action?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -111,6 +115,24 @@ export default async function ApplicationDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
+            {query.action === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le statut de la candidature a bien été mis à jour.
+              </p>
+            ) : null}
+
+            {query.action === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La candidature n’a pas pu être mise à jour. Réessayez.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -137,6 +159,23 @@ export default async function ApplicationDetailPage({
                 {getApplicationStatusLabel(application.status)}
               </span>
             </header>
+
+            {application.id ? (
+              <section className="border-b py-6">
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <div>
+                    <h2 className="font-semibold">Qualification</h2>
+                    <p className="mt-1 text-sm text-muted">
+                      Choisissez la prochaine étape de cette candidature.
+                    </p>
+                  </div>
+                  <QualificationActions
+                    applicationId={application.id}
+                    status={application.status}
+                  />
+                </div>
+              </section>
+            ) : null}
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
