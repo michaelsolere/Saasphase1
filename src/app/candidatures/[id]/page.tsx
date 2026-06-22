@@ -6,6 +6,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
 import { createClient } from "@/lib/supabase/server";
@@ -76,7 +77,7 @@ export default async function ApplicationDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ action?: string }>;
+  searchParams: Promise<{ action?: string; note_status?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -92,12 +93,22 @@ export default async function ApplicationDetailPage({
   const { data, error } = await supabase
     .from("application_overview")
     .select(
-      "id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
+      "id, organization_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
     )
     .eq("id", id)
     .maybeSingle();
 
   const application = data as ApplicationDetail | null;
+
+  const applicationId = application?.id;
+  const { data: notes } = applicationId
+    ? await supabase
+        .from("notes")
+        .select("id, body, created_at, created_by, profiles!created_by ( display_name )")
+        .eq("application_id", applicationId)
+        .order("created_at", { ascending: false })
+    : { data: null };
+
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -130,6 +141,24 @@ export default async function ApplicationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 La candidature n’a pas pu être mise à jour. Réessayez.
+              </p>
+            ) : null}
+
+            {query.note_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La note interne a bien été ajoutée.
+              </p>
+            ) : null}
+
+            {query.note_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La note n’a pas pu être ajoutée. Réessayez.
               </p>
             ) : null}
 
@@ -178,41 +207,90 @@ export default async function ApplicationDetailPage({
             ) : null}
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Projet d’adoption</h2>
-                <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
-                  {application.project_description ||
-                    "Aucune description du projet n’a été renseignée."}
-                </p>
+              <div className="space-y-6">
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Projet d’adoption</h2>
+                  <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
+                    {application.project_description ||
+                      "Aucune description du projet n’a été renseignée."}
+                  </p>
 
-                <dl className="mt-8 grid gap-6 border-t pt-7 sm:grid-cols-2">
-                  <DetailItem
-                    label="Préférence de sexe"
-                    value={getSexPreferenceLabel(
-                      application.desired_sex_preference,
+                  <dl className="mt-8 grid gap-6 border-t pt-7 sm:grid-cols-2">
+                    <DetailItem
+                      label="Préférence de sexe"
+                      value={getSexPreferenceLabel(
+                        application.desired_sex_preference,
+                      )}
+                    />
+                    <DetailItem
+                      label="Espèce et race"
+                      value={
+                        [application.species, application.breed]
+                          .filter(Boolean)
+                          .join(" · ") || null
+                      }
+                    />
+                    <DetailItem
+                      label="Formulaire source"
+                      value={
+                        application.public_form_name ??
+                        application.public_form_slug
+                      }
+                    />
+                    <DetailItem
+                      label="Statut"
+                      value={getApplicationStatusLabel(application.status)}
+                    />
+                  </dl>
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Notes internes</h2>
+
+                  <div className="mt-6 space-y-6">
+                    {notes && notes.length > 0 ? (
+                      <div className="divide-y divide-border">
+                        {notes.map((note) => {
+                          const authorName =
+                            (
+                              note.profiles as
+                                | { display_name: string | null }
+                                | null
+                            )?.display_name || "Auteur inconnu";
+                          return (
+                            <div
+                              key={note.id}
+                              className="py-4 first:pt-0 last:pb-0"
+                            >
+                              <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                {note.body}
+                              </p>
+                              <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+                                <span>Par {authorName}</span>
+                                <span>•</span>
+                                <span>
+                                  {formatApplicationDate(note.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted">
+                        Aucune note interne pour le moment.
+                      </p>
                     )}
-                  />
-                  <DetailItem
-                    label="Espèce et race"
-                    value={
-                      [application.species, application.breed]
-                        .filter(Boolean)
-                        .join(" · ") || null
-                    }
-                  />
-                  <DetailItem
-                    label="Formulaire source"
-                    value={
-                      application.public_form_name ??
-                      application.public_form_slug
-                    }
-                  />
-                  <DetailItem
-                    label="Statut"
-                    value={getApplicationStatusLabel(application.status)}
-                  />
-                </dl>
-              </section>
+                  </div>
+
+                  {application.id && application.organization_id ? (
+                    <NoteForm
+                      applicationId={application.id}
+                      organizationId={application.organization_id}
+                    />
+                  ) : null}
+                </section>
+              </div>
 
               <aside className="h-fit rounded-2xl border bg-surface p-6">
                 <h2 className="text-lg font-semibold">Contact lié</h2>
@@ -242,3 +320,4 @@ export default async function ApplicationDetailPage({
     </main>
   );
 }
+
