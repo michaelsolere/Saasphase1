@@ -93,6 +93,12 @@ export default async function ApplicationsPage({
             >
               Contacts
             </Link>
+            <Link
+              href="/reservations"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Réservations
+            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>

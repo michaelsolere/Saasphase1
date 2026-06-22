@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { logout } from "@/features/auth/actions";
-import { ContactList } from "@/features/contacts/contact-list";
-import type { ContactOverview } from "@/features/contacts/types";
+import { ReservationList } from "@/features/reservations/reservation-list";
+import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ function ErrorMessage() {
       role="alert"
       className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center text-amber-950"
     >
-      <p className="font-semibold">Impossible de charger les contacts</p>
+      <p className="font-semibold">Impossible de charger les réservations</p>
       <p className="mt-2 text-sm">
         Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
       </p>
@@ -22,7 +22,7 @@ function ErrorMessage() {
   );
 }
 
-export default async function ContactsPage() {
+export default async function ReservationsPage() {
   const supabase = await createClient();
 
   const {
@@ -34,15 +34,17 @@ export default async function ContactsPage() {
     redirect("/login");
   }
 
-  let contacts = null;
+  let reservations = null;
   let hasLoadingError = Boolean(authError);
 
   const result = await supabase
-    .from("contact_overview")
-    .select("id, display_name, email, phone, active_roles, created_at")
+    .from("reservation_overview")
+    .select(
+      "id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_display_name, created_at"
+    )
     .order("created_at", { ascending: false });
 
-  contacts = result.data as ContactOverview[] | null;
+  reservations = result.data as ReservationOverview[] | null;
   hasLoadingError = hasLoadingError || Boolean(result.error);
 
   return (
@@ -60,10 +62,10 @@ export default async function ContactsPage() {
               Espace privé · Aperçu
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Contacts
+              Réservations
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez l’ensemble des contacts de votre élevage.
+              Consultez les réservations d’animaux en cours pour votre élevage.
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -74,10 +76,10 @@ export default async function ContactsPage() {
               Candidatures
             </Link>
             <Link
-              href="/reservations"
+              href="/contacts"
               className="text-sm font-semibold text-accent hover:underline"
             >
-              Réservations
+              Contacts
             </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
@@ -95,10 +97,10 @@ export default async function ContactsPage() {
       </header>
 
       <section className="py-8">
-        {hasLoadingError || !contacts ? (
+        {hasLoadingError || !reservations ? (
           <ErrorMessage />
         ) : (
-          <ContactList contacts={contacts} />
+          <ReservationList reservations={reservations} />
         )}
       </section>
     </main>
