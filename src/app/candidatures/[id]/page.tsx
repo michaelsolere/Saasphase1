@@ -1,0 +1,205 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import {
+  formatApplicationDate,
+  getApplicationStatusLabel,
+  getSexPreferenceLabel,
+} from "@/features/applications/formatters";
+import type { ApplicationDetail } from "@/features/applications/types";
+import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+
+function NotFoundOrUnauthorized() {
+  return (
+    <section className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center">
+      <h1 className="text-2xl font-semibold">Candidature introuvable</h1>
+      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted">
+        Cette candidature n’existe pas ou vous n’êtes pas autorisé à la
+        consulter.
+      </p>
+      <Link
+        href="/candidatures"
+        className="mt-6 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
+      >
+        Retour aux candidatures
+      </Link>
+    </section>
+  );
+}
+
+function ErrorMessage() {
+  return (
+    <section
+      role="alert"
+      className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"
+    >
+      <h1 className="text-xl font-semibold">
+        Impossible de charger la candidature
+      </h1>
+      <p className="mt-2 text-sm">
+        Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
+      </p>
+      <Link
+        href="/candidatures"
+        className="mt-6 inline-flex text-sm font-semibold underline"
+      >
+        Retour aux candidatures
+      </Link>
+    </section>
+  );
+}
+
+function DetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm leading-6">
+        {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+export default async function ApplicationDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data, error } = await supabase
+    .from("application_overview")
+    .select(
+      "id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
+    )
+    .eq("id", id)
+    .maybeSingle();
+
+  const application = data as ApplicationDetail | null;
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
+      <Link
+        href="/candidatures"
+        className="text-sm font-medium text-accent hover:underline"
+      >
+        ← Retour aux candidatures
+      </Link>
+
+      <div className="mt-8">
+        {error ? (
+          <ErrorMessage />
+        ) : !application ? (
+          <NotFoundOrUnauthorized />
+        ) : (
+          <>
+            <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+                  Candidature · Lecture seule
+                </p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                  {application.contact_display_name ??
+                    "Candidature sans nom disponible"}
+                </h1>
+                <p className="mt-3 text-sm text-muted">
+                  Soumise le{" "}
+                  {formatApplicationDate(
+                    application.submitted_at ?? application.created_at,
+                  )}
+                </p>
+              </div>
+              <span
+                className={
+                  application.status === "to_review"
+                    ? "w-fit rounded-full bg-accent px-3 py-1.5 text-sm font-semibold text-white"
+                    : "w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted"
+                }
+              >
+                {getApplicationStatusLabel(application.status)}
+              </span>
+            </header>
+
+            <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Projet d’adoption</h2>
+                <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
+                  {application.project_description ||
+                    "Aucune description du projet n’a été renseignée."}
+                </p>
+
+                <dl className="mt-8 grid gap-6 border-t pt-7 sm:grid-cols-2">
+                  <DetailItem
+                    label="Préférence de sexe"
+                    value={getSexPreferenceLabel(
+                      application.desired_sex_preference,
+                    )}
+                  />
+                  <DetailItem
+                    label="Espèce et race"
+                    value={
+                      [application.species, application.breed]
+                        .filter(Boolean)
+                        .join(" · ") || null
+                    }
+                  />
+                  <DetailItem
+                    label="Formulaire source"
+                    value={
+                      application.public_form_name ??
+                      application.public_form_slug
+                    }
+                  />
+                  <DetailItem
+                    label="Statut"
+                    value={getApplicationStatusLabel(application.status)}
+                  />
+                </dl>
+              </section>
+
+              <aside className="h-fit rounded-2xl border bg-surface p-6">
+                <h2 className="text-lg font-semibold">Contact lié</h2>
+                <dl className="mt-6 space-y-6">
+                  <DetailItem
+                    label="Nom"
+                    value={application.contact_display_name}
+                  />
+                  <DetailItem
+                    label="Email"
+                    value={application.contact_email}
+                  />
+                  <DetailItem
+                    label="Téléphone"
+                    value={application.contact_phone}
+                  />
+                </dl>
+                <p className="mt-7 border-t pt-5 text-xs leading-5 text-muted">
+                  La gestion complète du contact sera ajoutée dans un module
+                  dédié.
+                </p>
+              </aside>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
