@@ -2863,7 +2863,6 @@ export type Database = {
           description: string | null
           slug: string | null
           species: string | null
-          success_message: string | null
           title: string | null
         }
         Relationships: []
