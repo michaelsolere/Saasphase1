@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : PR15 fusionnée
-Dernier commit connu : `1953729 Add read-only contacts list`
+Dernier état connu : PR17 fusionnée
+Dernier commit connu : `243d021 Add contacts navigation link`
 
 Le dépôt contient désormais :
 
@@ -31,7 +31,8 @@ Le dépôt contient désormais :
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
-* une liste privée des contacts en lecture seule.
+* une liste privée des contacts en lecture seule ;
+* des liens de navigation croisés entre candidatures et contacts dans l’espace privé.
 
 ## Historique des PR
 
@@ -367,6 +368,39 @@ Tests manuels recommandés :
 * se connecter avec les identifiants locaux de développement ;
 * ouvrir `/contacts` et vérifier l'affichage de la table des contacts ;
 * cliquer sur "Consulter" et valider la navigation vers la fiche détaillée du contact.
+
+### PR17 — Add contacts navigation link
+
+Objectif : ajouter des liens de navigation croisés simples et symétriques entre les écrans privés des candidatures et des contacts.
+
+Contenu principal :
+
+* ajout d'un lien "Contacts" dans l'en-tête de `/candidatures` ;
+* ajout d'un lien "Candidatures" dans l'en-tête de `/contacts` ;
+* alignement avec le style visuel de l'en-tête existant.
+
+Fichiers principaux :
+
+* `src/app/candidatures/page.tsx`
+* `src/app/contacts/page.tsx`
+
+Validation :
+
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+
+* aucun changement de requêtes Supabase ;
+* aucune modification d'authentification ;
+* aucune modification de base de données (migration) ou de politique RLS ;
+* aucun nouveau composant global de navigation.
+
+Tests manuels recommandés :
+
+* se connecter sur l'espace privé de développement ;
+* sur `/candidatures`, vérifier et cliquer sur le lien "Contacts" ;
+* sur `/contacts`, vérifier et cliquer sur le lien "Candidatures" pour retourner en arrière.
 
 ## Décisions techniques à conserver
 
