@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : PR13 fusionnée
-Dernier commit connu : `68e419d Add read-only contact detail screen`
+Dernier état connu : PR15 fusionnée
+Dernier commit connu : `1953729 Add read-only contacts list`
 
 Le dépôt contient désormais :
 
@@ -30,7 +30,8 @@ Le dépôt contient désormais :
 * des actions de qualification de candidature ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
-* une fiche détail de contact en lecture seule.
+* une fiche détail de contact en lecture seule ;
+* une liste privée des contacts en lecture seule.
 
 ## Historique des PR
 
@@ -327,6 +328,45 @@ Tests manuels recommandés :
 * vérifier l'affichage des informations personnelles et de l'adresse ;
 * vérifier l'affichage des rôles actifs ;
 * vérifier la gestion d'un ID inexistant.
+
+### PR15 — Add read-only contacts list
+
+Objectif : ajouter un écran privé de liste des contacts en lecture seule sur `/contacts` pour naviguer vers chaque fiche détaillée.
+
+Contenu principal :
+
+* création de la route privée `/contacts` ;
+* récupération de la liste des contacts via la vue `contact_overview` ordonnés par date de création décroissante ;
+* affichage des données : nom d'affichage, coordonnées (email/téléphone), rôles actifs traduits et date de création ;
+* robustesse aux types pour `active_roles` (gère les tableaux, chaînes simples, null ou undefined) ;
+* lien "Consulter" vers la fiche détaillée `/contacts/[id]` pour chaque ligne ;
+* gestion de l'état vide ("Aucun contact trouvé") et de bannières d'erreur neutres.
+
+Fichiers principaux :
+
+* `src/app/contacts/page.tsx`
+* `src/features/contacts/contact-list.tsx`
+* `src/features/contacts/types.ts`
+
+Validation :
+
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+
+* aucune migration Supabase ;
+* aucune modification RLS ;
+* aucun module de modification, d'ajout ou de suppression de contact ;
+* aucune pagination ni filtres de recherche complexes ;
+* aucune nouvelle dépendance externe.
+
+Tests manuels recommandés :
+
+* accéder à `/contacts` sans être connecté (vérifier la redirection vers `/login`) ;
+* se connecter avec les identifiants locaux de développement ;
+* ouvrir `/contacts` et vérifier l'affichage de la table des contacts ;
+* cliquer sur "Consulter" et valider la navigation vers la fiche détaillée du contact.
 
 ## Décisions techniques à conserver
 
