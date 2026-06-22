@@ -16,8 +16,8 @@ const futureAreas = [
   {
     href: "/candidatures",
     title: "Candidatures",
-    description: "La future liste de relecture et de qualification.",
-    status: "Bientôt",
+    description: "La liste de relecture des candidatures reçues.",
+    status: "Aperçu",
   },
 ];
 
@@ -70,7 +70,9 @@ export default function Home() {
                 {area.description}
               </p>
               <p className="mt-6 text-sm font-medium text-accent">
-                Aperçu du futur module
+                {area.status === "Aperçu"
+                  ? "Consulter les candidatures"
+                  : "Aperçu du futur module"}
                 <span
                   aria-hidden="true"
                   className="ml-1 inline-block transition group-hover:translate-x-1"
