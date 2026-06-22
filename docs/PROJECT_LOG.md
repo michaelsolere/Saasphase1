@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : PR11 fusionnée
-Dernier commit connu : `87d488b Add internal application notes`
+Dernier état connu : PR13 fusionnée
+Dernier commit connu : `68e419d Add read-only contact detail screen`
 
 Le dépôt contient désormais :
 
@@ -29,7 +29,8 @@ Le dépôt contient désormais :
 * une fiche détail candidature en lecture seule ;
 * des actions de qualification de candidature ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
-* des notes internes sur la fiche détail d’une candidature.
+* des notes internes sur la fiche détail d’une candidature ;
+* une fiche détail de contact en lecture seule.
 
 ## Historique des PR
 
@@ -288,6 +289,44 @@ Tests manuels recommandés :
 * vérifier que la note apparaît en haut de liste ;
 * vérifier l’affichage de la date et de l’auteur ;
 * vérifier qu’une note vide n’est pas insérée.
+
+### PR13 — Add read-only contact detail screen
+
+Objectif : ajouter un écran en lecture seule des détails d'un contact (`/contacts/[id]`) et l'associer depuis la fiche d'une candidature.
+
+Contenu principal :
+
+* création de la route `/contacts/[id]` pour afficher les coordonnées, l'adresse postale et les rôles d'un contact ;
+* récupération du `contact_id` sur la fiche détail de candidature ;
+* ajout d'un lien "Voir le contact" redirigeant vers la fiche contact ;
+* récupération dynamique des rôles actifs via la table `contact_roles` ;
+* gestion neutre des erreurs ("Contact introuvable ou inaccessible.").
+
+Fichiers principaux :
+
+* `src/app/contacts/[id]/page.tsx`
+* `src/features/contacts/formatters.ts`
+* `src/app/candidatures/[id]/page.tsx`
+* `src/features/applications/types.ts`
+
+Validation :
+
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+
+* aucune migration Supabase ;
+* aucune modification RLS ;
+* aucun module de modification, d'ajout manuel ou de suppression de contact ;
+* aucune nouvelle dépendance externe.
+
+Tests manuels recommandés :
+
+* ouvrir une candidature et cliquer sur "Voir le contact" ;
+* vérifier l'affichage des informations personnelles et de l'adresse ;
+* vérifier l'affichage des rôles actifs ;
+* vérifier la gestion d'un ID inexistant.
 
 ## Décisions techniques à conserver
 
