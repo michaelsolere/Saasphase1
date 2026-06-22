@@ -1,22 +1,12 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { ApplicationList } from "@/features/applications/application-list";
 import type { ApplicationFilter } from "@/features/applications/types";
+import { logout } from "@/features/auth/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-
-function AccessMessage() {
-  return (
-    <div className="rounded-2xl border bg-surface px-6 py-12 text-center">
-      <p className="text-lg font-semibold">Connexion requise</p>
-      <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">
-        Cet aperçu privé nécessite une session Supabase active. Le parcours
-        d’authentification complet sera ajouté dans une prochaine étape.
-      </p>
-    </div>
-  );
-}
 
 function ErrorMessage() {
   return (
@@ -35,41 +25,44 @@ function ErrorMessage() {
 export default async function ApplicationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ filtre?: string }>;
+  searchParams: Promise<{
+    connexion?: string;
+    erreur?: string;
+    filtre?: string;
+  }>;
 }) {
   const params = await searchParams;
   const filter: ApplicationFilter =
     params.filtre === "toutes" ? "all" : "to_review";
   const supabase = await createClient();
 
-  // Protection provisoire : l’écran s’appuie sur la session Supabase et les
-  // politiques RLS existantes. Le parcours de connexion complet fera l’objet
-  // d’une PR dédiée avant toute mise en production.
   const {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser();
 
+  if (!user) {
+    redirect("/login");
+  }
+
   let applications = null;
   let hasLoadingError = Boolean(authError);
 
-  if (user) {
-    let query = supabase
-      .from("application_overview")
-      .select(
-        "id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, submitted_at, created_at",
-      )
-      .order("submitted_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false });
+  let query = supabase
+    .from("application_overview")
+    .select(
+      "id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, submitted_at, created_at",
+    )
+    .order("submitted_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
 
-    if (filter === "to_review") {
-      query = query.eq("status", "to_review");
-    }
-
-    const result = await query;
-    applications = result.data;
-    hasLoadingError = Boolean(result.error);
+  if (filter === "to_review") {
+    query = query.eq("status", "to_review");
   }
+
+  const result = await query;
+  applications = result.data;
+  hasLoadingError = hasLoadingError || Boolean(result.error);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -93,18 +86,42 @@ export default async function ApplicationsPage({
               attendent une première relecture.
             </p>
           </div>
-          {user ? (
+          <div className="flex items-center gap-3">
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
-          ) : null}
+            <form action={logout}>
+              <button
+                type="submit"
+                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
+              >
+                Se déconnecter
+              </button>
+            </form>
+          </div>
         </div>
       </header>
 
       <section className="py-8">
-        {!user ? (
-          <AccessMessage />
-        ) : hasLoadingError || !applications ? (
+        {params.connexion === "success" ? (
+          <p
+            role="status"
+            className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          >
+            Connexion réussie.
+          </p>
+        ) : null}
+
+        {params.erreur === "logout" ? (
+          <p
+            role="alert"
+            className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          >
+            La déconnexion n’a pas abouti. Réessayez.
+          </p>
+        ) : null}
+
+        {hasLoadingError || !applications ? (
           <ErrorMessage />
         ) : (
           <>

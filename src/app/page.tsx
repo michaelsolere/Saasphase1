@@ -8,10 +8,10 @@ const futureAreas = [
     status: "Disponible",
   },
   {
-    href: "/espace-prive",
+    href: "/login",
     title: "Espace privé",
-    description: "Le futur accès sécurisé réservé aux membres de l’élevage.",
-    status: "Bientôt",
+    description: "L’accès sécurisé réservé aux membres de l’élevage.",
+    status: "Disponible",
   },
   {
     href: "/candidatures",
@@ -70,7 +70,9 @@ export default function Home() {
                 {area.description}
               </p>
               <p className="mt-6 text-sm font-medium text-accent">
-                {area.status === "Aperçu"
+                {area.title === "Espace privé"
+                  ? "Se connecter"
+                  : area.status === "Aperçu"
                   ? "Consulter les candidatures"
                   : "Aperçu du futur module"}
                 <span
