@@ -66,7 +66,13 @@ export default async function ContactsPage() {
               Consultez l’ensemble des contacts de votre élevage.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <Link
+              href="/candidatures"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Candidatures
+            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
