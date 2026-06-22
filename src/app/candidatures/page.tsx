@@ -99,6 +99,12 @@ export default async function ApplicationsPage({
             >
               Réservations
             </Link>
+            <Link
+              href="/payments"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Paiements
+            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
