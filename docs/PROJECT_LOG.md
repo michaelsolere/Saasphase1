@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : PR17 fusionnée
-Dernier commit connu : `243d021 Add contacts navigation link`
+Dernier état connu : Module Contacts achevé (PR13 à PR21 fusionnées)
+Dernier commit connu : `ad5da83 Add back link to contacts list`
 
 Le dépôt contient désormais :
 
@@ -32,7 +32,10 @@ Le dépôt contient désormais :
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
 * une liste privée des contacts en lecture seule ;
-* des liens de navigation croisés entre candidatures et contacts dans l’espace privé.
+* des liens de navigation croisés entre candidatures et contacts dans l’espace privé ;
+* l'affichage des candidatures liées sur la fiche détail d'un contact ;
+* la création et l'affichage sécurisé de notes internes sur la fiche d'un contact ;
+* un lien direct de retour vers la liste des contacts depuis la fiche détail.
 
 ## Historique des PR
 
@@ -402,6 +405,71 @@ Tests manuels recommandés :
 * sur `/candidatures`, vérifier et cliquer sur le lien "Contacts" ;
 * sur `/contacts`, vérifier et cliquer sur le lien "Candidatures" pour retourner en arrière.
 
+### PR19 — Add read-only contact related applications
+
+Objectif : afficher les candidatures liées à un contact sur sa fiche détail en lecture seule.
+
+Contenu principal :
+* récupération des candidatures associées au contact via la vue `application_overview` ;
+* tri par date de soumission décroissante ;
+* affichage des informations de la candidature (espèce, race, statut, préférence de sexe, date et source) ;
+* lien "Consulter" vers la fiche détaillée de la candidature ;
+* gestion des cas sans candidature ("Aucune candidature liée à ce contact.") et des erreurs de chargement.
+
+Fichiers principaux :
+* `src/app/contacts/[id]/page.tsx`
+
+Validation :
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+* aucune modification de base de données (migration) ou de politique RLS ;
+* aucun changement d'écriture.
+
+### PR20 — Add contact internal notes
+
+Objectif : afficher et créer des notes internes liées à un contact sur sa fiche détail.
+
+Contenu principal :
+* affichage des notes internes liées au contact (type `internal` et visibilité `internal`), de la plus récente à la plus ancienne ;
+* formulaire d'ajout de note interne avec état d'attente lors de la soumission ;
+* action serveur sécurisée `createContactNote` réalisant la vérification de l'utilisateur, la relecture du contact côté serveur pour récupérer l'organisation en ignorant les données sensibles du client, et l'insertion en forçant le type/visibilité à `internal` ;
+* affichage de messages d'état (succès/erreur) ;
+* gestion des erreurs de chargement avec un message neutre.
+
+Fichiers principaux :
+* `src/app/contacts/[id]/page.tsx`
+* `src/features/contacts/actions.ts`
+* `src/features/contacts/note-form.tsx`
+
+Validation :
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+* aucune modification de RLS ;
+* aucune migration de base de données ;
+* pas d'édition ou de suppression de notes.
+
+### PR21 — Add back link to contacts list
+
+Objectif : améliorer la navigation depuis la fiche détail d'un contact en ajoutant un retour vers la liste des contacts.
+
+Contenu principal :
+* ajout d'un lien principal `← Retour aux contacts` vers `/contacts` ;
+* conservation du lien secondaire vers `/candidatures` pour la flexibilité de navigation.
+
+Fichiers principaux :
+* `src/app/contacts/[id]/page.tsx`
+
+Validation :
+* `pnpm lint`
+* `pnpm build`
+
+Hors périmètre :
+* aucune modification fonctionnelle autre que l'amélioration de la navigation.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -493,14 +561,11 @@ git status
 
 ## Prochaine étape logique
 
-À définir avant de créer la prochaine branche.
+Le module des Contacts privés est désormais exploitable en consultation, avec navigation dédiée, candidatures liées et notes internes.
 
 Pistes possibles :
-
-* améliorer la fiche détail candidature ;
-* ajouter commentaires internes sur une candidature ;
-* créer une fiche contact détaillée ;
-* relier candidature et contact de manière plus exploitable côté interface ;
-* préparer les documents attachés à un contact ou une candidature ;
-* ajouter une page de suivi des candidatures qualifiées.
+* ajouter la gestion des réservations de chiots associées à une candidature ou à un contact (Phase 1) ;
+* ajouter la gestion simple des paiements liés à une réservation ou à un contact ;
+* préparer le système de génération et d'upload de documents (Phase 1) ;
+* ajouter des notes internes ou des documents au niveau de la fiche candidature (compléter l'existant).
 
