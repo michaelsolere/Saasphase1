@@ -3,27 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  actionTargets,
+  transitions,
+  type QualificationAction,
+} from "./transitions";
 import { createClient } from "@/lib/supabase/server";
-
-const actionTargets = {
-  archive: "archived",
-  qualify: "qualified",
-  reject: "rejected",
-  to_call: "to_call",
-} as const;
-
-type QualificationAction = keyof typeof actionTargets;
-
-const transitions: Record<string, QualificationAction[]> = {
-  new: ["archive"],
-  to_review: ["to_call", "qualify", "reject", "archive"],
-  to_call: ["archive"],
-  qualified: ["archive"],
-  waiting_litter: ["archive"],
-  rejected: ["archive"],
-  withdrawn: ["archive"],
-  archived: [],
-};
 
 function isQualificationAction(value: string): value is QualificationAction {
   return value in actionTargets;
@@ -72,13 +57,16 @@ export async function updateApplicationStatus(formData: FormData) {
 
   const nextStatus = actionTargets[requestedAction];
   const now = new Date().toISOString();
-  const reviewFields =
-    application.status === "to_review" && nextStatus !== "archived"
-      ? {
-          reviewed_at: now,
-          reviewed_by: user.id,
-        }
-      : {};
+  const isFirstReview =
+    (application.status === "to_review" || application.status === "new") &&
+    nextStatus !== "archived";
+
+  const reviewFields = isFirstReview
+    ? {
+        reviewed_at: now,
+        reviewed_by: user.id,
+      }
+    : {};
 
   const { data: updatedApplication, error: updateError } = await supabase
     .from("applications")

@@ -3,24 +3,23 @@
 import { useFormStatus } from "react-dom";
 
 import { updateApplicationStatus } from "@/features/applications/actions";
+import { transitions, type QualificationAction } from "./transitions";
 
-type ActionName = "archive" | "qualify" | "reject" | "to_call";
-
-const actionLabels: Record<ActionName, string> = {
+const actionLabels: Record<QualificationAction, string> = {
   archive: "Archiver",
   qualify: "Qualifier",
   reject: "Refuser",
   to_call: "À appeler",
 };
 
-const actionStyles: Record<ActionName, string> = {
+const actionStyles: Record<QualificationAction, string> = {
   archive: "border text-muted hover:bg-background",
   qualify: "bg-accent text-white hover:opacity-90",
   reject: "border border-red-200 text-red-800 hover:bg-red-50",
   to_call: "border border-accent/30 text-accent hover:bg-accent-soft",
 };
 
-function ActionButton({ action }: { action: ActionName }) {
+function ActionButton({ action }: { action: QualificationAction }) {
   const { pending } = useFormStatus();
 
   return (
@@ -38,7 +37,7 @@ function ActionForm({
   action,
   applicationId,
 }: {
-  action: ActionName;
+  action: QualificationAction;
   applicationId: string;
 }) {
   return (
@@ -57,10 +56,13 @@ export function QualificationActions({
   applicationId: string;
   status: string | null;
 }) {
-  const isToReview = status === "to_review";
-  const canArchive = Boolean(status && status !== "archived");
+  if (!status) {
+    return null;
+  }
 
-  if (!isToReview && !canArchive) {
+  const allowedActions = transitions[status] ?? [];
+
+  if (allowedActions.length === 0) {
     return (
       <p className="text-sm text-muted">
         Aucune action disponible pour ce statut.
@@ -70,16 +72,13 @@ export function QualificationActions({
 
   return (
     <div className="flex flex-wrap gap-3">
-      {isToReview ? (
-        <>
-          <ActionForm action="to_call" applicationId={applicationId} />
-          <ActionForm action="qualify" applicationId={applicationId} />
-          <ActionForm action="reject" applicationId={applicationId} />
-        </>
-      ) : null}
-      {canArchive ? (
-        <ActionForm action="archive" applicationId={applicationId} />
-      ) : null}
+      {allowedActions.map((action) => (
+        <ActionForm
+          key={action}
+          action={action}
+          applicationId={applicationId}
+        />
+      ))}
     </div>
   );
 }
