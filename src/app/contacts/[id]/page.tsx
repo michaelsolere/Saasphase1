@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { formatApplicationDate } from "@/features/applications/formatters";
+import {
+  formatApplicationDate,
+  getApplicationStatusLabel,
+  getSexPreferenceLabel,
+} from "@/features/applications/formatters";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
 import { createClient } from "@/lib/supabase/server";
 
@@ -99,6 +103,18 @@ export default async function ContactDetailPage({
         .is("deleted_at", null)
     : { data: null };
 
+  // Fetch applications
+  const { data: contactApplications, error: applicationsError } = contact
+    ? await supabase
+        .from("application_overview")
+        .select(
+          "id, status, species, breed, desired_sex_preference, submitted_at, created_at, public_form_name, public_form_slug",
+        )
+        .eq("contact_id", contact.id)
+        .order("submitted_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <Link
@@ -170,6 +186,80 @@ export default async function ContactDetailPage({
                       }
                     />
                   </dl>
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold mb-6">
+                    Candidatures liées
+                  </h2>
+
+                  {applicationsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les candidatures liées.
+                    </p>
+                  ) : contactApplications && contactApplications.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {contactApplications.map((app) => {
+                        const sourceForm =
+                          app.public_form_name ??
+                          app.public_form_slug ??
+                          "Source non précisée";
+                        const dateText = formatApplicationDate(
+                          app.submitted_at ?? app.created_at,
+                        );
+
+                        return (
+                          <div
+                            key={app.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-foreground text-sm">
+                                    {[app.species, app.breed]
+                                      .filter(Boolean)
+                                      .join(" · ") ||
+                                      "Espèce et race non précisées"}
+                                  </span>
+                                  <span
+                                    className={
+                                      app.status === "to_review"
+                                        ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+                                        : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
+                                    }
+                                  >
+                                    {getApplicationStatusLabel(app.status)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted">
+                                  Préférence :{" "}
+                                  {getSexPreferenceLabel(
+                                    app.desired_sex_preference,
+                                  )}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Soumise le {dateText} · Source : {sourceForm}
+                                </p>
+                              </div>
+                              {app.id ? (
+                                <Link
+                                  href={`/candidatures/${app.id}`}
+                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
+                                >
+                                  Consulter
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucune candidature liée à ce contact.
+                    </p>
+                  )}
                 </section>
               </div>
 
