@@ -4,17 +4,20 @@ const futureAreas = [
   {
     href: "/candidature/golden-retriever-2026",
     title: "Formulaire public",
-    description: "Le futur parcours de candidature envoyé aux adoptants.",
+    description: "Le parcours de candidature à partager avec les adoptants.",
+    status: "Disponible",
   },
   {
     href: "/espace-prive",
     title: "Espace privé",
     description: "Le futur accès sécurisé réservé aux membres de l’élevage.",
+    status: "Bientôt",
   },
   {
     href: "/candidatures",
     title: "Candidatures",
     description: "La future liste de relecture et de qualification.",
+    status: "Bientôt",
   },
 ];
 
@@ -59,7 +62,9 @@ export default function Home() {
             >
               <div className="flex items-start justify-between gap-4">
                 <h2 className="font-semibold">{area.title}</h2>
-                <span className="text-xs font-medium text-muted">Bientôt</span>
+                <span className="text-xs font-medium text-muted">
+                  {area.status}
+                </span>
               </div>
               <p className="mt-3 text-sm leading-6 text-muted">
                 {area.description}
