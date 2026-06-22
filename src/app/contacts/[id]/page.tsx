@@ -8,6 +8,8 @@ import {
 } from "@/features/applications/formatters";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
 import { NoteForm } from "@/features/contacts/note-form";
+import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
+import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +132,17 @@ export default async function ContactDetailPage({
         .eq("visibility", "internal")
         .order("created_at", { ascending: false })
     : { data: null, error: null };
+
+  // Fetch reservations
+  const { data: rawReservations, error: reservationsError } = contactId
+    ? await supabase
+        .from("reservation_overview")
+        .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_display_name, reserved_sex_preference, created_at")
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const contactReservations = rawReservations as ReservationOverview[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -301,6 +314,85 @@ export default async function ContactDetailPage({
                   ) : (
                     <p className="text-sm text-muted">
                       Aucune candidature liée à ce contact.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold mb-6">
+                    Réservations liées
+                  </h2>
+
+                  {reservationsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les réservations liées.
+                    </p>
+                  ) : contactReservations && contactReservations.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {contactReservations.map((res) => {
+                        const targetLitter =
+                          res.litter_name ??
+                          res.litter_group_name ??
+                          "Portée non précisée";
+                        const dateText = formatApplicationDate(res.created_at);
+
+                        return (
+                          <div
+                            key={res.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-foreground text-sm">
+                                    {targetLitter}
+                                  </span>
+                                  <span
+                                    className={
+                                      res.status === "active" ||
+                                      res.status === "confirmed_after_birth" ||
+                                      res.status === "animal_assigned"
+                                        ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+                                        : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
+                                    }
+                                  >
+                                    {getReservationStatusLabel(res.status)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted">
+                                  Préférence : {getSexPreferenceLabel(res.reserved_sex_preference)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Tarif : {formatPrice(res.price_cents, res.currency)}
+                                  {res.paid_cents !== null && res.paid_cents !== undefined && res.paid_cents > 0 ? (
+                                    <span className="text-emerald-700 ml-2 font-medium">
+                                      (Payé : {formatPrice(res.paid_cents, res.currency)})
+                                    </span>
+                                  ) : null}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Animal : {res.animal_display_name ?? "Non attribué"}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Créée le {dateText}
+                                </p>
+                              </div>
+                              {res.id ? (
+                                <Link
+                                  href={`/reservations/${res.id}`}
+                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
+                                >
+                                  Consulter
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucune réservation liée à ce contact.
                     </p>
                   )}
                 </section>
