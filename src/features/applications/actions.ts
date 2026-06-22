@@ -89,3 +89,51 @@ export async function updateApplicationStatus(formData: FormData) {
   revalidatePath(`/candidatures/${applicationId}`);
   redirect(detailUrl(applicationId, "success"));
 }
+
+export async function createApplicationNote(formData: FormData) {
+  const applicationId = formData.get("application_id");
+  const organizationId = formData.get("organization_id");
+  const body = formData.get("body");
+
+  if (
+    typeof applicationId !== "string" ||
+    typeof organizationId !== "string" ||
+    typeof body !== "string" ||
+    !body.trim()
+  ) {
+    if (typeof applicationId === "string") {
+      redirect(`/candidatures/${applicationId}?note_status=error`);
+    } else {
+      redirect("/candidatures?erreur=note");
+    }
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { error: insertError } = await supabase
+    .from("notes")
+    .insert({
+      application_id: applicationId,
+      organization_id: organizationId,
+      body: body.trim(),
+      note_type: "internal",
+      visibility: "internal",
+      created_by: user.id,
+    });
+
+  if (insertError) {
+    redirect(`/candidatures/${applicationId}?note_status=error`);
+  }
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+  redirect(`/candidatures/${applicationId}?note_status=success`);
+}
+
