@@ -11,3 +11,17 @@ Stack prévue :
 - Supabase Auth
 - Supabase Storage
 - Vercel
+
+## Démarrage local
+
+1. Copier `.env.example` vers `.env.local`.
+2. Renseigner les variables publiques de l’instance Supabase locale.
+3. Installer les dépendances avec `pnpm install`.
+4. Démarrer l’application avec `pnpm dev`.
+
+Commandes de vérification :
+
+```bash
+pnpm lint
+pnpm build
+```
