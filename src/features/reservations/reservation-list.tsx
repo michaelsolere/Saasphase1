@@ -36,6 +36,9 @@ export function ReservationList({
               <th className="px-5 py-4">Tarif</th>
               <th className="px-5 py-4">Animal</th>
               <th className="px-5 py-4">Date de création</th>
+              <th className="px-5 py-4">
+                <span className="sr-only">Ouvrir</span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -85,6 +88,19 @@ export function ReservationList({
                   </td>
                   <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
                     {formatApplicationDate(res.created_at)}
+                  </td>
+                  <td className="px-5 py-5 text-right align-top">
+                    {res.id ? (
+                      <Link
+                        href={`/reservations/${res.id}`}
+                        aria-label={`Ouvrir la réservation ${
+                          res.contact_display_name ?? ""
+                        }`}
+                        className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
                   </td>
                 </tr>
               );
