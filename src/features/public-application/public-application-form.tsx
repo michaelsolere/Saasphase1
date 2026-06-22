@@ -56,9 +56,7 @@ export function PublicApplicationForm({
         const supabase = createClient();
         const { data, error } = await supabase
           .from("public_form_public_view")
-          .select(
-            "slug, title, description, species, breed, success_message",
-          )
+          .select("slug, title, description, species, breed")
           .eq("slug", formSlug)
           .limit(1)
           .maybeSingle();
@@ -170,10 +168,7 @@ export function PublicApplicationForm({
   if (isSubmitted) {
     return (
       <SuccessState
-        message={
-          publicForm.success_message ??
-          "Merci, votre candidature a bien été enregistrée."
-        }
+        message="Merci, votre candidature a bien été enregistrée."
         publicReference={publicReference}
       />
     );
