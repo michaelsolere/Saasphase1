@@ -7,6 +7,7 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
+import { NoteForm } from "@/features/contacts/note-form";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -71,10 +72,13 @@ function DetailItem({
 
 export default async function ContactDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ note_status?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -88,7 +92,7 @@ export default async function ContactDetailPage({
   const { data: contact, error: contactError } = await supabase
     .from("contacts")
     .select(
-      "id, display_name, first_name, last_name, email, phone, secondary_phone, address_line1, address_line2, postal_code, city, country, created_at",
+      "id, organization_id, display_name, first_name, last_name, email, phone, secondary_phone, address_line1, address_line2, postal_code, city, country, created_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -115,6 +119,18 @@ export default async function ContactDetailPage({
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
+  // Fetch notes
+  const contactId = contact?.id;
+  const { data: notes, error: notesError } = contactId
+    ? await supabase
+        .from("notes")
+        .select("id, body, created_at, created_by, profiles!created_by ( display_name )")
+        .eq("contact_id", contactId)
+        .eq("note_type", "internal")
+        .eq("visibility", "internal")
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <Link
@@ -131,6 +147,24 @@ export default async function ContactDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
+            {query.note_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La note interne a bien été ajoutée.
+              </p>
+            ) : null}
+
+            {query.note_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La note n’a pas pu être ajoutée. Réessayez.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -260,6 +294,54 @@ export default async function ContactDetailPage({
                       Aucune candidature liée à ce contact.
                     </p>
                   )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Notes internes</h2>
+
+                  <div className="mt-6 space-y-6">
+                    {notesError ? (
+                      <p role="alert" className="text-sm text-amber-800">
+                        Impossible de charger les notes internes.
+                      </p>
+                    ) : notes && notes.length > 0 ? (
+                      <div className="divide-y divide-border">
+                        {notes.map((note) => {
+                          const authorName =
+                            (
+                              note.profiles as
+                                | { display_name: string | null }
+                                | null
+                            )?.display_name || "Auteur inconnu";
+                          return (
+                            <div
+                              key={note.id}
+                              className="py-4 first:pt-0 last:pb-0"
+                            >
+                              <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                {note.body}
+                              </p>
+                              <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+                                <span>Par {authorName}</span>
+                                <span>•</span>
+                                <span>
+                                  {formatApplicationDate(note.created_at)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted">
+                        Aucune note interne pour le moment.
+                      </p>
+                    )}
+                  </div>
+
+                  {contact.id ? (
+                    <NoteForm contactId={contact.id} />
+                  ) : null}
                 </section>
               </div>
 
