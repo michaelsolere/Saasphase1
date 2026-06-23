@@ -2,6 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  formatAnimalCoat,
+  formatAnimalDate,
+  getAnimalDisplayName,
+  getAnimalSexLabel,
+  getAnimalStatusLabel,
+} from "@/features/animals/formatters";
+import {
   formatApplicationDate,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
@@ -44,6 +51,21 @@ type RelatedDocument = {
   received_at: string | null;
   file_name: string | null;
   signature_required: boolean;
+};
+
+type RelatedAnimal = {
+  id: string;
+  display_name: string;
+  temporary_name: string | null;
+  call_name: string | null;
+  official_name: string | null;
+  sex: string;
+  status: string;
+  birth_date: string | null;
+  litter_id: string | null;
+  identification_number: string | null;
+  color: string | null;
+  coat_color: string | null;
 };
 
 function getUsefulDocumentDate(document: RelatedDocument) {
@@ -147,6 +169,18 @@ export default async function ReservationDetailPage({
     .maybeSingle();
 
   const reservation = rawReservation as ReservationOverview | null;
+
+  // Fetch related animal
+  const { data: rawAnimal, error: animalError } = reservation?.animal_id
+    ? await supabase
+        .from("animals")
+        .select("id, display_name, temporary_name, call_name, official_name, sex, status, birth_date, litter_id, identification_number, color, coat_color, deleted_at")
+        .eq("id", reservation.animal_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const relatedAnimal = rawAnimal as RelatedAnimal | null;
 
   // Fetch payments
   const { data: rawPayments, error: paymentsError } = reservation?.id
@@ -279,6 +313,68 @@ export default async function ReservationDetailPage({
                       value={formatApplicationDate(reservation.adoption_completed_at)}
                     />
                   </dl>
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">Animal lié</h2>
+                      {relatedAnimal ? (
+                        <p className="mt-2 text-sm text-muted">
+                          {getAnimalDisplayName(relatedAnimal)}
+                        </p>
+                      ) : null}
+                    </div>
+                    {relatedAnimal?.id ? (
+                      <Link
+                        href={`/animals/${relatedAnimal.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {animalError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger l’animal lié.
+                    </p>
+                  ) : !relatedAnimal ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun animal lié à cette réservation.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Nom"
+                        value={getAnimalDisplayName(relatedAnimal)}
+                      />
+                      <DetailItem
+                        label="Sexe"
+                        value={getAnimalSexLabel(relatedAnimal.sex)}
+                      />
+                      <DetailItem
+                        label="Statut"
+                        value={getAnimalStatusLabel(relatedAnimal.status)}
+                      />
+                      <DetailItem
+                        label="Date de naissance"
+                        value={formatAnimalDate(relatedAnimal.birth_date)}
+                      />
+                      <DetailItem
+                        label="Portée liée"
+                        value={reservation.litter_name}
+                      />
+                      <DetailItem
+                        label="Identification"
+                        value={relatedAnimal.identification_number}
+                      />
+                      <DetailItem
+                        label="Couleur ou robe"
+                        value={formatAnimalCoat(relatedAnimal)}
+                      />
+                    </dl>
+                  )}
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
