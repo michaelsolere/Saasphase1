@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { logout } from "@/features/auth/actions";
-import { ContactList } from "@/features/contacts/contact-list";
-import type { ContactOverview } from "@/features/contacts/types";
+import { DocumentList } from "@/features/documents/document-list";
+import type { DBDocument } from "@/features/documents/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ function ErrorMessage() {
       role="alert"
       className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center text-amber-950"
     >
-      <p className="font-semibold">Impossible de charger les contacts</p>
+      <p className="font-semibold">Impossible de charger les documents</p>
       <p className="mt-2 text-sm">
         Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
       </p>
@@ -22,7 +22,7 @@ function ErrorMessage() {
   );
 }
 
-export default async function ContactsPage() {
+export default async function DocumentsPage() {
   const supabase = await createClient();
 
   const {
@@ -34,15 +34,18 @@ export default async function ContactsPage() {
     redirect("/login");
   }
 
-  let contacts = null;
+  let documents = null;
   let hasLoadingError = Boolean(authError);
 
   const result = await supabase
-    .from("contact_overview")
-    .select("id, display_name, email, phone, active_roles, created_at")
+    .from("documents")
+    .select(
+      "id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, expires_at, signature_required, file_name, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id",
+    )
+    .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  contacts = result.data as ContactOverview[] | null;
+  documents = result.data as DBDocument[] | null;
   hasLoadingError = hasLoadingError || Boolean(result.error);
 
   return (
@@ -60,10 +63,10 @@ export default async function ContactsPage() {
               Espace privé · Aperçu
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Contacts
+              Documents
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez l’ensemble des contacts de votre élevage.
+              Consultez les documents générés ou importés liés aux contacts, candidatures, réservations et paiements.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -72,6 +75,12 @@ export default async function ContactsPage() {
               className="text-sm font-semibold text-accent hover:underline"
             >
               Candidatures
+            </Link>
+            <Link
+              href="/contacts"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Contacts
             </Link>
             <Link
               href="/reservations"
@@ -84,12 +93,6 @@ export default async function ContactsPage() {
               className="text-sm font-semibold text-accent hover:underline"
             >
               Paiements
-            </Link>
-            <Link
-              href="/documents"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Documents
             </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
@@ -107,10 +110,10 @@ export default async function ContactsPage() {
       </header>
 
       <section className="py-8">
-        {hasLoadingError || !contacts ? (
+        {hasLoadingError || !documents ? (
           <ErrorMessage />
         ) : (
-          <ContactList contacts={contacts} />
+          <DocumentList documents={documents} />
         )}
       </section>
     </main>

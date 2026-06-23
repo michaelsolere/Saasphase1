@@ -86,7 +86,7 @@ export default async function ApplicationsPage({
               attendent une première relecture.
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <Link
               href="/contacts"
               className="text-sm font-semibold text-accent hover:underline"
@@ -104,6 +104,12 @@ export default async function ApplicationsPage({
               className="text-sm font-semibold text-accent hover:underline"
             >
               Paiements
+            </Link>
+            <Link
+              href="/documents"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Documents
             </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
