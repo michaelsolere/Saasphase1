@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Paiements liés aux contacts et réservations en lecture seule achevés (PR32 et PR33 fusionnées)
-Dernier commit connu : `c8c47d80 Merge PR33: Add reservation related payments`
+Dernier état connu : Fixtures locales de réservation et paiements ajoutées (PR35 fusionnée)
+Dernier commit connu : `243b7951 Merge PR35: Add local seed reservation and payment fixtures`
 
 Le dépôt contient désormais :
 
@@ -45,7 +45,8 @@ Le dépôt contient désormais :
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
 * un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
-* l'affichage des paiements liés sur la fiche détail d'une réservation.
+* l'affichage des paiements liés sur la fiche détail d'une réservation ;
+* des fixtures locales permettant de tester les écrans réservations, paiements et sections de paiements liés.
 
 ## Historique des PR
 
@@ -631,6 +632,41 @@ Hors périmètre :
 * aucune modification de RLS, SQL ou RPC ;
 * aucune vue Supabase supplémentaire.
 
+### PR35 — Add local seed reservation and payment fixtures
+
+Objectif : ajouter des fixtures locales cohérentes pour tester les écrans réservations, paiements et sections de paiements liés.
+
+Contenu principal :
+* ajout de fixtures locales dans `supabase/seed.sql` ;
+* création d'un contact fictif `Alice Martin` ;
+* création d'une candidature Golden Retriever 2026 liée à ce contact ;
+* création d'une réservation liée au contact et à la candidature ;
+* création d'un paiement d'arrhes payé ;
+* création d'un paiement de solde demandé.
+
+Validation :
+* `supabase db reset` ;
+* `pnpm lint` ;
+* `pnpm build`.
+
+Recette locale utile :
+* contact Alice Martin : `70000000-0000-4000-8000-000000000001` ;
+* candidature : `80000000-0000-4000-8000-000000000001` ;
+* réservation : `90000000-0000-4000-8000-000000000001` ;
+* paiement arrhes : `a0000000-0000-4000-8000-000000000001` (`payment_type = arrhes`, `status = paid`, `amount_cents = 30000`) ;
+* paiement solde : `a0000000-0000-4000-8000-000000000002` (`payment_type = balance`, `status = requested`, `amount_cents = 130000`).
+
+Routes testables localement :
+* `/reservations` ;
+* `/reservations/90000000-0000-4000-8000-000000000001` ;
+* `/payments` ;
+* `/payments/a0000000-0000-4000-8000-000000000001` ;
+* `/payments/a0000000-0000-4000-8000-000000000002` ;
+* `/contacts/70000000-0000-4000-8000-000000000001`.
+
+Note :
+hors session authentifiée, les routes privées redirigent vers `/login`.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -722,7 +758,7 @@ git status
 
 ## Prochaine étape logique
 
-Le module des Paiements est désormais exploitable en lecture seule sous forme de liste, de fiche détail et de sections liées sur les contacts et réservations.
+Le module des Paiements est désormais exploitable en lecture seule sous forme de liste, de fiche détail et de sections liées sur les contacts et réservations, avec des fixtures locales pour tester ces écrans.
 
 Pistes possibles :
 * envisager ultérieurement une vue `payment_overview` seulement si un affichage enrichi devient nécessaire ;
