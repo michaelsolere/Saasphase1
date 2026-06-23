@@ -13,6 +13,11 @@ import {
 } from "@/features/documents/formatters";
 import type { DBDocument } from "@/features/documents/types";
 import {
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+  getPaymentTypeLabel,
+} from "@/features/payments/formatters";
+import {
   formatPrice,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
@@ -55,6 +60,25 @@ type RelatedApplication = {
   submitted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+type RelatedPayment = {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  payment_type: string;
+  status: string;
+  payment_method: string;
+  requested_at: string | null;
+  due_date: string | null;
+  paid_at: string | null;
+  refunded_at: string | null;
+  external_reference: string | null;
+  notes: string | null;
+  contact_id: string;
+  reservation_id: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 const contactTypeLabels: Record<string, string> = {
@@ -132,6 +156,26 @@ function formatCountry(value: string | null) {
   }
 
   return value === "FR" ? "France" : value;
+}
+
+function getUsefulPaymentDate(payment: RelatedPayment) {
+  if (payment.paid_at) {
+    return { label: "Date de paiement", value: payment.paid_at };
+  }
+
+  if (payment.due_date) {
+    return { label: "Échéance", value: payment.due_date };
+  }
+
+  if (payment.requested_at) {
+    return { label: "Date de demande", value: payment.requested_at };
+  }
+
+  if (payment.updated_at) {
+    return { label: "Mise à jour", value: payment.updated_at };
+  }
+
+  return { label: "Création", value: payment.created_at };
 }
 
 function NotFoundOrUnauthorized() {
@@ -295,6 +339,22 @@ export default async function DocumentDetailPage({
       : { data: null, error: null };
 
   const relatedReservation = rawReservation as ReservationOverview | null;
+
+  const { data: rawPayment, error: paymentError } = document?.payment_id
+    ? await supabase
+        .from("payments")
+        .select(
+          "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, contact_id, reservation_id, created_at, updated_at, deleted_at",
+        )
+        .eq("id", document.payment_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const relatedPayment = rawPayment as RelatedPayment | null;
+  const usefulPaymentDate = relatedPayment
+    ? getUsefulPaymentDate(relatedPayment)
+    : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -633,6 +693,100 @@ export default async function DocumentDetailPage({
                           relatedReservation.updated_at,
                         )}
                       />
+                    </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">Paiement lié</h2>
+                      {relatedPayment ? (
+                        <p className="mt-2 text-sm text-muted">
+                          {formatPrice(
+                            relatedPayment.amount_cents,
+                            relatedPayment.currency,
+                          )}
+                        </p>
+                      ) : null}
+                    </div>
+                    {relatedPayment?.id ? (
+                      <Link
+                        href={`/payments/${relatedPayment.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {paymentError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger le paiement lié.
+                    </p>
+                  ) : !relatedPayment ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun paiement lié à ce document.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Statut"
+                        value={getPaymentStatusLabel(relatedPayment.status)}
+                      />
+                      <DetailItem
+                        label="Type"
+                        value={getPaymentTypeLabel(relatedPayment.payment_type)}
+                      />
+                      <DetailItem
+                        label="Montant"
+                        value={formatPrice(
+                          relatedPayment.amount_cents,
+                          relatedPayment.currency,
+                        )}
+                      />
+                      <DetailItem
+                        label="Devise"
+                        value={relatedPayment.currency}
+                      />
+                      <DetailItem
+                        label="Méthode"
+                        value={getPaymentMethodLabel(
+                          relatedPayment.payment_method,
+                        )}
+                      />
+                      <DetailItem
+                        label={usefulPaymentDate?.label ?? "Date utile"}
+                        value={formatApplicationDate(
+                          usefulPaymentDate?.value ?? null,
+                        )}
+                      />
+                      <DetailItem
+                        label="Contact lié"
+                        value={relatedPayment.contact_id ? "Renseigné" : null}
+                      />
+                      <DetailItem
+                        label="Réservation liée"
+                        value={
+                          relatedPayment.reservation_id ? "Renseignée" : null
+                        }
+                      />
+                      <DetailItem
+                        label="Référence externe"
+                        value={relatedPayment.external_reference}
+                      />
+                      <DetailItem
+                        label="Date de remboursement"
+                        value={formatApplicationDate(relatedPayment.refunded_at)}
+                      />
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Note
+                        </dt>
+                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
+                          {relatedPayment.notes || "Non renseigné"}
+                        </dd>
+                      </div>
                     </dl>
                   )}
                 </section>
