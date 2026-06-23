@@ -56,6 +56,7 @@ export function PaymentList({ payments }: { payments: DBPayment[] }) {
             <th scope="col" className="px-6 py-4">Date</th>
             <th scope="col" className="px-6 py-4">Contact</th>
             <th scope="col" className="px-6 py-4">Réservation</th>
+            <th scope="col" className="px-6 py-4">Action</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -98,6 +99,14 @@ export function PaymentList({ payments }: { payments: DBPayment[] }) {
                   ) : (
                     <span className="text-muted/60">—</span>
                   )}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <Link
+                    href={`/payments/${payment.id}`}
+                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Consulter
+                  </Link>
                 </td>
               </tr>
             );
