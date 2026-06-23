@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Fixtures locales Portées / Animaux / Documents testables en lecture seule
-Dernier commit connu : `93f723c0 Merge PR58: Add local seed documents for litter and animal relations`
+Dernier état connu : Liaison consultative Réservations / Animaux ajoutée
+Dernier commit connu : `09d6d305 Merge PR61: Add related animal to reservation detail`
 
 Le dépôt contient désormais :
 
@@ -40,6 +40,7 @@ Le dépôt contient désormais :
 * une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
 * l'affichage des réservations liées sur la fiche détail d'un contact ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
+* l'affichage de l'animal lié sur la fiche détail d'une réservation (`/reservations/[id]`) avec lien vers `/animals/[id]` ;
 * une liste privée des paiements en lecture seule (`/payments`) ;
 * une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
@@ -59,8 +60,10 @@ Le dépôt contient désormais :
 * une liste privée des animaux en lecture seule (`/animals`) ;
 * une fiche détail d'animal en lecture seule (`/animals/[id]`) ;
 * l'affichage de la portée liée sur la fiche détail d'un animal (`/animals/[id]`) ;
+* l'affichage de la réservation liée sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/reservations/[id]` ;
 * l'affichage des documents liés sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/documents/[id]` ;
 * un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
+* une liaison consultative Réservation ↔ Animal, sans workflow d'attribution ni mutation ;
 * des fixtures locales Portées / Animaux permettant de tester `/litters`, `/litters/[id]`, `/animals`, `/animals/[id]`, la relation portée → animaux et la relation animal → portée ;
 * des fixtures locales Documents liées à la portée et à l'animal de démonstration pour tester les sections `Documents liés` sur les fiches portée et animal ;
 * des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
@@ -1197,6 +1200,74 @@ Hors périmètre :
 * aucune migration Supabase ;
 * aucune modification RLS, RPC, vue SQL, type généré ou package.
 
+### PR60 — Add related reservation to animal detail
+
+Objectif : afficher la réservation liée à un animal directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Réservation liée` sur `/animals/[id]` ;
+* lecture depuis `reservation_overview` via `animal_id` ;
+* affichage de la réservation la plus récente liée à l'animal ;
+* affichage en lecture seule :
+  * statut ;
+  * contact ;
+  * préférence de sexe ;
+  * prix ;
+  * montant payé ;
+  * montant remboursé si pertinent ;
+  * date de création ;
+* ajout d'un lien `Consulter` vers `/reservations/[id]` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/animals/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune attribution animal ↔ réservation ;
+* aucune création, édition ou suppression de réservation ;
+* aucun changement de statut ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+### PR61 — Add related animal to reservation detail
+
+Objectif : afficher l'animal lié à une réservation directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Animal lié` sur `/reservations/[id]` ;
+* lecture conditionnelle depuis `animals` via `reservation.animal_id` ;
+* affichage des métadonnées animal en lecture seule :
+  * nom ;
+  * sexe ;
+  * statut ;
+  * date de naissance ;
+  * portée liée ;
+  * identification ;
+  * couleur ou robe ;
+* ajout d'un lien `Consulter` vers `/animals/[id]` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/reservations/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune attribution animal ↔ réservation ;
+* aucune création, édition ou suppression de réservation ;
+* aucun changement de statut ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+Note :
+PR60 et PR61 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1288,7 +1359,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, et des fixtures locales permettant de tester ce parcours.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1298,7 +1369,9 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/animals` liste les animaux existants ;
 * `/animals/[id]` affiche la fiche détail d'un animal ;
 * `/animals/[id]` affiche la portée liée à l'animal ;
+* `/animals/[id]` affiche la réservation liée à l'animal ;
 * `/animals/[id]` affiche les documents liés à l'animal ;
+* `/reservations/[id]` affiche l'animal lié à la réservation ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -1316,6 +1389,9 @@ Limites conservées explicitement :
 * aucune suppression d'animal ;
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
+* aucune création de réservation depuis la fiche animal ;
+* aucune édition de réservation ;
+* aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
 * aucune preview ;
@@ -1335,8 +1411,9 @@ Limites conservées explicitement :
 * aucun type généré.
 
 Pistes possibles :
-* les fixtures locales de documents liés aux portées et animaux sont désormais en place ;
+* la liaison consultative Réservation ↔ Animal est désormais en place ;
 * concevoir plus tard une création contrôlée de réservation ;
-* concevoir plus tard l'attribution animal ↔ réservation ;
-* concevoir plus tard les workflows de création, édition, attribution ou réservation ;
+* concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
+* concevoir plus tard le workflow métier de réservation ;
+* concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
