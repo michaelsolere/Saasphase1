@@ -10,6 +10,7 @@ import {
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
+import { getSexPreferenceLabel } from "@/features/applications/formatters";
 import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
@@ -22,6 +23,11 @@ import {
   getLitterStatusLabel,
   getSpeciesLabel as getLitterSpeciesLabel,
 } from "@/features/litters/formatters";
+import {
+  formatPrice,
+  getReservationStatusLabel,
+} from "@/features/reservations/formatters";
+import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -313,6 +319,85 @@ function RelatedLitterSection({
   );
 }
 
+function RelatedReservationSection({
+  reservation,
+  hasError,
+}: {
+  reservation: ReservationOverview | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div>
+          <h2 className="text-xl font-semibold">Réservation liée</h2>
+          {reservation ? (
+            <p className="mt-2 text-sm text-muted">
+              {reservation.contact_display_name ?? "Contact non renseigné"}
+            </p>
+          ) : null}
+        </div>
+        {reservation?.id ? (
+          <Link
+            href={`/reservations/${reservation.id}`}
+            className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+          >
+            Consulter
+          </Link>
+        ) : null}
+      </div>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger la réservation liée.
+        </p>
+      ) : !reservation ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucune réservation liée à cet animal.
+        </p>
+      ) : (
+        <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+          <DetailItem
+            label="Statut"
+            value={getReservationStatusLabel(reservation.status)}
+          />
+          <DetailItem
+            label="Contact"
+            value={reservation.contact_display_name}
+          />
+          <DetailItem
+            label="Préférence de sexe"
+            value={getSexPreferenceLabel(reservation.reserved_sex_preference)}
+          />
+          <DetailItem
+            label="Prix"
+            value={formatPrice(reservation.price_cents, reservation.currency)}
+          />
+          <DetailItem
+            label="Montant payé"
+            value={formatPrice(reservation.paid_cents, reservation.currency)}
+          />
+          {reservation.refunded_cents !== null &&
+          reservation.refunded_cents !== undefined &&
+          reservation.refunded_cents > 0 ? (
+            <DetailItem
+              label="Montant remboursé"
+              value={formatPrice(
+                reservation.refunded_cents,
+                reservation.currency,
+              )}
+            />
+          ) : null}
+          <DetailItem
+            label="Création"
+            value={formatAnimalDate(reservation.created_at)}
+          />
+        </dl>
+      )}
+    </section>
+  );
+}
+
 function RelatedDocumentsSection({
   documents,
   hasError,
@@ -453,6 +538,20 @@ export default async function AnimalDetailPage({
 
   const animalDocuments = rawDocuments as RelatedDocument[] | null;
 
+  const { data: rawReservations, error: reservationError } = animal
+    ? await supabase
+        .from("reservation_overview")
+        .select(
+          "id, contact_id, contact_display_name, animal_id, animal_display_name, reserved_sex_preference, status, price_cents, currency, paid_cents, refunded_cents, created_at, updated_at",
+        )
+        .eq("animal_id", id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+    : { data: null, error: null };
+
+  const relatedReservation =
+    ((rawReservations as ReservationOverview[] | null) ?? [])[0] ?? null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <Link
@@ -580,6 +679,11 @@ export default async function AnimalDetailPage({
               <RelatedLitterSection
                 animalLitterId={animal.litter_id}
                 litter={litter}
+              />
+
+              <RelatedReservationSection
+                reservation={relatedReservation}
+                hasError={Boolean(reservationError)}
               />
 
               <RelatedDocumentsSection
