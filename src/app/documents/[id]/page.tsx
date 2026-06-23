@@ -238,6 +238,35 @@ function DetailItem({
   );
 }
 
+function RelatedSectionHeader({
+  title,
+  subtitle,
+  href,
+}: {
+  title: string;
+  subtitle: string | null;
+  href: string | null;
+}) {
+  return (
+    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+      <div>
+        <h2 className="text-xl font-semibold">{title}</h2>
+        {subtitle ? (
+          <p className="mt-2 text-sm text-muted">{subtitle}</p>
+        ) : null}
+      </div>
+      {href ? (
+        <Link
+          href={href}
+          className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+        >
+          Consulter
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 function RelatedBusinessLinks({ document }: { document: DBDocument }) {
   const links = [
     document.contact_id
@@ -419,24 +448,13 @@ export default async function DocumentDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold">Contact lié</h2>
-                      {relatedContact ? (
-                        <p className="mt-2 text-sm text-muted">
-                          {relatedContact.display_name}
-                        </p>
-                      ) : null}
-                    </div>
-                    {relatedContact?.id ? (
-                      <Link
-                        href={`/contacts/${relatedContact.id}`}
-                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
-                  </div>
+                  <RelatedSectionHeader
+                    title="Contact lié"
+                    subtitle={relatedContact?.display_name ?? null}
+                    href={
+                      relatedContact?.id ? `/contacts/${relatedContact.id}` : null
+                    }
+                  />
 
                   {contactError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -496,27 +514,20 @@ export default async function DocumentDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold">
-                        Candidature liée
-                      </h2>
-                      {relatedApplication ? (
-                        <p className="mt-2 text-sm text-muted">
-                          {relatedApplication.contact_display_name ??
-                            "Contact non renseigné"}
-                        </p>
-                      ) : null}
-                    </div>
-                    {relatedApplication?.id ? (
-                      <Link
-                        href={`/candidatures/${relatedApplication.id}`}
-                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
-                  </div>
+                  <RelatedSectionHeader
+                    title="Candidature liée"
+                    subtitle={
+                      relatedApplication
+                        ? relatedApplication.contact_display_name ??
+                          "Contact non renseigné"
+                        : null
+                    }
+                    href={
+                      relatedApplication?.id
+                        ? `/candidatures/${relatedApplication.id}`
+                        : null
+                    }
+                  />
 
                   {applicationError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -596,27 +607,20 @@ export default async function DocumentDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold">
-                        Réservation liée
-                      </h2>
-                      {relatedReservation ? (
-                        <p className="mt-2 text-sm text-muted">
-                          {relatedReservation.contact_display_name ??
-                            "Contact non renseigné"}
-                        </p>
-                      ) : null}
-                    </div>
-                    {relatedReservation?.id ? (
-                      <Link
-                        href={`/reservations/${relatedReservation.id}`}
-                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
-                  </div>
+                  <RelatedSectionHeader
+                    title="Réservation liée"
+                    subtitle={
+                      relatedReservation
+                        ? relatedReservation.contact_display_name ??
+                          "Contact non renseigné"
+                        : null
+                    }
+                    href={
+                      relatedReservation?.id
+                        ? `/reservations/${relatedReservation.id}`
+                        : null
+                    }
+                  />
 
                   {reservationError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -698,27 +702,20 @@ export default async function DocumentDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold">Paiement lié</h2>
-                      {relatedPayment ? (
-                        <p className="mt-2 text-sm text-muted">
-                          {formatPrice(
+                  <RelatedSectionHeader
+                    title="Paiement lié"
+                    subtitle={
+                      relatedPayment
+                        ? formatPrice(
                             relatedPayment.amount_cents,
                             relatedPayment.currency,
-                          )}
-                        </p>
-                      ) : null}
-                    </div>
-                    {relatedPayment?.id ? (
-                      <Link
-                        href={`/payments/${relatedPayment.id}`}
-                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
-                  </div>
+                          )
+                        : null
+                    }
+                    href={
+                      relatedPayment?.id ? `/payments/${relatedPayment.id}` : null
+                    }
+                  />
 
                   {paymentError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -760,16 +757,6 @@ export default async function DocumentDetailPage({
                         value={formatApplicationDate(
                           usefulPaymentDate?.value ?? null,
                         )}
-                      />
-                      <DetailItem
-                        label="Contact lié"
-                        value={relatedPayment.contact_id ? "Renseigné" : null}
-                      />
-                      <DetailItem
-                        label="Réservation liée"
-                        value={
-                          relatedPayment.reservation_id ? "Renseignée" : null
-                        }
                       />
                       <DetailItem
                         label="Référence externe"
