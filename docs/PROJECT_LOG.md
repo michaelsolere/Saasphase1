@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Liaison consultative Réservations / Animaux ajoutée
-Dernier commit connu : `09d6d305 Merge PR61: Add related animal to reservation detail`
+Dernier état connu : Documents enrichis avec contact et réservation liés
+Dernier commit connu : `3c2df752 Merge PR64: Add related contact to document detail`
 
 Le dépôt contient désormais :
 
@@ -51,6 +51,9 @@ Le dépôt contient désormais :
 * une fiche détail de document en lecture seule (`/documents/[id]`) ;
 * un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
 * des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste et la fiche détail des documents ;
+* l'affichage du contact lié sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/contacts/[id]` ;
+* l'affichage de la réservation liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/reservations/[id]` ;
+* la conservation de l'aside `Liens métier` sur la fiche détail document ;
 * l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
 * une liste privée des portées en lecture seule (`/litters`) ;
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
@@ -1268,6 +1271,89 @@ Hors périmètre :
 Note :
 PR60 et PR61 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
 
+### PR63 — Add related reservation to document detail
+
+Objectif : afficher la réservation liée à un document directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Réservation liée` sur `/documents/[id]` ;
+* lecture depuis `reservation_overview` via `document.reservation_id` ;
+* affichage des métadonnées réservation en lecture seule :
+  * statut ;
+  * contact ;
+  * animal ;
+  * portée ;
+  * préférence de sexe ;
+  * prix ;
+  * montant payé ;
+  * montant remboursé si pertinent ;
+  * dates de création et de mise à jour ;
+* ajout d'un lien `Consulter` vers `/reservations/[id]` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/documents/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucune création, édition ou suppression de réservation ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune signature ;
+* aucune génération de document ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+### PR64 — Add related contact to document detail
+
+Objectif : afficher le contact lié à un document directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Contact lié` sur `/documents/[id]` ;
+* lecture depuis `contacts` via `document.contact_id` ;
+* affichage des métadonnées contact en lecture seule :
+  * nom affichable ;
+  * prénom ;
+  * nom ;
+  * email ;
+  * téléphone ;
+  * téléphone secondaire ;
+  * type de contact ;
+  * statut ;
+  * origine ;
+  * ville ;
+  * code postal ;
+  * pays ;
+* ajout d'un lien `Consulter` vers `/contacts/[id]` ;
+* conservation de l'aside `Liens métier` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/documents/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune création, édition ou suppression de contact ;
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune signature ;
+* aucune génération de document ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+Note :
+PR63 et PR64 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1359,7 +1445,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié` et `Réservation liée` sur la fiche document, et des fixtures locales permettant de tester ce parcours.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1372,6 +1458,9 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/animals/[id]` affiche la réservation liée à l'animal ;
 * `/animals/[id]` affiche les documents liés à l'animal ;
 * `/reservations/[id]` affiche l'animal lié à la réservation ;
+* `/documents/[id]` affiche le contact lié au document ;
+* `/documents/[id]` affiche la réservation liée au document ;
+* `/documents/[id]` conserve l'aside `Liens métier` ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -1399,6 +1488,8 @@ Limites conservées explicitement :
 * aucune génération PDF ;
 * aucune signature électronique ;
 * aucune création, édition ou suppression de document ;
+* aucune création, édition ou suppression de contact depuis la fiche document ;
+* aucune création, édition ou suppression de réservation depuis la fiche document ;
 * pas de vrai fichier pour les documents seedés ;
 * aucune timeline ;
 * aucun Gantt ;
@@ -1412,6 +1503,11 @@ Limites conservées explicitement :
 
 Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
+* les sections enrichies `Contact lié` et `Réservation liée` sont désormais en place sur `/documents/[id]` ;
+* enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
+* concevoir plus tard l'upload de documents, uniquement après décision explicite ;
+* concevoir plus tard la preview de documents, uniquement après décision explicite ;
+* concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
 * concevoir plus tard une création contrôlée de réservation ;
 * concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
 * concevoir plus tard le workflow métier de réservation ;
