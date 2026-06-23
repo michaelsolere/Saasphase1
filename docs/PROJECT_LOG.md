@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Fiche détail de paiement en lecture seule achevée (PR30 fusionnée)
-Dernier commit connu : `fcdd97ed Merge PR30: Add read-only payment detail screen`
+Dernier état connu : Paiements liés aux contacts et réservations en lecture seule achevés (PR32 et PR33 fusionnées)
+Dernier commit connu : `c8c47d80 Merge PR33: Add reservation related payments`
 
 Le dépôt contient désormais :
 
@@ -43,7 +43,9 @@ Le dépôt contient désormais :
 * une liste privée des paiements en lecture seule (`/payments`) ;
 * une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
-* un lien `Consulter` depuis la liste des paiements vers chaque fiche détail.
+* un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
+* l'affichage des paiements liés sur la fiche détail d'un contact ;
+* l'affichage des paiements liés sur la fiche détail d'une réservation.
 
 ## Historique des PR
 
@@ -590,6 +592,45 @@ Hors périmètre :
 * aucune migration de base de données ;
 * aucune modification de RLS, SQL ou RPC.
 
+### PR32 — Add contact related payments
+
+Objectif : afficher les paiements liés à un contact directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Paiements liés` sur la fiche détail d'un contact (`/contacts/[id]`) ;
+* récupération des paiements directement depuis la table `payments` ;
+* filtrage par `contact_id` et exclusion des paiements supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du montant, du statut, du type, de la méthode et de la date principale ;
+* lien `Consulter` redirigeant vers `/payments/[id]` pour chaque paiement ;
+* lien vers `/reservations/[reservation_id]` quand une réservation est associée ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune action d'écriture sur les paiements ;
+* aucune migration de base de données ;
+* aucune modification de RLS, SQL ou RPC ;
+* aucune vue Supabase supplémentaire.
+
+### PR33 — Add reservation related payments
+
+Objectif : afficher les paiements liés à une réservation directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Paiements liés` sur la fiche détail d'une réservation (`/reservations/[id]`) ;
+* récupération des paiements directement depuis la table `payments` ;
+* filtrage par `reservation_id` et exclusion des paiements supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du montant, du statut, du type, de la méthode et de la date principale ;
+* lien `Consulter` redirigeant vers `/payments/[id]` pour chaque paiement ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune action d'écriture sur les paiements ;
+* aucun calcul financier ou rapprochement automatique avec la réservation ;
+* aucun changement automatique de statut de réservation ;
+* aucune migration de base de données ;
+* aucune modification de RLS, SQL ou RPC ;
+* aucune vue Supabase supplémentaire.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -681,9 +722,10 @@ git status
 
 ## Prochaine étape logique
 
-Le module des Paiements est désormais exploitable en lecture seule sous forme de liste et de fiche détail.
+Le module des Paiements est désormais exploitable en lecture seule sous forme de liste, de fiche détail et de sections liées sur les contacts et réservations.
 
 Pistes possibles :
-* envisager ultérieurement une vue `payment_overview` si un affichage enrichi devient nécessaire ;
+* envisager ultérieurement une vue `payment_overview` seulement si un affichage enrichi devient nécessaire ;
 * ajouter la création, l'édition ou le remboursement de paiements uniquement dans des PR séparées et explicitement décidées ;
+* ajouter une éventuelle section de paiements côté candidature uniquement après décision explicite, car le lien serait indirect via les réservations ;
 * conserver toute modification Supabase, migration ou RLS séparée et justifiée.
