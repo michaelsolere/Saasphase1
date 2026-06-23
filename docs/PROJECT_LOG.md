@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Bloc Portées / Animaux en lecture seule complet jusqu’aux fiches détail
-Dernier commit connu : `aa58d2f8 Merge PR49: Add read-only animal detail screen`
+Dernier état connu : Bloc Portées / Animaux en lecture seule avec liaison bidirectionnelle portée ↔ animaux
+Dernier commit connu : `6490fcb8 Merge PR52: Add related litter to animal detail`
 
 Le dépôt contient désormais :
 
@@ -53,9 +53,11 @@ Le dépôt contient désormais :
 * l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
 * une liste privée des portées en lecture seule (`/litters`) ;
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
+* l'affichage des animaux liés sur la fiche détail d'une portée (`/litters/[id]`) ;
 * un lien `Consulter` depuis la liste des portées vers chaque fiche détail ;
 * une liste privée des animaux en lecture seule (`/animals`) ;
 * une fiche détail d'animal en lecture seule (`/animals/[id]`) ;
+* l'affichage de la portée liée sur la fiche détail d'un animal (`/animals/[id]`) ;
 * un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
 * des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
 
@@ -988,6 +990,71 @@ Hors périmètre :
 Note :
 PR46 à PR49 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue, aucun type généré et aucune modification de schéma.
 
+### PR51 — Add related animals to litter detail
+
+Objectif : afficher les animaux liés à une portée directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Animaux liés` sur `/litters/[id]` ;
+* lecture des animaux depuis la table `animals` filtrée par `litter_id` ;
+* exclusion des animaux supprimés avec `deleted_at is null` ;
+* affichage en lecture seule :
+  * nom ;
+  * sexe ;
+  * ordre de naissance ;
+  * statut ;
+  * naissance ;
+  * identification ;
+  * couleur ou robe ;
+* ajout d'un lien `Consulter` vers `/animals/[id]` pour chaque animal lié ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression d'animal ;
+* aucune attribution animal/réservation ;
+* aucune réservation depuis animal ;
+* aucun document lié aux animaux ou aux portées ;
+* aucune timeline ;
+* aucun Gantt ;
+* aucun journal de mise-bas ;
+* aucun upload ;
+* aucune mutation ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+### PR52 — Add related litter to animal detail
+
+Objectif : afficher la portée liée à un animal directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Portée liée` sur `/animals/[id]` ;
+* réutilisation et enrichissement de la lecture depuis `litter_overview` ;
+* affichage en lecture seule :
+  * nom de portée ;
+  * groupe ;
+  * espèce ;
+  * race ;
+  * statut ;
+  * dates de naissance ;
+  * compteurs ;
+* ajout d'un lien `Consulter la portée` vers `/litters/[id]` quand la portée existe ;
+* gestion neutre de l'absence de portée liée, d'une portée inaccessible et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de portée ;
+* aucune création, édition ou suppression d'animal ;
+* aucune attribution animal/réservation ;
+* aucune réservation depuis animal ;
+* aucun document lié aux animaux ou aux portées ;
+* aucune timeline ;
+* aucun Gantt ;
+* aucun journal de mise-bas ;
+* aucun upload ;
+* aucune mutation ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+Note :
+PR51 et PR52 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue, aucun type généré et aucune modification de schéma.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1079,13 +1146,15 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail.
+Le bloc Portées / Animaux dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
 * `/litters/[id]` affiche la fiche détail d'une portée ;
+* `/litters/[id]` affiche les animaux liés à la portée ;
 * `/animals` liste les animaux existants ;
 * `/animals/[id]` affiche la fiche détail d'un animal ;
+* `/animals/[id]` affiche la portée liée à l'animal ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les pages restent strictement consultatives.
 
@@ -1113,6 +1182,6 @@ Limites conservées explicitement :
 * aucun type généré.
 
 Pistes possibles :
-* décider explicitement si la prochaine étape porte sur les liens entre fiches portée et animaux ;
+* décider explicitement si la prochaine étape porte sur les documents liés aux portées ou animaux ;
 * concevoir plus tard les workflows de création, édition, attribution ou réservation ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
