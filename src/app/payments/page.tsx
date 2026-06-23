@@ -67,7 +67,7 @@ export default async function PaymentsPage() {
               Consultez l’historique des paiements, acomptes, arrhes et remboursements de votre élevage.
             </p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <Link
               href="/candidatures"
               className="text-sm font-semibold text-accent hover:underline"
@@ -85,6 +85,12 @@ export default async function PaymentsPage() {
               className="text-sm font-semibold text-accent hover:underline"
             >
               Réservations
+            </Link>
+            <Link
+              href="/documents"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Documents
             </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
