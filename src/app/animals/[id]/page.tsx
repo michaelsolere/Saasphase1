@@ -10,6 +10,13 @@ import {
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
+import {
+  formatLitterCount,
+  formatLitterDate,
+  getLitterDisplayName,
+  getLitterStatusLabel,
+  getSpeciesLabel as getLitterSpeciesLabel,
+} from "@/features/litters/formatters";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +25,16 @@ type LitterLookup = {
   id: string | null;
   name: string | null;
   litter_group_name: string | null;
+  species: string | null;
+  breed: string | null;
+  status: string | null;
+  expected_birth_date: string | null;
+  actual_birth_date: string | null;
+  expected_puppy_count: number | null;
+  born_total_count: number | null;
+  alive_count: number | null;
+  animal_count: number | null;
+  reservation_count: number | null;
 };
 
 type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
@@ -159,6 +176,105 @@ function DetailLink({
   );
 }
 
+function RelatedLitterSection({
+  animalLitterId,
+  litter,
+}: {
+  animalLitterId: string | null;
+  litter: LitterLookup | null;
+}) {
+  if (!animalLitterId) {
+    return (
+      <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+        <h2 className="text-xl font-semibold">Portée liée</h2>
+        <p className="mt-5 text-sm text-muted">
+          Aucune portée liée à cet animal.
+        </p>
+      </section>
+    );
+  }
+
+  if (!litter) {
+    return (
+      <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+        <h2 className="text-xl font-semibold">Portée liée</h2>
+        <p className="mt-5 text-sm text-muted">
+          Portée non renseignée ou inaccessible.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+        <div>
+          <h2 className="text-xl font-semibold">Portée liée</h2>
+          <p className="mt-2 text-sm text-muted">
+            {getLitterDisplayName(litter.name, litter.id)}
+          </p>
+        </div>
+        {litter.id ? (
+          <Link
+            href={`/litters/${litter.id}`}
+            className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+          >
+            Consulter la portée
+          </Link>
+        ) : null}
+      </div>
+
+      <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+        <DetailItem
+          label="Nom"
+          value={getLitterDisplayName(litter.name, litter.id)}
+        />
+        <DetailItem
+          label="Groupe de portée"
+          value={litter.litter_group_name}
+        />
+        <DetailItem
+          label="Espèce"
+          value={getLitterSpeciesLabel(litter.species)}
+        />
+        <DetailItem label="Race" value={litter.breed} />
+        <DetailItem
+          label="Statut"
+          value={getLitterStatusLabel(litter.status)}
+        />
+        <DetailItem
+          label="Naissance prévue"
+          value={formatLitterDate(litter.expected_birth_date)}
+        />
+        <DetailItem
+          label="Naissance réelle"
+          value={formatLitterDate(litter.actual_birth_date)}
+        />
+        <DetailItem
+          label="Nombre attendu"
+          value={formatLitterCount(litter.expected_puppy_count)}
+        />
+        <DetailItem
+          label="Nombre né total"
+          value={formatLitterCount(litter.born_total_count)}
+        />
+        <DetailItem
+          label="Nombre vivant"
+          value={formatLitterCount(litter.alive_count)}
+        />
+        <DetailItem
+          label="Nombre d’animaux"
+          value={formatLitterCount(litter.animal_count)}
+        />
+        <DetailItem
+          label="Nombre de réservations"
+          value={formatLitterCount(litter.reservation_count)}
+        />
+      </dl>
+    </section>
+  );
+}
+
 export default async function AnimalDetailPage({
   params,
 }: {
@@ -188,7 +304,9 @@ export default async function AnimalDetailPage({
   const { data: rawLitter, error: litterError } = animal?.litter_id
     ? await supabase
         .from("litter_overview")
-        .select("id, name, litter_group_name")
+        .select(
+          "id, name, litter_group_name, species, breed, status, expected_birth_date, actual_birth_date, expected_puppy_count, born_total_count, alive_count, animal_count, reservation_count",
+        )
         .eq("id", animal.litter_id)
         .maybeSingle()
     : { data: null, error: null };
@@ -343,6 +461,11 @@ export default async function AnimalDetailPage({
                   />
                 </dl>
               </section>
+
+              <RelatedLitterSection
+                animalLitterId={animal.litter_id}
+                litter={litter}
+              />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
