@@ -11,6 +11,11 @@ import {
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
 import {
+  getDocumentStatusLabel,
+  getDocumentTypeLabel,
+  getSignatureRequiredLabel,
+} from "@/features/documents/formatters";
+import {
   formatLitterCount,
   formatLitterDate,
   getLitterDisplayName,
@@ -38,6 +43,19 @@ type LitterLookup = {
 };
 
 type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
+type RelatedDocument = {
+  id: string;
+  title: string;
+  document_type: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  received_at: string | null;
+  signed_at: string | null;
+  file_name: string | null;
+  signature_required: boolean;
+};
 
 const ownershipStatusLabels: Record<string, string> = {
   owned: "Détenu",
@@ -84,6 +102,26 @@ function formatBirthTime(value: string | null) {
   }
 
   return value.slice(0, 5);
+}
+
+function getUsefulDocumentDate(document: RelatedDocument) {
+  if (document.signed_at) {
+    return { label: "Signé le", value: document.signed_at };
+  }
+
+  if (document.received_at) {
+    return { label: "Reçu le", value: document.received_at };
+  }
+
+  if (document.sent_at) {
+    return { label: "Envoyé le", value: document.sent_at };
+  }
+
+  if (document.updated_at) {
+    return { label: "Mis à jour le", value: document.updated_at };
+  }
+
+  return { label: "Créé le", value: document.created_at };
 }
 
 function NotFoundOrUnauthorized() {
@@ -275,6 +313,70 @@ function RelatedLitterSection({
   );
 }
 
+function RelatedDocumentsSection({
+  documents,
+  hasError,
+}: {
+  documents: RelatedDocument[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Documents liés</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les documents liés.
+        </p>
+      ) : !documents || documents.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucun document lié à cet animal.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {documents.map((document) => {
+            const usefulDate = getUsefulDocumentDate(document);
+
+            return (
+              <div key={document.id} className="py-5 first:pt-0 last:pb-0">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      {document.title}
+                    </span>
+                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                      {getDocumentStatusLabel(document.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Type : {getDocumentTypeLabel(document.document_type)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {usefulDate.label} {formatAnimalDate(usefulDate.value)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Fichier : {document.file_name || "Non renseigné"}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Signature requise :{" "}
+                    {getSignatureRequiredLabel(document.signature_required)}
+                  </p>
+                  <Link
+                    href={`/documents/${document.id}`}
+                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Consulter
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function AnimalDetailPage({
   params,
 }: {
@@ -337,6 +439,19 @@ export default async function AnimalDetailPage({
   const fatherDisplayName = animal?.father_id
     ? parentsById.get(animal.father_id) ?? null
     : null;
+
+  const { data: rawDocuments, error: documentsError } = animal
+    ? await supabase
+        .from("documents")
+        .select(
+          "id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, file_name, signature_required",
+        )
+        .eq("animal_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const animalDocuments = rawDocuments as RelatedDocument[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -465,6 +580,11 @@ export default async function AnimalDetailPage({
               <RelatedLitterSection
                 animalLitterId={animal.litter_id}
                 litter={litter}
+              />
+
+              <RelatedDocumentsSection
+                documents={animalDocuments}
+                hasError={Boolean(documentsError)}
               />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
