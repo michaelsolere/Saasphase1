@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : fiche document enrichie avec relations métier principales
-Dernier commit connu : `bb90c456 Merge PR67: Add related payment to document detail`
+Dernier état connu : fiche document complète et harmonisée en lecture seule
+Dernier commit connu : `9cfd89e6 Merge PR69: Polish document detail section order and readability`
 
 Le dépôt contient désormais :
 
@@ -55,8 +55,10 @@ Le dépôt contient désormais :
 * l'affichage de la candidature liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/candidatures/[id]` ;
 * l'affichage de la réservation liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/reservations/[id]` ;
 * l'affichage du paiement lié sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/payments/[id]` ;
+* l'harmonisation des headers des sections liées sur la fiche détail document ;
+* la conservation de l'ordre principal des sections de la fiche détail document ;
 * la conservation de l'aside `Liens métier` sur la fiche détail document ;
-* des sections enrichies de document strictement consultatives, sans mutation, upload, téléchargement, preview ou génération ;
+* des sections enrichies de document strictement consultatives, sans nouvelle requête, mutation, upload, téléchargement, preview ou génération ;
 * l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
 * une liste privée des portées en lecture seule (`/litters`) ;
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
@@ -1441,6 +1443,51 @@ Hors périmètre :
 Note :
 PR63 à PR67 complètent les relations métier principales de la fiche document en lecture seule. La fiche document permet désormais de remonter vers le contact, la candidature, la réservation et le paiement liés, tout en conservant l'aside `Liens métier`. Aucune mutation ni gestion réelle de fichier n'a été ajoutée.
 
+### PR69 — Polish document detail section order and readability
+
+Objectif : harmoniser la lisibilité de la fiche document après les ajouts successifs de sections liées.
+
+Contenu principal :
+* ajout du helper local `RelatedSectionHeader` ;
+* harmonisation des headers des sections liées :
+  * `Contact lié` ;
+  * `Candidature liée` ;
+  * `Réservation liée` ;
+  * `Paiement lié` ;
+* conservation de l'ordre principal des sections ;
+* conservation de l'aside `Liens métier` ;
+* conservation de tous les liens vers les fiches liées :
+  * `/contacts/[id]` ;
+  * `/candidatures/[id]` ;
+  * `/reservations/[id]` ;
+  * `/payments/[id]` ;
+* suppression de deux lignes peu informatives dans `Paiement lié` :
+  * `Contact lié : Renseigné` ;
+  * `Réservation liée : Renseignée` ;
+* modification limitée à `src/app/documents/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune nouvelle fonctionnalité ;
+* aucune nouvelle requête Supabase ;
+* aucun changement de données chargées ;
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune signature ;
+* aucune génération de document ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+Note :
+La fiche document couvre désormais les relations métier principales et a été relue puis harmonisée après les ajouts successifs. PR69 n'ajoute aucune nouvelle capacité métier : elle améliore uniquement la lisibilité et la cohérence visuelle.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1532,7 +1579,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1549,6 +1596,7 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/documents/[id]` affiche la candidature liée au document ;
 * `/documents/[id]` affiche la réservation liée au document ;
 * `/documents/[id]` affiche le paiement lié au document ;
+* `/documents/[id]` harmonise les headers de ses sections liées ;
 * `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
 * les documents liés pointent vers `/documents/[id]` ;
@@ -1582,6 +1630,8 @@ Limites conservées explicitement :
 * aucune création, édition ou suppression de candidature depuis la fiche document ;
 * aucune création, édition ou suppression de réservation depuis la fiche document ;
 * aucune création, édition, suppression ou remboursement de paiement depuis la fiche document ;
+* aucune nouvelle requête Supabase depuis la fiche document ;
+* aucun changement de données chargées depuis la fiche document ;
 * pas de vrai fichier pour les documents seedés ;
 * aucune timeline ;
 * aucun Gantt ;
@@ -1596,6 +1646,7 @@ Limites conservées explicitement :
 Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
 * `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
+* `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
