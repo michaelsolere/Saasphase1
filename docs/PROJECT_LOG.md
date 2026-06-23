@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Documents enrichis avec contact et réservation liés
-Dernier commit connu : `3c2df752 Merge PR64: Add related contact to document detail`
+Dernier état connu : fiche document enrichie avec relations métier principales
+Dernier commit connu : `bb90c456 Merge PR67: Add related payment to document detail`
 
 Le dépôt contient désormais :
 
@@ -52,8 +52,11 @@ Le dépôt contient désormais :
 * un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
 * des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste et la fiche détail des documents ;
 * l'affichage du contact lié sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/contacts/[id]` ;
+* l'affichage de la candidature liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/candidatures/[id]` ;
 * l'affichage de la réservation liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/reservations/[id]` ;
+* l'affichage du paiement lié sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/payments/[id]` ;
 * la conservation de l'aside `Liens métier` sur la fiche détail document ;
+* des sections enrichies de document strictement consultatives, sans mutation, upload, téléchargement, preview ou génération ;
 * l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
 * une liste privée des portées en lecture seule (`/litters`) ;
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
@@ -1354,6 +1357,90 @@ Hors périmètre :
 Note :
 PR63 et PR64 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
 
+### PR66 — Add related application to document detail
+
+Objectif : afficher la candidature liée à un document directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Candidature liée` sur `/documents/[id]` ;
+* lecture depuis `application_overview` via `document.application_id` ;
+* affichage des métadonnées candidature en lecture seule :
+  * statut ;
+  * espèce ;
+  * race ;
+  * sexe souhaité ;
+  * contact ;
+  * email contact ;
+  * téléphone contact ;
+  * formulaire source ;
+  * dates de soumission, de création et de mise à jour ;
+  * projet ;
+* ajout d'un lien `Consulter` vers `/candidatures/[id]` ;
+* conservation des sections `Contact lié` et `Réservation liée` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/documents/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune création, édition ou suppression de candidature ;
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune signature ;
+* aucune génération de document ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+### PR67 — Add related payment to document detail
+
+Objectif : afficher le paiement lié à un document directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Paiement lié` sur `/documents/[id]` ;
+* lecture depuis `payments` via `document.payment_id` ;
+* affichage des métadonnées paiement en lecture seule :
+  * statut ;
+  * type ;
+  * montant ;
+  * devise ;
+  * méthode ;
+  * date utile ;
+  * contact lié ;
+  * réservation liée ;
+  * référence externe ;
+  * note ;
+* ajout d'un lien `Consulter` vers `/payments/[id]` ;
+* conservation des sections `Contact lié`, `Candidature liée` et `Réservation liée` ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* modification limitée à `src/app/documents/[id]/page.tsx`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune création, édition ou suppression de paiement ;
+* aucun remboursement ;
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune signature ;
+* aucune génération de document ;
+* aucune mutation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+Note :
+PR63 à PR67 complètent les relations métier principales de la fiche document en lecture seule. La fiche document permet désormais de remonter vers le contact, la candidature, la réservation et le paiement liés, tout en conservant l'aside `Liens métier`. Aucune mutation ni gestion réelle de fichier n'a été ajoutée.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1445,7 +1532,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié` et `Réservation liée` sur la fiche document, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, et des fixtures locales permettant de tester ce parcours.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1459,7 +1546,10 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/animals/[id]` affiche les documents liés à l'animal ;
 * `/reservations/[id]` affiche l'animal lié à la réservation ;
 * `/documents/[id]` affiche le contact lié au document ;
+* `/documents/[id]` affiche la candidature liée au document ;
 * `/documents/[id]` affiche la réservation liée au document ;
+* `/documents/[id]` affiche le paiement lié au document ;
+* `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
@@ -1489,7 +1579,9 @@ Limites conservées explicitement :
 * aucune signature électronique ;
 * aucune création, édition ou suppression de document ;
 * aucune création, édition ou suppression de contact depuis la fiche document ;
+* aucune création, édition ou suppression de candidature depuis la fiche document ;
 * aucune création, édition ou suppression de réservation depuis la fiche document ;
+* aucune création, édition, suppression ou remboursement de paiement depuis la fiche document ;
 * pas de vrai fichier pour les documents seedés ;
 * aucune timeline ;
 * aucun Gantt ;
@@ -1503,10 +1595,11 @@ Limites conservées explicitement :
 
 Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
-* les sections enrichies `Contact lié` et `Réservation liée` sont désormais en place sur `/documents/[id]` ;
+* `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
+* concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
 * concevoir plus tard une création contrôlée de réservation ;
 * concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
