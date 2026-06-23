@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Bloc Portées / Animaux en lecture seule avec liaison bidirectionnelle portée ↔ animaux
-Dernier commit connu : `6490fcb8 Merge PR52: Add related litter to animal detail`
+Dernier état connu : Bloc Portées / Animaux / Documents en lecture seule avec documents liés sur portées et animaux
+Dernier commit connu : `25e7b031 Merge PR55: Add related documents to animal detail`
 
 Le dépôt contient désormais :
 
@@ -54,10 +54,12 @@ Le dépôt contient désormais :
 * une liste privée des portées en lecture seule (`/litters`) ;
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
 * l'affichage des animaux liés sur la fiche détail d'une portée (`/litters/[id]`) ;
+* l'affichage des documents liés sur la fiche détail d'une portée (`/litters/[id]`) avec lien vers `/documents/[id]` ;
 * un lien `Consulter` depuis la liste des portées vers chaque fiche détail ;
 * une liste privée des animaux en lecture seule (`/animals`) ;
 * une fiche détail d'animal en lecture seule (`/animals/[id]`) ;
 * l'affichage de la portée liée sur la fiche détail d'un animal (`/animals/[id]`) ;
+* l'affichage des documents liés sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/documents/[id]` ;
 * un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
 * des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
 
@@ -1055,6 +1057,69 @@ Hors périmètre :
 Note :
 PR51 et PR52 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue, aucun type généré et aucune modification de schéma.
 
+### PR54 — Add related documents to litter detail
+
+Objectif : afficher les documents liés à une portée directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur `/litters/[id]` ;
+* lecture des documents depuis la table `documents` filtrée par `litter_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* tri par `created_at` décroissant ;
+* affichage en lecture seule :
+  * titre ;
+  * type ;
+  * statut ;
+  * date utile ;
+  * fichier renseigné ou non ;
+  * signature requise ou non ;
+* ajout d'un lien `Consulter` vers `/documents/[id]` pour chaque document lié ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune création, édition ou suppression de document ;
+* aucune mutation ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+### PR55 — Add related documents to animal detail
+
+Objectif : afficher les documents liés à un animal directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur `/animals/[id]` ;
+* lecture des documents depuis la table `documents` filtrée par `animal_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* tri par `created_at` décroissant ;
+* affichage en lecture seule :
+  * titre ;
+  * type ;
+  * statut ;
+  * date utile ;
+  * fichier renseigné ou non ;
+  * signature requise ou non ;
+* ajout d'un lien `Consulter` vers `/documents/[id]` pour chaque document lié ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune création, édition ou suppression de document ;
+* aucune mutation ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+Note :
+PR54 et PR55 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1146,15 +1211,18 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux et l'affichage des documents liés sur les fiches portée et animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
 * `/litters/[id]` affiche la fiche détail d'une portée ;
 * `/litters/[id]` affiche les animaux liés à la portée ;
+* `/litters/[id]` affiche les documents liés à la portée ;
 * `/animals` liste les animaux existants ;
 * `/animals/[id]` affiche la fiche détail d'un animal ;
 * `/animals/[id]` affiche la portée liée à l'animal ;
+* `/animals/[id]` affiche les documents liés à l'animal ;
+* les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les pages restent strictement consultatives.
 
@@ -1167,11 +1235,16 @@ Limites conservées explicitement :
 * aucune suppression d'animal ;
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
-* aucun document lié aux portées ou animaux ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune création, édition ou suppression de document ;
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucun upload ;
 * aucune mutation ;
 * aucune modification Supabase ;
 * aucune migration ;
@@ -1182,6 +1255,8 @@ Limites conservées explicitement :
 * aucun type généré.
 
 Pistes possibles :
-* décider explicitement si la prochaine étape porte sur les documents liés aux portées ou animaux ;
+* enrichir les fixtures locales avec des documents explicitement liés à des portées ou animaux ;
+* concevoir plus tard une création contrôlée de réservation ;
+* concevoir plus tard l'attribution animal ↔ réservation ;
 * concevoir plus tard les workflows de création, édition, attribution ou réservation ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
