@@ -8,11 +8,28 @@ import {
 } from "@/features/applications/formatters";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
 import { NoteForm } from "@/features/contacts/note-form";
+import {
+  getPaymentMethodLabel,
+  getPaymentStatusLabel,
+  getPaymentTypeLabel,
+} from "@/features/payments/formatters";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+type RelatedPayment = {
+  id: string;
+  amount_cents: number;
+  currency: string;
+  payment_type: string;
+  status: string;
+  payment_method: string;
+  paid_at: string | null;
+  created_at: string;
+  reservation_id: string | null;
+};
 
 function NotFoundOrUnauthorized() {
   return (
@@ -143,6 +160,19 @@ export default async function ContactDetailPage({
     : { data: null, error: null };
 
   const contactReservations = rawReservations as ReservationOverview[] | null;
+
+  // Fetch payments
+  const { data: rawPayments, error: paymentsError } = contactId
+    ? await supabase
+        .from("payments")
+        .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, reservation_id")
+        .eq("contact_id", contactId)
+        .is("deleted_at", null)
+        .order("paid_at", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const contactPayments = rawPayments as RelatedPayment[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -393,6 +423,79 @@ export default async function ContactDetailPage({
                   ) : (
                     <p className="text-sm text-muted">
                       Aucune réservation liée à ce contact.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold mb-6">
+                    Paiements liés
+                  </h2>
+
+                  {paymentsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les paiements liés.
+                    </p>
+                  ) : contactPayments && contactPayments.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {contactPayments.map((payment) => {
+                        const dateText = formatApplicationDate(
+                          payment.paid_at ?? payment.created_at,
+                        );
+
+                        return (
+                          <div
+                            key={payment.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                              <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-foreground text-sm">
+                                    {formatPrice(payment.amount_cents, payment.currency)}
+                                  </span>
+                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                    {getPaymentStatusLabel(payment.status)}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted">
+                                  Type : {getPaymentTypeLabel(payment.payment_type)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Méthode : {getPaymentMethodLabel(payment.payment_method)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Date : {dateText}
+                                </p>
+                                {payment.reservation_id ? (
+                                  <p className="text-xs">
+                                    <Link
+                                      href={`/reservations/${payment.reservation_id}`}
+                                      className="font-medium text-accent hover:underline"
+                                    >
+                                      Réservation liée
+                                    </Link>
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted">
+                                    Aucune réservation liée
+                                  </p>
+                                )}
+                              </div>
+                              <Link
+                                href={`/payments/${payment.id}`}
+                                className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
+                              >
+                                Consulter
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucun paiement lié à ce contact.
                     </p>
                   )}
                 </section>
