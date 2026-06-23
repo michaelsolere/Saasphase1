@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Fixtures locales de réservation et paiements ajoutées (PR35 fusionnée)
-Dernier commit connu : `243b7951 Merge PR35: Add local seed reservation and payment fixtures`
+Dernier état connu : Documents en lecture seule et fixtures documents locales ajoutés (PR38 fusionnée)
+Dernier commit connu : `95fbfb6a Merge PR38: Add local seed document fixtures`
 
 Le dépôt contient désormais :
 
@@ -46,7 +46,9 @@ Le dépôt contient désormais :
 * un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
 * l'affichage des paiements liés sur la fiche détail d'une réservation ;
-* des fixtures locales permettant de tester les écrans réservations, paiements et sections de paiements liés.
+* une liste privée des documents en lecture seule (`/documents`) ;
+* des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste des documents ;
+* des fixtures locales permettant de tester les écrans réservations, paiements, documents et sections de paiements liés.
 
 ## Historique des PR
 
@@ -667,6 +669,76 @@ Routes testables localement :
 Note :
 hors session authentifiée, les routes privées redirigent vers `/login`.
 
+### PR37 — Add read-only documents list
+
+Objectif : ajouter une liste privée des documents en lecture seule.
+
+Contenu principal :
+* création de la route privée `/documents` ;
+* récupération des documents directement depuis la table existante `documents` ;
+* filtrage des documents supprimés avec `deleted_at is null` ;
+* tri des documents par `created_at` décroissant ;
+* affichage en lecture seule du titre, du type, du statut, des dates utiles, du fichier renseigné et de l'indication de signature requise ;
+* gestion neutre de l'état vide et des erreurs de chargement ;
+* liens uniquement vers les routes existantes quand les identifiants sont présents :
+  * contact ;
+  * candidature ;
+  * réservation ;
+  * paiement.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build`.
+
+Hors périmètre :
+* aucune fiche détail `/documents/[id]` ;
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucune UI Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune migration de base de données ;
+* aucune modification SQL, RLS ou RPC ;
+* aucune vue `document_overview`.
+
+### PR38 — Add local seed document fixtures
+
+Objectif : ajouter des fixtures locales pour rendre `/documents` testable après `supabase db reset`.
+
+Contenu principal :
+* ajout de fixtures documents dans `supabase/seed.sql` ;
+* création de trois documents seedés :
+  * résumé d'appel ;
+  * contrat de réservation ;
+  * reçu d'arrhes ;
+* documents liés aux fixtures Alice Martin, candidature, réservation et paiement d'arrhes ;
+* conservation de `file_path = null` pour les documents ;
+* métadonnées uniquement, sans fichier réel ;
+* aucun Supabase Storage ;
+* aucune UI ou route ajoutée.
+
+Validation :
+* `supabase db reset` ;
+* `pnpm lint` ;
+* `pnpm build`.
+
+Recette locale utile :
+* résumé d'appel : `b0000000-0000-4000-8000-000000000001` ;
+* contrat de réservation : `b0000000-0000-4000-8000-000000000002` ;
+* reçu d'arrhes : `b0000000-0000-4000-8000-000000000003`.
+
+Routes testables localement :
+* `/documents` ;
+* `/contacts/70000000-0000-4000-8000-000000000001` ;
+* `/candidatures/80000000-0000-4000-8000-000000000001` ;
+* `/reservations/90000000-0000-4000-8000-000000000001` ;
+* `/payments/a0000000-0000-4000-8000-000000000001`.
+
+Note :
+`/documents` redirige vers `/login` hors session et répond `200` après connexion locale.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -758,10 +830,10 @@ git status
 
 ## Prochaine étape logique
 
-Le module des Paiements est désormais exploitable en lecture seule sous forme de liste, de fiche détail et de sections liées sur les contacts et réservations, avec des fixtures locales pour tester ces écrans.
+Le module Documents dispose désormais d'une liste privée en lecture seule et de fixtures locales pour tester les documents liés au workflow Alice Martin.
 
 Pistes possibles :
-* envisager ultérieurement une vue `payment_overview` seulement si un affichage enrichi devient nécessaire ;
-* ajouter la création, l'édition ou le remboursement de paiements uniquement dans des PR séparées et explicitement décidées ;
-* ajouter une éventuelle section de paiements côté candidature uniquement après décision explicite, car le lien serait indirect via les réservations ;
-* conserver toute modification Supabase, migration ou RLS séparée et justifiée.
+* ajouter éventuellement des sections `Documents liés` sur les fiches contact, candidature, réservation ou paiement ;
+* ajouter éventuellement une fiche détail `/documents/[id]` plus tard ;
+* réserver l'upload, Supabase Storage, la génération PDF, le téléchargement, la preview et la signature électronique à des décisions explicites ;
+* conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
