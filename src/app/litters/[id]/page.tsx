@@ -2,6 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  formatAnimalCoat,
+  formatAnimalDate,
+  getAnimalDisplayName,
+  getAnimalSexLabel,
+  getAnimalStatusLabel,
+} from "@/features/animals/formatters";
+import {
   formatLitterCount,
   formatLitterDate,
   getLitterDisplayName,
@@ -15,6 +22,22 @@ import type { Database } from "@/types/database.types";
 export const dynamic = "force-dynamic";
 
 type DBLitter = Database["public"]["Tables"]["litters"]["Row"];
+type RelatedAnimal = Pick<
+  Database["public"]["Tables"]["animals"]["Row"],
+  | "id"
+  | "display_name"
+  | "temporary_name"
+  | "call_name"
+  | "official_name"
+  | "sex"
+  | "status"
+  | "birth_date"
+  | "birth_order"
+  | "identification_number"
+  | "color"
+  | "coat_color"
+  | "created_at"
+>;
 type LitterSummary = Pick<
   LitterOverview,
   | "id"
@@ -89,6 +112,104 @@ function CountItem({ label, value }: { label: string; value: number | null }) {
   return <DetailItem label={label} value={formatLitterCount(value)} />;
 }
 
+function formatBirthOrder(value: number | null) {
+  if (value === null || value === undefined) {
+    return "Non renseigné";
+  }
+
+  return new Intl.NumberFormat("fr-FR").format(value);
+}
+
+function RelatedAnimalsSection({
+  animals,
+  hasError,
+}: {
+  animals: RelatedAnimal[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Animaux liés</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les animaux liés.
+        </p>
+      ) : !animals || animals.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucun animal lié à cette portée.
+        </p>
+      ) : (
+        <div className="mt-6 overflow-x-auto rounded-xl border bg-background">
+          <table className="w-full border-collapse text-left text-sm">
+            <thead className="border-b bg-muted-soft text-xs font-semibold uppercase tracking-wide text-muted">
+              <tr>
+                <th scope="col" className="px-4 py-3">
+                  Animal
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  Statut
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  Naissance
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  Identification
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  Couleur / robe
+                </th>
+                <th scope="col" className="px-4 py-3">
+                  Détail
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {animals.map((animal) => (
+                <tr key={animal.id}>
+                  <td className="min-w-56 px-4 py-4">
+                    <p className="font-semibold text-foreground">
+                      {getAnimalDisplayName(animal)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      Sexe : {getAnimalSexLabel(animal.sex)}
+                    </p>
+                    <p className="mt-1 text-xs text-muted">
+                      Ordre : {formatBirthOrder(animal.birth_order)}
+                    </p>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4">
+                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                      {getAnimalStatusLabel(animal.status)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-muted">
+                    {formatAnimalDate(animal.birth_date)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-muted">
+                    {animal.identification_number || "Non renseignée"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 text-muted">
+                    {formatAnimalCoat(animal)}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4">
+                    <Link
+                      href={`/animals/${animal.id}`}
+                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Consulter
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function LitterDetailPage({
   params,
 }: {
@@ -126,6 +247,20 @@ export default async function LitterDetailPage({
     : { data: null, error: null };
 
   const summary = rawSummary as LitterSummary | null;
+
+  const { data: rawAnimals, error: animalsError } = litter
+    ? await supabase
+        .from("animals")
+        .select(
+          "id, display_name, temporary_name, call_name, official_name, sex, status, birth_date, birth_order, identification_number, color, coat_color, created_at",
+        )
+        .eq("litter_id", id)
+        .is("deleted_at", null)
+        .order("birth_order", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+    : { data: null, error: null };
+
+  const litterAnimals = rawAnimals as RelatedAnimal[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -254,6 +389,11 @@ export default async function LitterDetailPage({
                   />
                 </dl>
               </section>
+
+              <RelatedAnimalsSection
+                animals={litterAnimals}
+                hasError={Boolean(animalsError)}
+              />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Notes</h2>
