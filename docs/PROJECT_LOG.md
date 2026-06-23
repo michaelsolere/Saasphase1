@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Module Documents en lecture seule complet jusqu'à la fiche détail document (PR44 fusionnée)
-Dernier commit connu : `23ad9f49 Merge PR44: Add read-only document detail screen`
+Dernier état connu : Bloc Portées / Animaux en lecture seule complet jusqu’aux fiches détail
+Dernier commit connu : `aa58d2f8 Merge PR49: Add read-only animal detail screen`
 
 Le dépôt contient désormais :
 
@@ -51,6 +51,12 @@ Le dépôt contient désormais :
 * un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
 * des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste et la fiche détail des documents ;
 * l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
+* une liste privée des portées en lecture seule (`/litters`) ;
+* une fiche détail de portée en lecture seule (`/litters/[id]`) ;
+* un lien `Consulter` depuis la liste des portées vers chaque fiche détail ;
+* une liste privée des animaux en lecture seule (`/animals`) ;
+* une fiche détail d'animal en lecture seule (`/animals/[id]`) ;
+* un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
 * des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
 
 ## Historique des PR
@@ -862,6 +868,126 @@ Hors périmètre :
 Note :
 PR38 est la dernière PR du bloc Documents ayant modifié `supabase/seed.sql`. Les PR40 à PR44 n'ont pas modifié Supabase, migrations, SQL, RLS, RPC, vues, seed ou types générés.
 
+### PR46 — Add read-only litters list
+
+Objectif : démarrer le bloc Portées / Animaux avec une liste privée des portées en lecture seule.
+
+Contenu principal :
+* création de la route privée `/litters` ;
+* lecture des portées depuis la vue existante `litter_overview` ;
+* affichage des informations principales :
+  * nom ;
+  * groupe ;
+  * espèce ;
+  * race ;
+  * statut ;
+  * date utile de naissance ;
+  * parents ;
+  * nombre d'animaux ;
+  * nombre de réservations ;
+  * date de création ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucun `/litters/[id]` à ce stade ;
+* aucune création, édition ou suppression de portée ;
+* aucune attribution animal/réservation ;
+* aucun affichage détaillé des animaux liés ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+### PR47 — Add read-only litter detail screen
+
+Objectif : ajouter une fiche détail de portée en lecture seule.
+
+Contenu principal :
+* création de la route privée `/litters/[id]` ;
+* lecture de la portée depuis la table `litters` avec exclusion des lignes supprimées ;
+* complément d'affichage depuis `litter_overview` ;
+* affichage en lecture seule :
+  * informations générales ;
+  * reproduction et gestation ;
+  * naissance et compteurs ;
+  * notes ;
+  * dates techniques ;
+* ajout d'un lien `Consulter` depuis `/litters` vers `/litters/[id]` ;
+* gestion neutre de l'état introuvable ou inaccessible et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de portée ;
+* aucun animal lié affiché sur la fiche portée ;
+* aucune attribution animal/réservation ;
+* aucune timeline ;
+* aucun Gantt ;
+* aucun journal de mise-bas ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+### PR48 — Add read-only animals list
+
+Objectif : ajouter une liste privée des animaux en lecture seule.
+
+Contenu principal :
+* création de la route privée `/animals` ;
+* lecture des animaux depuis la table `animals` avec exclusion des lignes supprimées ;
+* enrichissement depuis `litter_overview` pour la portée et le groupe ;
+* enrichissement depuis `animals` pour les noms de la mère et du père ;
+* affichage des informations principales :
+  * nom ;
+  * espèce ;
+  * race ;
+  * sexe ;
+  * statut ;
+  * naissance ;
+  * portée ;
+  * groupe ;
+  * parents ;
+  * identification ;
+  * couleur ou robe ;
+  * date de création ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucun `/animals/[id]` à ce stade ;
+* aucune création, édition ou suppression d'animal ;
+* aucune attribution animal/réservation ;
+* aucune réservation depuis animal ;
+* aucun document lié aux animaux ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+### PR49 — Add read-only animal detail screen
+
+Objectif : ajouter une fiche détail d'animal en lecture seule.
+
+Contenu principal :
+* création de la route privée `/animals/[id]` ;
+* lecture de l'animal depuis la table `animals` avec exclusion des lignes supprimées ;
+* complément d'affichage depuis `litter_overview` pour la portée ;
+* complément d'affichage depuis `animals` pour la mère et le père ;
+* affichage en lecture seule :
+  * identité ;
+  * statut et informations générales ;
+  * naissance et filiation ;
+  * identification et robe ;
+  * collier et suivi ;
+  * notes ;
+  * dates techniques ;
+* ajout d'un lien `Consulter` depuis `/animals` vers `/animals/[id]` ;
+* gestion neutre de l'état introuvable ou inaccessible et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression d'animal ;
+* aucune attribution animal/réservation ;
+* aucune réservation depuis animal ;
+* aucun document lié aux animaux ;
+* aucune timeline ;
+* aucun Gantt ;
+* aucun journal de mise-bas ;
+* aucun upload ;
+* aucune mutation ;
+* aucune modification Supabase, migration, seed, RLS, RPC, vue, type généré ou schéma.
+
+Note :
+PR46 à PR49 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue, aucun type généré et aucune modification de schéma.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -953,36 +1079,40 @@ git status
 
 ## Prochaine étape logique
 
-Le module Documents dispose désormais d'un socle privé complet en lecture seule.
+Le bloc Portées / Animaux dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail.
 
 État fonctionnel :
-* `/documents` liste les documents existants ;
-* `/documents/[id]` affiche la fiche détail d'un document ;
-* les documents liés sont visibles depuis les fiches détail :
-  * contact ;
-  * candidature ;
-  * réservation ;
-  * paiement ;
-* un document permet de naviguer vers les routes métier existantes associées :
-  * contact ;
-  * candidature ;
-  * réservation ;
-  * paiement ;
-* les fixtures locales Alice Martin permettent de tester les documents après `supabase db reset`.
+* `/litters` liste les portées existantes ;
+* `/litters/[id]` affiche la fiche détail d'une portée ;
+* `/animals` liste les animaux existants ;
+* `/animals/[id]` affiche la fiche détail d'un animal ;
+* les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
+* les pages restent strictement consultatives.
 
 Limites conservées explicitement :
+* aucune création de portée ;
+* aucune édition de portée ;
+* aucune suppression de portée ;
+* aucune création d'animal ;
+* aucune édition d'animal ;
+* aucune suppression d'animal ;
+* aucune attribution animal/réservation ;
+* aucune réservation depuis animal ;
+* aucun document lié aux portées ou animaux ;
+* aucune timeline ;
+* aucun Gantt ;
+* aucun journal de mise-bas ;
 * aucun upload ;
-* aucun téléchargement ;
-* aucune preview ;
-* aucun Supabase Storage ;
-* aucune génération PDF ;
-* aucune signature électronique ;
-* aucune création de document ;
-* aucune édition de document ;
-* aucune suppression de document ;
-* aucune mutation documentaire.
+* aucune mutation ;
+* aucune modification Supabase ;
+* aucune migration ;
+* aucun seed ;
+* aucune RLS ;
+* aucune RPC ;
+* aucune vue ;
+* aucun type généré.
 
 Pistes possibles :
-* concevoir plus tard un vrai workflow de création ou de génération de documents ;
-* réserver l'upload, Supabase Storage, la génération PDF, le téléchargement, la preview et la signature électronique à des décisions explicites ;
+* décider explicitement si la prochaine étape porte sur les liens entre fiches portée et animaux ;
+* concevoir plus tard les workflows de création, édition, attribution ou réservation ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
