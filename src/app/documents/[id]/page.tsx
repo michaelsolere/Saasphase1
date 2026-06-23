@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import {
   formatApplicationDate,
+  getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import {
@@ -36,6 +37,24 @@ type RelatedContact = {
   country: string;
   created_at: string;
   updated_at: string;
+};
+
+type RelatedApplication = {
+  id: string | null;
+  contact_id: string | null;
+  contact_display_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  species: string | null;
+  breed: string | null;
+  desired_sex_preference: string | null;
+  project_description: string | null;
+  status: string | null;
+  public_form_name: string | null;
+  public_form_slug: string | null;
+  submitted_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
 const contactTypeLabels: Record<string, string> = {
@@ -251,6 +270,19 @@ export default async function DocumentDetailPage({
 
   const relatedContact = rawContact as RelatedContact | null;
 
+  const { data: rawApplication, error: applicationError } =
+    document?.application_id
+      ? await supabase
+          .from("application_overview")
+          .select(
+            "id, contact_id, contact_display_name, contact_email, contact_phone, species, breed, desired_sex_preference, project_description, status, public_form_name, public_form_slug, submitted_at, created_at, updated_at",
+          )
+          .eq("id", document.application_id)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const relatedApplication = rawApplication as RelatedApplication | null;
+
   const { data: rawReservation, error: reservationError } =
     document?.reservation_id
       ? await supabase
@@ -399,6 +431,106 @@ export default async function DocumentDetailPage({
                         label="Pays"
                         value={formatCountry(relatedContact.country)}
                       />
+                    </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Candidature liée
+                      </h2>
+                      {relatedApplication ? (
+                        <p className="mt-2 text-sm text-muted">
+                          {relatedApplication.contact_display_name ??
+                            "Contact non renseigné"}
+                        </p>
+                      ) : null}
+                    </div>
+                    {relatedApplication?.id ? (
+                      <Link
+                        href={`/candidatures/${relatedApplication.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {applicationError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger la candidature liée.
+                    </p>
+                  ) : !relatedApplication ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucune candidature liée à ce document.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Statut"
+                        value={getApplicationStatusLabel(
+                          relatedApplication.status,
+                        )}
+                      />
+                      <DetailItem
+                        label="Espèce"
+                        value={relatedApplication.species}
+                      />
+                      <DetailItem label="Race" value={relatedApplication.breed} />
+                      <DetailItem
+                        label="Sexe souhaité"
+                        value={getSexPreferenceLabel(
+                          relatedApplication.desired_sex_preference,
+                        )}
+                      />
+                      <DetailItem
+                        label="Contact"
+                        value={relatedApplication.contact_display_name}
+                      />
+                      <DetailItem
+                        label="Email contact"
+                        value={relatedApplication.contact_email}
+                      />
+                      <DetailItem
+                        label="Téléphone contact"
+                        value={relatedApplication.contact_phone}
+                      />
+                      <DetailItem
+                        label="Formulaire source"
+                        value={
+                          relatedApplication.public_form_name ??
+                          relatedApplication.public_form_slug
+                        }
+                      />
+                      <DetailItem
+                        label="Soumission"
+                        value={formatApplicationDate(
+                          relatedApplication.submitted_at,
+                        )}
+                      />
+                      <DetailItem
+                        label="Création"
+                        value={formatApplicationDate(
+                          relatedApplication.created_at,
+                        )}
+                      />
+                      <DetailItem
+                        label="Mise à jour"
+                        value={formatApplicationDate(
+                          relatedApplication.updated_at,
+                        )}
+                      />
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Projet
+                        </dt>
+                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
+                          {relatedApplication.project_description ||
+                            "Non renseigné"}
+                        </dd>
+                      </div>
                     </dl>
                   )}
                 </section>
