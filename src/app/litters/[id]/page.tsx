@@ -9,6 +9,11 @@ import {
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
 import {
+  getDocumentStatusLabel,
+  getDocumentTypeLabel,
+  getSignatureRequiredLabel,
+} from "@/features/documents/formatters";
+import {
   formatLitterCount,
   formatLitterDate,
   getLitterDisplayName,
@@ -37,6 +42,20 @@ type RelatedAnimal = Pick<
   | "color"
   | "coat_color"
   | "created_at"
+>;
+type RelatedDocument = Pick<
+  Database["public"]["Tables"]["documents"]["Row"],
+  | "id"
+  | "title"
+  | "document_type"
+  | "status"
+  | "created_at"
+  | "updated_at"
+  | "sent_at"
+  | "received_at"
+  | "signed_at"
+  | "file_name"
+  | "signature_required"
 >;
 type LitterSummary = Pick<
   LitterOverview,
@@ -118,6 +137,26 @@ function formatBirthOrder(value: number | null) {
   }
 
   return new Intl.NumberFormat("fr-FR").format(value);
+}
+
+function getUsefulDocumentDate(document: RelatedDocument) {
+  if (document.signed_at) {
+    return { label: "Signé le", value: document.signed_at };
+  }
+
+  if (document.received_at) {
+    return { label: "Reçu le", value: document.received_at };
+  }
+
+  if (document.sent_at) {
+    return { label: "Envoyé le", value: document.sent_at };
+  }
+
+  if (document.updated_at) {
+    return { label: "Mis à jour le", value: document.updated_at };
+  }
+
+  return { label: "Créé le", value: document.created_at };
 }
 
 function RelatedAnimalsSection({
@@ -210,6 +249,70 @@ function RelatedAnimalsSection({
   );
 }
 
+function RelatedDocumentsSection({
+  documents,
+  hasError,
+}: {
+  documents: RelatedDocument[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Documents liés</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les documents liés.
+        </p>
+      ) : !documents || documents.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucun document lié à cette portée.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {documents.map((document) => {
+            const usefulDate = getUsefulDocumentDate(document);
+
+            return (
+              <div key={document.id} className="py-5 first:pt-0 last:pb-0">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      {document.title}
+                    </span>
+                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                      {getDocumentStatusLabel(document.status)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted">
+                    Type : {getDocumentTypeLabel(document.document_type)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {usefulDate.label} {formatLitterDate(usefulDate.value)}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Fichier : {document.file_name || "Non renseigné"}
+                  </p>
+                  <p className="text-xs text-muted">
+                    Signature requise :{" "}
+                    {getSignatureRequiredLabel(document.signature_required)}
+                  </p>
+                  <Link
+                    href={`/documents/${document.id}`}
+                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Consulter
+                  </Link>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function LitterDetailPage({
   params,
 }: {
@@ -261,6 +364,19 @@ export default async function LitterDetailPage({
     : { data: null, error: null };
 
   const litterAnimals = rawAnimals as RelatedAnimal[] | null;
+
+  const { data: rawDocuments, error: documentsError } = litter
+    ? await supabase
+        .from("documents")
+        .select(
+          "id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, file_name, signature_required",
+        )
+        .eq("litter_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const litterDocuments = rawDocuments as RelatedDocument[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -393,6 +509,11 @@ export default async function LitterDetailPage({
               <RelatedAnimalsSection
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
+              />
+
+              <RelatedDocumentsSection
+                documents={litterDocuments}
+                hasError={Boolean(documentsError)}
               />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
