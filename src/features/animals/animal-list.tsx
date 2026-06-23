@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {
   formatAnimalCoat,
   formatAnimalDate,
@@ -50,6 +52,9 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
             <th scope="col" className="px-6 py-4">
               Création
             </th>
+            <th scope="col" className="px-6 py-4">
+              Détail
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -98,6 +103,14 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-muted">
                 {formatAnimalDate(animal.created_at)}
+              </td>
+              <td className="whitespace-nowrap px-6 py-4">
+                <Link
+                  href={`/animals/${animal.id}`}
+                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                >
+                  Consulter
+                </Link>
               </td>
             </tr>
           ))}
