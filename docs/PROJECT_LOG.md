@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Bloc Portées / Animaux / Documents en lecture seule avec documents liés sur portées et animaux
-Dernier commit connu : `25e7b031 Merge PR55: Add related documents to animal detail`
+Dernier état connu : Fixtures locales Portées / Animaux / Documents testables en lecture seule
+Dernier commit connu : `93f723c0 Merge PR58: Add local seed documents for litter and animal relations`
 
 Le dépôt contient désormais :
 
@@ -61,6 +61,8 @@ Le dépôt contient désormais :
 * l'affichage de la portée liée sur la fiche détail d'un animal (`/animals/[id]`) ;
 * l'affichage des documents liés sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/documents/[id]` ;
 * un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
+* des fixtures locales Portées / Animaux permettant de tester `/litters`, `/litters/[id]`, `/animals`, `/animals/[id]`, la relation portée → animaux et la relation animal → portée ;
+* des fixtures locales Documents liées à la portée et à l'animal de démonstration pour tester les sections `Documents liés` sur les fiches portée et animal ;
 * des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
 
 ## Historique des PR
@@ -1120,6 +1122,81 @@ Hors périmètre :
 Note :
 PR54 et PR55 n'ont modifié aucun élément Supabase : aucune migration, aucun seed, aucune RLS, aucune RPC, aucune vue SQL, aucun type généré et aucune modification de schéma.
 
+### PR57 — Add local seed litter and animal fixtures
+
+Objectif : ajouter des fixtures locales stables pour rendre testables les écrans portées et animaux.
+
+Contenu principal :
+* ajout d'une portée seedée stable dans `supabase/seed.sql` ;
+* ajout d'un animal seedé stable dans `supabase/seed.sql` ;
+* rattachement de l'animal à la portée via `litter_id` ;
+* rattachement de la portée au groupe de portée local Golden Retriever 2026 ;
+* modification limitée à `supabase/seed.sql`.
+
+Validation :
+* `supabase db reset` ;
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale utile :
+* portée : `c0000000-0000-4000-8000-000000000001` ;
+* animal : `d0000000-0000-4000-8000-000000000001`.
+
+Routes testables localement :
+* `/litters` ;
+* `/litters/c0000000-0000-4000-8000-000000000001` ;
+* `/animals` ;
+* `/animals/d0000000-0000-4000-8000-000000000001`.
+
+Hors périmètre :
+* aucun document lié ;
+* aucun code applicatif ;
+* aucune modification UI ;
+* aucune migration Supabase ;
+* aucune modification RLS, RPC, vue SQL, type généré ou package.
+
+### PR58 — Add local seed documents for litter and animal relations
+
+Objectif : ajouter des documents metadata-only pour tester les sections `Documents liés` des fiches portée et animal.
+
+Contenu principal :
+* ajout d'un document metadata-only lié à la portée via `documents.litter_id` ;
+* ajout d'un document metadata-only lié à l'animal via `documents.animal_id` ;
+* conservation de `file_path = null` ;
+* aucun vrai fichier ;
+* aucun Supabase Storage ;
+* modification limitée à `supabase/seed.sql`.
+
+Validation :
+* `supabase db reset` ;
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale utile :
+* document lié à la portée : `b0000000-0000-4000-8000-000000000004` ;
+* document lié à l'animal : `b0000000-0000-4000-8000-000000000005`.
+
+Routes testables localement :
+* `/documents` ;
+* `/documents/b0000000-0000-4000-8000-000000000004` ;
+* `/documents/b0000000-0000-4000-8000-000000000005` ;
+* `/litters/c0000000-0000-4000-8000-000000000001` ;
+* `/animals/d0000000-0000-4000-8000-000000000001`.
+
+Hors périmètre :
+* aucun upload ;
+* aucun fichier Storage ;
+* aucun vrai fichier ;
+* aucun code applicatif ;
+* aucune modification UI ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune mutation UI ;
+* aucune migration Supabase ;
+* aucune modification RLS, RPC, vue SQL, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1211,7 +1288,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux et l'affichage des documents liés sur les fiches portée et animal.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, et des fixtures locales permettant de tester ce parcours.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1224,6 +1301,10 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/animals/[id]` affiche les documents liés à l'animal ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
+* les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
+* les fixtures locales permettent de tester directement `/animals/d0000000-0000-4000-8000-000000000001` ;
+* les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000004` ;
+* les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les pages restent strictement consultatives.
 
 Limites conservées explicitement :
@@ -1242,20 +1323,19 @@ Limites conservées explicitement :
 * aucune génération PDF ;
 * aucune signature électronique ;
 * aucune création, édition ou suppression de document ;
+* pas de vrai fichier pour les documents seedés ;
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
 * aucune mutation ;
-* aucune modification Supabase ;
 * aucune migration ;
-* aucun seed ;
 * aucune RLS ;
 * aucune RPC ;
 * aucune vue ;
 * aucun type généré.
 
 Pistes possibles :
-* enrichir les fixtures locales avec des documents explicitement liés à des portées ou animaux ;
+* les fixtures locales de documents liés aux portées et animaux sont désormais en place ;
 * concevoir plus tard une création contrôlée de réservation ;
 * concevoir plus tard l'attribution animal ↔ réservation ;
 * concevoir plus tard les workflows de création, édition, attribution ou réservation ;
