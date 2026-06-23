@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Liste des paiements en lecture seule achevée (PR27 et PR28 fusionnées)
-Dernier commit connu : `2eeeb780 feat(payments): add read-only payments list`
+Dernier état connu : Fiche détail de paiement en lecture seule achevée (PR30 fusionnée)
+Dernier commit connu : `fcdd97ed Merge PR30: Add read-only payment detail screen`
 
 Le dépôt contient désormais :
 
@@ -41,7 +41,9 @@ Le dépôt contient désormais :
 * l'affichage des réservations liées sur la fiche détail d'un contact ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
 * une liste privée des paiements en lecture seule (`/payments`) ;
-* des liens simples vers les contacts et réservations associés depuis la liste des paiements.
+* une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
+* des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
+* un lien `Consulter` depuis la liste des paiements vers chaque fiche détail.
 
 ## Historique des PR
 
@@ -563,6 +565,31 @@ Hors périmètre :
 * aucune migration de base de données ;
 * aucune modification de RLS ou SQL.
 
+### PR30 — Add read-only payment detail screen
+
+Objectif : ajouter une fiche détail de paiement en lecture seule.
+
+Contenu principal :
+* création de la route privée `/payments/[id]` ;
+* récupération d'un paiement unique directement depuis la table `payments` ;
+* filtrage par `id` et exclusion des paiements supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du montant, de la devise, du type, du statut, de la méthode, des dates, de la référence externe et des notes ;
+* liens simples vers `/contacts/[contact_id]` et `/reservations/[reservation_id]` quand les identifiants existent ;
+* gestion neutre de l'état introuvable ou inaccessible ;
+* affichage d'un message d'erreur neutre en cas de problème de chargement ;
+* ajout d'un lien `Consulter` depuis `/payments` vers `/payments/[id]`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build`.
+
+Hors périmètre :
+* aucune action de création, modification, remboursement, annulation, transfert ou suppression de paiement ;
+* aucun avoir, upload ou document UI ;
+* aucune vue `payment_overview` ;
+* aucune migration de base de données ;
+* aucune modification de RLS, SQL ou RPC.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -654,11 +681,9 @@ git status
 
 ## Prochaine étape logique
 
-Le module des Paiements est désormais exploitable en consultation sous forme de liste.
+Le module des Paiements est désormais exploitable en lecture seule sous forme de liste et de fiche détail.
 
 Pistes possibles :
-* ajouter une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
-* envisager ultérieurement la création d'une vue `payment_overview` si un affichage enrichi devient nécessaire ;
-* n'ajouter la création/édition contrôlée de paiements qu'une fois le flux de lecture validé ;
-* conserver les migrations et modifications de RLS séparées et explicitement justifiées.
-
+* envisager ultérieurement une vue `payment_overview` si un affichage enrichi devient nécessaire ;
+* ajouter la création, l'édition ou le remboursement de paiements uniquement dans des PR séparées et explicitement décidées ;
+* conserver toute modification Supabase, migration ou RLS séparée et justifiée.
