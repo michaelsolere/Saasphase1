@@ -1,0 +1,418 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+
+import {
+  formatAnimalCoat,
+  formatAnimalDate,
+  getAnimalDisplayName,
+  getAnimalSexLabel,
+  getAnimalSpeciesLabel,
+  getAnimalStatusLabel,
+} from "@/features/animals/formatters";
+import type { DBAnimal } from "@/features/animals/types";
+import { createClient } from "@/lib/supabase/server";
+
+export const dynamic = "force-dynamic";
+
+type LitterLookup = {
+  id: string | null;
+  name: string | null;
+  litter_group_name: string | null;
+};
+
+type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
+
+const ownershipStatusLabels: Record<string, string> = {
+  owned: "Détenu",
+  produced: "Produit à l’élevage",
+  external_stud: "Mâle extérieur",
+  external_female: "Femelle extérieure",
+  co_owned: "Copropriété",
+  sold: "Vendu",
+  adopted_out: "Adopté",
+  unknown: "Non renseigné",
+};
+
+function getOwnershipStatusLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return ownershipStatusLabels[value] ?? value.replaceAll("_", " ");
+}
+
+function booleanLabel(value: boolean | null) {
+  return value ? "Oui" : "Non";
+}
+
+function formatBirthWeight(value: number | null) {
+  if (value === null || value === undefined) {
+    return "Non renseigné";
+  }
+
+  return `${new Intl.NumberFormat("fr-FR").format(value)} g`;
+}
+
+function formatBirthOrder(value: number | null) {
+  if (value === null || value === undefined) {
+    return "Non renseigné";
+  }
+
+  return new Intl.NumberFormat("fr-FR").format(value);
+}
+
+function formatBirthTime(value: string | null) {
+  if (!value) {
+    return "Non renseignée";
+  }
+
+  return value.slice(0, 5);
+}
+
+function NotFoundOrUnauthorized() {
+  return (
+    <section className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center">
+      <h1 className="text-2xl font-semibold">
+        Animal introuvable ou inaccessible.
+      </h1>
+      <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted">
+        Cet animal n’existe pas ou vous n’êtes pas autorisé à le consulter.
+      </p>
+      <Link
+        href="/animals"
+        className="mt-6 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
+      >
+        Retour aux animaux
+      </Link>
+    </section>
+  );
+}
+
+function ErrorMessage() {
+  return (
+    <section
+      role="alert"
+      className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"
+    >
+      <h1 className="text-xl font-semibold">
+        Impossible de charger l’animal
+      </h1>
+      <p className="mt-2 text-sm">
+        Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
+      </p>
+      <Link
+        href="/animals"
+        className="mt-6 inline-flex text-sm font-semibold underline"
+      >
+        Retour aux animaux
+      </Link>
+    </section>
+  );
+}
+
+function DetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string | null;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm leading-6">
+        {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+function DetailLink({
+  label,
+  href,
+}: {
+  label: string;
+  href: string | null;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 break-all text-sm leading-6">
+        {href ? (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-accent hover:underline"
+          >
+            {href}
+          </a>
+        ) : (
+          "Non renseigné"
+        )}
+      </dd>
+    </div>
+  );
+}
+
+export default async function AnimalDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: rawAnimal, error: readError } = await supabase
+    .from("animals")
+    .select(
+      "id, display_name, temporary_name, call_name, official_name, chosen_name_by_adopter, species, breed, sex, status, ownership_status, birth_date, death_date, litter_id, mother_id, father_id, identification_number, lof_number, color, coat_color, birth_order, birth_time, birth_weight_grams, collar_color_initial, collar_color_current, collar_color_note, official_affix_name, pedigree_url, is_breeder, is_external, is_retired, notes, created_at, updated_at, deleted_at",
+    )
+    .eq("id", id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const animal = rawAnimal as DBAnimal | null;
+
+  const { data: rawLitter, error: litterError } = animal?.litter_id
+    ? await supabase
+        .from("litter_overview")
+        .select("id, name, litter_group_name")
+        .eq("id", animal.litter_id)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const parentIds = animal
+    ? Array.from(new Set([animal.mother_id, animal.father_id].filter(Boolean))) as string[]
+    : [];
+
+  const { data: rawParents, error: parentsError } = parentIds.length
+    ? await supabase
+        .from("animals")
+        .select("id, display_name")
+        .in("id", parentIds)
+        .is("deleted_at", null)
+    : { data: [], error: null };
+
+  const litter = rawLitter as LitterLookup | null;
+  const parentsById = new Map(
+    ((rawParents as ParentLookup[] | null) ?? []).map((parent) => [
+      parent.id,
+      parent.display_name,
+    ]),
+  );
+
+  const motherDisplayName = animal?.mother_id
+    ? parentsById.get(animal.mother_id) ?? null
+    : null;
+  const fatherDisplayName = animal?.father_id
+    ? parentsById.get(animal.father_id) ?? null
+    : null;
+
+  return (
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
+      <Link
+        href="/animals"
+        className="text-sm font-medium text-accent hover:underline"
+      >
+        ← Retour aux animaux
+      </Link>
+
+      <div className="mt-8">
+        {readError || litterError || parentsError ? (
+          <ErrorMessage />
+        ) : !animal ? (
+          <NotFoundOrUnauthorized />
+        ) : (
+          <>
+            <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
+              <div>
+                <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+                  Animal · Lecture seule
+                </p>
+                <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                  {getAnimalDisplayName(animal)}
+                </h1>
+                <p className="mt-3 text-sm text-muted">
+                  Créé le {formatAnimalDate(animal.created_at)}
+                </p>
+              </div>
+              <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
+                Lecture seule
+              </span>
+            </header>
+
+            <div className="space-y-6 py-8">
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Identité</h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem label="Nom principal" value={animal.display_name} />
+                  <DetailItem label="Nom temporaire" value={animal.temporary_name} />
+                  <DetailItem label="Nom d’appel" value={animal.call_name} />
+                  <DetailItem label="Nom officiel" value={animal.official_name} />
+                  <DetailItem
+                    label="Nom choisi par l’adoptant"
+                    value={animal.chosen_name_by_adopter}
+                  />
+                  <DetailItem
+                    label="Nom d’affixe officiel"
+                    value={animal.official_affix_name}
+                  />
+                </dl>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">
+                  Statut et informations générales
+                </h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem
+                    label="Espèce"
+                    value={getAnimalSpeciesLabel(animal.species)}
+                  />
+                  <DetailItem label="Race" value={animal.breed} />
+                  <DetailItem
+                    label="Sexe"
+                    value={getAnimalSexLabel(animal.sex)}
+                  />
+                  <DetailItem
+                    label="Statut"
+                    value={getAnimalStatusLabel(animal.status)}
+                  />
+                  <DetailItem
+                    label="Statut de propriété"
+                    value={getOwnershipStatusLabel(animal.ownership_status)}
+                  />
+                  <DetailItem
+                    label="Reproducteur"
+                    value={booleanLabel(animal.is_breeder)}
+                  />
+                  <DetailItem
+                    label="Animal extérieur"
+                    value={booleanLabel(animal.is_external)}
+                  />
+                  <DetailItem
+                    label="Retraité"
+                    value={booleanLabel(animal.is_retired)}
+                  />
+                </dl>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">
+                  Naissance et filiation
+                </h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem
+                    label="Date de naissance"
+                    value={formatAnimalDate(animal.birth_date)}
+                  />
+                  <DetailItem
+                    label="Date de décès"
+                    value={formatAnimalDate(animal.death_date)}
+                  />
+                  <DetailItem label="Portée liée" value={litter?.name ?? null} />
+                  <DetailItem
+                    label="Groupe de portée"
+                    value={litter?.litter_group_name ?? null}
+                  />
+                  <DetailItem label="Mère" value={motherDisplayName} />
+                  <DetailItem label="Père" value={fatherDisplayName} />
+                  <DetailItem
+                    label="Ordre de naissance"
+                    value={formatBirthOrder(animal.birth_order)}
+                  />
+                  <DetailItem
+                    label="Heure de naissance"
+                    value={formatBirthTime(animal.birth_time)}
+                  />
+                  <DetailItem
+                    label="Poids de naissance"
+                    value={formatBirthWeight(animal.birth_weight_grams)}
+                  />
+                </dl>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">
+                  Identification et robe
+                </h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem
+                    label="Numéro d’identification"
+                    value={animal.identification_number}
+                  />
+                  <DetailItem label="Numéro LOF" value={animal.lof_number} />
+                  <DetailItem label="Couleur" value={animal.color} />
+                  <DetailItem label="Robe" value={animal.coat_color} />
+                  <DetailItem
+                    label="Couleur ou robe"
+                    value={formatAnimalCoat(animal)}
+                  />
+                  <DetailLink
+                    label="Lien pedigree"
+                    href={animal.pedigree_url}
+                  />
+                </dl>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Collier et suivi</h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem
+                    label="Couleur de collier initiale"
+                    value={animal.collar_color_initial}
+                  />
+                  <DetailItem
+                    label="Couleur de collier actuelle"
+                    value={animal.collar_color_current}
+                  />
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Note de collier
+                    </dt>
+                    <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
+                      {animal.collar_color_note || "Non renseigné"}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Notes</h2>
+                <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
+                  {animal.notes || "Aucune note renseignée."}
+                </p>
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Dates techniques</h2>
+                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem
+                    label="Création"
+                    value={formatAnimalDate(animal.created_at)}
+                  />
+                  <DetailItem
+                    label="Mise à jour"
+                    value={formatAnimalDate(animal.updated_at)}
+                  />
+                </dl>
+              </section>
+            </div>
+          </>
+        )}
+      </div>
+    </main>
+  );
+}
