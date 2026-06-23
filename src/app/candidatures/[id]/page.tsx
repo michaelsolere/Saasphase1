@@ -9,11 +9,50 @@ import {
 import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
+import {
+  getDocumentStatusLabel,
+  getDocumentTypeLabel,
+  getSignatureRequiredLabel,
+} from "@/features/documents/formatters";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+type RelatedDocument = {
+  id: string;
+  title: string;
+  document_type: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  sent_at: string | null;
+  signed_at: string | null;
+  received_at: string | null;
+  file_name: string | null;
+  signature_required: boolean;
+};
+
+function getUsefulDocumentDate(document: RelatedDocument) {
+  if (document.signed_at) {
+    return { label: "Signé le", value: document.signed_at };
+  }
+
+  if (document.received_at) {
+    return { label: "Reçu le", value: document.received_at };
+  }
+
+  if (document.sent_at) {
+    return { label: "Envoyé le", value: document.sent_at };
+  }
+
+  if (document.updated_at) {
+    return { label: "Mis à jour le", value: document.updated_at };
+  }
+
+  return { label: "Créé le", value: document.created_at };
+}
 
 function NotFoundOrUnauthorized() {
   return (
@@ -122,6 +161,17 @@ export default async function ApplicationDetailPage({
 
   const applicationReservations = rawReservations as ReservationOverview[] | null;
 
+  // Fetch documents
+  const { data: rawDocuments, error: documentsError } = applicationId
+    ? await supabase
+        .from("documents")
+        .select("id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, file_name, signature_required")
+        .eq("application_id", applicationId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const applicationDocuments = rawDocuments as RelatedDocument[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -337,6 +387,62 @@ export default async function ApplicationDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold mb-6">
+                    Documents liés
+                  </h2>
+
+                  {documentsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les documents liés.
+                    </p>
+                  ) : applicationDocuments && applicationDocuments.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {applicationDocuments.map((document) => {
+                        const usefulDate = getUsefulDocumentDate(document);
+
+                        return (
+                          <div
+                            key={document.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="font-semibold text-foreground text-sm">
+                                  {document.title}
+                                </span>
+                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                  {getDocumentStatusLabel(document.status)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted">
+                                Type : {getDocumentTypeLabel(document.document_type)}
+                              </p>
+                              <p className="text-xs text-muted">
+                                {usefulDate.label}{" "}
+                                {formatApplicationDate(usefulDate.value)}
+                              </p>
+                              <p className="text-xs text-muted">
+                                Fichier : {document.file_name || "Non renseigné"}
+                              </p>
+                              <p className="text-xs text-muted">
+                                Signature requise :{" "}
+                                {getSignatureRequiredLabel(
+                                  document.signature_required,
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucun document lié à cette candidature.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">Notes internes</h2>
 
                   <div className="mt-6 space-y-6">
@@ -423,4 +529,3 @@ export default async function ApplicationDetailPage({
     </main>
   );
 }
-
