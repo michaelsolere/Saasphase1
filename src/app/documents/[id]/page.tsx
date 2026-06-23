@@ -20,6 +20,49 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+type RelatedContact = {
+  id: string;
+  display_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  secondary_phone: string | null;
+  contact_type: string;
+  primary_status: string;
+  origin_channel: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string;
+  created_at: string;
+  updated_at: string;
+};
+
+const contactTypeLabels: Record<string, string> = {
+  person: "Personne",
+  family: "Famille",
+  organization: "Organisation",
+  professional: "Professionnel",
+  other: "Autre",
+};
+
+const contactStatusLabels: Record<string, string> = {
+  active: "Actif",
+  inactive: "Inactif",
+  archived: "Archivé",
+  blocked: "Bloqué",
+};
+
+const originChannelLabels: Record<string, string> = {
+  public_form: "Formulaire public",
+  manual: "Saisie manuelle",
+  referral: "Recommandation",
+  social_media: "Réseaux sociaux",
+  phone: "Téléphone",
+  email: "Email",
+  other: "Autre",
+};
+
 function formatFileSize(value: number | null) {
   if (value === null || value === undefined) {
     return "Non renseigné";
@@ -38,6 +81,38 @@ function formatFileSize(value: number | null) {
 
 function booleanLabel(value: boolean | null) {
   return value ? "Oui" : "Non";
+}
+
+function getContactTypeLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return contactTypeLabels[value] ?? value.replaceAll("_", " ");
+}
+
+function getContactStatusLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return contactStatusLabels[value] ?? value.replaceAll("_", " ");
+}
+
+function getOriginChannelLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return originChannelLabels[value] ?? value.replaceAll("_", " ");
+}
+
+function formatCountry(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return value === "FR" ? "France" : value;
 }
 
 function NotFoundOrUnauthorized() {
@@ -163,6 +238,19 @@ export default async function DocumentDetailPage({
 
   const document = rawDocument as DBDocument | null;
 
+  const { data: rawContact, error: contactError } = document?.contact_id
+    ? await supabase
+        .from("contacts")
+        .select(
+          "id, display_name, first_name, last_name, email, phone, secondary_phone, contact_type, primary_status, origin_channel, postal_code, city, country, created_at, updated_at, deleted_at",
+        )
+        .eq("id", document.contact_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const relatedContact = rawContact as RelatedContact | null;
+
   const { data: rawReservation, error: reservationError } =
     document?.reservation_id
       ? await supabase
@@ -236,6 +324,83 @@ export default async function DocumentDetailPage({
                       value={booleanLabel(document.generated_from_template)}
                     />
                   </dl>
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">Contact lié</h2>
+                      {relatedContact ? (
+                        <p className="mt-2 text-sm text-muted">
+                          {relatedContact.display_name}
+                        </p>
+                      ) : null}
+                    </div>
+                    {relatedContact?.id ? (
+                      <Link
+                        href={`/contacts/${relatedContact.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {contactError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger le contact lié.
+                    </p>
+                  ) : !relatedContact ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun contact lié à ce document.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Nom affichable"
+                        value={relatedContact.display_name}
+                      />
+                      <DetailItem
+                        label="Prénom"
+                        value={relatedContact.first_name}
+                      />
+                      <DetailItem label="Nom" value={relatedContact.last_name} />
+                      <DetailItem label="Email" value={relatedContact.email} />
+                      <DetailItem
+                        label="Téléphone"
+                        value={relatedContact.phone}
+                      />
+                      <DetailItem
+                        label="Téléphone secondaire"
+                        value={relatedContact.secondary_phone}
+                      />
+                      <DetailItem
+                        label="Type de contact"
+                        value={getContactTypeLabel(relatedContact.contact_type)}
+                      />
+                      <DetailItem
+                        label="Statut"
+                        value={getContactStatusLabel(
+                          relatedContact.primary_status,
+                        )}
+                      />
+                      <DetailItem
+                        label="Origine"
+                        value={getOriginChannelLabel(
+                          relatedContact.origin_channel,
+                        )}
+                      />
+                      <DetailItem label="Ville" value={relatedContact.city} />
+                      <DetailItem
+                        label="Code postal"
+                        value={relatedContact.postal_code}
+                      />
+                      <DetailItem
+                        label="Pays"
+                        value={formatCountry(relatedContact.country)}
+                      />
+                    </dl>
+                  )}
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
