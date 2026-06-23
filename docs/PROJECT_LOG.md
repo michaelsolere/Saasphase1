@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : Documents en lecture seule et fixtures documents locales ajoutés (PR38 fusionnée)
-Dernier commit connu : `95fbfb6a Merge PR38: Add local seed document fixtures`
+Dernier état connu : Module Documents en lecture seule complet jusqu'à la fiche détail document (PR44 fusionnée)
+Dernier commit connu : `23ad9f49 Merge PR44: Add read-only document detail screen`
 
 Le dépôt contient désormais :
 
@@ -47,8 +47,11 @@ Le dépôt contient désormais :
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
 * l'affichage des paiements liés sur la fiche détail d'une réservation ;
 * une liste privée des documents en lecture seule (`/documents`) ;
-* des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste des documents ;
-* des fixtures locales permettant de tester les écrans réservations, paiements, documents et sections de paiements liés.
+* une fiche détail de document en lecture seule (`/documents/[id]`) ;
+* un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
+* des liens simples vers les contacts, candidatures, réservations et paiements associés depuis la liste et la fiche détail des documents ;
+* l'affichage des documents liés sur les fiches détail d'un contact, d'une candidature, d'une réservation et d'un paiement ;
+* des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
 
 ## Historique des PR
 
@@ -739,6 +742,126 @@ Routes testables localement :
 Note :
 `/documents` redirige vers `/login` hors session et répond `200` après connexion locale.
 
+### PR40 — Add related documents to contact detail
+
+Objectif : afficher les documents liés à un contact directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur la fiche détail d'un contact (`/contacts/[id]`) ;
+* récupération des documents depuis la table `documents` filtrée par `contact_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du titre, du type, du statut, d'une date utile, du fichier renseigné et de l'indication de signature requise ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune modification Supabase, migration, SQL, RLS, RPC, vue, seed ou type généré.
+
+### PR41 — Add related documents to application detail
+
+Objectif : afficher les documents liés à une candidature directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur la fiche détail d'une candidature (`/candidatures/[id]`) ;
+* récupération des documents depuis la table `documents` filtrée par `application_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du titre, du type, du statut, d'une date utile, du fichier renseigné et de l'indication de signature requise ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune modification Supabase, migration, SQL, RLS, RPC, vue, seed ou type généré.
+
+### PR42 — Add related documents to reservation detail
+
+Objectif : afficher les documents liés à une réservation directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur la fiche détail d'une réservation (`/reservations/[id]`) ;
+* récupération des documents depuis la table `documents` filtrée par `reservation_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du titre, du type, du statut, d'une date utile, du fichier renseigné et de l'indication de signature requise ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune modification Supabase, migration, SQL, RLS, RPC, vue, seed ou type généré.
+
+### PR43 — Add related documents to payment detail
+
+Objectif : afficher les documents liés à un paiement directement sur sa fiche détail.
+
+Contenu principal :
+* ajout de la section `Documents liés` sur la fiche détail d'un paiement (`/payments/[id]`) ;
+* récupération des documents depuis la table `documents` filtrée par `payment_id` ;
+* exclusion des documents supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du titre, du type, du statut, d'une date utile, du fichier renseigné et de l'indication de signature requise ;
+* gestion neutre de l'état vide et des erreurs de chargement.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune modification Supabase, migration, SQL, RLS, RPC, vue, seed ou type généré.
+
+### PR44 — Add read-only document detail screen
+
+Objectif : ajouter une fiche détail de document en lecture seule.
+
+Contenu principal :
+* création de la route privée `/documents/[id]` ;
+* récupération d'un document unique directement depuis la table `documents` ;
+* filtrage par `id` et exclusion des documents supprimés avec `deleted_at is null` ;
+* affichage en lecture seule du titre, du type, du statut, des dates, des métadonnées fichier, de l'indication de signature requise et des notes ;
+* affichage de liens métier uniquement vers les routes existantes quand les identifiants sont présents :
+  * contact ;
+  * candidature ;
+  * réservation ;
+  * paiement ;
+* ajout d'un lien `Consulter` depuis `/documents` vers `/documents/[id]` ;
+* gestion neutre de l'état introuvable ou inaccessible ;
+* affichage d'un message d'erreur neutre en cas de problème de chargement.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build`.
+
+Hors périmètre :
+* aucune création, édition ou suppression de document ;
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucun lien vers animal, portée, template, média, fichier Storage ou route future ;
+* aucune modification Supabase, migration, SQL, RLS, RPC, vue, seed ou type généré.
+
+Note :
+PR38 est la dernière PR du bloc Documents ayant modifié `supabase/seed.sql`. Les PR40 à PR44 n'ont pas modifié Supabase, migrations, SQL, RLS, RPC, vues, seed ou types générés.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -830,10 +953,36 @@ git status
 
 ## Prochaine étape logique
 
-Le module Documents dispose désormais d'une liste privée en lecture seule et de fixtures locales pour tester les documents liés au workflow Alice Martin.
+Le module Documents dispose désormais d'un socle privé complet en lecture seule.
+
+État fonctionnel :
+* `/documents` liste les documents existants ;
+* `/documents/[id]` affiche la fiche détail d'un document ;
+* les documents liés sont visibles depuis les fiches détail :
+  * contact ;
+  * candidature ;
+  * réservation ;
+  * paiement ;
+* un document permet de naviguer vers les routes métier existantes associées :
+  * contact ;
+  * candidature ;
+  * réservation ;
+  * paiement ;
+* les fixtures locales Alice Martin permettent de tester les documents après `supabase db reset`.
+
+Limites conservées explicitement :
+* aucun upload ;
+* aucun téléchargement ;
+* aucune preview ;
+* aucun Supabase Storage ;
+* aucune génération PDF ;
+* aucune signature électronique ;
+* aucune création de document ;
+* aucune édition de document ;
+* aucune suppression de document ;
+* aucune mutation documentaire.
 
 Pistes possibles :
-* ajouter éventuellement des sections `Documents liés` sur les fiches contact, candidature, réservation ou paiement ;
-* ajouter éventuellement une fiche détail `/documents/[id]` plus tard ;
+* concevoir plus tard un vrai workflow de création ou de génération de documents ;
 * réserver l'upload, Supabase Storage, la génération PDF, le téléchargement, la preview et la signature électronique à des décisions explicites ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
