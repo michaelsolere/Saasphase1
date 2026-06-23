@@ -1,13 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { formatApplicationDate } from "@/features/applications/formatters";
+import {
+  formatApplicationDate,
+  getSexPreferenceLabel,
+} from "@/features/applications/formatters";
 import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
 import type { DBDocument } from "@/features/documents/types";
+import {
+  formatPrice,
+  getReservationStatusLabel,
+} from "@/features/reservations/formatters";
+import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -155,6 +163,19 @@ export default async function DocumentDetailPage({
 
   const document = rawDocument as DBDocument | null;
 
+  const { data: rawReservation, error: reservationError } =
+    document?.reservation_id
+      ? await supabase
+          .from("reservation_overview")
+          .select(
+            "id, contact_id, contact_display_name, animal_id, animal_display_name, litter_id, litter_name, litter_group_id, litter_group_name, status, reserved_sex_preference, price_cents, currency, paid_cents, refunded_cents, created_at, updated_at",
+          )
+          .eq("id", document.reservation_id)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const relatedReservation = rawReservation as ReservationOverview | null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <Link
@@ -215,6 +236,108 @@ export default async function DocumentDetailPage({
                       value={booleanLabel(document.generated_from_template)}
                     />
                   </dl>
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Réservation liée
+                      </h2>
+                      {relatedReservation ? (
+                        <p className="mt-2 text-sm text-muted">
+                          {relatedReservation.contact_display_name ??
+                            "Contact non renseigné"}
+                        </p>
+                      ) : null}
+                    </div>
+                    {relatedReservation?.id ? (
+                      <Link
+                        href={`/reservations/${relatedReservation.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  {reservationError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger la réservation liée.
+                    </p>
+                  ) : !relatedReservation ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucune réservation liée à ce document.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Statut"
+                        value={getReservationStatusLabel(
+                          relatedReservation.status,
+                        )}
+                      />
+                      <DetailItem
+                        label="Contact"
+                        value={relatedReservation.contact_display_name}
+                      />
+                      <DetailItem
+                        label="Animal"
+                        value={relatedReservation.animal_display_name}
+                      />
+                      <DetailItem
+                        label="Portée"
+                        value={relatedReservation.litter_name}
+                      />
+                      <DetailItem
+                        label="Groupe de portée"
+                        value={relatedReservation.litter_group_name}
+                      />
+                      <DetailItem
+                        label="Préférence de sexe"
+                        value={getSexPreferenceLabel(
+                          relatedReservation.reserved_sex_preference,
+                        )}
+                      />
+                      <DetailItem
+                        label="Prix"
+                        value={formatPrice(
+                          relatedReservation.price_cents,
+                          relatedReservation.currency,
+                        )}
+                      />
+                      <DetailItem
+                        label="Montant payé"
+                        value={formatPrice(
+                          relatedReservation.paid_cents,
+                          relatedReservation.currency,
+                        )}
+                      />
+                      {relatedReservation.refunded_cents !== null &&
+                      relatedReservation.refunded_cents !== undefined &&
+                      relatedReservation.refunded_cents > 0 ? (
+                        <DetailItem
+                          label="Montant remboursé"
+                          value={formatPrice(
+                            relatedReservation.refunded_cents,
+                            relatedReservation.currency,
+                          )}
+                        />
+                      ) : null}
+                      <DetailItem
+                        label="Création"
+                        value={formatApplicationDate(
+                          relatedReservation.created_at,
+                        )}
+                      />
+                      <DetailItem
+                        label="Mise à jour"
+                        value={formatApplicationDate(
+                          relatedReservation.updated_at,
+                        )}
+                      />
+                    </dl>
+                  )}
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
