@@ -707,133 +707,140 @@ export default async function ReservationDetailPage({
                     ) : null}
                   </dl>
 
-                  {reservation.status === "draft" ? (
-                    <form
-                      action={activateReservation}
-                      className="mt-8 border-t pt-6"
-                    >
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-                      <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action confirme manuellement la réservation. Elle
-                        ne crée ni paiement, ni document, ni attribution
-                        d’animal.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                      >
-                        Confirmer la réservation
-                      </button>
-                    </form>
-                  ) : null}
+                  {reservation.status === "draft" || reservation.status === "active" ? (
+                    <div className="mt-8 border-t pt-6">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Actions de statut
+                      </h3>
 
-                  {reservation.status === "active" ? (
-                    <form
-                      action={adoptReservation}
-                      className="mt-8 border-t pt-6"
-                    >
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-                      <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action finalise manuellement l’adoption. Elle ne
-                        crée ni paiement, ni document, ni note, ni modification
-                        d’animal.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                      >
-                        Finaliser l’adoption
-                      </button>
-                    </form>
-                  ) : null}
+                      {reservation.status === "draft" ? (
+                        <form
+                          action={activateReservation}
+                          className="mt-4"
+                        >
+                          <input
+                            type="hidden"
+                            name="reservation_id"
+                            value={id}
+                          />
+                          <p className="max-w-2xl text-xs leading-5 text-muted">
+                            Cette action confirme manuellement la réservation. Elle
+                            ne crée ni paiement, ni document, ni attribution
+                            d’animal.
+                          </p>
+                          <button
+                            type="submit"
+                            className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                          >
+                            Confirmer la réservation
+                          </button>
+                        </form>
+                      ) : null}
 
-                  {reservation.status === "active" ? (
-                    <form
-                      action={cancelReservation}
-                      className="mt-8 border-t pt-6"
-                    >
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-                      <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action annule manuellement la réservation. Elle ne
-                        crée aucun remboursement, ne modifie aucun paiement, ne
-                        crée ni document ni note, ne modifie pas l’animal, ne
-                        retire pas automatiquement l’attribution, et ne modifie
-                        ni tarif, ni commentaire, ni échéance.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
-                      >
-                        Annuler la réservation
-                      </button>
-                    </form>
-                  ) : null}
+                      {reservation.status === "active" ? (
+                        <div className="mt-5 space-y-6">
+                          <div>
+                            <h4 className="text-sm font-semibold">
+                              Finaliser positivement
+                            </h4>
+                            <form
+                              action={adoptReservation}
+                              className="mt-3"
+                            >
+                              <input
+                                type="hidden"
+                                name="reservation_id"
+                                value={id}
+                              />
+                              <p className="max-w-2xl text-xs leading-5 text-muted">
+                                Cette action finalise manuellement l’adoption. Elle ne
+                                crée ni paiement, ni document, ni note, ni modification
+                                d’animal.
+                              </p>
+                              <button
+                                type="submit"
+                                className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              >
+                                Finaliser l’adoption
+                              </button>
+                            </form>
+                          </div>
 
-                  {reservation.status === "active" ? (
-                    <form
-                      action={withdrawReservation}
-                      className="mt-8 border-t pt-6"
-                    >
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-                      <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action enregistre manuellement un désistement ou
-                        retrait du candidat ou adoptant. Elle ne crée aucun
-                        remboursement, ne modifie aucun paiement, ne crée ni
-                        document ni note, ne modifie pas l’animal, ne retire
-                        pas automatiquement l’attribution, et ne modifie ni
-                        tarif, ni commentaire, ni échéance.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
-                      >
-                        Marquer comme désistée
-                      </button>
-                    </form>
-                  ) : null}
+                          <div className="border-t pt-5">
+                            <h4 className="text-sm font-semibold">
+                              Sorties finales
+                            </h4>
+                            <div className="mt-4 space-y-5">
+                              <form action={cancelReservation}>
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <p className="max-w-2xl text-xs leading-5 text-muted">
+                                  Cette action annule manuellement la réservation. Elle ne
+                                  crée aucun remboursement, ne modifie aucun paiement, ne
+                                  crée ni document ni note, ne modifie pas l’animal, ne
+                                  retire pas automatiquement l’attribution, et ne modifie
+                                  ni tarif, ni commentaire, ni échéance.
+                                </p>
+                                <button
+                                  type="submit"
+                                  className="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
+                                >
+                                  Annuler la réservation
+                                </button>
+                              </form>
 
-                  {reservation.status === "active" ? (
-                    <form
-                      action={expireReservation}
-                      className="mt-8 border-t pt-6"
-                    >
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-                      <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action marque manuellement la réservation comme
-                        expirée. Elle ne crée aucun remboursement, ne modifie
-                        aucun paiement, ne crée ni document ni note, ne modifie
-                        pas l’animal, ne retire pas automatiquement
-                        l’attribution, ne modifie ni tarif, ni commentaire, ni
-                        échéance, et ne lance aucune automatisation liée à
-                        l’échéance de pré-réservation.
-                      </p>
-                      <button
-                        type="submit"
-                        className="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                      >
-                        Marquer comme expirée
-                      </button>
-                    </form>
+                              <form action={withdrawReservation}>
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <p className="max-w-2xl text-xs leading-5 text-muted">
+                                  Cette action enregistre manuellement un désistement ou
+                                  retrait du candidat ou adoptant. Elle ne crée aucun
+                                  remboursement, ne modifie aucun paiement, ne crée ni
+                                  document ni note, ne modifie pas l’animal, ne retire
+                                  pas automatiquement l’attribution, et ne modifie ni
+                                  tarif, ni commentaire, ni échéance.
+                                </p>
+                                <button
+                                  type="submit"
+                                  className="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
+                                >
+                                  Marquer comme désistée
+                                </button>
+                              </form>
+
+                              <form action={expireReservation}>
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <p className="max-w-2xl text-xs leading-5 text-muted">
+                                  Cette action marque manuellement la réservation comme
+                                  expirée. Elle ne crée aucun remboursement, ne modifie
+                                  aucun paiement, ne crée ni document ni note, ne modifie
+                                  pas l’animal, ne retire pas automatiquement
+                                  l’attribution, ne modifie ni tarif, ni commentaire, ni
+                                  échéance, et ne lance aucune automatisation liée à
+                                  l’échéance de pré-réservation.
+                                </p>
+                                <button
+                                  type="submit"
+                                  className="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                                >
+                                  Marquer comme expirée
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   <form
