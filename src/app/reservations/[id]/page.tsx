@@ -27,6 +27,7 @@ import {
   updateReservationPreReservationDeadline,
   updateReservationPrice,
 } from "@/features/reservations/actions";
+import { createReservationPayment } from "@/features/payments/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -188,6 +189,7 @@ export default async function ReservationDetailPage({
     comment_status?: string;
     deadline_status?: string;
     price_status?: string;
+    payment_create_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -362,6 +364,24 @@ export default async function ReservationDetailPage({
               >
                 L’échéance de pré-réservation n’a pas pu être mise à jour.
                 Aucune autre donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.payment_create_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le paiement a bien été enregistré.
+              </p>
+            ) : null}
+
+            {query.payment_create_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -710,6 +730,116 @@ export default async function ReservationDetailPage({
                       Aucun paiement lié à cette réservation.
                     </p>
                   )}
+
+                  <div className="border-t border-border pt-8 mt-8">
+                    <h3 className="text-lg font-semibold mb-2">
+                      Enregistrer un paiement manuel
+                    </h3>
+                    <p className="text-xs text-muted mb-6">
+                      Ce formulaire enregistre un paiement lié à cette réservation. Il ne change pas le statut de la réservation et ne génère aucun document.
+                    </p>
+
+                    <form action={createReservationPayment} className="space-y-4">
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Montant (en €)
+                          </label>
+                          <input
+                            name="amount"
+                            type="text"
+                            required
+                            placeholder="ex: 150 ou 150.50"
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Type de paiement
+                          </label>
+                          <select
+                            name="payment_type"
+                            required
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          >
+                            <option value="arrhes">Arrhes</option>
+                            <option value="balance">Solde</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Statut
+                          </label>
+                          <select
+                            name="status"
+                            required
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          >
+                            <option value="paid">Payé</option>
+                            <option value="requested">Demandé</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Moyen de paiement
+                          </label>
+                          <select
+                            name="payment_method"
+                            required
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          >
+                            <option value="bank_transfer">Virement</option>
+                            <option value="cash">Espèces</option>
+                            <option value="card">Carte bancaire</option>
+                            <option value="cheque">Chèque</option>
+                            <option value="other">Autre</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Date
+                          </label>
+                          <input
+                            name="payment_date"
+                            type="date"
+                            required
+                            defaultValue={formatDateInputValue(new Date().toISOString())}
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                          Note (optionnelle)
+                        </label>
+                        <textarea
+                          name="notes"
+                          rows={3}
+                          maxLength={2000}
+                          placeholder="Commentaire interne sur ce paiement..."
+                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent resize-y"
+                        />
+                      </div>
+
+                      <button
+                        type="submit"
+                        className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      >
+                        Enregistrer le paiement
+                      </button>
+                    </form>
+                  </div>
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">

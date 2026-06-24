@@ -1,0 +1,163 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { createClient } from "@/lib/supabase/server";
+
+function paymentRedirectUrl(
+  reservationId: string,
+  outcome: "success" | "error",
+) {
+  return `/reservations/${reservationId}?payment_create_status=${outcome}`;
+}
+
+export async function createReservationPayment(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !reservationId) {
+    redirect("/reservations?erreur=paiement_contexte");
+  }
+
+  // 1. Validation de l'utilisateur authentifié
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // 2. Relecture serveur de la réservation
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  // 3. Récupération et validation du montant
+  const rawAmount = formData.get("amount");
+  if (typeof rawAmount !== "string" || !rawAmount) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  const normalizedAmount = rawAmount.trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalizedAmount)) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  const amountNum = Number(normalizedAmount);
+  if (!Number.isFinite(amountNum) || amountNum <= 0 || amountNum > 1000000) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  const amountCents = Math.round(amountNum * 100);
+
+  // 4. Validation du type de paiement
+  const paymentType = formData.get("payment_type");
+  if (
+    typeof paymentType !== "string" ||
+    (paymentType !== "arrhes" && paymentType !== "balance")
+  ) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  // 5. Validation de la méthode de paiement
+  const paymentMethod = formData.get("payment_method");
+  const allowedMethods = ["bank_transfer", "cash", "card", "cheque", "other"];
+  if (
+    typeof paymentMethod !== "string" ||
+    !allowedMethods.includes(paymentMethod)
+  ) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  // 6. Validation du statut
+  const status = formData.get("status");
+  if (typeof status !== "string" || (status !== "paid" && status !== "requested")) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  // 7. Validation de la date
+  const paymentDate = formData.get("payment_date");
+  if (typeof paymentDate !== "string" || !paymentDate) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paymentDate.trim());
+  if (!dateMatch) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const dateVal = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+
+  if (
+    dateVal.getUTCFullYear() !== year ||
+    dateVal.getUTCMonth() !== month - 1 ||
+    dateVal.getUTCDate() !== day
+  ) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  // Configuration des dates selon le statut
+  let paidAt: string | null = null;
+  let requestedAt: string | null = null;
+  let dueDate: string | null = null;
+
+  if (status === "paid") {
+    paidAt = dateVal.toISOString();
+  } else {
+    requestedAt = new Date().toISOString();
+    dueDate = paymentDate; // Format YYYY-MM-DD
+  }
+
+  // 8. Validation des notes
+  const rawNotes = formData.get("notes");
+  let notes: string | null = null;
+  if (typeof rawNotes === "string") {
+    const trimmedNotes = rawNotes.trim();
+    if (trimmedNotes.length > 2000) {
+      redirect(paymentRedirectUrl(reservationId, "error"));
+    }
+    notes = trimmedNotes || null;
+  }
+
+  // 9. Insertion du paiement
+  const { error: insertError } = await supabase
+    .from("payments")
+    .insert({
+      organization_id: reservation.organization_id,
+      contact_id: reservation.contact_id,
+      reservation_id: reservation.id,
+      amount_cents: amountCents,
+      currency: "EUR",
+      payment_type: paymentType,
+      status: status,
+      payment_method: paymentMethod,
+      paid_at: paidAt,
+      requested_at: requestedAt,
+      due_date: dueDate,
+      notes: notes,
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+  if (insertError) {
+    redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  redirect(paymentRedirectUrl(reservationId, "success"));
+}
