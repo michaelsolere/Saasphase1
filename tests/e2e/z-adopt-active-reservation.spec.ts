@@ -1,0 +1,235 @@
+import { randomUUID } from "node:crypto";
+
+import { expect, test, type Page } from "@playwright/test";
+
+import {
+  createAuthenticatedSupabaseClient,
+  expectSupabaseData,
+  type SupabaseTestClient,
+} from "./helpers/supabase";
+
+const organizationId = "20000000-0000-4000-8000-000000000001";
+
+async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
+
+  const contactId = randomUUID();
+  const applicationId = randomUUID();
+  const suffix = applicationId.slice(0, 8);
+  const displayName = `Adoption Smoke ${suffix}`;
+
+  const { error: contactError } = await supabase.from("contacts").insert({
+    id: contactId,
+    organization_id: organizationId,
+    contact_type: "person",
+    first_name: "Adoption",
+    last_name: `Smoke ${suffix}`,
+    display_name: displayName,
+    email: `adoption-smoke-${suffix}@example.invalid`,
+    origin_channel: "manual",
+    primary_status: "active",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (contactError) {
+    throw new Error(`create adoption contact: ${contactError.message}`);
+  }
+
+  const { error: applicationError } = await supabase.from("applications").insert({
+    id: applicationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    species: "dog",
+    breed: "Golden Retriever",
+    desired_period: "Test adoption",
+    desired_sex_preference: "no_preference",
+    desired_quantity: 1,
+    project_description:
+      "Fixture e2e dédiée à la finalisation manuelle d'une réservation active.",
+    status: "qualified",
+    submitted_at: "2026-04-02T10:00:00+00:00",
+    reviewed_at: "2026-04-02T12:00:00+00:00",
+    reviewed_by: user.id,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (applicationError) {
+    throw new Error(`create adoption application: ${applicationError.message}`);
+  }
+
+  return { applicationId, contactId, displayName };
+}
+
+async function findReservationForApplication(
+  supabase: SupabaseTestClient,
+  applicationId: string,
+) {
+  return expectSupabaseData(
+    await supabase
+      .from("reservations")
+      .select("id, status")
+      .eq("application_id", applicationId)
+      .is("deleted_at", null)
+      .maybeSingle(),
+    "find reservation for application",
+  );
+}
+
+async function readReservation(
+  supabase: SupabaseTestClient,
+  reservationId: string,
+) {
+  return expectSupabaseData(
+    await supabase
+      .from("reservations")
+      .select(
+        "id, status, adoption_completed_at, reservation_confirmed_at, animal_id, animal_assigned_at, updated_at, updated_by, price_cents, internal_comment, pre_reservation_deadline, application_id, contact_id",
+      )
+      .eq("id", reservationId)
+      .is("deleted_at", null)
+      .single(),
+    "read reservation",
+  );
+}
+
+async function countRows(
+  supabase: SupabaseTestClient,
+  table: "documents" | "notes" | "payments",
+  reservationId: string,
+) {
+  const result = await supabase
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq("reservation_id", reservationId);
+
+  if (result.error) {
+    throw new Error(`count ${table}: ${result.error.message}`);
+  }
+
+  return result.count ?? 0;
+}
+
+async function createDraftReservation(
+  page: Page,
+  supabase: SupabaseTestClient,
+  applicationId: string,
+) {
+  await page.goto(`/candidatures/${applicationId}`);
+  await page
+    .getByRole("button", { name: "Créer une réservation brouillon" })
+    .click();
+  await expect(page).toHaveURL(/reservation_status=created/);
+
+  return await expect
+    .poll(async () => {
+      const reservation = await findReservationForApplication(
+        supabase,
+        applicationId,
+      );
+      return reservation?.id ?? null;
+    })
+    .not.toBeNull()
+    .then(async () => {
+      const reservation = await findReservationForApplication(
+        supabase,
+        applicationId,
+      );
+
+      if (!reservation) {
+        throw new Error("Created reservation was not found");
+      }
+
+      return reservation.id;
+    });
+}
+
+test("adopts an active reservation manually without side effects", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { applicationId, contactId, displayName } =
+    await createQualifiedApplicationFixture(supabase);
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/candidatures/${applicationId}`);
+  await expect(page.getByRole("heading", { name: displayName })).toBeVisible();
+
+  const reservationId = await createDraftReservation(
+    page,
+    supabase,
+    applicationId,
+  );
+
+  await page.goto(`/reservations/${reservationId}`);
+  await page.getByRole("button", { name: "Confirmer la réservation" }).click();
+  await expect(page).toHaveURL(/activation_status=success/);
+  await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+
+  const beforeAdoption = await readReservation(supabase, reservationId);
+  expect(beforeAdoption.status).toBe("active");
+  expect(beforeAdoption.adoption_completed_at).toBeNull();
+  expect(beforeAdoption.application_id).toBe(applicationId);
+  expect(beforeAdoption.contact_id).toBe(contactId);
+  const paymentCountBefore = await countRows(supabase, "payments", reservationId);
+  const documentCountBefore = await countRows(supabase, "documents", reservationId);
+  const noteCountBefore = await countRows(supabase, "notes", reservationId);
+  expect(paymentCountBefore).toBe(0);
+  expect(documentCountBefore).toBe(0);
+  expect(noteCountBefore).toBe(0);
+
+  await expect(page.getByRole("button", { name: "Finaliser l’adoption" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cette action finalise manuellement l’adoption. Elle ne crée ni paiement, ni document, ni note, ni modification d’animal.",
+    ),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Finaliser l’adoption" }).click();
+  await expect(page).toHaveURL(/adoption_status=success/);
+  await expect(page.getByText("L’adoption a été finalisée.")).toBeVisible();
+  await expect(page.getByText("Adopté", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Finaliser l’adoption" }),
+  ).toHaveCount(0);
+
+  const afterAdoption = await readReservation(supabase, reservationId);
+  expect(afterAdoption.status).toBe("adopted");
+  expect(afterAdoption.adoption_completed_at).not.toBeNull();
+  expect(afterAdoption.updated_by).not.toBeNull();
+  expect(afterAdoption.updated_at).not.toBe(beforeAdoption.updated_at);
+  expect(afterAdoption.reservation_confirmed_at).toBe(
+    beforeAdoption.reservation_confirmed_at,
+  );
+  expect(afterAdoption.animal_id).toBe(beforeAdoption.animal_id);
+  expect(afterAdoption.animal_assigned_at).toBe(
+    beforeAdoption.animal_assigned_at,
+  );
+  expect(afterAdoption.price_cents).toBe(beforeAdoption.price_cents);
+  expect(afterAdoption.internal_comment).toBe(beforeAdoption.internal_comment);
+  expect(afterAdoption.pre_reservation_deadline).toBe(
+    beforeAdoption.pre_reservation_deadline,
+  );
+  expect(await countRows(supabase, "payments", reservationId)).toBe(
+    paymentCountBefore,
+  );
+  expect(await countRows(supabase, "documents", reservationId)).toBe(
+    documentCountBefore,
+  );
+  expect(await countRows(supabase, "notes", reservationId)).toBe(
+    noteCountBefore,
+  );
+});

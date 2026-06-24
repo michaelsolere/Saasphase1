@@ -23,6 +23,7 @@ import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
 import {
+  adoptReservation,
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
   updateReservationPrice,
@@ -198,6 +199,7 @@ export default async function ReservationDetailPage({
     price_status?: string;
     payment_create_status?: string;
     activation_status?: string;
+    adoption_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
   }>;
@@ -470,6 +472,33 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.adoption_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                L’adoption a été finalisée.
+              </p>
+            ) : null}
+
+            {query.adoption_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation ne peut pas être finalisée dans son état actuel.
+              </p>
+            ) : null}
+
+            {query.adoption_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’adoption n’a pas pu être finalisée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             {query.animal_assign_status === "success" ? (
               <p
                 role="status"
@@ -611,6 +640,30 @@ export default async function ReservationDetailPage({
                         className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                       >
                         Confirmer la réservation
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {reservation.status === "active" ? (
+                    <form
+                      action={adoptReservation}
+                      className="mt-8 border-t pt-6"
+                    >
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action finalise manuellement l’adoption. Elle ne
+                        crée ni paiement, ni document, ni note, ni modification
+                        d’animal.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      >
+                        Finaliser l’adoption
                       </button>
                     </form>
                   ) : null}
