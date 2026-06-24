@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : cinq écritures métier contrôlées validées localement
-Dernier commit connu : `7f807176 Merge PR82: Create payment from reservation`
+Dernier état connu : six écritures métier contrôlées validées localement
+Dernier commit connu : `d484f792 Merge PR84: Mark requested payment as paid`
 
 Le dépôt contient désormais :
 
@@ -35,6 +35,7 @@ Le dépôt contient désormais :
 * une action serveur contrôlée pour modifier ou retirer le commentaire interne d'une réservation existante (`internal_comment`) ;
 * une action serveur contrôlée pour modifier ou retirer l’échéance de pré-réservation d’une réservation existante (`pre_reservation_deadline`) ;
 * une action serveur contrôlée pour créer un paiement manuel lié à une réservation existante (`createReservationPayment`) ;
+* une action serveur contrôlée pour marquer une demande de paiement `requested` comme réglée `paid` (`markPaymentAsPaid`) ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
@@ -1942,8 +1943,88 @@ Hors périmètre :
 * aucune mise à jour des fixtures/seed ;
 * aucun type généré.
 
-Note :
 Le projet dispose désormais de cinq écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, l'édition limitée de l'échéance de pré-réservation d'une réservation existante, et enfin la création contrôlée d'un paiement manuel. La majorité des pages restent consultatives, avec quelques complétions limitées relues et validées côté serveur.
+
+### PR84 — Mark requested payment as paid
+
+Objectif : ajouter une sixième écriture métier contrôlée en permettant de marquer un paiement `requested` comme `paid` depuis `/payments/[id]`.
+
+Contenu principal :
+* création de l'action serveur `markPaymentAsPaid` ;
+* transition contrôlée de statut `requested` → `paid` ;
+* affichage du formulaire "Marquer comme payé" uniquement sur `/payments/[id]` si le paiement a le statut `requested` ;
+* relecture du paiement côté serveur dans `payments` avec vérification RLS/organisation ;
+* refus de la transition si le paiement est marqué supprimé (`deleted_at` non nul) ;
+* refus de la transition si le statut actuel est différent de `requested` (ex. déjà `paid`, `cancelled`, etc.), en retournant un code `invalid_state` ;
+* validation de la date `paid_date` :
+  * obligatoire, format `YYYY-MM-DD` ;
+  * rejet des dates calendaires invalides (ex. `2026-02-31`) ;
+  * stockage dans `paid_at` calé à midi UTC (`YYYY-MM-DDT12:00:00.000Z`) pour éviter les décalages de fuseaux horaires ;
+* validation de la méthode de paiement `payment_method` (uniquement `bank_transfer`, `cash`, `card`, `cheque`, `other`) ;
+* validation des notes optionnelles :
+  * trim et conversion en `null` si le champ est vide ;
+  * limite stricte à 2 000 caractères maximum ;
+* mise à jour restreinte aux champs métier :
+  * `status` (positionné à `'paid'`) ;
+  * `paid_at` ;
+  * `payment_method` ;
+  * `notes` ;
+  * `updated_by` (identifiant de l'utilisateur connecté) ;
+  * `updated_at` ;
+* conservation et immuabilité des champs :
+  * `amount_cents` ;
+  * `payment_type` ;
+  * `currency` ;
+  * `requested_at` ;
+  * `due_date` ;
+  * `organization_id` ;
+  * `contact_id` ;
+  * `reservation_id` ;
+* revalidation (via `revalidatePath`) de la route de détail du paiement, de la liste globale des paiements, et des routes de réservation si `reservation_id` est présent ;
+* affichage d'un message de retour utilisateur clair.
+
+Agrégats :
+* `paid_cents` est calculé dynamiquement par la vue `reservation_overview` ;
+* le passage de `requested` à `paid` fait entrer le montant du paiement dans le calcul de `paid_cents` ;
+* dans le scénario de recette, `paid_cents` est bien passé de `30000` à `160000` ;
+* aucun agrégat n'est écrit ou stocké directement dans la table `reservations`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* `supabase db reset` exécuté avec succès ;
+* login local OK ;
+* paiement seed demandé utilisé : id `a0000000-0000-4000-8000-000000000002`, status initial `requested`, montant `130000` (1 300,00 €) lié à la réservation d'Alice Martin (id `90000000-0000-4000-8000-000000000001`) ;
+* fiche paiement accessible et formulaire "Marquer comme payé" visible avant action ;
+* passage à `paid` validé avec succès (date de paiement `2026-07-25`, virement `bank_transfer`, note `"Paiement reçu après relance."`) ;
+* après succès : redirection vers `/payments/[id]?payment_mark_status=success` ;
+* formulaire disparu de la fiche après la transition réussie vers `paid` ;
+* vérification en base : status = `paid`, `paid_at = 2026-07-25 12:00:00+00` (midi UTC), méthode et note correctement mises à jour ;
+* champs immuables (`amount_cents`, `payment_type`, `currency`, `requested_at`, `due_date`, `organization_id`, `contact_id`, `reservation_id`) confirmés inchangés ;
+* état invalide testé et refusé : tentative de re-soumettre l'action sur le paiement déjà `paid` redirige vers `payment_mark_status=invalid_state` sans aucune modification ;
+* erreurs de validation testées et rejetées : date invalide `2026-02-31` et note trop longue (> 2 000 caractères) redirigent vers `payment_mark_status=error` sans altération des données ni des agrégats.
+
+Hors périmètre :
+* aucun changement du statut de la réservation ;
+* aucune modification de `price_cents` de la réservation ;
+* aucune modification de `internal_comment` de la réservation ;
+* aucune modification de `pre_reservation_deadline` de la réservation ;
+* aucun changement des rangs de priorité ;
+* aucune note créée dans la table `notes` ;
+* aucun document ou reçu créé ;
+* aucun remboursement créé ;
+* aucune attribution d'animal ;
+* aucun paiement en ligne / Stripe ;
+* aucune migration de base de données ;
+* aucune règle RLS / RPC / SQL modifiée ;
+* aucune mise à jour des fixtures/seed ;
+* aucun type généré.
+
+Note :
+Le projet dispose désormais de six écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, l'édition limitée de l'échéance de pré-réservation d'une réservation existante, la création contrôlée d'un paiement manuel, et enfin le passage contrôlé d'une demande de paiement à payé. La majorité des pages restent consultatives, avec quelques complétions limitées relues et validées côté serveur.
 
 ## Décisions techniques à conserver
 
@@ -2038,7 +2119,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé cinq écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), ainsi que la création manuelle d'un paiement lié depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré, aucune note créée automatiquement et aucune attribution animal.
+Le projet a aussi validé six écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), la création manuelle d'un paiement lié depuis `/reservations/[id]`, ainsi que le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré, aucune note créée automatiquement et aucune attribution animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -2068,6 +2149,7 @@ Le projet a aussi validé cinq écritures métier contrôlées. Une candidature 
 * `/reservations/[id]` permet de modifier uniquement l’échéance de pré-réservation d’une réservation existante ;
 * `/reservations/[id]` accepte un champ date vide pour retirer l’échéance de pré-réservation ;
 * `/reservations/[id]` permet de créer manuellement un paiement lié à la réservation ;
+* `/payments/[id]` permet de marquer une demande de paiement `requested` comme réglée `paid` ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -2076,7 +2158,7 @@ Le projet a aussi validé cinq écritures métier contrôlées. Une candidature 
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation et de la création contrôlée de paiement manuel d'une réservation existante.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, et du passage contrôlé d'une demande de paiement à payé.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -2088,7 +2170,7 @@ Limites conservées explicitement :
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`) et l'échéance de pré-réservation (`pre_reservation_deadline`), et aucun autre ajout que la création manuelle de paiement ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`) et l'échéance de pré-réservation (`pre_reservation_deadline`), aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé ;
 * aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -2107,7 +2189,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation et la création contrôlée de paiement manuel d'une réservation existante ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, la création contrôlée de paiement manuel d'une réservation existante, et le passage contrôlé d'un paiement de `requested` à `paid` ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -2123,6 +2205,7 @@ Pistes possibles :
 * l'édition contrôlée du commentaire interne d'une réservation est validée localement ;
 * l'édition contrôlée de l'échéance de pré-réservation d'une réservation est validée localement ;
 * la création contrôlée de paiement manuel d'une réservation est validée localement ;
+* le passage contrôlé d'une demande de paiement à payé est validé localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
@@ -2131,7 +2214,7 @@ Pistes possibles :
 * concevoir plus tard une édition contrôlée des rangs ou d'autres attributs de réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard le paiement en ligne / Stripe dans une PR dédiée ;
-* concevoir plus tard les remboursements, reports, avoirs ou retenues de paiement dans une PR dédiée ;
+* concevoir plus tard les remboursements manuels et les annulations/éditions de paiement dans une PR dédiée ;
 * concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
 * concevoir plus tard le workflow métier et l'évolution du statut de la réservation ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
