@@ -26,6 +26,7 @@ import {
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
   updateReservationPrice,
+  assignAnimalToReservation,
 } from "@/features/reservations/actions";
 import { createReservationPayment } from "@/features/payments/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
@@ -190,6 +191,7 @@ export default async function ReservationDetailPage({
     deadline_status?: string;
     price_status?: string;
     payment_create_status?: string;
+    animal_assign_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -211,6 +213,55 @@ export default async function ReservationDetailPage({
     .maybeSingle();
 
   const reservation = rawReservation as ReservationOverview | null;
+
+  // Fetch available animals of the organization if reservation has no animal
+  let availableAnimals: Array<{
+    id: string;
+    display_name: string;
+    temporary_name: string | null;
+    call_name: string | null;
+    official_name: string | null;
+    sex: string;
+    status: string;
+    species: string;
+    breed: string;
+  }> = [];
+  let availableAnimalsError: unknown = null;
+
+  if (reservation && reservation.organization_id && !reservation.animal_id) {
+    const { data: rawAnimals, error: fetchAnimalsError } = await supabase
+      .from("animals")
+      .select("id, display_name, temporary_name, call_name, official_name, sex, status, species, breed")
+      .eq("organization_id", reservation.organization_id)
+      .is("deleted_at", null)
+      .in("status", ["born", "active", "available"]);
+
+    if (fetchAnimalsError) {
+      availableAnimalsError = fetchAnimalsError;
+    } else if (rawAnimals) {
+      const finalStatuses = ["withdrawn", "cancelled", "expired", "archived"];
+      const { data: activeResWithAnimals, error: activeResError } = await supabase
+        .from("reservations")
+        .select("animal_id")
+        .eq("organization_id", reservation.organization_id)
+        .is("deleted_at", null)
+        .not("animal_id", "is", null)
+        .not("status", "in", `(${finalStatuses.join(",")})`);
+
+      if (activeResError) {
+        availableAnimalsError = activeResError;
+      } else {
+        const assignedAnimalIds = new Set(
+          (activeResWithAnimals || [])
+            .map((r) => r.animal_id)
+            .filter(Boolean)
+        );
+        availableAnimals = (rawAnimals as typeof availableAnimals).filter(
+          (animal) => !assignedAnimalIds.has(animal.id)
+        );
+      }
+    }
+  }
 
   // Fetch the editable internal comment directly because reservation_overview
   // intentionally does not expose it.
@@ -382,6 +433,42 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.animal_assign_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                L’animal a été attribué à la réservation.
+              </p>
+            ) : null}
+
+            {query.animal_assign_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’attribution n’a pas pu être effectuée. Aucune autre donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.animal_assign_status === "already_assigned" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Cette réservation possède déjà un animal attribué.
+              </p>
+            ) : null}
+
+            {query.animal_assign_status === "animal_unavailable" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Cet animal n’est plus disponible pour attribution.
               </p>
             ) : null}
 
@@ -571,9 +658,62 @@ export default async function ReservationDetailPage({
                       Impossible de charger l’animal lié.
                     </p>
                   ) : !relatedAnimal ? (
-                    <p className="mt-5 text-sm text-muted">
-                      Aucun animal lié à cette réservation.
-                    </p>
+                    <div className="space-y-6">
+                      <p className="mt-5 text-sm text-muted">
+                        Aucun animal lié à cette réservation.
+                      </p>
+
+                      {!(reservation.status && ["withdrawn", "cancelled", "expired", "archived"].includes(reservation.status)) && (
+                        <div className="border-t pt-6">
+                          {availableAnimalsError ? (
+                            <p role="alert" className="text-sm text-amber-800">
+                              Impossible de charger les animaux disponibles.
+                            </p>
+                          ) : availableAnimals.length === 0 ? (
+                            <p className="text-sm text-muted">
+                              Aucun animal disponible pour attribution.
+                            </p>
+                          ) : (
+                            <form action={assignAnimalToReservation} className="space-y-4">
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <div>
+                                <label htmlFor="animal_id" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-2">
+                                  Attribuer un animal
+                                </label>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                                  <div className="max-w-xs flex-1">
+                                    <select
+                                      id="animal_id"
+                                      name="animal_id"
+                                      required
+                                      className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                                    >
+                                      <option value="">-- Choisir un animal --</option>
+                                      {availableAnimals.map((animal) => {
+                                        const name = getAnimalDisplayName(animal);
+                                        const sex = getAnimalSexLabel(animal.sex);
+                                        const breed = animal.breed || "Race inconnue";
+                                        return (
+                                          <option key={animal.id} value={animal.id}>
+                                            {name} ({sex} - {breed})
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  </div>
+                                  <button
+                                    type="submit"
+                                    className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                                  >
+                                    Attribuer l’animal
+                                  </button>
+                                </div>
+                              </div>
+                            </form>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                       <DetailItem

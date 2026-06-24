@@ -251,3 +251,112 @@ export async function updateReservationPreReservationDeadline(
   revalidatePath(`/reservations/${reservationId}`);
   redirect(deadlineUrl(reservationId, "success"));
 }
+
+export async function assignAnimalToReservation(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !reservationId) {
+    redirect("/reservations?erreur=assignation");
+  }
+
+  const animalId = formData.get("animal_id");
+
+  if (typeof animalId !== "string" || !animalId) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // 1. Relire la réservation
+  const { data: reservation, error: readResError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, animal_id, status, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readResError || !reservation) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  // 2. Vérifier si un animal est déjà attribué
+  if (reservation.animal_id) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=already_assigned`);
+  }
+
+  // 3. Vérifier que la réservation n'est pas finale
+  const finalStatuses = ["withdrawn", "cancelled", "expired", "archived"];
+  if (finalStatuses.includes(reservation.status)) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  // 4. Relire l'animal
+  const { data: animal, error: readAnimalError } = await supabase
+    .from("animals")
+    .select("id, organization_id, status, deleted_at")
+    .eq("id", animalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readAnimalError || !animal) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+  }
+
+  // 5. Vérifier la cohérence d'organisation
+  if (animal.organization_id !== reservation.organization_id) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  // 6. Vérifier le statut de l'animal
+  const allowedAnimalStatuses = ["born", "active", "available"];
+  if (!allowedAnimalStatuses.includes(animal.status)) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+  }
+
+  // 7. Vérifier que l'animal n'est pas déjà lié à une autre réservation active
+  const { data: concurrentRes, error: concurrentResError } = await supabase
+    .from("reservations")
+    .select("id")
+    .eq("animal_id", animalId)
+    .is("deleted_at", null)
+    .not("status", "in", `(${finalStatuses.join(",")})`);
+
+  if (concurrentResError) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  if (concurrentRes && concurrentRes.length > 0) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+  }
+
+  // 8. Mettre à jour
+  const { error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      animal_id: animalId,
+      animal_assigned_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", reservationId)
+    .eq("organization_id", reservation.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+
+  redirect(`/reservations/${reservationId}?animal_assign_status=success`);
+}
