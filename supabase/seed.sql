@@ -321,6 +321,43 @@ values (
   '10000000-0000-4000-8000-000000000001'
 );
 
+insert into public.contacts (
+  id,
+  organization_id,
+  contact_type,
+  first_name,
+  last_name,
+  display_name,
+  email,
+  phone,
+  address_line1,
+  postal_code,
+  city,
+  country,
+  origin_channel,
+  primary_status,
+  created_by,
+  updated_by
+)
+values (
+  '70000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000001',
+  'person',
+  'Claire',
+  'Bernard',
+  'Claire Bernard',
+  'claire.bernard@example.invalid',
+  '+33600000002',
+  '24 avenue des Pins',
+  '44000',
+  'Nantes',
+  'FR',
+  'manual',
+  'active',
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001'
+);
+
 insert into public.applications (
   id,
   organization_id,
@@ -371,6 +408,61 @@ values (
   'qualified',
   '2026-02-10 09:30:00+00',
   '2026-02-12 14:00:00+00',
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001'
+);
+
+insert into public.applications (
+  id,
+  organization_id,
+  contact_id,
+  species,
+  breed,
+  desired_period,
+  desired_litter_group_id,
+  desired_sex_preference,
+  desired_quantity,
+  project_description,
+  housing_type,
+  has_garden,
+  garden_fenced,
+  adults_count,
+  children_description,
+  other_animals,
+  dog_experience,
+  daily_absence,
+  planned_activities,
+  status,
+  submitted_at,
+  reviewed_at,
+  reviewed_by,
+  created_by,
+  updated_by
+)
+values (
+  '80000000-0000-4000-8000-000000000002',
+  '20000000-0000-4000-8000-000000000001',
+  '70000000-0000-4000-8000-000000000002',
+  'dog',
+  'Golden Retriever',
+  'Automne 2026',
+  '50000000-0000-4000-8000-000000000001',
+  'female_only',
+  1,
+  'Fixture QA pour tester la création d’une réservation brouillon depuis une candidature qualifiée sans réservation existante.',
+  'house',
+  true,
+  true,
+  2,
+  'Famille fictive avec un enfant habitué aux chiens.',
+  'Aucun autre animal déclaré.',
+  'A déjà accueilli un chien adulte dans le foyer.',
+  'Présence régulière au domicile, absences limitées.',
+  'Vie de famille, promenades et éducation positive.',
+  'qualified',
+  '2026-03-05 08:45:00+00',
+  '2026-03-06 13:30:00+00',
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000001'
