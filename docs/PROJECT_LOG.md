@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : huit écritures métier contrôlées validées localement
-Dernier commit connu : `224c0fbc Merge PR88: Unassign animal from reservation`
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, avec huit écritures métier contrôlées
+Dernier commit connu : `726b4cc2 Merge PR89: Update project log with animal unassignment milestone`
 
 Le dépôt contient désormais :
 
@@ -2127,6 +2127,93 @@ Recette locale validée :
 Note :
 Le projet dispose désormais de huit écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, l'édition limitée de l'échéance de pré-réservation d'une réservation existante, la création contrôlée d'un paiement manuel, le passage contrôlé d'une demande de paiement à payé, l'attribution contrôlée d'un animal existant à une réservation existante, et enfin le retrait contrôlé d'attribution animal/réservation. La majorité des pages restent consultatives, avec des complétions limitées relues et validées côté serveur.
 
+## Recette globale complète validée
+
+Cette recette documente le point de stabilité local du parcours complet candidature → réservation → paiement → animal, après validation sur `main`.
+
+Contexte de validation :
+* branche testée : `main` ;
+* dernier commit testé : `726b4cc2 Merge PR89: Update project log with animal unassignment milestone` ;
+* base locale réinitialisée avec `supabase db reset` ;
+* application locale lancée avec `pnpm dev` ;
+* compte local utilisé : `owner@saasphase1.invalid`.
+
+Données testées :
+* candidature Claire Bernard : `80000000-0000-4000-8000-000000000002` ;
+* contact Claire Bernard : `70000000-0000-4000-8000-000000000002` ;
+* réservation créée : `efbb86f3-cea7-4d81-93a5-8c911b8166c5` ;
+* paiement créé : `9794a489-bd6a-4d94-aa99-eb4bfd3c2ddf` ;
+* animal : `d0000000-0000-4000-8000-000000000001`.
+
+Parcours principal validé :
+* connexion au compte local OK ;
+* accès aux pages privées OK ;
+* candidature Claire Bernard affichée avec le statut `qualified` OK ;
+* aucune réservation initiale liée à la candidature OK ;
+* création d'une réservation brouillon depuis la candidature OK ;
+* réservation créée en `draft`, avec `application_id` et `contact_id` corrects, `animal_id = null` ;
+* tarif convenu mis à jour à `185000` centimes OK ;
+* commentaire interne mis à jour à `Projet d’adoption validé pour Nala.` OK ;
+* échéance de pré-réservation mise à `2026-07-15 12:00:00+00` OK ;
+* retrait de l'échéance de pré-réservation à `null` OK ;
+* paiement manuel demandé créé avec `amount_cents = 20000`, `status = requested`, `payment_type = arrhes` OK ;
+* passage du paiement à `paid` OK ;
+* paiement payé avec `paid_at = 2026-07-20 12:00:00+00` ;
+* `payment_method = bank_transfer` ;
+* note de paiement mise à `Arrhes reçues.` ;
+* agrégat `paid_cents = 20000` sur `reservation_overview` ;
+* attribution de l'animal à la réservation OK ;
+* fiche animal affichant la réservation liée OK ;
+* retrait de l'attribution animal/réservation OK ;
+* fiche animal après retrait OK, avec absence de réservation liée et données propres de l'animal conservées.
+
+Synthèse base finale :
+* `reservation.status = draft` ;
+* `reservation.price_cents = 185000` ;
+* `reservation.internal_comment = Projet d’adoption validé pour Nala.` ;
+* `reservation.pre_reservation_deadline = null` ;
+* `reservation.animal_id = null` ;
+* `reservation.animal_assigned_at = null` ;
+* `paid_cents = 20000` ;
+* `refunded_cents = 0` ;
+* nombre de paiements liés à la réservation : `1` ;
+* documents liés à la réservation : `0` ;
+* documents liés au paiement : `0` ;
+* notes liées à la réservation : `0` ;
+* remboursements non applicables car la table `refunds` est absente du schéma local ;
+* animal inchangé après attribution puis retrait.
+
+Non-effets de bord confirmés :
+* aucun document créé automatiquement ;
+* aucune note créée automatiquement ;
+* aucun remboursement créé ;
+* aucun animal créé, modifié ou supprimé ;
+* aucun statut de réservation modifié automatiquement ;
+* aucun fichier du dépôt modifié pendant la recette.
+
+Cas d'erreur testés ou vérifiés :
+* réservation déjà existante : création protégée par l'UI, garde serveur confirmée par lecture du code ;
+* tarif invalide : rejeté, tarif inchangé ;
+* commentaire trop long : rejeté, commentaire inchangé ;
+* échéance invalide : bloquée côté input HTML `date` avant soumission ;
+* paiement à montant nul : rejeté, aucun paiement supplémentaire créé ;
+* paiement déjà payé : formulaire de passage à payé masqué, garde serveur confirmée par lecture du code ;
+* animal déjà attribué : protégé par l'UI et l'état serveur ;
+* retrait sans animal : bouton masqué, garde serveur confirmée par lecture du code ;
+* retrait sur statut final : non testé faute de fixture finale sans manipulation directe.
+
+État courant après recette :
+* le projet dispose de huit écritures métier contrôlées ;
+* la chaîne candidature → réservation → paiement → animal est validée globalement ;
+* le prochain bloc fonctionnel peut être choisi après ce point de stabilité, sans urgence à ajouter une nouvelle écriture métier.
+
+Prochaines étapes possibles après ce point :
+* ajouter plus tard des tests automatisés Playwright sur le parcours global ;
+* concevoir plus tard les statuts de réservation et leurs transitions métier ;
+* concevoir plus tard les remboursements ;
+* concevoir plus tard les reçus et documents générés ;
+* envisager plus tard une contrainte SQL d'unicité animal/réservation si l'usage concurrent devient un risque concret.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2301,6 +2388,7 @@ Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
 * `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
+* la chaîne candidature → réservation → paiement → animal est validée globalement comme point de stabilité ;
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
 * l'édition contrôlée du commentaire interne d'une réservation est validée localement ;
@@ -2309,17 +2397,20 @@ Pistes possibles :
 * le passage contrôlé d'une demande de paiement à payé est validé localement ;
 * l'attribution contrôlée d'un animal à une réservation est validée localement ;
 * le retrait contrôlé d'attribution animal/réservation est validé localement ;
+* ajouter plus tard des tests automatisés Playwright sur le parcours global ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
+* concevoir plus tard les reçus et documents générés dans une PR dédiée ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
 * concevoir plus tard une édition contrôlée des rangs ou d'autres attributs de réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard le paiement en ligne / Stripe dans une PR dédiée ;
-* concevoir plus tard les remboursements manuels et les annulations/éditions de paiement dans une PR dédiée ;
-* recette globale complète du parcours candidat → réservation → paiement → animal ;
+* concevoir plus tard les remboursements manuels dans une PR dédiée ;
+* concevoir plus tard les annulations/éditions de paiement dans une PR dédiée ;
 * concevoir plus tard le workflow métier et l'évolution du statut de la réservation ;
+* envisager plus tard une contrainte SQL d'unicité animal/réservation si l'usage concurrent le justifie ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
 * garder toute nouvelle écriture métier dans une PR courte, prudente, relue côté serveur et validée localement ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
