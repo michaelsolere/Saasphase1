@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : deux écritures métier contrôlées validées localement
-Dernier commit connu : `8d67fe64 Merge PR76: Edit reservation price`
+Dernier état connu : trois écritures métier contrôlées validées localement
+Dernier commit connu : `397faf40 Merge PR78: Edit reservation internal comment`
 
 Le dépôt contient désormais :
 
@@ -32,6 +32,7 @@ Le dépôt contient désormais :
 * une action serveur contrôlée pour créer une réservation `draft` depuis une candidature `qualified` ;
 * une UX de retour claire autour de la création d'une réservation brouillon depuis une candidature ;
 * une action serveur contrôlée pour modifier uniquement le tarif convenu d'une réservation existante (`price_cents`) ;
+* une action serveur contrôlée pour modifier ou retirer le commentaire interne d'une réservation existante (`internal_comment`) ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
@@ -1717,6 +1718,75 @@ Hors périmètre :
 Note :
 Le projet dispose désormais de deux écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, puis l'édition limitée du tarif convenu d'une réservation existante. La majorité des pages restent consultatives, avec quelques complétions volontairement courtes, relues côté serveur et validées localement.
 
+### PR78 — Edit reservation internal comment
+
+Objectif : ajouter une troisième écriture métier contrôlée en permettant de modifier ou retirer le commentaire interne d'une réservation depuis `/reservations/[id]`.
+
+Contenu principal :
+* création de l'action serveur `updateReservationInternalComment` ;
+* édition limitée au champ métier `internal_comment` ;
+* lecture directe de `internal_comment` depuis `reservations`, car `reservation_overview` ne l'expose pas ;
+* trim du commentaire côté serveur ;
+* champ vide accepté pour retirer le commentaire (`internal_comment = null`) ;
+* limite serveur à 2 000 caractères ;
+* rejet des valeurs trop longues ;
+* relecture de la réservation côté serveur avant mise à jour ;
+* `organization_id`, `contact_id` et `application_id` non fournis par le client ;
+* mise à jour de `updated_by` et `updated_at` ;
+* affichage d'un message de succès ou d'erreur neutre après soumission.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* `supabase db reset` OK ;
+* login local avec `owner@saasphase1.invalid` ;
+* fiche réservation Alice Martin accessible sur `/reservations/90000000-0000-4000-8000-000000000001` ;
+* zone `Commentaire interne de réservation` visible ;
+* ajout du commentaire `Client très motivé, à rappeler après confirmation de portée.` validé :
+  * message de succès affiché ;
+  * commentaire affiché dans la textarea ;
+  * `internal_comment` conforme en base ;
+  * `updated_by = 10000000-0000-4000-8000-000000000001` ;
+  * `updated_at` renseigné ;
+  * `status = active` inchangé ;
+  * `price_cents = 160000` inchangé ;
+  * `animal_id = null` inchangé ;
+  * aucune note créée ;
+  * aucun paiement, document ou animal créé ;
+* modification du commentaire `Projet confirmé, préférence femelle maintenue.` validée :
+  * message de succès affiché ;
+  * commentaire affiché ;
+  * `internal_comment` conforme en base ;
+  * aucune note créée ;
+* retrait du commentaire validé :
+  * champ vidé ;
+  * message de succès affiché ;
+  * champ vide ;
+  * `internal_comment = null` en base ;
+  * statut inchangé ;
+  * tarif inchangé ;
+  * aucun paiement, document, note ou animal créé ;
+* valeur trop longue validée :
+  * message d'erreur affiché ;
+  * commentaire inchangé ;
+  * aucune autre donnée modifiée.
+
+Hors périmètre :
+* aucun changement de statut ;
+* aucune modification du prix ;
+* aucune note créée dans la table `notes` ;
+* aucun paiement créé ;
+* aucun document créé ;
+* aucune attribution animal ;
+* aucune migration ;
+* aucune modification RLS, RPC, SQL, seed ou type généré.
+
+Note :
+Le projet dispose désormais de trois écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, puis l'édition limitée du commentaire interne d'une réservation existante. La majorité des pages restent consultatives, avec quelques complétions limitées, relues côté serveur et validées localement.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1810,7 +1880,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé deux écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement, aucun document et aucune attribution animal.
+Le projet a aussi validé trois écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu et de son commentaire interne depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement, aucun document, aucune note créée automatiquement et aucune attribution animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1835,6 +1905,8 @@ Le projet a aussi validé deux écritures métier contrôlées. Une candidature 
 * `/reservations` affiche la réservation brouillon créée ;
 * `/reservations/[id]` permet de modifier uniquement le tarif convenu d'une réservation existante ;
 * `/reservations/[id]` accepte un champ tarif vide pour retirer le tarif convenu ;
+* `/reservations/[id]` permet de modifier uniquement le commentaire interne d'une réservation existante ;
+* `/reservations/[id]` accepte un champ commentaire vide pour retirer le commentaire interne ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -1843,7 +1915,7 @@ Le projet a aussi validé deux écritures métier contrôlées. Une candidature 
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée et de l'édition contrôlée du tarif convenu d'une réservation existante.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu et de l'édition contrôlée du commentaire interne d'une réservation existante.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -1855,7 +1927,7 @@ Limites conservées explicitement :
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`) ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`) et le commentaire interne (`internal_comment`) ;
 * aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -1874,7 +1946,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée et l'édition contrôlée du tarif convenu d'une réservation existante ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu et l'édition contrôlée du commentaire interne d'une réservation existante ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -1887,12 +1959,12 @@ Pistes possibles :
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
+* l'édition contrôlée du commentaire interne d'une réservation est validée localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
-* concevoir plus tard une édition contrôlée du commentaire interne d'une réservation ;
 * concevoir plus tard une édition contrôlée des rangs ou dates de pré-réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard une création contrôlée de paiement depuis une réservation ;
