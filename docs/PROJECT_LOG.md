@@ -2026,6 +2026,59 @@ Hors périmètre :
 Note :
 Le projet dispose désormais de six écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, l'édition limitée de l'échéance de pré-réservation d'une réservation existante, la création contrôlée d'un paiement manuel, et enfin le passage contrôlé d'une demande de paiement à payé. La majorité des pages restent consultatives, avec quelques complétions limitées relues et validées côté serveur.
 
+### PR86 — Assign animal to reservation
+
+Objectif : implémenter l'attribution contrôlée d'un animal existant à une réservation existante depuis `/reservations/[id]`.
+
+Contenu principal :
+* Action serveur `assignAnimalToReservation` dans `src/features/reservations/actions.ts` ;
+* Validation et filtrage des animaux disponibles côté serveur (dans le composant de page `/reservations/[id]`) ;
+* Formulaire d'attribution affiché si la réservation n'a pas d'animal lié et n'est pas dans un statut final ;
+* Affichage de l'animal en lecture seule avec lien vers `/animals/[id]` après attribution réussie ;
+* Gestion des bannières d’alerte selon le paramètre de recherche `animal_assign_status` (`success`, `error`, `already_assigned`, `animal_unavailable`).
+
+Validations serveur obligatoires :
+1. Utilisateur connecté, sinon redirection vers `/login`.
+2. Validité des identifiants `reservation_id` et `animal_id` (UUID).
+3. Réservation existante, non supprimée et appartenant à l'organisation de l'utilisateur.
+4. Réservation dans un statut non final (non `withdrawn`, `cancelled`, `expired`, `archived`).
+5. Réservation sans animal déjà attribué.
+6. L'animal existe, n'est pas supprimé, appartient à la même organisation et possède un statut compatible (`born`, `active`, `available`).
+7. L'animal n'est pas déjà lié à une autre réservation active/non finale (statuts finaux ignorés : `withdrawn`, `cancelled`, `expired`, `archived`).
+
+Champs modifiés :
+* `reservations.animal_id`
+* `reservations.animal_assigned_at`
+* `reservations.updated_by`
+* `reservations.updated_at`
+
+Champs et objets explicitement non modifiés :
+* `reservations.status` (pas de changement automatique de statut de la réservation)
+* Les autres champs de `reservations` (tarif, commentaires, deadlines)
+* Aucun paiement, document, note ou fiche animal créé ou altéré.
+
+Limite technique :
+* L’unicité animal/réservation est vérifiée côté serveur en Phase 1. Il n'existe pas encore de contrainte SQL unique partielle sur la base de données. Une contrainte SQL pourra être ajoutée plus tard si l'usage multi-utilisateur ou concurrent le justifie.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* `supabase db reset` exécuté avec succès ;
+* Login local OK ;
+* Réservation de démonstration testée : `90000000-0000-4000-8000-000000000001` (Alice Martin, active, sans animal initialement) ;
+* Animal de démonstration testé : `d0000000-0000-4000-8000-000000000001` (Nala - Démonstration, disponible) ;
+* Après succès : redirection vers `/reservations/[id]?animal_assign_status=success` ;
+* Formulaire disparu et animal affiché en lecture seule avec lien vers `/animals/[id]` ;
+* Vérification en base : `animal_id = d0000000-0000-4000-8000-000000000001`, `animal_assigned_at` et `updated_at` renseignés, `updated_by = 10000000-0000-4000-8000-000000000001` ;
+* Non-effets de bord confirmés : statut inchangé, tarif inchangé, aucun paiement/document/note généré ;
+* Tests de sécurité : validation de re-soumission bloquée (`already_assigned`), et validation de double réservation de l'animal bloquée (`animal_unavailable`).
+
+Note :
+Le projet dispose désormais de sept écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, l'édition limitée de l'échéance de pré-réservation d'une réservation existante, la création contrôlée d'un paiement manuel, le passage contrôlé d'une demande de paiement à payé, et enfin l'attribution contrôlée d'un animal existant à une réservation existante. La majorité des pages restent consultatives, avec quelques complétions limitées relues et validées côté serveur.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2119,7 +2172,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé six écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), la création manuelle d'un paiement lié depuis `/reservations/[id]`, ainsi que le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré, aucune note créée automatiquement et aucune attribution animal.
+Le projet a aussi validé sept écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, la création manuelle d'un paiement lié depuis `/reservations/[id]`, ainsi que le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré, aucune note créée automatiquement et aucun retrait d'attribution animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -2132,6 +2185,7 @@ Le projet a aussi validé six écritures métier contrôlées. Une candidature q
 * `/animals/[id]` affiche la réservation liée à l'animal ;
 * `/animals/[id]` affiche les documents liés à l'animal ;
 * `/reservations/[id]` affiche l'animal lié à la réservation ;
+* `/reservations/[id]` permet d'attribuer un animal disponible à la réservation ;
 * `/documents/[id]` affiche le contact lié au document ;
 * `/documents/[id]` affiche la candidature liée au document ;
 * `/documents/[id]` affiche la réservation liée au document ;
@@ -2158,7 +2212,7 @@ Le projet a aussi validé six écritures métier contrôlées. Une candidature q
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, et du passage contrôlé d'une demande de paiement à payé.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, et du passage contrôlé d'une demande de paiement à payé.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -2167,10 +2221,10 @@ Limites conservées explicitement :
 * aucune création d'animal ;
 * aucune édition d'animal ;
 * aucune suppression d'animal ;
-* aucune attribution animal/réservation ;
+* aucun retrait d'attribution animal/réservation ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`) et l'échéance de pré-réservation (`pre_reservation_deadline`), aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`) et l'attribution de l'animal (`animal_id`), aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé ;
 * aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -2189,7 +2243,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, la création contrôlée de paiement manuel d'une réservation existante, et le passage contrôlé d'un paiement de `requested` à `paid` ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, la création contrôlée de paiement manuel d'une réservation existante, et le passage contrôlé d'un paiement de `requested` à `paid` ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -2206,6 +2260,7 @@ Pistes possibles :
 * l'édition contrôlée de l'échéance de pré-réservation d'une réservation est validée localement ;
 * la création contrôlée de paiement manuel d'une réservation est validée localement ;
 * le passage contrôlé d'une demande de paiement à payé est validé localement ;
+* l'attribution contrôlée d'un animal à une réservation est validée localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
@@ -2215,7 +2270,7 @@ Pistes possibles :
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard le paiement en ligne / Stripe dans une PR dédiée ;
 * concevoir plus tard les remboursements manuels et les annulations/éditions de paiement dans une PR dédiée ;
-* concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
+* concevoir plus tard le retrait d'attribution animal ↔ réservation dans une PR dédiée ;
 * concevoir plus tard le workflow métier et l'évolution du statut de la réservation ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
 * garder toute nouvelle écriture métier dans une PR courte, prudente, relue côté serveur et validée localement ;
