@@ -707,6 +707,21 @@ export default async function ReservationDetailPage({
                     ) : null}
                   </dl>
 
+                  {isFinalReservationStatus(reservation.status) ? (
+                    <div className="mt-8 rounded-xl border bg-background px-4 py-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Statut final
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Cette réservation est finalisée avec le statut :{" "}
+                        <span className="font-semibold text-foreground">
+                          {getReservationStatusLabel(reservation.status)}
+                        </span>
+                        . Les actions de statut ne sont plus disponibles.
+                      </p>
+                    </div>
+                  ) : null}
+
                   {reservation.status === "draft" || reservation.status === "active" ? (
                     <div className="mt-8 border-t pt-6">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
