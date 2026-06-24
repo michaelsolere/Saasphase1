@@ -360,3 +360,69 @@ export async function assignAnimalToReservation(formData: FormData) {
 
   redirect(`/reservations/${reservationId}?animal_assign_status=success`);
 }
+
+export async function unassignAnimalFromReservation(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !reservationId) {
+    redirect("/reservations?erreur=desassignation");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // 1. Relire la réservation
+  const { data: reservation, error: readResError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, animal_id, status, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readResError || !reservation) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=error`);
+  }
+
+  // 2. Vérifier si un animal est actuellement attribué
+  const animalId = reservation.animal_id;
+  if (!animalId) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=no_animal`);
+  }
+
+  // 3. Vérifier que la réservation n'est pas finale
+  const finalStatuses = ["completed", "withdrawn", "cancelled", "expired", "archived"];
+  if (finalStatuses.includes(reservation.status)) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state`);
+  }
+
+  // 4. Mettre à jour la réservation
+  const { error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      animal_id: null,
+      animal_assigned_at: null,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", reservationId)
+    .eq("organization_id", reservation.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=error`);
+  }
+
+  // 5. Revalidations
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+
+  redirect(`/reservations/${reservationId}?animal_unassign_status=success`);
+}
