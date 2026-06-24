@@ -22,7 +22,10 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
-import { updateReservationPrice } from "@/features/reservations/actions";
+import {
+  updateReservationInternalComment,
+  updateReservationPrice,
+} from "@/features/reservations/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -67,6 +70,12 @@ type RelatedAnimal = {
   identification_number: string | null;
   color: string | null;
   coat_color: string | null;
+};
+
+type ReservationInternalComment = {
+  id: string;
+  internal_comment: string | null;
+  deleted_at: string | null;
 };
 
 function getUsefulDocumentDate(document: RelatedDocument) {
@@ -160,7 +169,10 @@ export default async function ReservationDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ price_status?: string }>;
+  searchParams: Promise<{
+    comment_status?: string;
+    price_status?: string;
+  }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -181,6 +193,20 @@ export default async function ReservationDetailPage({
     .maybeSingle();
 
   const reservation = rawReservation as ReservationOverview | null;
+
+  // Fetch the editable internal comment directly because reservation_overview
+  // intentionally does not expose it.
+  const { data: rawInternalComment, error: internalCommentError } = reservation?.id
+    ? await supabase
+        .from("reservations")
+        .select("id, internal_comment, deleted_at")
+        .eq("id", reservation.id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const reservationInternalComment =
+    rawInternalComment as ReservationInternalComment | null;
 
   // Fetch related animal
   const { data: rawAnimal, error: animalError } = reservation?.animal_id
@@ -266,6 +292,25 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Le tarif convenu n’a pas pu être mis à jour. Aucune autre
+                donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.comment_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le commentaire interne de réservation a bien été mis à jour.
+              </p>
+            ) : null}
+
+            {query.comment_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le commentaire interne n’a pas pu être mis à jour. Aucune autre
                 donnée n’a été modifiée.
               </p>
             ) : null}
@@ -360,6 +405,49 @@ export default async function ReservationDetailPage({
                       </button>
                     </div>
                   </form>
+
+                  <div className="mt-8 border-t pt-6">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Commentaire interne de réservation
+                    </h3>
+                    {internalCommentError ? (
+                      <p className="mt-3 text-sm text-muted">
+                        Le commentaire interne n’est pas disponible pour le
+                        moment.
+                      </p>
+                    ) : (
+                      <form
+                        action={updateReservationInternalComment}
+                        className="mt-3"
+                      >
+                        <input
+                          type="hidden"
+                          name="reservation_id"
+                          value={id}
+                        />
+                        <textarea
+                          name="internal_comment"
+                          rows={4}
+                          maxLength={2000}
+                          defaultValue={
+                            reservationInternalComment?.internal_comment ?? ""
+                          }
+                          className="w-full rounded-xl border bg-background px-4 py-3 text-sm leading-6 outline-none transition focus:border-accent"
+                        />
+                        <p className="mt-2 text-xs leading-5 text-muted">
+                          Commentaire synthétique interne lié à cette
+                          réservation. Pour un historique daté, utiliser plus
+                          tard les notes internes.
+                        </p>
+                        <button
+                          type="submit"
+                          className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                        >
+                          Enregistrer le commentaire
+                        </button>
+                      </form>
+                    )}
+                  </div>
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
