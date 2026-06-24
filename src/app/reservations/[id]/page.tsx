@@ -22,6 +22,7 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
+import { updateReservationPrice } from "@/features/reservations/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -146,12 +147,23 @@ function DetailItem({
   );
 }
 
+function formatPriceInputValue(priceCents: number | null) {
+  if (priceCents === null || priceCents === undefined) {
+    return "";
+  }
+
+  return (priceCents / 100).toFixed(2);
+}
+
 export default async function ReservationDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ price_status?: string }>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -239,10 +251,29 @@ export default async function ReservationDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
+            {query.price_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le tarif convenu a bien été mis à jour.
+              </p>
+            ) : null}
+
+            {query.price_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le tarif convenu n’a pas pu être mis à jour. Aucune autre
+                donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Réservation · Lecture seule
+                  Réservation · Consultation · complétion limitée
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
                   Réservation de {reservation.contact_display_name ?? "Client anonyme"}
@@ -287,6 +318,48 @@ export default async function ReservationDetailPage({
                       />
                     ) : null}
                   </dl>
+
+                  <form
+                    action={updateReservationPrice}
+                    className="mt-8 border-t pt-6"
+                  >
+                    <input
+                      type="hidden"
+                      name="reservation_id"
+                      value={id}
+                    />
+                    <label
+                      htmlFor="price"
+                      className="text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Tarif convenu
+                    </label>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="max-w-xs flex-1">
+                        <input
+                          id="price"
+                          name="price"
+                          type="text"
+                          inputMode="decimal"
+                          defaultValue={formatPriceInputValue(
+                            reservation.price_cents,
+                          )}
+                          placeholder="Ex. 1600,00"
+                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                        />
+                        <p className="mt-2 text-xs leading-5 text-muted">
+                          Saisir un montant en euros. Laisser vide pour retirer
+                          le tarif.
+                        </p>
+                      </div>
+                      <button
+                        type="submit"
+                        className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      >
+                        Enregistrer le tarif
+                      </button>
+                    </div>
+                  </form>
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
