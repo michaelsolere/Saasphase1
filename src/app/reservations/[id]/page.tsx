@@ -31,6 +31,7 @@ import {
   activateReservation,
   assignAnimalToReservation,
   unassignAnimalFromReservation,
+  withdrawReservation,
 } from "@/features/reservations/actions";
 import { createReservationPayment } from "@/features/payments/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
@@ -202,6 +203,7 @@ export default async function ReservationDetailPage({
     activation_status?: string;
     adoption_status?: string;
     cancellation_status?: string;
+    withdrawal_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
   }>;
@@ -528,6 +530,33 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.withdrawal_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Réservation marquée comme désistée.
+              </p>
+            ) : null}
+
+            {query.withdrawal_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation ne peut pas être marquée comme désistée dans son état actuel.
+              </p>
+            ) : null}
+
+            {query.withdrawal_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le désistement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             {query.animal_assign_status === "success" ? (
               <p
                 role="status"
@@ -719,6 +748,33 @@ export default async function ReservationDetailPage({
                         className="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
                       >
                         Annuler la réservation
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {reservation.status === "active" ? (
+                    <form
+                      action={withdrawReservation}
+                      className="mt-8 border-t pt-6"
+                    >
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action enregistre manuellement un désistement ou
+                        retrait du candidat ou adoptant. Elle ne crée aucun
+                        remboursement, ne modifie aucun paiement, ne crée ni
+                        document ni note, ne modifie pas l’animal, ne retire
+                        pas automatiquement l’attribution, et ne modifie ni
+                        tarif, ni commentaire, ni échéance.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
+                      >
+                        Marquer comme désistée
                       </button>
                     </form>
                   ) : null}
