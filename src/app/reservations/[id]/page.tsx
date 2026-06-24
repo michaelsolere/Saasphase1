@@ -27,6 +27,7 @@ import {
   updateReservationPreReservationDeadline,
   updateReservationPrice,
   assignAnimalToReservation,
+  unassignAnimalFromReservation,
 } from "@/features/reservations/actions";
 import { createReservationPayment } from "@/features/payments/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
@@ -192,6 +193,7 @@ export default async function ReservationDetailPage({
     price_status?: string;
     payment_create_status?: string;
     animal_assign_status?: string;
+    animal_unassign_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -472,6 +474,42 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.animal_unassign_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                L’attribution de l’animal a été retirée.
+              </p>
+            ) : null}
+
+            {query.animal_unassign_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le retrait de l’attribution n’a pas pu être effectué. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.animal_unassign_status === "no_animal" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Cette réservation ne possède aucun animal attribué.
+              </p>
+            ) : null}
+
+            {query.animal_unassign_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’attribution de cette réservation ne peut plus être modifiée.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -715,36 +753,57 @@ export default async function ReservationDetailPage({
                       )}
                     </div>
                   ) : (
-                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                      <DetailItem
-                        label="Nom"
-                        value={getAnimalDisplayName(relatedAnimal)}
-                      />
-                      <DetailItem
-                        label="Sexe"
-                        value={getAnimalSexLabel(relatedAnimal.sex)}
-                      />
-                      <DetailItem
-                        label="Statut"
-                        value={getAnimalStatusLabel(relatedAnimal.status)}
-                      />
-                      <DetailItem
-                        label="Date de naissance"
-                        value={formatAnimalDate(relatedAnimal.birth_date)}
-                      />
-                      <DetailItem
-                        label="Portée liée"
-                        value={reservation.litter_name}
-                      />
-                      <DetailItem
-                        label="Identification"
-                        value={relatedAnimal.identification_number}
-                      />
-                      <DetailItem
-                        label="Couleur ou robe"
-                        value={formatAnimalCoat(relatedAnimal)}
-                      />
-                    </dl>
+                    <div className="space-y-6">
+                      <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                        <DetailItem
+                          label="Nom"
+                          value={getAnimalDisplayName(relatedAnimal)}
+                        />
+                        <DetailItem
+                          label="Sexe"
+                          value={getAnimalSexLabel(relatedAnimal.sex)}
+                        />
+                        <DetailItem
+                          label="Statut"
+                          value={getAnimalStatusLabel(relatedAnimal.status)}
+                        />
+                        <DetailItem
+                          label="Date de naissance"
+                          value={formatAnimalDate(relatedAnimal.birth_date)}
+                        />
+                        <DetailItem
+                          label="Portée liée"
+                          value={reservation.litter_name}
+                        />
+                        <DetailItem
+                          label="Identification"
+                          value={relatedAnimal.identification_number}
+                        />
+                        <DetailItem
+                          label="Couleur ou robe"
+                          value={formatAnimalCoat(relatedAnimal)}
+                        />
+                      </dl>
+
+                      {!(reservation.status && ["completed", "withdrawn", "cancelled", "expired", "archived"].includes(reservation.status)) && (
+                        <div className="border-t pt-6">
+                          <form action={unassignAnimalFromReservation} className="space-y-4">
+                            <input type="hidden" name="reservation_id" value={id} />
+                            <div className="flex flex-col gap-3">
+                              <p className="text-xs text-muted">
+                                Cela retire uniquement le lien entre la réservation et l’animal. L’animal n’est pas supprimé.
+                              </p>
+                              <button
+                                type="submit"
+                                className="inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100/60 hover:border-red-300"
+                              >
+                                Retirer l’attribution
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </section>
 
