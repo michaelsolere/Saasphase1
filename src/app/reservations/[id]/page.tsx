@@ -30,6 +30,7 @@ import {
   updateReservationPrice,
   activateReservation,
   assignAnimalToReservation,
+  expireReservation,
   unassignAnimalFromReservation,
   withdrawReservation,
 } from "@/features/reservations/actions";
@@ -204,6 +205,7 @@ export default async function ReservationDetailPage({
     adoption_status?: string;
     cancellation_status?: string;
     withdrawal_status?: string;
+    expiration_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
   }>;
@@ -557,6 +559,33 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.expiration_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Réservation marquée comme expirée.
+              </p>
+            ) : null}
+
+            {query.expiration_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation ne peut pas être marquée comme expirée dans son état actuel.
+              </p>
+            ) : null}
+
+            {query.expiration_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’expiration n’a pas pu être enregistrée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             {query.animal_assign_status === "success" ? (
               <p
                 role="status"
@@ -775,6 +804,34 @@ export default async function ReservationDetailPage({
                         className="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
                       >
                         Marquer comme désistée
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {reservation.status === "active" ? (
+                    <form
+                      action={expireReservation}
+                      className="mt-8 border-t pt-6"
+                    >
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action marque manuellement la réservation comme
+                        expirée. Elle ne crée aucun remboursement, ne modifie
+                        aucun paiement, ne crée ni document ni note, ne modifie
+                        pas l’animal, ne retire pas automatiquement
+                        l’attribution, ne modifie ni tarif, ni commentaire, ni
+                        échéance, et ne lance aucune automatisation liée à
+                        l’échéance de pré-réservation.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                      >
+                        Marquer comme expirée
                       </button>
                     </form>
                   ) : null}
