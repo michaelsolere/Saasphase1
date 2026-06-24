@@ -1,23 +1,59 @@
 import Link from "next/link";
 
-const futureAreas = [
+const quickLinks = [
   {
     href: "/candidature/golden-retriever-2026",
     title: "Formulaire public",
     description: "Le parcours de candidature à partager avec les adoptants.",
-    status: "Disponible",
+    status: "Public",
   },
   {
     href: "/login",
     title: "Espace privé",
     description: "L’accès sécurisé réservé aux membres de l’élevage.",
-    status: "Disponible",
+    status: "Connexion",
+  },
+  {
+    href: "/contacts",
+    title: "Contacts",
+    description: "La fiche contact unique au centre du parcours adoptant.",
+    status: "Lecture seule",
   },
   {
     href: "/candidatures",
     title: "Candidatures",
-    description: "La liste de relecture des candidatures reçues.",
-    status: "Aperçu",
+    description: "La relecture des demandes envoyées depuis le formulaire.",
+    status: "Lecture seule",
+  },
+  {
+    href: "/reservations",
+    title: "Réservations",
+    description: "Le suivi consultatif des réservations existantes.",
+    status: "Lecture seule",
+  },
+  {
+    href: "/payments",
+    title: "Paiements",
+    description: "La consultation des paiements, arrhes et remboursements.",
+    status: "Lecture seule",
+  },
+  {
+    href: "/documents",
+    title: "Documents",
+    description: "Les documents et leurs liens métier principaux.",
+    status: "Lecture seule",
+  },
+  {
+    href: "/litters",
+    title: "Portées",
+    description: "Les portées, leurs parents et leurs compteurs principaux.",
+    status: "Lecture seule",
+  },
+  {
+    href: "/animals",
+    title: "Animaux",
+    description: "Les animaux, leur portée, réservation et documents liés.",
+    status: "Lecture seule",
   },
 ];
 
@@ -41,20 +77,21 @@ export default function Home() {
       <section className="flex flex-1 flex-col justify-center py-20">
         <div className="max-w-3xl">
           <p className="mb-5 inline-flex rounded-full border bg-surface px-3 py-1 text-sm text-muted">
-            Socle technique en place
+            Phase 1 · Navigation rapide
           </p>
           <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
             Une base saine pour suivre chaque parcours d’adoption.
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted">
-            Next.js, TypeScript, Tailwind CSS et Supabase sont prêts. Les
-            fonctionnalités métier seront ajoutées progressivement, sans
-            dupliquer les contacts au fil de leur parcours.
+            Les modules principaux sont accessibles pour consulter les
+            contacts, candidatures, réservations, paiements, documents, portées
+            et animaux. Les écrans privés restent majoritairement en lecture
+            seule pendant cette phase.
           </p>
         </div>
 
-        <div className="mt-12 grid gap-4 md:grid-cols-3">
-          {futureAreas.map((area) => (
+        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {quickLinks.map((area) => (
             <Link
               key={area.href}
               href={area.href}
@@ -70,11 +107,11 @@ export default function Home() {
                 {area.description}
               </p>
               <p className="mt-6 text-sm font-medium text-accent">
-                {area.title === "Espace privé"
+                {area.title === "Formulaire public"
+                  ? "Ouvrir le formulaire"
+                  : area.title === "Espace privé"
                   ? "Se connecter"
-                  : area.status === "Aperçu"
-                  ? "Consulter les candidatures"
-                  : "Aperçu du futur module"}
+                  : "Consulter"}
                 <span
                   aria-hidden="true"
                   className="ml-1 inline-block transition group-hover:translate-x-1"
@@ -88,7 +125,7 @@ export default function Home() {
       </section>
 
       <footer className="border-t pt-6 text-sm text-muted">
-        Phase initiale — aucun module métier complet n’est encore activé.
+        Phase 1 — consultation d’abord, écritures métier ajoutées par petites PRs ciblées.
       </footer>
     </main>
   );
