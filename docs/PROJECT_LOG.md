@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : fiche document complète et harmonisée en lecture seule
-Dernier commit connu : `9cfd89e6 Merge PR69: Polish document detail section order and readability`
+Dernier état connu : première écriture métier contrôlée validée localement
+Dernier commit connu : `628a3354 Merge PR74: Add application without reservation seed fixture`
 
 Le dépôt contient désormais :
 
@@ -28,6 +28,8 @@ Le dépôt contient désormais :
 * un compte Auth local de développement ;
 * une fiche détail candidature en lecture seule ;
 * des actions de qualification de candidature ;
+* une action serveur contrôlée pour créer une réservation `draft` depuis une candidature `qualified` ;
+* une UX de retour claire autour de la création d'une réservation brouillon depuis une candidature ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
@@ -74,7 +76,8 @@ Le dépôt contient désormais :
 * une liaison consultative Réservation ↔ Animal, sans workflow d'attribution ni mutation ;
 * des fixtures locales Portées / Animaux permettant de tester `/litters`, `/litters/[id]`, `/animals`, `/animals/[id]`, la relation portée → animaux et la relation animal → portée ;
 * des fixtures locales Documents liées à la portée et à l'animal de démonstration pour tester les sections `Documents liés` sur les fiches portée et animal ;
-* des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés.
+* des fixtures locales Alice Martin permettant de tester les écrans réservations, paiements, documents et les sections de documents liés ;
+* une fixture locale Claire Bernard permettant de tester le parcours candidature qualifiée sans réservation → création d'une réservation brouillon.
 
 ## Historique des PR
 
@@ -1488,6 +1491,125 @@ Hors périmètre :
 Note :
 La fiche document couvre désormais les relations métier principales et a été relue puis harmonisée après les ajouts successifs. PR69 n'ajoute aucune nouvelle capacité métier : elle améliore uniquement la lisibilité et la cohérence visuelle.
 
+### PR72 — Create draft reservation from application
+
+Objectif : ajouter la première écriture métier contrôlée du projet en créant une réservation brouillon depuis une candidature qualifiée.
+
+Contenu principal :
+* ajout d'une action serveur de création d'une réservation `draft` depuis une candidature `qualified` ;
+* relecture de la candidature côté serveur depuis `applications` avant toute insertion ;
+* dérivation de `organization_id` et `contact_id` depuis la candidature relue côté serveur ;
+* reprise des informations métier disponibles depuis la candidature :
+  * espèce ;
+  * race ;
+  * groupe de portée souhaité ;
+  * portée souhaitée si disponible ;
+  * préférence de sexe ;
+* anti-doublon par candidature via recherche d'une réservation non supprimée existante ;
+* ajout du bouton `Créer une réservation brouillon` sur `/candidatures/[id]` uniquement si la candidature est qualifiée et sans réservation liée ;
+* retour vers la fiche candidature après création ;
+* la réservation créée apparaît dans la section `Réservations liées`.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucun paiement créé ;
+* aucun document créé ;
+* aucune attribution animal créée ;
+* aucun changement de statut de candidature ;
+* aucune édition de réservation ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+### PR73 — Polish reservation creation feedback
+
+Objectif : clarifier l'expérience utilisateur autour de la création d'une réservation brouillon depuis une candidature.
+
+Contenu principal :
+* clarification du message de succès `reservation_status=created` ;
+* indication explicite que la réservation apparaît dans la section `Réservations liées` ;
+* clarification du cas `already_exists` avec invitation à consulter `Réservations liées` ;
+* clarification du cas `not_qualified` ;
+* clarification du cas `error` en indiquant qu'aucune donnée n'a été modifiée ;
+* amélioration du texte d'aide près du bouton `Créer une réservation brouillon` ;
+* rappel qu'aucun paiement, document ou animal n'est créé par cette action.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Hors périmètre :
+* aucune modification des règles serveur ;
+* aucune nouvelle requête Supabase ;
+* aucune nouvelle route ;
+* aucun formulaire long ;
+* aucune migration ;
+* aucune modification Supabase, RLS, RPC, vue SQL, seed ou type généré.
+
+### PR74 — Add application without reservation seed fixture
+
+Objectif : ajouter une fixture locale de QA pour tester le cas candidature qualifiée sans réservation existante.
+
+Contenu principal :
+* ajout du contact de démonstration Claire Bernard dans `supabase/seed.sql` ;
+* ajout d'une candidature qualifiée liée à Claire Bernard ;
+* absence volontaire de réservation liée à cette candidature ;
+* modification limitée à `supabase/seed.sql`.
+
+IDs stables utiles :
+* organisation seed : `20000000-0000-4000-8000-000000000001` ;
+* utilisateur seed : `10000000-0000-4000-8000-000000000001` ;
+* contact Claire Bernard : `70000000-0000-4000-8000-000000000002` ;
+* candidature Claire Bernard : `80000000-0000-4000-8000-000000000002`.
+
+Routes QA utiles :
+* `/candidatures/80000000-0000-4000-8000-000000000002` ;
+* `/contacts/70000000-0000-4000-8000-000000000002` ;
+* `/reservations`.
+
+Validation :
+* `supabase db reset` ;
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* login local avec `owner@saasphase1.invalid` ;
+* fiche Claire Bernard accessible sur `/candidatures/80000000-0000-4000-8000-000000000002` ;
+* statut candidature : `qualified` ;
+* bouton `Créer une réservation brouillon` visible avant création ;
+* création effectuée depuis la fiche candidature ;
+* message de succès affiché ;
+* réservation `draft` visible dans `Réservations liées` ;
+* bouton de création masqué après création ;
+* réservation visible dans `/reservations` ;
+* réservation créée avec :
+  * `status = draft` ;
+  * `contact_id = 70000000-0000-4000-8000-000000000002` ;
+  * `organization_id = 20000000-0000-4000-8000-000000000001` ;
+  * `animal_id = null` ;
+  * aucun paiement lié ;
+  * aucun document lié.
+
+Note :
+L'identifiant de réservation créé pendant la recette locale est généré dynamiquement et ne doit pas être documenté comme ID stable du seed.
+
+Hors périmètre :
+* aucune réservation seedée pour Claire Bernard ;
+* aucun paiement ;
+* aucun document ;
+* aucun animal ;
+* aucune UI ;
+* aucune migration ;
+* aucune modification RLS, RPC, vue SQL, type généré ou package.
+
+Note :
+PR72 à PR74 valident le premier jalon d'écriture métier contrôlée du projet. Le socle n'est plus strictement lecture seule, mais l'écriture reste limitée à un workflow court, relu côté serveur, anti-doublon, et sans paiement, document, animal ou attribution.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1581,6 +1703,8 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
+Le projet a aussi validé sa première écriture métier contrôlée : une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Cette écriture reste volontairement courte et prudente : candidature relue côté serveur, `organization_id` et `contact_id` dérivés côté serveur, anti-doublon par candidature, statut initial `draft`, aucun paiement, aucun document et aucune attribution animal.
+
 État fonctionnel :
 * `/litters` liste les portées existantes ;
 * `/litters/[id]` affiche la fiche détail d'une portée ;
@@ -1599,13 +1723,18 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 * `/documents/[id]` harmonise les headers de ses sections liées ;
 * `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
+* `/candidatures/[id]` peut créer une réservation brouillon depuis une candidature qualifiée sans réservation liée ;
+* `/candidatures/[id]` affiche la réservation créée dans la section `Réservations liées` ;
+* `/reservations` affiche la réservation brouillon créée ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
 * les fixtures locales permettent de tester directement `/animals/d0000000-0000-4000-8000-000000000001` ;
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000004` ;
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
-* les pages restent strictement consultatives.
+* les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
+* les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -1636,7 +1765,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -1647,13 +1776,17 @@ Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
 * `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
+* le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
-* concevoir plus tard une création contrôlée de réservation ;
+* concevoir plus tard une amélioration contrôlée d'une réservation existante ;
+* concevoir plus tard un formulaire de complétion de réservation ;
+* concevoir plus tard une création contrôlée de paiement depuis une réservation ;
 * concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
 * concevoir plus tard le workflow métier de réservation ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
+* garder toute nouvelle écriture métier dans une PR courte, prudente, relue côté serveur et validée localement ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
