@@ -3,6 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  FINAL_RESERVATION_STATUSES,
+  isFinalReservationStatus,
+} from "@/features/reservations/statuses";
 import { createClient } from "@/lib/supabase/server";
 
 function priceUrl(
@@ -361,8 +365,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   }
 
   // 3. Vérifier que la réservation n'est pas finale
-  const finalStatuses = ["withdrawn", "cancelled", "expired", "archived"];
-  if (finalStatuses.includes(reservation.status)) {
+  if (isFinalReservationStatus(reservation.status)) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error`);
   }
 
@@ -395,7 +398,7 @@ export async function assignAnimalToReservation(formData: FormData) {
     .select("id")
     .eq("animal_id", animalId)
     .is("deleted_at", null)
-    .not("status", "in", `(${finalStatuses.join(",")})`);
+    .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`);
 
   if (concurrentResError) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error`);
@@ -465,8 +468,7 @@ export async function unassignAnimalFromReservation(formData: FormData) {
   }
 
   // 3. Vérifier que la réservation n'est pas finale
-  const finalStatuses = ["completed", "withdrawn", "cancelled", "expired", "archived"];
-  if (finalStatuses.includes(reservation.status)) {
+  if (isFinalReservationStatus(reservation.status)) {
     redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state`);
   }
 
