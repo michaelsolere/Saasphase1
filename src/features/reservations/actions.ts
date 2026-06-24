@@ -44,6 +44,13 @@ function adoptionUrl(
   return `/reservations/${reservationId}?adoption_status=${outcome}`;
 }
 
+function cancellationUrl(
+  reservationId: string,
+  outcome: "success" | "invalid_state" | "error",
+) {
+  return `/reservations/${reservationId}?cancellation_status=${outcome}`;
+}
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
     value,
@@ -386,6 +393,61 @@ export async function adoptReservation(formData: FormData) {
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(adoptionUrl(reservationId, "success"));
+}
+
+export async function cancelReservation(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=annulation");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, status, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation) {
+    redirect(cancellationUrl(reservationId, "error"));
+  }
+
+  if (reservation.status !== "active") {
+    redirect(cancellationUrl(reservationId, "invalid_state"));
+  }
+
+  const now = new Date().toISOString();
+  const { data: updatedReservation, error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      status: "cancelled",
+      updated_at: now,
+      updated_by: user.id,
+    })
+    .eq("id", reservation.id)
+    .eq("organization_id", reservation.organization_id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !updatedReservation) {
+    redirect(cancellationUrl(reservationId, "invalid_state"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  redirect(cancellationUrl(reservationId, "success"));
 }
 
 export async function assignAnimalToReservation(formData: FormData) {
