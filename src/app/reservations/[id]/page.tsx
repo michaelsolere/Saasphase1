@@ -24,6 +24,7 @@ import {
 } from "@/features/payments/formatters";
 import {
   adoptReservation,
+  cancelReservation,
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
   updateReservationPrice,
@@ -200,6 +201,7 @@ export default async function ReservationDetailPage({
     payment_create_status?: string;
     activation_status?: string;
     adoption_status?: string;
+    cancellation_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
   }>;
@@ -499,6 +501,33 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.cancellation_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Réservation annulée.
+              </p>
+            ) : null}
+
+            {query.cancellation_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation ne peut pas être annulée dans son état actuel.
+              </p>
+            ) : null}
+
+            {query.cancellation_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation n’a pas pu être annulée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             {query.animal_assign_status === "success" ? (
               <p
                 role="status"
@@ -664,6 +693,32 @@ export default async function ReservationDetailPage({
                         className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                       >
                         Finaliser l’adoption
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {reservation.status === "active" ? (
+                    <form
+                      action={cancelReservation}
+                      className="mt-8 border-t pt-6"
+                    >
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action annule manuellement la réservation. Elle ne
+                        crée aucun remboursement, ne modifie aucun paiement, ne
+                        crée ni document ni note, ne modifie pas l’animal, ne
+                        retire pas automatiquement l’attribution, et ne modifie
+                        ni tarif, ni commentaire, ni échéance.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
+                      >
+                        Annuler la réservation
                       </button>
                     </form>
                   ) : null}
