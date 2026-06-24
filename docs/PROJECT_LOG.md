@@ -25,6 +25,7 @@ Le dépôt contient désormais :
 * un formulaire public de candidature ;
 * un écran privé de revue des candidatures ;
 * une authentification minimale ;
+* un accueil avec liens rapides statiques vers les modules privés existants ;
 * un compte Auth local de développement ;
 * une fiche détail candidature en lecture seule ;
 * des actions de qualification de candidature ;
@@ -1490,6 +1491,47 @@ Hors périmètre :
 
 Note :
 La fiche document couvre désormais les relations métier principales et a été relue puis harmonisée après les ajouts successifs. PR69 n'ajoute aucune nouvelle capacité métier : elle améliore uniquement la lisibilité et la cohérence visuelle.
+
+### PR70 — docs update project log with document detail polish milestone
+
+Objectif : documenter le jalon de finition lisibilité / UX de la fiche document après PR69.
+
+Contenu principal :
+* mise à jour de `docs/PROJECT_LOG.md` après l'harmonisation de `/documents/[id]` ;
+* documentation du helper local `RelatedSectionHeader` ;
+* documentation de l'harmonisation des headers des sections liées ;
+* rappel que PR69 n'ajoute aucune capacité métier ;
+* rappel qu'aucune nouvelle requête, mutation, migration, RLS, RPC, vue SQL, seed ou type généré n'a été ajouté.
+
+Hors périmètre :
+* aucun code applicatif ;
+* aucune modification Supabase ;
+* aucune modification UI supplémentaire.
+
+### PR71 — Add dashboard quick links
+
+Objectif : rendre l'accueil plus navigable avec des liens rapides vers les modules déjà disponibles.
+
+Contenu principal :
+* ajout de liens rapides statiques sur l'accueil vers :
+  * Contacts ;
+  * Candidatures ;
+  * Réservations ;
+  * Paiements ;
+  * Documents ;
+  * Portées ;
+  * Animaux ;
+* conservation des liens existants vers le formulaire public et la connexion / espace privé ;
+* ajustement des textes de l'accueil pour refléter les modules existants ;
+* modification limitée à `src/app/page.tsx`.
+
+Hors périmètre :
+* aucun Supabase ;
+* aucune mutation ;
+* aucune nouvelle requête ;
+* aucune statistique dynamique ;
+* aucune sidebar ;
+* aucune refonte globale de navigation.
 
 ### PR72 — Create draft reservation from application
 
