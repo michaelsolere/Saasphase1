@@ -32,6 +32,10 @@ import {
 } from "@/features/reservations/actions";
 import { createReservationPayment } from "@/features/payments/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
+import {
+  FINAL_RESERVATION_STATUSES,
+  isFinalReservationStatus,
+} from "@/features/reservations/statuses";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -243,14 +247,13 @@ export default async function ReservationDetailPage({
     if (fetchAnimalsError) {
       availableAnimalsError = fetchAnimalsError;
     } else if (rawAnimals) {
-      const finalStatuses = ["withdrawn", "cancelled", "expired", "archived"];
       const { data: activeResWithAnimals, error: activeResError } = await supabase
         .from("reservations")
         .select("animal_id")
         .eq("organization_id", reservation.organization_id)
         .is("deleted_at", null)
         .not("animal_id", "is", null)
-        .not("status", "in", `(${finalStatuses.join(",")})`);
+        .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`);
 
       if (activeResError) {
         availableAnimalsError = activeResError;
@@ -754,7 +757,7 @@ export default async function ReservationDetailPage({
                         Aucun animal lié à cette réservation.
                       </p>
 
-                      {!(reservation.status && ["withdrawn", "cancelled", "expired", "archived"].includes(reservation.status)) && (
+                      {!isFinalReservationStatus(reservation.status) && (
                         <div className="border-t pt-6">
                           {availableAnimalsError ? (
                             <p role="alert" className="text-sm text-amber-800">
@@ -838,7 +841,7 @@ export default async function ReservationDetailPage({
                         />
                       </dl>
 
-                      {!(reservation.status && ["completed", "withdrawn", "cancelled", "expired", "archived"].includes(reservation.status)) && (
+                      {!isFinalReservationStatus(reservation.status) && (
                         <div className="border-t pt-6">
                           <form action={unassignAnimalFromReservation} className="space-y-4">
                             <input type="hidden" name="reservation_id" value={id} />
