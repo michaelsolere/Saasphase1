@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec neuf écritures métier contrôlées et statuts finaux de réservation alignés côté code
-Dernier commit connu : `f29b1858 Merge PR94: Align final reservation statuses`
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec dix écritures métier contrôlées et statuts finaux de réservation alignés côté code
+Dernier commit connu : `1f4451ce Merge PR96: Adopt active reservation`
 
 Le dépôt contient désormais :
 
@@ -37,6 +37,7 @@ Le dépôt contient désormais :
 * une action serveur contrôlée pour créer un paiement manuel lié à une réservation existante (`createReservationPayment`) ;
 * une action serveur contrôlée pour marquer une demande de paiement `requested` comme réglée `paid` (`markPaymentAsPaid`) ;
 * une action serveur contrôlée pour confirmer manuellement une réservation `draft` en `active` (`activateReservation`) ;
+* une action serveur contrôlée pour finaliser manuellement une réservation `active` en `adopted` (`adoptReservation`) ;
 * une liste applicative centralisée des statuts finaux de réservation (`FINAL_RESERVATION_STATUSES`) alignée sur le statut SQL `adopted` ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
@@ -2353,6 +2354,97 @@ Prochaines pistes :
 * documenter ou tester plus tard les comportements interdits sur réservation `adopted` si nécessaire ;
 * conserver toute nouvelle transition dans une PR courte, prudente et testée.
 
+## PR96 — Adopt active reservation
+
+Objectif : ajouter une transition manuelle contrôlée `active` → `adopted` depuis `/reservations/[id]`.
+
+Cette PR introduit la finalisation positive d'une adoption. La transition reste volontairement manuelle : elle ne dépend pas automatiquement d'un paiement complet, d'une attribution animal ou d'un document généré.
+
+Action serveur ajoutée :
+* `adoptReservation` ;
+* relit la réservation côté serveur avant toute écriture ;
+* exige un utilisateur connecté ;
+* exige un identifiant de réservation valide ;
+* exige une réservation existante ;
+* exige une réservation non supprimée ;
+* exige une réservation appartenant à l'organisation accessible à l'utilisateur ;
+* exige un statut courant strictement égal à `active` ;
+* refuse sans modifier si la réservation n'est plus en `active`.
+
+Champs modifiés par la transition :
+* `status = adopted` ;
+* `adoption_completed_at = now()` ;
+* `updated_at = now()` ;
+* `updated_by = user.id`.
+
+Champs et objets explicitement non modifiés :
+* `reservation_confirmed_at` ;
+* `animal_id` ;
+* `animal_assigned_at` ;
+* `price_cents` ;
+* `internal_comment` ;
+* `pre_reservation_deadline` ;
+* paiements ;
+* documents ;
+* reçus ;
+* notes ;
+* remboursements ;
+* animal ;
+* attribution animal ;
+* schéma Supabase ;
+* seed data.
+
+UI ajoutée sur `/reservations/[id]` :
+* bouton `Finaliser l’adoption` visible uniquement si `status === "active"` ;
+* texte d'aide indiquant que l'action ne crée ni paiement, ni document, ni note, ni modification d'animal ;
+* message de succès après adoption ;
+* message neutre si la réservation ne peut pas être finalisée dans son état actuel ;
+* bouton masqué après passage en `adopted` ;
+* statut affiché `Adopté`.
+
+Test Playwright dédié :
+* fichier `tests/e2e/z-adopt-active-reservation.spec.ts` ;
+* test indépendant du smoke global ;
+* création d'une candidature qualifiée dédiée au test ;
+* création d'une réservation brouillon via l'UI existante ;
+* confirmation `draft` → `active` via l'UI existante ;
+* finalisation `active` → `adopted` ;
+* vérifications UI : bouton visible en `active`, message de succès, statut `Adopté`, bouton disparu ;
+* vérifications base : `status = adopted`, `adoption_completed_at` renseigné, `updated_at` renseigné, `updated_by` renseigné ;
+* vérification que `reservation_confirmed_at`, `animal_id`, `animal_assigned_at`, `price_cents`, `internal_comment` et `pre_reservation_deadline` restent inchangés ;
+* vérification qu'aucun paiement, document ou note n'est créé.
+
+État courant après PR96 :
+* le projet dispose de dix écritures métier contrôlées ;
+* la dixième écriture est la finalisation manuelle d'une réservation `active` en `adopted` ;
+* la chaîne candidature → réservation → paiement → animal reste protégée par le smoke Playwright global ;
+* la transition `active` → `adopted` est protégée par un test Playwright dédié ;
+* `adopted` reste le statut final réel d'adoption ;
+* `completed` n'est pas utilisé comme statut de réservation.
+
+Limites conservées :
+* pas d'adoption automatique après paiement ;
+* pas d'adoption automatique après attribution animal ;
+* pas d'exigence de paiement complet à ce stade ;
+* pas d'exigence d'animal attribué à ce stade ;
+* pas de document généré ;
+* pas de reçu ;
+* pas de note automatique ;
+* pas de remboursement ;
+* pas de modification animal ;
+* pas de workflow complet de statuts ;
+* pas de migration ;
+* pas d'ENUM PostgreSQL ;
+* pas de statut `completed`.
+
+Prochaines pistes :
+* concevoir plus tard `active` → `cancelled` ;
+* concevoir plus tard `active` → `withdrawn` ;
+* concevoir plus tard `active` → `expired` ;
+* décider plus tard si `active` → `adopted` doit exiger solde payé et/ou animal attribué ;
+* concevoir plus tard les documents ou reçus liés à l'adoption ;
+* conserver toute transition dans une PR courte, prudente et testée.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2446,7 +2538,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé neuf écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, ainsi que la confirmation manuelle `draft` → `active` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et alignés sur `adopted` comme statut final d'adoption.
+Le projet a aussi validé dix écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que la finalisation manuelle `active` → `adopted` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et alignés sur `adopted` comme statut final d'adoption.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -2478,6 +2570,7 @@ Le projet a aussi validé neuf écritures métier contrôlées. Une candidature 
 * `/reservations/[id]` accepte un champ date vide pour retirer l’échéance de pré-réservation ;
 * `/reservations/[id]` permet de créer manuellement un paiement lié à la réservation ;
 * `/reservations/[id]` permet de confirmer manuellement une réservation `draft` en `active` ;
+* `/reservations/[id]` permet de finaliser manuellement une réservation `active` en `adopted` ;
 * les gardes applicatives de réservation traitent `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` comme statuts finaux ;
 * `/payments/[id]` permet de marquer une demande de paiement `requested` comme réglée `paid` ;
 * les documents liés pointent vers `/documents/[id]` ;
@@ -2488,7 +2581,7 @@ Le projet a aussi validé neuf écritures métier contrôlées. Une candidature 
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, et de la confirmation manuelle `draft` → `active`.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, et de la finalisation manuelle `active` → `adopted`.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -2499,8 +2592,8 @@ Limites conservées explicitement :
 * aucune suppression d'animal ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé ou la confirmation manuelle `draft` → `active` ;
-* aucun changement de statut de réservation autre que la transition manuelle `draft` → `active` ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active` ou la finalisation manuelle `active` → `adopted` ;
+* aucun changement de statut de réservation autre que les transitions manuelles `draft` → `active` et `active` → `adopted` ;
 * aucun upload ;
 * aucun téléchargement ;
 * aucune preview ;
@@ -2518,8 +2611,8 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, et la confirmation manuelle `draft` → `active` ;
-* aucune transition vers `adopted`, `cancelled`, `withdrawn` ou `expired` ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, et la finalisation manuelle `active` → `adopted` ;
+* aucune transition vers `cancelled`, `withdrawn` ou `expired` ;
 * aucun statut `completed` ;
 * aucune migration ;
 * aucune RLS ;
@@ -2542,6 +2635,7 @@ Pistes possibles :
 * le retrait contrôlé d'attribution animal/réservation est validé localement ;
 * le parcours global candidature → réservation → paiement → animal est protégé par Playwright ;
 * la confirmation manuelle d'une réservation `draft` en `active` est protégée par un test Playwright dédié ;
+* la finalisation manuelle d'une réservation `active` en `adopted` est protégée par un test Playwright dédié ;
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
@@ -2554,9 +2648,9 @@ Pistes possibles :
 * concevoir plus tard le paiement en ligne / Stripe dans une PR dédiée ;
 * concevoir plus tard les remboursements manuels dans une PR dédiée ;
 * concevoir plus tard les annulations/éditions de paiement dans une PR dédiée ;
-* concevoir plus tard la transition contrôlée `active` → `adopted` ;
 * concevoir plus tard les transitions d'annulation, retrait et expiration ;
-* documenter ou tester plus tard les comportements interdits sur réservation `adopted` si nécessaire ;
+* décider plus tard si `active` → `adopted` doit exiger solde payé et/ou animal attribué ;
+* concevoir plus tard les documents ou reçus liés à l'adoption ;
 * envisager plus tard une contrainte SQL d'unicité animal/réservation si l'usage concurrent le justifie ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
 * garder toute nouvelle écriture métier dans une PR courte, prudente, relue côté serveur et validée localement ;
