@@ -6,6 +6,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { createReservationFromApplication } from "@/features/applications/actions";
 import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
@@ -118,7 +119,11 @@ export default async function ApplicationDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ action?: string; note_status?: string }>;
+  searchParams: Promise<{
+    action?: string;
+    note_status?: string;
+    reservation_status?: string;
+  }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -160,6 +165,13 @@ export default async function ApplicationDetailPage({
     : { data: null, error: null };
 
   const applicationReservations = rawReservations as ReservationOverview[] | null;
+  const hasApplicationReservation =
+    Boolean(applicationReservations && applicationReservations.length > 0);
+  const canCreateDraftReservation =
+    application?.status === "qualified" &&
+    !reservationsError &&
+    applicationReservations !== null &&
+    !hasApplicationReservation;
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = applicationId
@@ -222,6 +234,42 @@ export default async function ApplicationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 La note n’a pas pu être ajoutée. Réessayez.
+              </p>
+            ) : null}
+
+            {query.reservation_status === "created" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La réservation brouillon a bien été créée.
+              </p>
+            ) : null}
+
+            {query.reservation_status === "already_exists" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
+              >
+                Une réservation existe déjà pour cette candidature.
+              </p>
+            ) : null}
+
+            {query.reservation_status === "not_qualified" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Seule une candidature qualifiée peut créer une réservation.
+              </p>
+            ) : null}
+
+            {query.reservation_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation n’a pas pu être créée. Réessayez.
               </p>
             ) : null}
 
@@ -308,9 +356,33 @@ export default async function ApplicationDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Réservations liées
-                  </h2>
+                  <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Réservations liées
+                      </h2>
+                      <p className="mt-2 text-sm text-muted">
+                        Une candidature qualifiée peut créer une réservation en
+                        statut brouillon.
+                      </p>
+                    </div>
+
+                    {canCreateDraftReservation && applicationId ? (
+                      <form action={createReservationFromApplication}>
+                        <input
+                          type="hidden"
+                          name="application_id"
+                          value={applicationId}
+                        />
+                        <button
+                          type="submit"
+                          className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                        >
+                          Créer une réservation brouillon
+                        </button>
+                      </form>
+                    ) : null}
+                  </div>
 
                   {reservationsError ? (
                     <p role="alert" className="text-sm text-amber-800">
