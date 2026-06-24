@@ -1171,6 +1171,26 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
+                {reservation.status === "adopted" ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold">
+                      Suivi post-adoption
+                    </h2>
+                    <p className="mt-4 max-w-2xl text-sm leading-6 text-muted">
+                      Cet espace centralisera plus tard les nouvelles de
+                      l’adoptant, les rappels, les documents ou photos, les
+                      événements et les notes de suivi après le départ.
+                    </p>
+                    <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
+                      Aucun suivi post-adoption enregistré pour le moment.
+                    </p>
+                    <p className="mt-3 text-xs leading-5 text-muted">
+                      Les documents déjà liés à cette réservation restent
+                      visibles dans la section Documents liés.
+                    </p>
+                  </section>
+                ) : null}
+
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
                     Paiements liés
