@@ -24,6 +24,7 @@ import {
 } from "@/features/payments/formatters";
 import {
   updateReservationInternalComment,
+  updateReservationPreReservationDeadline,
   updateReservationPrice,
 } from "@/features/reservations/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
@@ -75,6 +76,12 @@ type RelatedAnimal = {
 type ReservationInternalComment = {
   id: string;
   internal_comment: string | null;
+  deleted_at: string | null;
+};
+
+type ReservationPreReservationDeadline = {
+  id: string;
+  pre_reservation_deadline: string | null;
   deleted_at: string | null;
 };
 
@@ -164,6 +171,14 @@ function formatPriceInputValue(priceCents: number | null) {
   return (priceCents / 100).toFixed(2);
 }
 
+function formatDateInputValue(value: string | null) {
+  if (!value) {
+    return "";
+  }
+
+  return value.slice(0, 10);
+}
+
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -171,6 +186,7 @@ export default async function ReservationDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{
     comment_status?: string;
+    deadline_status?: string;
     price_status?: string;
   }>;
 }) {
@@ -207,6 +223,21 @@ export default async function ReservationDetailPage({
 
   const reservationInternalComment =
     rawInternalComment as ReservationInternalComment | null;
+
+  // Fetch planning fields directly because reservation_overview only exposes
+  // the read-only ranks, not the pre-reservation deadline.
+  const { data: rawPreReservationDeadline, error: preReservationDeadlineError } =
+    reservation?.id
+      ? await supabase
+          .from("reservations")
+          .select("id, pre_reservation_deadline, deleted_at")
+          .eq("id", reservation.id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const reservationPreReservationDeadline =
+    rawPreReservationDeadline as ReservationPreReservationDeadline | null;
 
   // Fetch related animal
   const { data: rawAnimal, error: animalError } = reservation?.animal_id
@@ -312,6 +343,25 @@ export default async function ReservationDetailPage({
               >
                 Le commentaire interne n’a pas pu être mis à jour. Aucune autre
                 donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.deadline_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                L’échéance de pré-réservation a bien été mise à jour.
+              </p>
+            ) : null}
+
+            {query.deadline_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’échéance de pré-réservation n’a pas pu être mise à jour.
+                Aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -554,6 +604,53 @@ export default async function ReservationDetailPage({
                       value={formatApplicationDate(reservation.updated_at)}
                     />
                   </dl>
+
+                  <div className="mt-8 border-t pt-6">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Échéance de pré-réservation
+                    </h3>
+                    {preReservationDeadlineError ? (
+                      <p className="mt-3 text-sm text-muted">
+                        L’échéance de pré-réservation n’est pas disponible pour
+                        le moment.
+                      </p>
+                    ) : (
+                      <form
+                        action={updateReservationPreReservationDeadline}
+                        className="mt-3"
+                      >
+                        <input
+                          type="hidden"
+                          name="reservation_id"
+                          value={id}
+                        />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div className="max-w-xs flex-1">
+                            <input
+                              name="pre_reservation_deadline"
+                              type="date"
+                              defaultValue={formatDateInputValue(
+                                reservationPreReservationDeadline
+                                  ?.pre_reservation_deadline ?? null,
+                              )}
+                              className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                            />
+                            <p className="mt-2 text-xs leading-5 text-muted">
+                              Date limite de suivi de la pré-réservation. Cette
+                              date ne confirme pas la réservation et ne change
+                              pas son statut.
+                            </p>
+                          </div>
+                          <button
+                            type="submit"
+                            className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                          >
+                            Enregistrer l’échéance
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
