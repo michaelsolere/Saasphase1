@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : trois écritures métier contrôlées validées localement
-Dernier commit connu : `397faf40 Merge PR78: Edit reservation internal comment`
+Dernier état connu : quatre écritures métier contrôlées validées localement
+Dernier commit connu : `5f9ca594 Merge PR80: Edit pre-reservation deadline`
 
 Le dépôt contient désormais :
 
@@ -33,6 +33,7 @@ Le dépôt contient désormais :
 * une UX de retour claire autour de la création d'une réservation brouillon depuis une candidature ;
 * une action serveur contrôlée pour modifier uniquement le tarif convenu d'une réservation existante (`price_cents`) ;
 * une action serveur contrôlée pour modifier ou retirer le commentaire interne d'une réservation existante (`internal_comment`) ;
+* une action serveur contrôlée pour modifier ou retirer l’échéance de pré-réservation d’une réservation existante (`pre_reservation_deadline`) ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
@@ -1787,6 +1788,80 @@ Hors périmètre :
 Note :
 Le projet dispose désormais de trois écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, puis l'édition limitée du commentaire interne d'une réservation existante. La majorité des pages restent consultatives, avec quelques complétions limitées, relues côté serveur et validées localement.
 
+### PR80 — Edit pre-reservation deadline
+
+Objectif : ajouter une quatrième écriture métier contrôlée en permettant de modifier ou retirer l’échéance de pré-réservation d’une réservation existante depuis `/reservations/[id]`.
+
+Contenu principal :
+* création de l'action serveur `updateReservationPreReservationDeadline` ;
+* édition limitée au champ métier `pre_reservation_deadline` ;
+* lecture directe de `pre_reservation_deadline` depuis `reservations`, car `reservation_overview` ne l'expose pas ;
+* champ vide accepté pour remettre `pre_reservation_deadline` à `null` (retrait de l'échéance) ;
+* validation serveur du format `YYYY-MM-DD` ;
+* rejet des dates invalides calendrier (ex. 2026-02-31, 2026-13-01) avec validation stricte par rapport aux limites réelles des jours et mois ;
+* stockage sous forme de `timestamptz` calé à midi UTC (`YYYY-MM-DDT12:00:00.000Z`) pour éviter les glissements de date liés aux fuseaux horaires ;
+* relecture de la réservation côté serveur avant mise à jour ;
+* `organization_id`, `contact_id` et `application_id` non fournis par le client ;
+* mise à jour de `updated_by` et `updated_at` ;
+* affichage d'un message de succès ou d'erreur neutre après soumission.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* `supabase db reset` OK ;
+* login local avec `owner@saasphase1.invalid` ;
+* fiche réservation Alice Martin accessible sur `/reservations/90000000-0000-4000-8000-000000000001` ;
+* section “Priorité et suivi” et zone “Échéance de pré-réservation” visibles ;
+* ajout de l'échéance `2026-07-15` validé :
+  * message de succès affiché ;
+  * date `2026-07-15` affichée dans l'input ;
+  * `pre_reservation_deadline = 2026-07-15 12:00:00+00` en base ;
+  * `updated_by = 10000000-0000-4000-8000-000000000001` ;
+  * `updated_at` renseigné ;
+  * `status = active` inchangé ;
+  * `price_cents = 160000` inchangé ;
+  * `internal_comment` inchangé ;
+  * `rank_initial = 1` inchangé ;
+  * `rank_active = 1` inchangé ;
+  * `animal_id = null` inchangé ;
+  * aucune note créée ;
+  * aucun paiement, document ou animal créé ;
+* modification de l'échéance `2026-07-22` validée :
+  * message de succès affiché ;
+  * date affichée ;
+  * `pre_reservation_deadline = 2026-07-22 12:00:00+00` en base ;
+  * status, prix, commentaire, rangs et animal attribué inchangés ;
+  * aucune note créée ;
+* retrait de l'échéance validé :
+  * champ vidé ;
+  * message de succès affiché ;
+  * champ vide ;
+  * `pre_reservation_deadline = null` en base ;
+  * status, prix, commentaire, rangs et animal attribué inchangés ;
+  * aucun paiement, document, note ou animal créé ;
+* date invalide `2026-02-31` validée :
+  * message d'erreur affiché ;
+  * `pre_reservation_deadline` inchangé en base ;
+  * aucune autre donnée modifiée.
+
+Hors périmètre :
+* aucun changement de statut ;
+* aucune modification de rang ;
+* aucune modification du prix ;
+* aucune modification du commentaire interne ;
+* aucune note créée dans la table `notes` ;
+* aucun paiement créé ;
+* aucun document créé ;
+* aucune attribution animal ;
+* aucune migration ;
+* aucune modification RLS, RPC, SQL, seed ou type généré.
+
+Note :
+Le projet dispose désormais de quatre écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, l'édition limitée du tarif convenu, l'édition limitée du commentaire interne, puis l'édition limitée de l'échéance de pré-réservation d'une réservation existante. La majorité des pages restent consultatives, avec quelques complétions limitées, relues côté serveur et validées localement.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1880,7 +1955,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé trois écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu et de son commentaire interne depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement, aucun document, aucune note créée automatiquement et aucune attribution animal.
+Le projet a aussi validé quatre écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`) et de son échéance de pré-réservation (`pre_reservation_deadline`) depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement, aucun document, aucune note créée automatiquement et aucune attribution animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1907,6 +1982,8 @@ Le projet a aussi validé trois écritures métier contrôlées. Une candidature
 * `/reservations/[id]` accepte un champ tarif vide pour retirer le tarif convenu ;
 * `/reservations/[id]` permet de modifier uniquement le commentaire interne d'une réservation existante ;
 * `/reservations/[id]` accepte un champ commentaire vide pour retirer le commentaire interne ;
+* `/reservations/[id]` permet de modifier uniquement l’échéance de pré-réservation d’une réservation existante ;
+* `/reservations/[id]` accepte un champ date vide pour retirer l’échéance de pré-réservation ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -1915,7 +1992,7 @@ Le projet a aussi validé trois écritures métier contrôlées. Une candidature
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu et de l'édition contrôlée du commentaire interne d'une réservation existante.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne et de l'édition contrôlée de l'échéance de pré-réservation d'une réservation existante.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -1927,7 +2004,7 @@ Limites conservées explicitement :
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`) et le commentaire interne (`internal_comment`) ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`) et l'échéance de pré-réservation (`pre_reservation_deadline`) ;
 * aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -1946,7 +2023,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu et l'édition contrôlée du commentaire interne d'une réservation existante ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne et l'édition contrôlée de l'échéance de pré-réservation d'une réservation existante ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -1960,12 +2037,13 @@ Pistes possibles :
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
 * l'édition contrôlée du commentaire interne d'une réservation est validée localement ;
+* l'édition contrôlée de l'échéance de pré-réservation d'une réservation est validée localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
-* concevoir plus tard une édition contrôlée des rangs ou dates de pré-réservation ;
+* concevoir plus tard une édition contrôlée des rangs ou d'autres attributs de réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard une création contrôlée de paiement depuis une réservation ;
 * ne pas introduire paiement, document ou attribution animal sans PR dédiée ;
