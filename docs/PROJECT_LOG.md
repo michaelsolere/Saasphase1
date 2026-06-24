@@ -13,8 +13,8 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : première écriture métier contrôlée validée localement
-Dernier commit connu : `628a3354 Merge PR74: Add application without reservation seed fixture`
+Dernier état connu : deux écritures métier contrôlées validées localement
+Dernier commit connu : `8d67fe64 Merge PR76: Edit reservation price`
 
 Le dépôt contient désormais :
 
@@ -31,6 +31,7 @@ Le dépôt contient désormais :
 * des actions de qualification de candidature ;
 * une action serveur contrôlée pour créer une réservation `draft` depuis une candidature `qualified` ;
 * une UX de retour claire autour de la création d'une réservation brouillon depuis une candidature ;
+* une action serveur contrôlée pour modifier uniquement le tarif convenu d'une réservation existante (`price_cents`) ;
 * un journal de projet `docs/PROJECT_LOG.md` ;
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
@@ -1652,6 +1653,70 @@ Hors périmètre :
 Note :
 PR72 à PR74 valident le premier jalon d'écriture métier contrôlée du projet. Le socle n'est plus strictement lecture seule, mais l'écriture reste limitée à un workflow court, relu côté serveur, anti-doublon, et sans paiement, document, animal ou attribution.
 
+### PR76 — Edit reservation price
+
+Objectif : ajouter une deuxième écriture métier contrôlée en permettant de modifier le tarif convenu d'une réservation depuis `/reservations/[id]`.
+
+Contenu principal :
+* création de l'action serveur `updateReservationPrice` ;
+* édition limitée au champ métier `price_cents` ;
+* saisie utilisateur en euros depuis la fiche réservation ;
+* conversion serveur du montant en centimes ;
+* champ vide accepté pour retirer le tarif convenu (`price_cents = null`) ;
+* validation serveur des montants invalides ;
+* relecture de la réservation côté serveur avant mise à jour ;
+* `organization_id`, `contact_id` et `application_id` non fournis par le client ;
+* mise à jour de `updated_by` et `updated_at` ;
+* affichage d'un message de succès ou d'erreur neutre après soumission.
+
+Validation :
+* `pnpm lint` ;
+* `pnpm build` ;
+* `git diff --check`.
+
+Recette locale validée :
+* `supabase db reset` OK ;
+* login local avec `owner@saasphase1.invalid` ;
+* fiche réservation Alice Martin accessible sur `/reservations/90000000-0000-4000-8000-000000000001` ;
+* formulaire `Tarif convenu` visible ;
+* saisie `1600,00` validée ;
+* message de succès affiché ;
+* tarif affiché correctement à `1 600,00 €` sur la fiche réservation ;
+* tarif affiché correctement à `1 600,00 €` dans `/reservations` ;
+* vérification base locale :
+  * `price_cents = 160000` ;
+  * `updated_by = 10000000-0000-4000-8000-000000000001` ;
+  * `updated_at` renseigné ;
+  * `status = active` inchangé ;
+  * `animal_id = null` inchangé ;
+  * aucun paiement créé ;
+  * aucun document créé ;
+  * aucun animal attribué ;
+* retrait du tarif validé :
+  * champ vidé ;
+  * message de succès affiché ;
+  * affichage `Non renseigné` ;
+  * `price_cents = null` en base ;
+  * statut inchangé ;
+  * aucun paiement, document ou animal créé ;
+* valeur invalide `abc` validée :
+  * message d'erreur affiché ;
+  * `price_cents` inchangé ;
+  * aucune autre donnée modifiée.
+
+Hors périmètre :
+* aucun changement de statut ;
+* aucun paiement créé ;
+* aucun document créé ;
+* aucune attribution animal ;
+* aucune modification de `internal_comment` ;
+* aucune modification de `currency` ;
+* aucune migration ;
+* aucune modification RLS, RPC, SQL, seed ou type généré.
+
+Note :
+Le projet dispose désormais de deux écritures métier contrôlées : la création d'une réservation brouillon depuis une candidature qualifiée, puis l'édition limitée du tarif convenu d'une réservation existante. La majorité des pages restent consultatives, avec quelques complétions volontairement courtes, relues côté serveur et validées localement.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -1745,7 +1810,7 @@ git status
 
 Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
-Le projet a aussi validé sa première écriture métier contrôlée : une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Cette écriture reste volontairement courte et prudente : candidature relue côté serveur, `organization_id` et `contact_id` dérivés côté serveur, anti-doublon par candidature, statut initial `draft`, aucun paiement, aucun document et aucune attribution animal.
+Le projet a aussi validé deux écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement, aucun document et aucune attribution animal.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -1768,6 +1833,8 @@ Le projet a aussi validé sa première écriture métier contrôlée : une candi
 * `/candidatures/[id]` peut créer une réservation brouillon depuis une candidature qualifiée sans réservation liée ;
 * `/candidatures/[id]` affiche la réservation créée dans la section `Réservations liées` ;
 * `/reservations` affiche la réservation brouillon créée ;
+* `/reservations/[id]` permet de modifier uniquement le tarif convenu d'une réservation existante ;
+* `/reservations/[id]` accepte un champ tarif vide pour retirer le tarif convenu ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -1776,7 +1843,7 @@ Le projet a aussi validé sa première écriture métier contrôlée : une candi
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée et de l'édition contrôlée du tarif convenu d'une réservation existante.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -1788,7 +1855,7 @@ Limites conservées explicitement :
 * aucune attribution animal/réservation ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`) ;
 * aucun changement de statut de réservation ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -1807,7 +1874,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée ;
+* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée et l'édition contrôlée du tarif convenu d'une réservation existante ;
 * aucune migration ;
 * aucune RLS ;
 * aucune RPC ;
@@ -1819,14 +1886,17 @@ Pistes possibles :
 * `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
+* l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
 * concevoir plus tard la génération ou la signature de documents dans une PR dédiée ;
-* concevoir plus tard une amélioration contrôlée d'une réservation existante ;
+* concevoir plus tard une édition contrôlée du commentaire interne d'une réservation ;
+* concevoir plus tard une édition contrôlée des rangs ou dates de pré-réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard une création contrôlée de paiement depuis une réservation ;
+* ne pas introduire paiement, document ou attribution animal sans PR dédiée ;
 * concevoir plus tard l'attribution contrôlée animal ↔ réservation dans une PR dédiée ;
 * concevoir plus tard le workflow métier de réservation ;
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
