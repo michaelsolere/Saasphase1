@@ -242,7 +242,8 @@ export default async function ApplicationDetailPage({
                 role="status"
                 className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
               >
-                La réservation brouillon a bien été créée.
+                La réservation brouillon a bien été créée. Elle apparaît
+                maintenant dans la section Réservations liées.
               </p>
             ) : null}
 
@@ -251,7 +252,8 @@ export default async function ApplicationDetailPage({
                 role="status"
                 className="mb-6 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-950"
               >
-                Une réservation existe déjà pour cette candidature.
+                Une réservation existe déjà pour cette candidature. Consultez
+                la section Réservations liées pour l’ouvrir.
               </p>
             ) : null}
 
@@ -260,7 +262,8 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                Seule une candidature qualifiée peut créer une réservation.
+                Seule une candidature qualifiée peut créer une réservation
+                brouillon. Vérifiez d’abord le statut de qualification.
               </p>
             ) : null}
 
@@ -269,7 +272,8 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                La réservation n’a pas pu être créée. Réessayez.
+                La réservation brouillon n’a pas pu être créée. Aucune donnée
+                n’a été modifiée, vous pouvez réessayer.
               </p>
             ) : null}
 
@@ -362,8 +366,9 @@ export default async function ApplicationDetailPage({
                         Réservations liées
                       </h2>
                       <p className="mt-2 text-sm text-muted">
-                        Une candidature qualifiée peut créer une réservation en
-                        statut brouillon.
+                        Une candidature qualifiée peut créer une réservation
+                        en statut brouillon. Elle sera ajoutée ici, sans
+                        paiement, document ou attribution animal.
                       </p>
                     </div>
 
