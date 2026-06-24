@@ -12,6 +12,7 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
+import { markPaymentAsPaid } from "@/features/payments/actions";
 import type { DBPayment } from "@/features/payments/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -124,10 +125,14 @@ function DetailItem({
 
 export default async function PaymentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { id } = await params;
+  const resolvedSearchParams = await searchParams;
+  const paymentMarkStatus = typeof resolvedSearchParams.payment_mark_status === "string" ? resolvedSearchParams.payment_mark_status : undefined;
   const supabase = await createClient();
   const {
     data: { user },
@@ -196,6 +201,33 @@ export default async function PaymentDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
+            {paymentMarkStatus === "success" && (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le paiement a été marqué comme payé.
+              </p>
+            )}
+
+            {paymentMarkStatus === "error" && (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le paiement n’a pas pu être mis à jour. Aucune autre donnée n’a été modifiée.
+              </p>
+            )}
+
+            {paymentMarkStatus === "invalid_state" && (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Action impossible : ce paiement a déjà été traité.
+              </p>
+            )}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -215,6 +247,80 @@ export default async function PaymentDetailPage({
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
+                {payment.status === "requested" && (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-2">
+                      Marquer comme payé
+                    </h2>
+                    <p className="text-xs text-muted mb-6">
+                      Cette action marque cette demande de paiement comme réglée. Elle ne modifie pas le montant, le type de paiement, la réservation et ne génère aucun document.
+                    </p>
+
+                    <form action={markPaymentAsPaid} className="space-y-4">
+                      <input
+                        type="hidden"
+                        name="payment_id"
+                        value={payment.id}
+                      />
+
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Date de paiement
+                          </label>
+                          <input
+                            name="paid_date"
+                            type="date"
+                            required
+                            defaultValue={new Date().toLocaleDateString("en-CA")}
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                            Moyen de paiement
+                          </label>
+                          <select
+                            name="payment_method"
+                            required
+                            defaultValue="bank_transfer"
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          >
+                            <option value="bank_transfer">Virement</option>
+                            <option value="cash">Espèces</option>
+                            <option value="card">Carte bancaire</option>
+                            <option value="cheque">Chèque</option>
+                            <option value="other">Autre</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
+                          Note optionnelle
+                        </label>
+                        <textarea
+                          name="notes"
+                          rows={3}
+                          maxLength={2000}
+                          placeholder="Note de paiement facultative..."
+                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent resize-y"
+                        />
+                      </div>
+
+                      <div className="pt-2">
+                        <button
+                          type="submit"
+                          className="w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent/90"
+                        >
+                          Marquer le paiement comme payé
+                        </button>
+                      </div>
+                    </form>
+                  </section>
+                )}
+
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Informations du paiement

@@ -161,3 +161,112 @@ export async function createReservationPayment(formData: FormData) {
 
   redirect(paymentRedirectUrl(reservationId, "success"));
 }
+
+export async function markPaymentAsPaid(formData: FormData) {
+  const paymentId = formData.get("payment_id");
+
+  if (typeof paymentId !== "string" || !paymentId) {
+    redirect("/payments?erreur=contexte");
+  }
+
+  // 1. Validation de l'utilisateur authentifié
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // 2. Relecture serveur du paiement
+  const { data: payment, error: readError } = await supabase
+    .from("payments")
+    .select("id, organization_id, reservation_id, status, deleted_at")
+    .eq("id", paymentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !payment) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  // 3. Vérifier le statut
+  if (payment.status !== "requested") {
+    redirect(`/payments/${paymentId}?payment_mark_status=invalid_state`);
+  }
+
+  // 4. Validation de la date
+  const paidDate = formData.get("paid_date");
+  if (typeof paidDate !== "string" || !paidDate) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paidDate.trim());
+  if (!dateMatch) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  const dateVal = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+
+  if (
+    dateVal.getUTCFullYear() !== year ||
+    dateVal.getUTCMonth() !== month - 1 ||
+    dateVal.getUTCDate() !== day
+  ) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  const paidAt = dateVal.toISOString();
+
+  // 5. Validation de la méthode de paiement
+  const paymentMethod = formData.get("payment_method");
+  const allowedMethods = ["bank_transfer", "cash", "card", "cheque", "other"];
+  if (
+    typeof paymentMethod !== "string" ||
+    !allowedMethods.includes(paymentMethod)
+  ) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  // 6. Validation des notes
+  const rawNotes = formData.get("notes");
+  let notes: string | null = null;
+  if (typeof rawNotes === "string") {
+    const trimmedNotes = rawNotes.trim();
+    if (trimmedNotes.length > 2000) {
+      redirect(`/payments/${paymentId}?payment_mark_status=error`);
+    }
+    notes = trimmedNotes || null;
+  }
+
+  // 7. Mise à jour du paiement
+  const { error: updateError } = await supabase
+    .from("payments")
+    .update({
+      status: "paid",
+      paid_at: paidAt,
+      payment_method: paymentMethod,
+      notes: notes,
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", paymentId);
+
+  if (updateError) {
+    redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  // 8. Revalidation des chemins
+  revalidatePath(`/payments/${paymentId}`);
+  revalidatePath("/payments");
+  if (payment.reservation_id) {
+    revalidatePath(`/reservations/${payment.reservation_id}`);
+    revalidatePath("/reservations");
+  }
+
+  redirect(`/payments/${paymentId}?payment_mark_status=success`);
+}
