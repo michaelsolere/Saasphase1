@@ -26,6 +26,7 @@ import {
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
   updateReservationPrice,
+  activateReservation,
   assignAnimalToReservation,
   unassignAnimalFromReservation,
 } from "@/features/reservations/actions";
@@ -192,6 +193,7 @@ export default async function ReservationDetailPage({
     deadline_status?: string;
     price_status?: string;
     payment_create_status?: string;
+    activation_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
   }>;
@@ -438,6 +440,33 @@ export default async function ReservationDetailPage({
               </p>
             ) : null}
 
+            {query.activation_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La réservation a été confirmée.
+              </p>
+            ) : null}
+
+            {query.activation_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation ne peut pas être confirmée dans son état actuel.
+              </p>
+            ) : null}
+
+            {query.activation_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation n’a pas pu être confirmée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
             {query.animal_assign_status === "success" ? (
               <p
                 role="status"
@@ -558,6 +587,30 @@ export default async function ReservationDetailPage({
                       />
                     ) : null}
                   </dl>
+
+                  {reservation.status === "draft" ? (
+                    <form
+                      action={activateReservation}
+                      className="mt-8 border-t pt-6"
+                    >
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action confirme manuellement la réservation. Elle
+                        ne crée ni paiement, ni document, ni attribution
+                        d’animal.
+                      </p>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      >
+                        Confirmer la réservation
+                      </button>
+                    </form>
+                  ) : null}
 
                   <form
                     action={updateReservationPrice}

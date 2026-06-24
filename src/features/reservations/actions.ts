@@ -26,6 +26,19 @@ function deadlineUrl(
   return `/reservations/${reservationId}?deadline_status=${outcome}`;
 }
 
+function activationUrl(
+  reservationId: string,
+  outcome: "success" | "invalid_state" | "error",
+) {
+  return `/reservations/${reservationId}?activation_status=${outcome}`;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
 function parsePriceCents(value: FormDataEntryValue | null) {
   if (typeof value !== "string") {
     return { ok: false as const };
@@ -250,6 +263,62 @@ export async function updateReservationPreReservationDeadline(
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(deadlineUrl(reservationId, "success"));
+}
+
+export async function activateReservation(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=activation");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, status, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation) {
+    redirect(activationUrl(reservationId, "error"));
+  }
+
+  if (reservation.status !== "draft") {
+    redirect(activationUrl(reservationId, "invalid_state"));
+  }
+
+  const now = new Date().toISOString();
+  const { data: updatedReservation, error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      status: "active",
+      reservation_confirmed_at: now,
+      updated_at: now,
+      updated_by: user.id,
+    })
+    .eq("id", reservation.id)
+    .eq("organization_id", reservation.organization_id)
+    .eq("status", "draft")
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !updatedReservation) {
+    redirect(activationUrl(reservationId, "invalid_state"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  redirect(activationUrl(reservationId, "success"));
 }
 
 export async function assignAnimalToReservation(formData: FormData) {
