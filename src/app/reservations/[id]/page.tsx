@@ -1238,52 +1238,58 @@ export default async function ReservationDetailPage({
                       événements et les notes de suivi après le départ.
                     </p>
 
-                    {postAdoptionEventsError ? (
-                      <p role="alert" className="mt-5 text-sm text-amber-800">
-                        Impossible de charger le suivi post-adoption.
-                      </p>
-                    ) : postAdoptionEvents && postAdoptionEvents.length > 0 ? (
-                      <div className="mt-6 divide-y divide-border">
-                        {postAdoptionEvents.map((event) => {
-                          const dateText = formatApplicationDate(
-                            getUsefulPostAdoptionEventDate(event),
-                          );
+                    <div className="mt-8 border-t pt-6">
+                      <h3 className="text-base font-semibold">
+                        Événements de suivi
+                      </h3>
 
-                          return (
-                            <div
-                              key={event.id}
-                              className="py-5 first:pt-0 last:pb-0"
-                            >
-                              <div className="space-y-2">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <span className="font-semibold text-foreground text-sm">
-                                    {event.title}
-                                  </span>
-                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                    {event.status}
-                                  </span>
-                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                    Priorité : {event.priority}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-muted">
-                                  Date : {dateText}
-                                </p>
-                                {event.description ? (
-                                  <p className="text-sm leading-6 text-muted">
-                                    {event.description}
+                      {postAdoptionEventsError ? (
+                        <p role="alert" className="mt-5 text-sm text-amber-800">
+                          Impossible de charger le suivi post-adoption.
+                        </p>
+                      ) : postAdoptionEvents && postAdoptionEvents.length > 0 ? (
+                        <div className="mt-5 divide-y divide-border">
+                          {postAdoptionEvents.map((event) => {
+                            const dateText = formatApplicationDate(
+                              getUsefulPostAdoptionEventDate(event),
+                            );
+
+                            return (
+                              <div
+                                key={event.id}
+                                className="py-5 first:pt-0 last:pb-0"
+                              >
+                                <div className="space-y-2">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="font-semibold text-foreground text-sm">
+                                      {event.title}
+                                    </span>
+                                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                      {event.status}
+                                    </span>
+                                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                      Priorité : {event.priority}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted">
+                                    Date : {dateText}
                                   </p>
-                                ) : null}
+                                  {event.description ? (
+                                    <p className="text-sm leading-6 text-muted">
+                                      {event.description}
+                                    </p>
+                                  ) : null}
+                                </div>
                               </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
-                        Aucun suivi post-adoption enregistré pour le moment.
-                      </p>
-                    )}
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
+                          Aucun suivi post-adoption enregistré pour le moment.
+                        </p>
+                      )}
+                    </div>
 
                     <div className="mt-8 border-t pt-6">
                       <h3 className="text-base font-semibold">
@@ -1343,7 +1349,7 @@ export default async function ReservationDetailPage({
                       )}
                     </div>
 
-                    <p className="mt-3 text-xs leading-5 text-muted">
+                    <p className="mt-6 rounded-xl border border-dashed bg-background px-4 py-3 text-xs leading-5 text-muted">
                       Les documents déjà liés à cette réservation restent
                       visibles dans la section Documents liés.
                     </p>
