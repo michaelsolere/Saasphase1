@@ -21,8 +21,24 @@ import {
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
+import { addContactRole } from "@/features/contacts/actions";
 
 export const dynamic = "force-dynamic";
+
+const contactRoleOptions = [
+  "prospect",
+  "candidate",
+  "pre_reservation_holder",
+  "reservation_holder",
+  "adopter",
+  "former_adopter",
+  "stud_owner",
+  "veterinarian",
+  "partner_breeder",
+  "mediation_organization",
+  "supplier",
+  "other",
+] as const;
 
 type RelatedPayment = {
   id: string;
@@ -300,13 +316,31 @@ export default async function ContactDetailPage({
               </p>
             ) : null}
 
+            {query.role_status === "created" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Rôle ajouté au contact.
+              </p>
+            ) : null}
+
+            {query.role_status === "already_exists" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Ce rôle est déjà actif pour ce contact.
+              </p>
+            ) : null}
+
             {query.role_status === "error" ? (
               <p
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                Le contact a été créé, mais le rôle initial n’a pas pu être
-                ajouté. Vous pourrez le compléter plus tard.
+                Le rôle n’a pas pu être ajouté. La fiche contact reste
+                disponible, aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -775,6 +809,38 @@ export default async function ContactDetailPage({
                 ) : (
                   <p className="mt-6 text-sm text-muted">Aucun rôle actif.</p>
                 )}
+
+                <form action={addContactRole} className="mt-6 border-t pt-6">
+                  <input type="hidden" name="contact_id" value={contact.id} />
+                  <label
+                    htmlFor="contact-role"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted"
+                  >
+                    Ajouter un rôle
+                  </label>
+                  <select
+                    id="contact-role"
+                    name="role"
+                    defaultValue=""
+                    className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm focus:border-accent focus:outline-none"
+                    required
+                  >
+                    <option value="" disabled>
+                      Choisir un rôle
+                    </option>
+                    {contactRoleOptions.map((role) => (
+                      <option key={role} value={role}>
+                        {getContactRoleLabel(role)}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="mt-4 w-full rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    Ajouter
+                  </button>
+                </form>
               </aside>
             </div>
           </>

@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
-const allowedInitialRoles = new Set([
+const allowedContactRoles = new Set([
   "prospect",
   "candidate",
   "pre_reservation_holder",
@@ -103,7 +103,7 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
-  if (initialRole && !allowedInitialRoles.has(initialRole)) {
+  if (initialRole && !allowedContactRoles.has(initialRole)) {
     redirect(contactCreateErrorUrl);
   }
 
@@ -192,6 +192,79 @@ export async function createContact(formData: FormData) {
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${contact.id}`);
   redirect(`/contacts/${contact.id}`);
+}
+
+export async function addContactRole(formData: FormData) {
+  const contactId = normalizeOptionalText(formData.get("contact_id"));
+  const role = normalizeOptionalText(formData.get("role"));
+  const errorUrl = contactId
+    ? `/contacts/${contactId}?role_status=error`
+    : "/contacts?erreur=role";
+
+  if (!contactId || !role || !allowedContactRoles.has(role)) {
+    redirect(errorUrl);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: contact, error: contactError } = await supabase
+    .from("contacts")
+    .select("id, organization_id")
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (contactError || !contact?.organization_id) {
+    redirect(errorUrl);
+  }
+
+  const { data: existingRole, error: existingRoleError } = await supabase
+    .from("contact_roles")
+    .select("id")
+    .eq("organization_id", contact.organization_id)
+    .eq("contact_id", contact.id)
+    .eq("role", role)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingRoleError) {
+    redirect(errorUrl);
+  }
+
+  if (existingRole) {
+    redirect(`/contacts/${contact.id}?role_status=already_exists`);
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const { error: insertError } = await supabase.from("contact_roles").insert({
+    organization_id: contact.organization_id,
+    contact_id: contact.id,
+    role,
+    started_at: today,
+    is_active: true,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      redirect(`/contacts/${contact.id}?role_status=already_exists`);
+    }
+
+    redirect(errorUrl);
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${contact.id}`);
+  redirect(`/contacts/${contact.id}?role_status=created`);
 }
 
 export async function createContactNote(formData: FormData) {
