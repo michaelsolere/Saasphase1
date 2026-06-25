@@ -8,6 +8,7 @@ import {
   getAnimalSexLabel,
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
+import { getSexPreferenceLabel } from "@/features/applications/formatters";
 import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
@@ -21,6 +22,10 @@ import {
   getSpeciesLabel,
 } from "@/features/litters/formatters";
 import type { LitterOverview } from "@/features/litters/types";
+import {
+  formatPrice,
+  getReservationStatusLabel,
+} from "@/features/reservations/formatters";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -56,6 +61,19 @@ type RelatedDocument = Pick<
   | "signed_at"
   | "file_name"
   | "signature_required"
+>;
+type RelatedReservation = Pick<
+  Database["public"]["Views"]["reservation_overview"]["Row"],
+  | "id"
+  | "contact_id"
+  | "contact_display_name"
+  | "status"
+  | "price_cents"
+  | "paid_cents"
+  | "currency"
+  | "animal_display_name"
+  | "reserved_sex_preference"
+  | "created_at"
 >;
 type LitterSummary = Pick<
   LitterOverview,
@@ -249,6 +267,95 @@ function RelatedAnimalsSection({
   );
 }
 
+function RelatedReservationsSection({
+  reservations,
+  hasError,
+}: {
+  reservations: RelatedReservation[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Réservations liées</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les réservations liées.
+        </p>
+      ) : !reservations || reservations.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucune réservation liée à cette portée.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {reservations.map((reservation, index) => {
+            const dateText = formatLitterDate(reservation.created_at);
+
+            return (
+              <div
+                key={reservation.id ?? `${reservation.contact_id}-${index}`}
+                className="py-5 first:pt-0 last:pb-0"
+              >
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-sm font-semibold text-foreground">
+                        {reservation.contact_display_name ??
+                          "Contact non renseigné"}
+                      </span>
+                      <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                        {getReservationStatusLabel(reservation.status)}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted">
+                      Préférence :{" "}
+                      {getSexPreferenceLabel(
+                        reservation.reserved_sex_preference,
+                      )}
+                    </p>
+                    <p className="text-xs text-muted">
+                      Animal :{" "}
+                      {reservation.animal_display_name ?? "Non attribué"}
+                    </p>
+                    <p className="text-xs text-muted">
+                      Tarif :{" "}
+                      {formatPrice(
+                        reservation.price_cents,
+                        reservation.currency,
+                      )}
+                      {reservation.paid_cents !== null &&
+                      reservation.paid_cents !== undefined &&
+                      reservation.paid_cents > 0 ? (
+                        <span className="ml-2 font-medium text-emerald-700">
+                          (Payé :{" "}
+                          {formatPrice(
+                            reservation.paid_cents,
+                            reservation.currency,
+                          )}
+                          )
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-muted">Créée le {dateText}</p>
+                  </div>
+                  {reservation.id ? (
+                    <Link
+                      href={`/reservations/${reservation.id}`}
+                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
+                    >
+                      Consulter
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RelatedDocumentsSection({
   documents,
   hasError,
@@ -364,6 +471,18 @@ export default async function LitterDetailPage({
     : { data: null, error: null };
 
   const litterAnimals = rawAnimals as RelatedAnimal[] | null;
+
+  const { data: rawReservations, error: reservationsError } = litter
+    ? await supabase
+        .from("reservation_overview")
+        .select(
+          "id, contact_id, contact_display_name, status, price_cents, paid_cents, currency, animal_display_name, reserved_sex_preference, created_at",
+        )
+        .eq("litter_id", id)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const litterReservations = rawReservations as RelatedReservation[] | null;
 
   const { data: rawDocuments, error: documentsError } = litter
     ? await supabase
@@ -509,6 +628,11 @@ export default async function LitterDetailPage({
               <RelatedAnimalsSection
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
+              />
+
+              <RelatedReservationsSection
+                reservations={litterReservations}
+                hasError={Boolean(reservationsError)}
               />
 
               <RelatedDocumentsSection
