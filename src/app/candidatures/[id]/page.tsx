@@ -167,7 +167,7 @@ export default async function ApplicationDetailPage({
   const application = data as ApplicationDetail | null;
 
   const applicationId = application?.id;
-  const { data: notes } = applicationId
+  const { data: notes, error: notesError } = applicationId
     ? await supabase
         .from("notes")
         .select("id, body, created_at, created_by, profiles!created_by ( display_name )")
@@ -610,7 +610,11 @@ export default async function ApplicationDetailPage({
                   <h2 className="text-xl font-semibold">Notes internes</h2>
 
                   <div className="mt-6 space-y-6">
-                    {notes && notes.length > 0 ? (
+                    {notesError ? (
+                      <p role="alert" className="text-sm text-amber-800">
+                        Impossible de charger les notes internes.
+                      </p>
+                    ) : notes && notes.length > 0 ? (
                       <div className="divide-y divide-border">
                         {notes.map((note) => {
                           const authorName =
