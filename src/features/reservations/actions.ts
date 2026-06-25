@@ -37,6 +37,10 @@ function activationUrl(
   return `/reservations/${reservationId}?activation_status=${outcome}`;
 }
 
+function activationRoleUrl(reservationId: string) {
+  return `/reservations/${reservationId}?activation_status=success&role_status=error`;
+}
+
 function adoptionUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
@@ -315,7 +319,7 @@ export async function activateReservation(formData: FormData) {
 
   const { data: reservation, error: readError } = await supabase
     .from("reservations")
-    .select("id, organization_id, status, deleted_at")
+    .select("id, organization_id, contact_id, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -348,6 +352,49 @@ export async function activateReservation(formData: FormData) {
     redirect(activationUrl(reservationId, "invalid_state"));
   }
 
+  const { data: existingHolderRole, error: existingRoleError } = await supabase
+    .from("contact_roles")
+    .select("id")
+    .eq("organization_id", reservation.organization_id)
+    .eq("contact_id", reservation.contact_id)
+    .eq("role", "reservation_holder")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingRoleError) {
+    revalidatePath("/contacts");
+    revalidatePath(`/contacts/${reservation.contact_id}`);
+    revalidatePath("/reservations");
+    revalidatePath(`/reservations/${reservationId}`);
+    redirect(activationRoleUrl(reservationId));
+  }
+
+  if (!existingHolderRole) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: reservation.organization_id,
+        contact_id: reservation.contact_id,
+        role: "reservation_holder",
+        started_at: today,
+        is_active: true,
+        created_by: user.id,
+        updated_by: user.id,
+      });
+
+    if (roleInsertError && roleInsertError.code !== "23505") {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${reservation.contact_id}`);
+      revalidatePath("/reservations");
+      revalidatePath(`/reservations/${reservationId}`);
+      redirect(activationRoleUrl(reservationId));
+    }
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${reservation.contact_id}`);
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(activationUrl(reservationId, "success"));
