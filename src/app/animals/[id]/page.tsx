@@ -367,13 +367,25 @@ function RelatedReservationSection({
             </p>
           ) : null}
         </div>
-        {reservation?.id ? (
-          <Link
-            href={`/reservations/${reservation.id}`}
-            className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-          >
-            Consulter
-          </Link>
+        {reservation?.id || reservation?.contact_id ? (
+          <div className="flex flex-wrap gap-2">
+            {reservation.contact_id ? (
+              <Link
+                href={`/contacts/${reservation.contact_id}`}
+                className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+              >
+                Voir le contact
+              </Link>
+            ) : null}
+            {reservation.id ? (
+              <Link
+                href={`/reservations/${reservation.id}`}
+                className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+              >
+                Consulter
+              </Link>
+            ) : null}
+          </div>
         ) : null}
       </div>
 
@@ -386,43 +398,58 @@ function RelatedReservationSection({
           Aucune réservation liée à cet animal.
         </p>
       ) : (
-        <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-          <DetailItem
-            label="Statut"
-            value={getReservationStatusLabel(reservation.status)}
-          />
-          <DetailItem
-            label="Contact"
-            value={reservation.contact_display_name}
-          />
-          <DetailItem
-            label="Préférence de sexe"
-            value={getSexPreferenceLabel(reservation.reserved_sex_preference)}
-          />
-          <DetailItem
-            label="Prix"
-            value={formatPrice(reservation.price_cents, reservation.currency)}
-          />
-          <DetailItem
-            label="Montant payé"
-            value={formatPrice(reservation.paid_cents, reservation.currency)}
-          />
-          {reservation.refunded_cents !== null &&
-          reservation.refunded_cents !== undefined &&
-          reservation.refunded_cents > 0 ? (
-            <DetailItem
-              label="Montant remboursé"
-              value={formatPrice(
-                reservation.refunded_cents,
-                reservation.currency,
-              )}
-            />
+        <div className="mt-6 space-y-5">
+          {reservation.status === "adopted" ? (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+              Animal adopté via cette réservation.
+            </p>
           ) : null}
-          <DetailItem
-            label="Création"
-            value={formatAnimalDate(reservation.created_at)}
-          />
-        </dl>
+
+          <dl className="grid gap-6 sm:grid-cols-2">
+            <DetailItem
+              label="Statut"
+              value={getReservationStatusLabel(reservation.status)}
+            />
+            <DetailItem
+              label="Contact"
+              value={reservation.contact_display_name}
+            />
+            <DetailItem
+              label="Préférence de sexe"
+              value={getSexPreferenceLabel(reservation.reserved_sex_preference)}
+            />
+            <DetailItem
+              label="Prix"
+              value={formatPrice(reservation.price_cents, reservation.currency)}
+            />
+            <DetailItem
+              label="Montant payé"
+              value={formatPrice(reservation.paid_cents, reservation.currency)}
+            />
+            {reservation.refunded_cents !== null &&
+            reservation.refunded_cents !== undefined &&
+            reservation.refunded_cents > 0 ? (
+              <DetailItem
+                label="Montant remboursé"
+                value={formatPrice(
+                  reservation.refunded_cents,
+                  reservation.currency,
+                )}
+              />
+            ) : null}
+            {reservation.status === "adopted" &&
+            reservation.adoption_completed_at ? (
+              <DetailItem
+                label="Date d’adoption effective"
+                value={formatAnimalDate(reservation.adoption_completed_at)}
+              />
+            ) : null}
+            <DetailItem
+              label="Création"
+              value={formatAnimalDate(reservation.created_at)}
+            />
+          </dl>
+        </div>
       )}
     </section>
   );
@@ -705,7 +732,7 @@ export default async function AnimalDetailPage({
     ? await supabase
         .from("reservation_overview")
         .select(
-          "id, contact_id, contact_display_name, animal_id, animal_display_name, reserved_sex_preference, status, price_cents, currency, paid_cents, refunded_cents, created_at, updated_at",
+          "id, contact_id, contact_display_name, animal_id, animal_display_name, reserved_sex_preference, status, price_cents, currency, paid_cents, refunded_cents, adoption_completed_at, created_at, updated_at",
         )
         .eq("animal_id", id)
         .order("created_at", { ascending: false })
