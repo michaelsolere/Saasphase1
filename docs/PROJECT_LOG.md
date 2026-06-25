@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales et suivi post-adoption en lecture seule enrichi et clarifié
-Dernier commit connu : `0905a6ac Merge PR108: Polish post-adoption follow-up layout`
-Documentation projet à jour jusqu'à PR109.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `95c8b486 Merge PR110: Add read-only adoption summary`
+Documentation projet à jour jusqu'à PR111.
 
 Le dépôt contient désormais :
 
@@ -95,6 +95,7 @@ Le dépôt contient désormais :
 * une lecture seule des événements post-adoption liés à une réservation adoptée, filtrés sur `event_type = 'post_adoption_follow_up'` et `deleted_at is null` ;
 * une lecture seule des notes liées à une réservation adoptée via `reservation_id`, sans filtre de type post-adoption dédié ;
 * une hiérarchie visuelle clarifiée dans `Suivi post-adoption`, avec sous-blocs événements, notes et rappel documents ;
+* une synthèse d'adoption en lecture seule sur les réservations `adopted`, construite uniquement avec les données déjà chargées ;
 * un test Playwright ciblé sur la confirmation manuelle `draft` → `active`, indépendant du smoke global ;
 * des tests Playwright dédiés pour les transitions `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
 * une suite e2e Playwright globale de six tests couvrant le smoke global et les transitions de réservation ciblées ;
@@ -2791,6 +2792,53 @@ Prochaines pistes :
 * décider plus tard si le modèle de notes doit recevoir un type dédié post-adoption ;
 * conserver toute écriture de suivi post-adoption dans une PR séparée, courte et validée.
 
+## PR110 — Add read-only adoption summary
+
+Objectif : ajouter une courte synthèse d'adoption en lecture seule sur la fiche réservation.
+
+Changement UI sur `/reservations/[id]` :
+* ajout d'un bloc `Synthèse d'adoption` ;
+* affichage uniquement si `reservation.status === "adopted"` ;
+* positionnement dans la section `Informations de la réservation`, après le bloc `Statut final` ;
+* résumé court du statut, du contact, de l'animal, du prix convenu, des paiements, des documents, du suivi post-adoption et de la date d'adoption si disponible.
+
+Données utilisées :
+* uniquement les données déjà chargées dans la page ;
+* informations de réservation existantes ;
+* animal lié déjà chargé ;
+* paiements liés déjà chargés ;
+* documents liés déjà chargés ;
+* événements et notes du suivi post-adoption déjà chargés.
+
+Non-effets de bord :
+* aucune nouvelle requête Supabase ;
+* aucune modification des requêtes existantes ;
+* aucun calcul de solde métier ;
+* aucune validation automatique de paiement ;
+* aucun bouton ;
+* aucun lien ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune modification des sections `Paiements liés`, `Documents liés`, `Animal lié` ou `Suivi post-adoption`.
+
+État courant après PR110 :
+* une réservation adoptée dispose d'un statut final explicite ;
+* une réservation adoptée dispose d'un suivi post-adoption en lecture seule ;
+* une réservation adoptée dispose désormais d'une synthèse d'adoption en lecture seule ;
+* le projet conserve treize écritures métier contrôlées ;
+* la suite e2e Playwright globale reste composée de six tests.
+
+Limites conservées :
+* pas d'écriture d'adoption supplémentaire ;
+* pas de calcul de solde métier ;
+* pas de validation automatique de paiement complet ;
+* pas de nouvelle donnée chargée ;
+* pas de nouveau bouton, lien, formulaire ou action.
+
+Prochaines pistes :
+* enrichir plus tard la synthèse seulement si de nouveaux champs déjà fiables deviennent disponibles ;
+* conserver toute règle métier d'adoption plus stricte dans une PR applicative séparée et testée.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2886,7 +2934,7 @@ Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé comp
 
 Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
-La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Le suivi post-adoption est désormais amorcé en lecture seule sur les réservations `adopted`, avec affichage des événements `post_adoption_follow_up` existants, des notes liées à la réservation et une structure visuelle séparant événements, notes et rappel documents.
+La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Le suivi post-adoption est désormais amorcé en lecture seule sur les réservations `adopted`, avec affichage des événements `post_adoption_follow_up` existants, des notes liées à la réservation et une structure visuelle séparant événements, notes et rappel documents. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
@@ -2924,6 +2972,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/reservations/[id]` permet de marquer manuellement une réservation `active` en expirée `expired` ;
 * les gardes applicatives de réservation traitent `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` comme statuts finaux ;
 * `/reservations/[id]` affiche un résumé `Statut final` lorsqu'une réservation est dans un statut final ;
+* `/reservations/[id]` affiche une synthèse d'adoption pour les réservations `adopted` ;
 * `/reservations/[id]` affiche une section `Suivi post-adoption` pour les réservations `adopted` ;
 * `/reservations/[id]` lit en lecture seule les événements `post_adoption_follow_up` liés à une réservation adoptée ;
 * `/reservations/[id]` lit en lecture seule les notes liées à une réservation adoptée, sans filtre `note_type` post-adoption dédié ;
@@ -2953,6 +3002,7 @@ Limites conservées explicitement :
 * aucun remboursement déclenché par les transitions finales de réservation ;
 * aucun avoir déclenché par les transitions finales de réservation ;
 * aucune modification de paiement déclenchée par les transitions finales de réservation ;
+* aucun calcul de solde métier ou validation automatique de paiement complet dans la synthèse d'adoption ;
 * aucune génération de document ou reçu déclenchée par les transitions finales de réservation ;
 * aucune note automatique déclenchée par les transitions finales de réservation ;
 * aucune modification animal déclenchée par les transitions finales de réservation ;
@@ -2965,6 +3015,7 @@ Limites conservées explicitement :
 * aucun filtre `note_type` post-adoption dédié sur les notes ;
 * aucun formulaire de suivi post-adoption ;
 * aucune action serveur de suivi post-adoption ;
+* aucune requête Supabase supplémentaire pour la synthèse d'adoption ;
 * aucun seed ou test e2e dédié au suivi post-adoption à ce stade ;
 * aucun upload ;
 * aucun téléchargement ;
@@ -3012,7 +3063,7 @@ Pistes possibles :
 * l'expiration manuelle d'une réservation `active` en `expired` est protégée par un test Playwright dédié ;
 * la suite e2e Playwright globale contient désormais six tests ;
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
-* la fiche réservation explique désormais les statuts finaux et amorce le suivi post-adoption en lecture seule avec événements et notes liées ;
+* la fiche réservation explique désormais les statuts finaux, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements et notes liées ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
