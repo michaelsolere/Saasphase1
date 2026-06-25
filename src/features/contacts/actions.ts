@@ -5,6 +5,20 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
+const allowedInitialRoles = new Set([
+  "prospect",
+  "candidate",
+  "pre_reservation_holder",
+  "reservation_holder",
+  "adopter",
+  "former_adopter",
+  "stud_owner",
+  "veterinarian",
+  "partner_breeder",
+  "mediation_organization",
+  "supplier",
+  "other",
+]);
 
 function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
   if (typeof value !== "string") {
@@ -72,6 +86,7 @@ export async function createContact(formData: FormData) {
   const postalCode = normalizeOptionalText(formData.get("postal_code"));
   const city = normalizeOptionalText(formData.get("city"));
   const country = normalizeOptionalText(formData.get("country"), 2) ?? "FR";
+  const initialRole = normalizeOptionalText(formData.get("initial_role"));
   const hasUsefulContactInformation = Boolean(
     requestedDisplayName ||
       firstName ||
@@ -85,6 +100,10 @@ export async function createContact(formData: FormData) {
   );
 
   if (!hasUsefulContactInformation) {
+    redirect(contactCreateErrorUrl);
+  }
+
+  if (initialRole && !allowedInitialRoles.has(initialRole)) {
     redirect(contactCreateErrorUrl);
   }
 
@@ -149,7 +168,29 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
+  if (initialRole) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: membership.organization_id,
+        contact_id: contact.id,
+        role: initialRole,
+        started_at: today,
+        is_active: true,
+        created_by: user.id,
+        updated_by: user.id,
+      });
+
+    if (roleInsertError) {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${contact.id}`);
+      redirect(`/contacts/${contact.id}?role_status=error`);
+    }
+  }
+
   revalidatePath("/contacts");
+  revalidatePath(`/contacts/${contact.id}`);
   redirect(`/contacts/${contact.id}`);
 }
 

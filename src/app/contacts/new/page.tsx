@@ -41,6 +41,21 @@ function Field({
   );
 }
 
+const initialRoleOptions = [
+  ["prospect", "Prospect"],
+  ["candidate", "Candidat"],
+  ["pre_reservation_holder", "Titulaire de pré-réservation"],
+  ["reservation_holder", "Titulaire de réservation"],
+  ["adopter", "Adoptant"],
+  ["former_adopter", "Ancien adoptant"],
+  ["stud_owner", "Propriétaire d'étalon"],
+  ["veterinarian", "Vétérinaire"],
+  ["partner_breeder", "Éleveur partenaire"],
+  ["mediation_organization", "Organisme de médiation"],
+  ["supplier", "Fournisseur"],
+  ["other", "Autre"],
+] as const;
+
 export default async function NewContactPage({
   searchParams,
 }: {
@@ -162,6 +177,27 @@ export default async function NewContactPage({
             defaultValue="FR"
             autoComplete="country"
           />
+          <div className="sm:col-span-2">
+            <label
+              htmlFor="contact-initial-role"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Rôle initial
+            </label>
+            <select
+              id="contact-initial-role"
+              name="initial_role"
+              defaultValue=""
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="">Aucun rôle initial</option>
+              {initialRoleOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
