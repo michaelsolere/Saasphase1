@@ -32,6 +32,17 @@ type RelatedDocument = {
   signature_required: boolean;
 };
 
+type RelatedNote = {
+  id: string;
+  title: string | null;
+  body: string;
+  note_type: string;
+  visibility: string;
+  created_at: string;
+  created_by: string | null;
+  profiles: { display_name: string | null } | null;
+};
+
 function formatDate(value: string | null) {
   if (!value) {
     return "Non renseigné";
@@ -123,6 +134,57 @@ function DetailItem({
   );
 }
 
+function RelatedNotesSection({
+  notes,
+  hasError,
+}: {
+  notes: RelatedNote[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Notes liées</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les notes liées.
+        </p>
+      ) : !notes || notes.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucune note liée à ce paiement.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {notes.map((note) => {
+            const authorName = note.profiles?.display_name ?? null;
+
+            return (
+              <div key={note.id} className="py-5 first:pt-0 last:pb-0">
+                <div className="space-y-2">
+                  {note.title ? (
+                    <p className="text-sm font-semibold text-foreground">
+                      {note.title}
+                    </p>
+                  ) : null}
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {note.body}
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted">
+                    <span>Type : {note.note_type}</span>
+                    <span>Visibilité : {note.visibility}</span>
+                    <span>Créée le {formatDate(note.created_at)}</span>
+                    {authorName ? <span>Par {authorName}</span> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function PaymentDetailPage({
   params,
   searchParams,
@@ -164,6 +226,19 @@ export default async function PaymentDetailPage({
     : { data: null, error: null };
 
   const paymentDocuments = rawDocuments as RelatedDocument[] | null;
+
+  const { data: rawNotes, error: notesError } = payment?.id
+    ? await supabase
+        .from("notes")
+        .select(
+          "id, title, body, note_type, visibility, created_at, created_by, profiles!created_by(display_name)",
+        )
+        .eq("payment_id", payment.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const paymentNotes = rawNotes as RelatedNote[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -386,6 +461,11 @@ export default async function PaymentDetailPage({
                     {payment.notes || "Aucune note renseignée."}
                   </p>
                 </section>
+
+                <RelatedNotesSection
+                  notes={paymentNotes}
+                  hasError={Boolean(notesError)}
+                />
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
