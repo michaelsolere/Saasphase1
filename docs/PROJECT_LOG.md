@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec quinze écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides, création manuelle de candidature depuis un contact existant, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `eed6131c Merge pull request #136 from michaelsolere/feature/manual-application-from-contact`
-Documentation projet à jour jusqu'à PR136.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec quinze écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides, création manuelle de candidature depuis un contact existant, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `afda472b Merge pull request #137 from michaelsolere/docs/update-project-log-manual-application-from-contact`
+Documentation projet à jour jusqu'à PR137 et avec la recette manuelle contact → candidature → réservation.
 
 Le dépôt contient désormais :
 
@@ -2248,6 +2248,33 @@ Prochaines étapes possibles après ce point :
 * concevoir plus tard les reçus et documents générés ;
 * envisager plus tard une contrainte SQL d'unicité animal/réservation si l'usage concurrent devient un risque concret.
 
+## Recette manuelle contact → candidature → réservation validée
+
+Cette recette documente le parcours métier manuel ajouté côté espace privé, après validation navigateur sur `main`.
+
+Parcours principal validé :
+* création d'un contact manuel via `/contacts/new` OK ;
+* redirection vers `/contacts/[id]` après création du contact OK ;
+* création d'une candidature depuis la fiche contact via `/contacts/[id]/applications/new` OK ;
+* redirection vers `/candidatures/[id]` après création de la candidature OK ;
+* qualification manuelle de la candidature OK ;
+* création d'une réservation brouillon depuis la candidature qualifiée OK ;
+* réservation visible depuis la fiche candidature OK ;
+* retour sur la fiche contact avec candidature et réservation visibles dans les sections liées OK.
+
+Non-effets de bord confirmés ou conservés :
+* aucun paiement créé automatiquement ;
+* aucun document créé automatiquement ;
+* aucun animal attribué automatiquement ;
+* aucune note automatique créée ;
+* aucun dédoublonnage automatique.
+
+État courant après recette :
+* le parcours manuel contact → candidature → réservation brouillon est validé fonctionnellement ;
+* le formulaire public reste inchangé ;
+* la création de réservation reste conditionnée à une candidature qualifiée ;
+* les sections liées de la fiche contact permettent de retrouver la candidature et la réservation créées.
+
 ## PR92 — Activate draft reservation
 
 Objectif : ajouter une transition manuelle contrôlée `draft` → `active` depuis `/reservations/[id]`.
@@ -3332,7 +3359,7 @@ git status
 
 Le bloc Portées / Animaux / Paiements / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée, animal, paiement et document, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
 
-Le projet a aussi validé quinze écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté et refus serveur des formulaires vides ou remplis seulement par des valeurs par défaut. Une candidature peut aussi être créée manuellement depuis `/contacts/[id]/applications/new`, avec relecture serveur du contact, dérivation de `organization_id` depuis le contact relu, statut initial `new` et redirection vers `/candidatures/[id]`. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
+Le projet a aussi validé quinze écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté et refus serveur des formulaires vides ou remplis seulement par des valeurs par défaut. Une candidature peut aussi être créée manuellement depuis `/contacts/[id]/applications/new`, avec relecture serveur du contact, dérivation de `organization_id` depuis le contact relu, statut initial `new` et redirection vers `/candidatures/[id]`. Le parcours manuel complet contact → candidature → qualification → réservation brouillon a été validé en navigateur, avec retour sur la fiche contact montrant la candidature et la réservation dans les sections liées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
 La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées et les événements généraux liés à une réservation sont désormais visibles en lecture seule pour tous les statuts. Les événements `post_adoption_follow_up` restent affichés séparément dans le suivi post-adoption des réservations `adopted`, afin d'éviter les doublons avec la section générale. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
@@ -3367,6 +3394,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/contacts/new` permet de créer manuellement un contact privé via l'action serveur `createContact`, avec au moins une information utile requise après trim ;
 * `/contacts/[id]` propose un lien `Créer une candidature` vers `/contacts/[id]/applications/new` ;
 * `/contacts/[id]/applications/new` permet de créer manuellement une candidature privée via l'action serveur `createApplicationForContact` ;
+* le parcours manuel contact → candidature → qualification → réservation brouillon est validé fonctionnellement en navigateur ;
 * `/contacts/[id]` affiche les événements liés au contact en lecture seule ;
 * `/candidatures/[id]` affiche les événements liés à la candidature en lecture seule ;
 * `/candidatures/[id]` affiche un état d'erreur neutre si les notes internes ne peuvent pas être chargées ;
@@ -3428,6 +3456,7 @@ Limites conservées explicitement :
 * aucun contact manuel créé depuis un formulaire vide, un formulaire rempli seulement d'espaces ou un formulaire avec seulement `country = "FR"` ;
 * aucun dédoublonnage automatique lors de la création manuelle de candidature depuis contact ;
 * aucune création de contact, réservation, document, note automatique ou rôle contact lors de la création manuelle de candidature depuis contact ;
+* aucun paiement, document, animal attribué, note ou dédoublonnage automatique lors du parcours manuel contact → candidature → réservation ;
 * aucun changement du formulaire public de candidature ;
 * si un utilisateur appartient à plusieurs organisations actives, `/contacts/new` utilise la première membership active trouvée en Phase 1 ;
 * aucune création, édition ou suppression d'événement lié depuis la fiche candidature ;
@@ -3490,6 +3519,7 @@ Pistes possibles :
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
 * la création manuelle de contact depuis `/contacts/new` est disponible sans créer de rôle, note, candidature, réservation ou document automatique, et refuse les soumissions vides ou uniquement remplies par des valeurs par défaut ;
 * la création manuelle de candidature depuis `/contacts/[id]/applications/new` est disponible sans dédoublonnage automatique, sans réservation, document, note ou rôle contact automatique ;
+* le parcours manuel contact → candidature → qualification → réservation brouillon est validé fonctionnellement et visible depuis les fiches liées ;
 * la chaîne candidature → réservation → paiement → animal est validée globalement comme point de stabilité ;
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
