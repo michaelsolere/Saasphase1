@@ -953,9 +953,10 @@ export default async function ReservationDetailPage({
                                 value={id}
                               />
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Cette action finalise manuellement l’adoption. Elle ne
-                                crée ni paiement, ni document, ni note, ni modification
-                                d’animal.
+                                Cette action finalise l’adoption : la réservation
+                                passera en adoptée, la date d’adoption sera renseignée,
+                                le contact sera marqué comme adoptant et, si un animal
+                                est lié, son statut sera mis à jour comme adopté.
                               </p>
                               <button
                                 type="submit"
