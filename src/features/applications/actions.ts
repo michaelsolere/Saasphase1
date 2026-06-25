@@ -52,6 +52,10 @@ function contactApplicationUrl(contactId: string, outcome: "error") {
   return `/contacts/${contactId}/applications/new?status=${outcome}`;
 }
 
+function applicationRoleUrl(applicationId: string) {
+  return `/candidatures/${applicationId}?role_status=error`;
+}
+
 export async function createApplicationForContact(formData: FormData) {
   const contactId = formData.get("contact_id");
 
@@ -112,6 +116,48 @@ export async function createApplicationForContact(formData: FormData) {
 
   if (insertError || !application?.id) {
     redirect(contactApplicationUrl(contactId, "error"));
+  }
+
+  const { data: existingCandidateRole, error: existingRoleError } =
+    await supabase
+      .from("contact_roles")
+      .select("id")
+      .eq("organization_id", contact.organization_id)
+      .eq("contact_id", contact.id)
+      .eq("role", "candidate")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+  if (existingRoleError) {
+    revalidatePath("/contacts");
+    revalidatePath(`/contacts/${contactId}`);
+    revalidatePath("/candidatures");
+    revalidatePath(`/candidatures/${application.id}`);
+    redirect(applicationRoleUrl(application.id));
+  }
+
+  if (!existingCandidateRole) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: contact.organization_id,
+        contact_id: contact.id,
+        role: "candidate",
+        started_at: today,
+        is_active: true,
+        created_by: user.id,
+        updated_by: user.id,
+      });
+
+    if (roleInsertError && roleInsertError.code !== "23505") {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${contactId}`);
+      revalidatePath("/candidatures");
+      revalidatePath(`/candidatures/${application.id}`);
+      redirect(applicationRoleUrl(application.id));
+    }
   }
 
   revalidatePath("/contacts");
