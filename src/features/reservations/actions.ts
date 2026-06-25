@@ -554,6 +554,28 @@ export async function adoptReservation(formData: FormData) {
         revalidatePath(`/reservations/${reservationId}`);
         redirect(adoptionRoleUrl(reservationId));
       }
+
+      const { error: candidateRoleDeactivateError } = await supabase
+        .from("contact_roles")
+        .update({
+          is_active: false,
+          ended_at: today,
+          updated_at: now,
+          updated_by: user.id,
+        })
+        .eq("organization_id", reservation.organization_id)
+        .eq("contact_id", reservation.contact_id)
+        .eq("role", "candidate")
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      if (candidateRoleDeactivateError) {
+        revalidatePath("/contacts");
+        revalidatePath(`/contacts/${reservation.contact_id}`);
+        revalidatePath("/reservations");
+        revalidatePath(`/reservations/${reservationId}`);
+        redirect(adoptionRoleUrl(reservationId));
+      }
     }
   }
 
