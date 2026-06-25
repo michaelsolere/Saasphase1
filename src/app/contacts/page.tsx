@@ -91,9 +91,12 @@ export default async function ContactsPage() {
             >
               Documents
             </Link>
-            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-              Lecture seule
-            </span>
+            <Link
+              href="/contacts/new"
+              className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+            >
+              Nouveau contact
+            </Link>
             <form action={logout}>
               <button
                 type="submit"
