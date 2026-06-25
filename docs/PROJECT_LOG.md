@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `95c8b486 Merge PR110: Add read-only adoption summary`
-Documentation projet à jour jusqu'à PR111.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiche portée enrichie avec les réservations liées, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `73b1018c Merge PR113: Show related reservations on litter detail`
+Documentation projet à jour jusqu'à PR113.
 
 Le dépôt contient désormais :
 
@@ -93,9 +93,10 @@ Le dépôt contient désormais :
 * un bloc `Statut final` sur la fiche réservation expliquant pourquoi les actions de statut ne sont plus disponibles ;
 * une section `Suivi post-adoption` visible sur les réservations adoptées ;
 * une lecture seule des événements post-adoption liés à une réservation adoptée, filtrés sur `event_type = 'post_adoption_follow_up'` et `deleted_at is null` ;
-* une lecture seule des notes liées à une réservation adoptée via `reservation_id`, sans filtre de type post-adoption dédié ;
-* une hiérarchie visuelle clarifiée dans `Suivi post-adoption`, avec sous-blocs événements, notes et rappel documents ;
+* une lecture seule des notes liées à une réservation via `reservation_id`, visible pour tous les statuts de réservation, sans filtre de type post-adoption dédié ;
+* une hiérarchie visuelle clarifiée dans `Suivi post-adoption`, avec sous-bloc événements et rappel documents ;
 * une synthèse d'adoption en lecture seule sur les réservations `adopted`, construite uniquement avec les données déjà chargées ;
+* l'affichage des réservations liées sur la fiche détail d'une portée (`/litters/[id]`) avec lien vers `/reservations/[id]` ;
 * un test Playwright ciblé sur la confirmation manuelle `draft` → `active`, indépendant du smoke global ;
 * des tests Playwright dédiés pour les transitions `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
 * une suite e2e Playwright globale de six tests couvrant le smoke global et les transitions de réservation ciblées ;
@@ -2839,6 +2840,52 @@ Prochaines pistes :
 * enrichir plus tard la synthèse seulement si de nouveaux champs déjà fiables deviennent disponibles ;
 * conserver toute règle métier d'adoption plus stricte dans une PR applicative séparée et testée.
 
+## PR112 — Show related notes for all reservations
+
+Objectif : généraliser l'affichage en lecture seule des notes liées à une réservation sur `/reservations/[id]`.
+
+Changement UI sur `/reservations/[id]` :
+* déplacement des `Notes liées à la réservation` dans une section générale ;
+* section visible pour tous les statuts de réservation ;
+* suppression du doublon de notes dans `Suivi post-adoption` ;
+* conservation du suivi post-adoption centré sur les événements et le rappel documents.
+
+Lecture Supabase :
+* chargement dès qu'une réservation existe ;
+* table `notes` ;
+* filtre conservé : `reservation_id = reservation.id` ;
+* filtre conservé : `deleted_at is null` ;
+* tri conservé : `created_at` décroissant ;
+* aucun filtre `note_type`.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de note ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR113 — Show related reservations on litter detail
+
+Objectif : ajouter une section `Réservations liées` sur la fiche portée `/litters/[id]`.
+
+Changement UI sur `/litters/[id]` :
+* ajout d'une section `Réservations liées` après `Animaux liés` et avant `Documents liés` ;
+* lecture depuis `reservation_overview` ;
+* filtre : `litter_id = id` ;
+* tri : `created_at` décroissant ;
+* affichage en lecture seule du contact, du statut, de la préférence de sexe, de l'animal attribué ou `Non attribué`, du tarif convenu, du montant payé si disponible, de la date de création et d'un lien vers `/reservations/[id]`.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de réservation ;
+* aucun bouton de création ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement paiement, animal ou document ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2930,16 +2977,17 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
 Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
-La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Le suivi post-adoption est désormais amorcé en lecture seule sur les réservations `adopted`, avec affichage des événements `post_adoption_follow_up` existants, des notes liées à la réservation et une structure visuelle séparant événements, notes et rappel documents. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
+La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées à une réservation sont désormais visibles en lecture seule pour tous les statuts. Le suivi post-adoption reste amorcé en lecture seule sur les réservations `adopted`, avec affichage des événements `post_adoption_follow_up` existants et rappel des documents liés. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
 État fonctionnel :
 * `/litters` liste les portées existantes ;
 * `/litters/[id]` affiche la fiche détail d'une portée ;
 * `/litters/[id]` affiche les animaux liés à la portée ;
+* `/litters/[id]` affiche les réservations liées à la portée ;
 * `/litters/[id]` affiche les documents liés à la portée ;
 * `/animals` liste les animaux existants ;
 * `/animals/[id]` affiche la fiche détail d'un animal ;
@@ -2975,8 +3023,8 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/reservations/[id]` affiche une synthèse d'adoption pour les réservations `adopted` ;
 * `/reservations/[id]` affiche une section `Suivi post-adoption` pour les réservations `adopted` ;
 * `/reservations/[id]` lit en lecture seule les événements `post_adoption_follow_up` liés à une réservation adoptée ;
-* `/reservations/[id]` lit en lecture seule les notes liées à une réservation adoptée, sans filtre `note_type` post-adoption dédié ;
-* `/reservations/[id]` distingue visuellement les sous-blocs `Événements de suivi` et `Notes liées à la réservation` ;
+* `/reservations/[id]` lit en lecture seule les notes liées à une réservation pour tous les statuts, sans filtre `note_type` post-adoption dédié ;
+* `/reservations/[id]` conserve le sous-bloc `Événements de suivi` dans `Suivi post-adoption` ;
 * `/payments/[id]` permet de marquer une demande de paiement `requested` comme réglée `paid` ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
@@ -3011,7 +3059,7 @@ Limites conservées explicitement :
 * aucun cron ;
 * aucune tâche planifiée ;
 * aucune création, édition ou suppression d'événement post-adoption ;
-* aucune création, édition ou suppression de note liée depuis le suivi post-adoption ;
+* aucune création, édition ou suppression de note liée depuis la fiche réservation ;
 * aucun filtre `note_type` post-adoption dédié sur les notes ;
 * aucun formulaire de suivi post-adoption ;
 * aucune action serveur de suivi post-adoption ;
@@ -3063,7 +3111,7 @@ Pistes possibles :
 * l'expiration manuelle d'une réservation `active` en `expired` est protégée par un test Playwright dédié ;
 * la suite e2e Playwright globale contient désormais six tests ;
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
-* la fiche réservation explique désormais les statuts finaux, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements et notes liées ;
+* la fiche réservation explique désormais les statuts finaux, affiche les notes liées à la réservation pour tous les statuts, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements liés ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
