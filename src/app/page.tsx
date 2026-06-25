@@ -28,7 +28,7 @@ const quickLinks = [
   {
     href: "/reservations",
     title: "Réservations",
-    description: "Le suivi consultatif des réservations existantes.",
+    description: "Le suivi des réservations, paiements, animal et notes liés.",
     status: "Lecture seule",
   },
   {
@@ -40,19 +40,19 @@ const quickLinks = [
   {
     href: "/documents",
     title: "Documents",
-    description: "Les documents et leurs liens métier principaux.",
+    description: "Les documents reliés aux contacts, dossiers et paiements.",
     status: "Lecture seule",
   },
   {
     href: "/litters",
     title: "Portées",
-    description: "Les portées, leurs parents et leurs compteurs principaux.",
+    description: "Les portées, animaux, réservations, notes et événements liés.",
     status: "Lecture seule",
   },
   {
     href: "/animals",
     title: "Animaux",
-    description: "Les animaux, leur portée, réservation et documents liés.",
+    description: "Les animaux avec portée, réservation, documents, notes et événements.",
     status: "Lecture seule",
   },
 ];
