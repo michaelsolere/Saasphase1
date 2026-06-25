@@ -400,6 +400,37 @@ export default async function ReservationDetailPage({
   const reservationNotes =
     rawReservationNotes as RelatedReservationNote[] | null;
 
+  const animalSummaryLabel =
+    reservation?.animal_display_name ??
+    (relatedAnimal ? getAnimalDisplayName(relatedAnimal) : null) ??
+    "Aucun animal attribué";
+  const paymentSummaryLabel = reservationPayments && reservation
+    ? `${reservationPayments.length} paiement${
+        reservationPayments.length > 1 ? "s" : ""
+      } lié${reservationPayments.length > 1 ? "s" : ""} · ${
+        reservation.paid_cents !== null && reservation.paid_cents !== undefined
+          ? formatPrice(reservation.paid_cents, reservation.currency)
+          : "montant réglé non renseigné"
+      } réglé${
+        reservation.refunded_cents !== null &&
+        reservation.refunded_cents !== undefined &&
+        reservation.refunded_cents > 0
+          ? ` · ${formatPrice(reservation.refunded_cents, reservation.currency)} remboursé`
+          : ""
+      }`
+    : "Paiements indisponibles";
+  const documentCount = reservationDocuments?.length ?? 0;
+  const followUpEventCount = postAdoptionEvents?.length ?? 0;
+  const followUpNoteCount = reservationNotes?.length ?? 0;
+  const followUpSummaryLabel =
+    postAdoptionEventsError || reservationNotesError
+      ? "Suivi partiellement indisponible"
+      : followUpEventCount === 0 && followUpNoteCount === 0
+        ? "Aucun élément enregistré"
+        : `${followUpEventCount} événement${
+            followUpEventCount > 1 ? "s" : ""
+          }, ${followUpNoteCount} note${followUpNoteCount > 1 ? "s" : ""}`;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -775,6 +806,55 @@ export default async function ReservationDetailPage({
                         </span>
                         . Les actions de statut ne sont plus disponibles.
                       </p>
+                    </div>
+                  ) : null}
+
+                  {reservation.status === "adopted" ? (
+                    <div className="mt-8 rounded-xl border bg-background px-4 py-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Synthèse d’adoption
+                      </h3>
+                      <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <DetailItem
+                          label="Statut"
+                          value="Adoption finalisée"
+                        />
+                        <DetailItem
+                          label="Contact"
+                          value={reservation.contact_display_name}
+                        />
+                        <DetailItem
+                          label="Animal"
+                          value={animalSummaryLabel}
+                        />
+                        <DetailItem
+                          label="Prix convenu"
+                          value={formatPrice(
+                            reservation.price_cents,
+                            reservation.currency,
+                          )}
+                        />
+                        <DetailItem
+                          label="Paiements"
+                          value={paymentSummaryLabel}
+                        />
+                        <DetailItem
+                          label="Documents"
+                          value={`${documentCount} document${
+                            documentCount > 1 ? "s" : ""
+                          } lié${documentCount > 1 ? "s" : ""}`}
+                        />
+                        <DetailItem
+                          label="Adoption finalisée le"
+                          value={formatApplicationDate(
+                            reservation.adoption_completed_at,
+                          )}
+                        />
+                        <DetailItem
+                          label="Suivi post-adoption"
+                          value={followUpSummaryLabel}
+                        />
+                      </dl>
                     </div>
                   ) : null}
 
