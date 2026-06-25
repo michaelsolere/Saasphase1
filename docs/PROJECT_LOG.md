@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiche portée enrichie avec les réservations liées, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `73b1018c Merge PR113: Show related reservations on litter detail`
-Documentation projet à jour jusqu'à PR113.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `78d3642d Merge pull request #118 from michaelsolere/feature/animal-related-notes-readonly`
+Documentation projet à jour jusqu'à PR118.
 
 Le dépôt contient désormais :
 
@@ -79,12 +79,16 @@ Le dépôt contient désormais :
 * une fiche détail de portée en lecture seule (`/litters/[id]`) ;
 * l'affichage des animaux liés sur la fiche détail d'une portée (`/litters/[id]`) ;
 * l'affichage des documents liés sur la fiche détail d'une portée (`/litters/[id]`) avec lien vers `/documents/[id]` ;
+* l'affichage des notes liées sur la fiche détail d'une portée (`/litters/[id]`) en lecture seule ;
+* l'affichage des événements liés sur la fiche détail d'une portée (`/litters/[id]`) en lecture seule ;
 * un lien `Consulter` depuis la liste des portées vers chaque fiche détail ;
 * une liste privée des animaux en lecture seule (`/animals`) ;
 * une fiche détail d'animal en lecture seule (`/animals/[id]`) ;
 * l'affichage de la portée liée sur la fiche détail d'un animal (`/animals/[id]`) ;
 * l'affichage de la réservation liée sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/reservations/[id]` ;
 * l'affichage des documents liés sur la fiche détail d'un animal (`/animals/[id]`) avec lien vers `/documents/[id]` ;
+* l'affichage des événements liés sur la fiche détail d'un animal (`/animals/[id]`) en lecture seule ;
+* l'affichage des notes liées sur la fiche détail d'un animal (`/animals/[id]`) en lecture seule ;
 * un lien `Consulter` depuis la liste des animaux vers chaque fiche détail ;
 * l'attribution contrôlée d’un animal à une réservation et le retrait contrôlé d’attribution animal/réservation depuis /reservations/[id] ;
 * les sorties finales principales de réservation depuis `/reservations/[id]` : `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
@@ -2886,6 +2890,82 @@ Non-effets de bord :
 * aucun changement paiement, animal ou document ;
 * aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
 
+## PR115 — feat(litters): show related notes
+
+Objectif : ajouter une section `Notes liées` en lecture seule sur la fiche portée `/litters/[id]`.
+
+Changement UI sur `/litters/[id]` :
+* lecture des notes liées via `notes.litter_id` ;
+* filtre : `litter_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du contenu, du type, de la visibilité, de la date de création et de l'auteur si disponible.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de note ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR116 — feat(litters): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche portée `/litters/[id]`.
+
+Changement UI sur `/litters/[id]` :
+* lecture des événements liés via `events.litter_id` ;
+* filtre : `litter_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la description si disponible et de la date de création si utile.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR117 — feat(animals): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche animal `/animals/[id]`.
+
+Changement UI sur `/animals/[id]` :
+* lecture des événements liés via `events.animal_id` ;
+* filtre : `animal_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la priorité, de la description si disponible et de la date de création si utile.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR118 — feat(animals): show related notes
+
+Objectif : ajouter une section `Notes liées` en lecture seule sur la fiche animal `/animals/[id]`.
+
+Changement UI sur `/animals/[id]` :
+* lecture des notes liées via `notes.animal_id` ;
+* filtre : `animal_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du contenu, du type, de la visibilité, de la date de création et de l'auteur si disponible.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de note ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -2977,7 +3057,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
 
 Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
@@ -2989,11 +3069,15 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/litters/[id]` affiche les animaux liés à la portée ;
 * `/litters/[id]` affiche les réservations liées à la portée ;
 * `/litters/[id]` affiche les documents liés à la portée ;
+* `/litters/[id]` affiche les notes liées à la portée en lecture seule ;
+* `/litters/[id]` affiche les événements liés à la portée en lecture seule ;
 * `/animals` liste les animaux existants ;
 * `/animals/[id]` affiche la fiche détail d'un animal ;
 * `/animals/[id]` affiche la portée liée à l'animal ;
 * `/animals/[id]` affiche la réservation liée à l'animal ;
 * `/animals/[id]` affiche les documents liés à l'animal ;
+* `/animals/[id]` affiche les événements liés à l'animal en lecture seule ;
+* `/animals/[id]` affiche les notes liées à l'animal en lecture seule ;
 * `/reservations/[id]` permet d'attribuer un animal disponible à la réservation ;
 * `/reservations/[id]` permet de retirer l'attribution de l'animal ;
 * `/documents/[id]` affiche le contact lié au document ;
@@ -3040,9 +3124,13 @@ Limites conservées explicitement :
 * aucune création de portée ;
 * aucune édition de portée ;
 * aucune suppression de portée ;
+* aucune création, édition ou suppression de note liée depuis la fiche portée ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche portée ;
 * aucune création d'animal ;
 * aucune édition d'animal ;
 * aucune suppression d'animal ;
+* aucune création, édition ou suppression de note liée depuis la fiche animal ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche animal ;
 * aucune réservation depuis animal ;
 * aucune création de réservation depuis la fiche animal ;
 * aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn` ou l'expiration manuelle `active` → `expired` ;
@@ -3112,6 +3200,7 @@ Pistes possibles :
 * la suite e2e Playwright globale contient désormais six tests ;
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
 * la fiche réservation explique désormais les statuts finaux, affiche les notes liées à la réservation pour tous les statuts, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements liés ;
+* les fiches portée et animal affichent désormais documents, notes et événements liés en lecture seule ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
