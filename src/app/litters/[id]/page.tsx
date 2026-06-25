@@ -87,6 +87,19 @@ type RelatedNote = Pick<
 > & {
   profiles: { display_name: string | null } | null;
 };
+type RelatedEvent = Pick<
+  Database["public"]["Tables"]["events"]["Row"],
+  | "id"
+  | "title"
+  | "description"
+  | "event_type"
+  | "status"
+  | "priority"
+  | "planned_at"
+  | "planned_date"
+  | "actual_at"
+  | "created_at"
+>;
 type LitterSummary = Pick<
   LitterOverview,
   | "id"
@@ -187,6 +200,14 @@ function getUsefulDocumentDate(document: RelatedDocument) {
   }
 
   return { label: "Créé le", value: document.created_at };
+}
+
+function getUsefulEventDate(event: RelatedEvent) {
+  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
+}
+
+function getEventTypeLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 function RelatedAnimalsSection({
@@ -362,6 +383,64 @@ function RelatedReservationsSection({
               </div>
             );
           })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RelatedEventsSection({
+  events,
+  hasError,
+}: {
+  events: RelatedEvent[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Événements liés</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les événements liés.
+        </p>
+      ) : !events || events.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucun événement lié à cette portée.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {events.map((event) => (
+            <div key={event.id} className="py-5 first:pt-0 last:pb-0">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground">
+                    {event.title || getEventTypeLabel(event.event_type)}
+                  </span>
+                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                    {event.status}
+                  </span>
+                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                    Priorité : {event.priority}
+                  </span>
+                </div>
+                <p className="text-xs text-muted">
+                  Type : {getEventTypeLabel(event.event_type)}
+                </p>
+                <p className="text-xs text-muted">
+                  Date utile : {formatLitterDate(getUsefulEventDate(event))}
+                </p>
+                <p className="text-xs text-muted">
+                  Créé le {formatLitterDate(event.created_at)}
+                </p>
+                {event.description ? (
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {event.description}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </section>
@@ -562,6 +641,17 @@ export default async function LitterDetailPage({
 
   const litterNotes = rawNotes as RelatedNote[] | null;
 
+  const { data: rawEvents, error: eventsError } = litter
+    ? await supabase
+        .from("events")
+        .select("id, title, description, event_type, status, priority, planned_at, planned_date, actual_at, created_at")
+        .eq("litter_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const litterEvents = rawEvents as RelatedEvent[] | null;
+
   const { data: rawDocuments, error: documentsError } = litter
     ? await supabase
         .from("documents")
@@ -716,6 +806,11 @@ export default async function LitterDetailPage({
               <RelatedDocumentsSection
                 documents={litterDocuments}
                 hasError={Boolean(documentsError)}
+              />
+
+              <RelatedEventsSection
+                events={litterEvents}
+                hasError={Boolean(eventsError)}
               />
 
               <RelatedNotesSection
