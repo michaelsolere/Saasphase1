@@ -229,7 +229,7 @@ export default async function ContactDetailPage({
   const { data: rawReservations, error: reservationsError } = contactId
     ? await supabase
         .from("reservation_overview")
-        .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_display_name, reserved_sex_preference, created_at")
+        .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, adoption_completed_at, created_at")
         .eq("contact_id", contactId)
         .order("created_at", { ascending: false })
     : { data: null, error: null };
@@ -498,6 +498,9 @@ export default async function ContactDetailPage({
                           res.litter_group_name ??
                           "Portée non précisée";
                         const dateText = formatApplicationDate(res.created_at);
+                        const adoptionDateText = formatApplicationDate(
+                          res.adoption_completed_at,
+                        );
 
                         return (
                           <div
@@ -536,17 +539,40 @@ export default async function ContactDetailPage({
                                 <p className="text-xs text-muted">
                                   Animal : {res.animal_display_name ?? "Non attribué"}
                                 </p>
+                                {res.status === "adopted" ? (
+                                  <p className="text-xs font-medium text-emerald-700">
+                                    Animal adopté via cette réservation.
+                                  </p>
+                                ) : null}
+                                {res.status === "adopted" &&
+                                res.adoption_completed_at ? (
+                                  <p className="text-xs text-muted">
+                                    Date d’adoption effective : {adoptionDateText}
+                                  </p>
+                                ) : null}
                                 <p className="text-xs text-muted">
                                   Créée le {dateText}
                                 </p>
                               </div>
-                              {res.id ? (
-                                <Link
-                                  href={`/reservations/${res.id}`}
-                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
-                                >
-                                  Consulter
-                                </Link>
+                              {res.id || res.animal_id ? (
+                                <div className="flex flex-wrap gap-2 self-start sm:self-center">
+                                  {res.animal_id ? (
+                                    <Link
+                                      href={`/animals/${res.animal_id}`}
+                                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                                    >
+                                      Voir l’animal
+                                    </Link>
+                                  ) : null}
+                                  {res.id ? (
+                                    <Link
+                                      href={`/reservations/${res.id}`}
+                                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                                    >
+                                      Consulter
+                                    </Link>
+                                  ) : null}
+                                </div>
                               ) : null}
                             </div>
                           </div>
