@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `01b9b28a Merge pull request #130 from michaelsolere/feature/reservation-related-events-readonly`
-Documentation projet à jour jusqu'à PR130.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec quatorze écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `f1ad21a8 Merge pull request #132 from michaelsolere/feature/manual-contact-creation`
+Documentation projet à jour jusqu'à PR132.
 
 Le dépôt contient désormais :
 
@@ -47,6 +47,7 @@ Le dépôt contient désormais :
 * des notes internes sur la fiche détail d’une candidature ;
 * une fiche détail de contact en lecture seule ;
 * une liste privée des contacts en lecture seule ;
+* une création manuelle de contact depuis l'espace privé via `/contacts/new` ;
 * des liens de navigation croisés entre candidatures et contacts dans l’espace privé ;
 * l'affichage des candidatures liées sur la fiche détail d'un contact ;
 * la création et l'affichage sécurisé de notes internes sur la fiche d'un contact ;
@@ -3154,6 +3155,34 @@ Non-effets de bord :
 * aucun changement du suivi post-adoption ;
 * aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
 
+## PR132 — feat(contacts): add manual contact creation
+
+Objectif : ajouter une création manuelle de contact depuis l'espace privé, sans passer par le formulaire public.
+
+Changement UI et action serveur :
+* ajout de la route privée `/contacts/new` ;
+* ajout d'un lien discret `Nouveau contact` depuis `/contacts` ;
+* ajout de l'action serveur contrôlée `createContact` ;
+* insertion dans la table existante `contacts` ;
+* résolution de `organization_id` côté serveur depuis la première membership active de l'utilisateur authentifié ;
+* calcul serveur de `display_name` avec fallback robuste ;
+* renseignement de `created_by` et `updated_by` avec l'utilisateur connecté ;
+* redirection vers `/contacts/[id]` après succès ;
+* erreur neutre via `/contacts/new?status=error`.
+
+Limite Phase 1 :
+* si un utilisateur appartient à plusieurs organisations actives, la première membership active trouvée est utilisée ; un sélecteur d'organisation pourra être ajouté plus tard si nécessaire.
+
+Non-effets de bord :
+* aucun rôle initial dans `contact_roles` ;
+* aucun dédoublonnage automatique ;
+* aucune note automatique ;
+* aucune candidature créée ;
+* aucune réservation créée ;
+* aucun document créé ;
+* aucun changement du formulaire public ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -3247,7 +3276,7 @@ git status
 
 Le bloc Portées / Animaux / Paiements / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée, animal, paiement et document, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
 
-Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
+Le projet a aussi validé quatorze écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
 La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées et les événements généraux liés à une réservation sont désormais visibles en lecture seule pour tous les statuts. Les événements `post_adoption_follow_up` restent affichés séparément dans le suivi post-adoption des réservations `adopted`, afin d'éviter les doublons avec la section générale. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
@@ -3278,6 +3307,8 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/documents/[id]` harmonise les headers de ses sections liées ;
 * `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
+* `/contacts` propose un lien `Nouveau contact` vers `/contacts/new` ;
+* `/contacts/new` permet de créer manuellement un contact privé via l'action serveur `createContact` ;
 * `/contacts/[id]` affiche les événements liés au contact en lecture seule ;
 * `/candidatures/[id]` affiche les événements liés à la candidature en lecture seule ;
 * `/candidatures/[id]` affiche un état d'erreur neutre si les notes internes ne peuvent pas être chargées ;
@@ -3315,7 +3346,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, de la finalisation manuelle `active` → `adopted`, de l'annulation manuelle `active` → `cancelled`, du désistement manuel `active` → `withdrawn`, et de l'expiration manuelle `active` → `expired`.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'un contact manuel depuis `/contacts/new`, de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, de la finalisation manuelle `active` → `adopted`, de l'annulation manuelle `active` → `cancelled`, du désistement manuel `active` → `withdrawn`, et de l'expiration manuelle `active` → `expired`.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -3333,6 +3364,11 @@ Limites conservées explicitement :
 * aucun compteur dynamique sur l'accueil ;
 * aucune requête Supabase ajoutée sur l'accueil ;
 * aucune création, édition ou suppression d'événement lié depuis la fiche contact ;
+* aucun rôle initial créé dans `contact_roles` lors de la création manuelle de contact ;
+* aucun dédoublonnage automatique lors de la création manuelle de contact ;
+* aucune note, candidature, réservation ou document créé automatiquement avec un contact manuel ;
+* aucun changement du formulaire public de candidature ;
+* si un utilisateur appartient à plusieurs organisations actives, `/contacts/new` utilise la première membership active trouvée en Phase 1 ;
 * aucune création, édition ou suppression d'événement lié depuis la fiche candidature ;
 * aucune section de notes doublon sur les fiches contact ou candidature ;
 * aucune suppression ou transformation des formulaires existants de notes internes ;
@@ -3379,7 +3415,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
+* aucune mutation autre que la création contrôlée d'un contact manuel, la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
 * aucun statut `completed` ;
 * aucune migration ;
 * aucune RLS ;
@@ -3391,6 +3427,7 @@ Pistes possibles :
 * la liaison consultative Réservation ↔ Animal est désormais en place ;
 * `/documents/[id]` couvre désormais les relations principales : contact, candidature, réservation et paiement ;
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
+* la création manuelle de contact depuis `/contacts/new` est disponible sans créer de rôle, note, candidature, réservation ou document automatique ;
 * la chaîne candidature → réservation → paiement → animal est validée globalement comme point de stabilité ;
 * le workflow candidature qualifiée → réservation brouillon est validé localement ;
 * l'édition contrôlée du tarif convenu d'une réservation est validée localement ;
