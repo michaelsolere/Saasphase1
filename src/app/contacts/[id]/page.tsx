@@ -153,7 +153,7 @@ export default async function ContactDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ note_status?: string }>;
+  searchParams: Promise<{ note_status?: string; role_status?: string }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -297,6 +297,16 @@ export default async function ContactDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 La note n’a pas pu être ajoutée. Réessayez.
+              </p>
+            ) : null}
+
+            {query.role_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le contact a été créé, mais le rôle initial n’a pas pu être
+                ajouté. Vous pourrez le compléter plus tard.
               </p>
             ) : null}
 
