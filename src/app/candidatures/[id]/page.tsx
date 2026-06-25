@@ -34,6 +34,18 @@ type RelatedDocument = {
   file_name: string | null;
   signature_required: boolean;
 };
+type RelatedEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  event_type: string;
+  status: string;
+  priority: string;
+  planned_at: string | null;
+  planned_date: string | null;
+  actual_at: string | null;
+  created_at: string;
+};
 
 function getUsefulDocumentDate(document: RelatedDocument) {
   if (document.signed_at) {
@@ -53,6 +65,14 @@ function getUsefulDocumentDate(document: RelatedDocument) {
   }
 
   return { label: "Créé le", value: document.created_at };
+}
+
+function getUsefulEventDate(event: RelatedEvent) {
+  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
+}
+
+function getEventTypeLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 function NotFoundOrUnauthorized() {
@@ -184,6 +204,18 @@ export default async function ApplicationDetailPage({
     : { data: null, error: null };
 
   const applicationDocuments = rawDocuments as RelatedDocument[] | null;
+
+  // Fetch events
+  const { data: rawEvents, error: eventsError } = applicationId
+    ? await supabase
+        .from("events")
+        .select("id, title, description, event_type, status, priority, planned_at, planned_date, actual_at, created_at")
+        .eq("application_id", applicationId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const applicationEvents = rawEvents as RelatedEvent[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -515,6 +547,61 @@ export default async function ApplicationDetailPage({
                   ) : (
                     <p className="text-sm text-muted">
                       Aucun document lié à cette candidature.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold mb-6">
+                    Événements liés
+                  </h2>
+
+                  {eventsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les événements liés.
+                    </p>
+                  ) : applicationEvents && applicationEvents.length > 0 ? (
+                    <div className="divide-y divide-border">
+                      {applicationEvents.map((event) => (
+                        <div
+                          key={event.id}
+                          className="py-5 first:pt-0 last:pb-0"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="font-semibold text-foreground text-sm">
+                                {event.title ||
+                                  getEventTypeLabel(event.event_type)}
+                              </span>
+                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                {event.status}
+                              </span>
+                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                Priorité : {event.priority}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted">
+                              Type : {getEventTypeLabel(event.event_type)}
+                            </p>
+                            <p className="text-xs text-muted">
+                              Date utile :{" "}
+                              {formatApplicationDate(getUsefulEventDate(event))}
+                            </p>
+                            <p className="text-xs text-muted">
+                              Créé le {formatApplicationDate(event.created_at)}
+                            </p>
+                            {event.description ? (
+                              <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                                {event.description}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucun événement lié à cette candidature.
                     </p>
                   )}
                 </section>
