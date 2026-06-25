@@ -74,6 +74,16 @@ type RelatedEvent = {
   actual_at: string | null;
   created_at: string;
 };
+type RelatedNote = {
+  id: string;
+  title: string | null;
+  body: string;
+  note_type: string;
+  visibility: string;
+  created_at: string;
+  created_by: string | null;
+  profiles: { display_name: string | null } | null;
+};
 
 const ownershipStatusLabels: Record<string, string> = {
   owned: "Détenu",
@@ -476,6 +486,57 @@ function RelatedEventsSection({
   );
 }
 
+function RelatedNotesSection({
+  notes,
+  hasError,
+}: {
+  notes: RelatedNote[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Notes liées</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les notes liées.
+        </p>
+      ) : !notes || notes.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucune note liée à cet animal.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {notes.map((note) => {
+            const authorName = note.profiles?.display_name ?? null;
+
+            return (
+              <div key={note.id} className="py-5 first:pt-0 last:pb-0">
+                <div className="space-y-2">
+                  {note.title ? (
+                    <p className="text-sm font-semibold text-foreground">
+                      {note.title}
+                    </p>
+                  ) : null}
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {note.body}
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs text-muted">
+                    <span>Type : {note.note_type}</span>
+                    <span>Visibilité : {note.visibility}</span>
+                    <span>Créée le {formatAnimalDate(note.created_at)}</span>
+                    {authorName ? <span>Par {authorName}</span> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RelatedDocumentsSection({
   documents,
   hasError,
@@ -626,6 +687,19 @@ export default async function AnimalDetailPage({
     : { data: null, error: null };
 
   const animalEvents = rawEvents as RelatedEvent[] | null;
+
+  const { data: rawNotes, error: notesError } = animal
+    ? await supabase
+        .from("notes")
+        .select(
+          "id, title, body, note_type, visibility, created_at, created_by, profiles!created_by(display_name)",
+        )
+        .eq("animal_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const animalNotes = rawNotes as RelatedNote[] | null;
 
   const { data: rawReservations, error: reservationError } = animal
     ? await supabase
@@ -783,6 +857,11 @@ export default async function AnimalDetailPage({
               <RelatedEventsSection
                 events={animalEvents}
                 hasError={Boolean(eventsError)}
+              />
+
+              <RelatedNotesSection
+                notes={animalNotes}
+                hasError={Boolean(notesError)}
               />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
