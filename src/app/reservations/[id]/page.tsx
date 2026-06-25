@@ -82,6 +82,10 @@ type RelatedPostAdoptionEvent = {
   priority: string;
 };
 
+type RelatedReservationEvent = RelatedPostAdoptionEvent & {
+  event_type: string;
+};
+
 type RelatedReservationNote = {
   id: string;
   title: string | null;
@@ -142,6 +146,14 @@ function getUsefulDocumentDate(document: RelatedDocument) {
 
 function getUsefulPostAdoptionEventDate(event: RelatedPostAdoptionEvent) {
   return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
+}
+
+function getUsefulReservationEventDate(event: RelatedReservationEvent) {
+  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
+}
+
+function formatEventType(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 function NotFoundOrUnauthorized() {
@@ -385,6 +397,21 @@ export default async function ReservationDetailPage({
 
   const postAdoptionEvents =
     rawPostAdoptionEvents as RelatedPostAdoptionEvent[] | null;
+
+  // Fetch read-only reservation events outside the post-adoption follow-up.
+  const { data: rawReservationEvents, error: reservationEventsError } =
+    reservation?.id
+      ? await supabase
+          .from("events")
+          .select("id, title, description, event_type, planned_at, planned_date, actual_at, created_at, status, priority")
+          .eq("reservation_id", reservation.id)
+          .neq("event_type", "post_adoption_follow_up")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : { data: null, error: null };
+
+  const reservationEvents =
+    rawReservationEvents as RelatedReservationEvent[] | null;
 
   // Fetch read-only notes linked to the reservation.
   const { data: rawReservationNotes, error: reservationNotesError } =
@@ -1426,6 +1453,65 @@ export default async function ReservationDetailPage({
                   ) : (
                     <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
                       Aucune note liée à cette réservation pour le moment.
+                    </p>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Événements liés
+                  </h2>
+
+                  {reservationEventsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les événements liés.
+                    </p>
+                  ) : reservationEvents && reservationEvents.length > 0 ? (
+                    <div className="mt-5 divide-y divide-border">
+                      {reservationEvents.map((event) => {
+                        const dateText = formatApplicationDate(
+                          getUsefulReservationEventDate(event),
+                        );
+
+                        return (
+                          <div
+                            key={event.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="space-y-2">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="font-semibold text-foreground text-sm">
+                                  {event.title || formatEventType(event.event_type)}
+                                </span>
+                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                  {event.status}
+                                </span>
+                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                  Priorité : {event.priority}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                                <span>Type : {formatEventType(event.event_type)}</span>
+                                <span aria-hidden="true">•</span>
+                                <span>Date : {dateText}</span>
+                                <span aria-hidden="true">•</span>
+                                <span>
+                                  Créé le {formatApplicationDate(event.created_at)}
+                                </span>
+                              </div>
+                              {event.description ? (
+                                <p className="text-sm leading-6 text-muted">
+                                  {event.description}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
+                      Aucun événement général lié à cette réservation.
                     </p>
                   )}
                 </section>
