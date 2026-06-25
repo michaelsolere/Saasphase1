@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `3ef163d8 Merge pull request #145 from michaelsolere/feature/deactivate-transitional-contact-roles`
-Documentation projet à jour jusqu'à PR145.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter` sans désactiver `reservation_holder`, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `0f0dc5d5 Merge pull request #147 from michaelsolere/feature/reservation-adoption-adds-adopter-role`
+Documentation projet à jour jusqu'à PR147.
 
 Le dépôt contient désormais :
 
@@ -38,7 +38,7 @@ Le dépôt contient désormais :
 * une action serveur contrôlée pour créer un paiement manuel lié à une réservation existante (`createReservationPayment`) ;
 * une action serveur contrôlée pour marquer une demande de paiement `requested` comme réglée `paid` (`markPaymentAsPaid`) ;
 * une action serveur contrôlée pour confirmer manuellement une réservation `draft` en `active` (`activateReservation`), avec enrichissement automatique du rôle `reservation_holder` si absent et désactivation du rôle transitoire `pre_reservation_holder` après ajout réel ;
-* une action serveur contrôlée pour finaliser manuellement une réservation `active` en `adopted` (`adoptReservation`) ;
+* une action serveur contrôlée pour finaliser manuellement une réservation `active` en `adopted` (`adoptReservation`), avec enrichissement automatique du rôle `adopter` si absent ;
 * une action serveur contrôlée pour annuler manuellement une réservation `active` en `cancelled` (`cancelReservation`) ;
 * une action serveur contrôlée pour marquer manuellement une réservation `active` en désistement `withdrawn` (`withdrawReservation`) ;
 * une action serveur contrôlée pour marquer manuellement une réservation `active` en expirée `expired` (`expireReservation`) ;
@@ -3385,6 +3385,31 @@ Limites conservées :
 * pas de rôle principal ;
 * pas de changement Supabase, RLS, RPC, migration, seed, type généré ou package.
 
+## PR147 — feat(reservations): add adopter role on adoption
+
+Merge commit : `0f0dc5d5 Merge pull request #147 from michaelsolere/feature/reservation-adoption-adds-adopter-role`
+
+Objectif : enrichir automatiquement le contact avec le rôle `adopter` lorsqu'une réservation active est finalisée en adoption.
+
+Changement principal :
+* `adoptReservation` conserve la transition existante `active` → `adopted` ;
+* `adoption_completed_at` reste renseigné comme avant ;
+* après adoption réussie, l'action vérifie si le contact possède déjà un rôle actif `adopter` ;
+* si absent, une ligne active `contact_roles` est créée ;
+* un doublon actif n'est pas créé ;
+* les conflits SQL `23505` sont traités comme non bloquants ;
+* si l'ajout du rôle échoue après adoption, la réservation reste `adopted` et un avertissement neutre peut être affiché.
+
+Limites conservées :
+* pas de transaction ou RPC ;
+* pas de table `adoptions` ;
+* pas de modification de l'animal ;
+* pas d'obligation d'animal attribué avant adoption ;
+* pas de désactivation du rôle `reservation_holder` ;
+* pas de traitement `former_adopter` ;
+* pas de paiement, contrat, document, signature ou note automatique ;
+* pas de changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -3478,7 +3503,7 @@ git status
 
 Le bloc Portées / Animaux / Paiements / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée, animal, paiement et document, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
 
-Le projet a aussi validé plusieurs écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté, refus serveur des formulaires vides ou remplis seulement par des valeurs par défaut, et choix optionnel d'un rôle initial. Un rôle peut aussi être ajouté manuellement depuis `/contacts/[id]`, sans créer de doublon actif. Une candidature peut être créée manuellement depuis `/contacts/[id]/applications/new`, avec relecture serveur du contact, dérivation de `organization_id` depuis le contact relu, statut initial `new`, redirection vers `/candidatures/[id]`, enrichissement automatique du rôle `candidate` si absent et désactivation du rôle transitoire `prospect` après ajout réel de `candidate`. Le parcours manuel complet contact → candidature → qualification → réservation brouillon a été validé en navigateur, avec retour sur la fiche contact montrant la candidature et la réservation dans les sections liées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`, avec enrichissement automatique du rôle `pre_reservation_holder` si absent. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active` avec enrichissement automatique du rôle `reservation_holder` si absent et désactivation du rôle transitoire `pre_reservation_holder` après ajout réel de `reservation_holder`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les enrichissements et désactivations de rôle sont des écritures serveur contrôlées non transactionnelles : l'objet métier principal reste créé ou activé si l'écriture de rôle échoue, et les erreurs visibles utilisent des messages neutres. Les rôles désactivés sont conservés historiquement dans `contact_roles` avec `is_active = false`, `ended_at` renseigné et `deleted_at` conservé à `null`. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
+Le projet a aussi validé plusieurs écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté, refus serveur des formulaires vides ou remplis seulement par des valeurs par défaut, et choix optionnel d'un rôle initial. Un rôle peut aussi être ajouté manuellement depuis `/contacts/[id]`, sans créer de doublon actif. Une candidature peut être créée manuellement depuis `/contacts/[id]/applications/new`, avec relecture serveur du contact, dérivation de `organization_id` depuis le contact relu, statut initial `new`, redirection vers `/candidatures/[id]`, enrichissement automatique du rôle `candidate` si absent et désactivation du rôle transitoire `prospect` après ajout réel de `candidate`. Le parcours manuel complet contact → candidature → qualification → réservation brouillon a été validé en navigateur, avec retour sur la fiche contact montrant la candidature et la réservation dans les sections liées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`, avec enrichissement automatique du rôle `pre_reservation_holder` si absent. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active` avec enrichissement automatique du rôle `reservation_holder` si absent et désactivation du rôle transitoire `pre_reservation_holder` après ajout réel de `reservation_holder`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. La finalisation `active` → `adopted` enrichit désormais aussi le contact avec le rôle `adopter` si absent, sans désactiver `reservation_holder` ni exiger d'animal attribué. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les enrichissements et désactivations de rôle sont des écritures serveur contrôlées non transactionnelles : l'objet métier principal reste créé, activé ou adopté si l'écriture de rôle échoue, et les erreurs visibles utilisent des messages neutres. Les rôles désactivés sont conservés historiquement dans `contact_roles` avec `is_active = false`, `ended_at` renseigné et `deleted_at` conservé à `null`. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
 La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées et les événements généraux liés à une réservation sont désormais visibles en lecture seule pour tous les statuts. Les événements `post_adoption_follow_up` restent affichés séparément dans le suivi post-adoption des réservations `adopted`, afin d'éviter les doublons avec la section générale. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
@@ -3529,7 +3554,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/reservations/[id]` accepte un champ date vide pour retirer l’échéance de pré-réservation ;
 * `/reservations/[id]` permet de créer manuellement un paiement lié à la réservation ;
 * `/reservations/[id]` permet de confirmer manuellement une réservation `draft` en `active`, ajoute le rôle `reservation_holder` au contact si absent et désactive `pre_reservation_holder` après ajout réel de `reservation_holder` ;
-* `/reservations/[id]` permet de finaliser manuellement une réservation `active` en `adopted` ;
+* `/reservations/[id]` permet de finaliser manuellement une réservation `active` en `adopted` et ajoute le rôle `adopter` au contact si absent ;
 * `/reservations/[id]` permet d'annuler manuellement une réservation `active` en `cancelled` ;
 * `/reservations/[id]` permet de marquer manuellement une réservation `active` en désistement `withdrawn` ;
 * `/reservations/[id]` permet de marquer manuellement une réservation `active` en expirée `expired` ;
@@ -3580,6 +3605,7 @@ Limites conservées explicitement :
 * aucune édition de rôle contact ;
 * aucune suppression de rôle contact ;
 * aucune désactivation de rôle contact autre que `prospect` après ajout réel de `candidate` et `pre_reservation_holder` après ajout réel de `reservation_holder` ;
+* aucune désactivation du rôle `reservation_holder` après ajout du rôle `adopter` ;
 * aucun rôle principal ;
 * aucune gestion complète des rôles contact ;
 * aucune désactivation de rôle structurel ou non explicitement transitoire ;
@@ -3603,6 +3629,7 @@ Limites conservées explicitement :
 * aucune génération de document ou reçu déclenchée par les transitions finales de réservation ;
 * aucune note automatique déclenchée par les transitions finales de réservation ;
 * aucune modification animal déclenchée par les transitions finales de réservation ;
+* aucune obligation d'animal attribué avant finalisation en adoption ;
 * aucun retrait automatique d'attribution animal déclenché par les transitions finales de réservation ;
 * aucune automatisation d'expiration basée sur `pre_reservation_deadline` ;
 * aucun cron ;
@@ -3633,7 +3660,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'un contact manuel, la création contrôlée d'une candidature manuelle depuis un contact existant, la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, les enrichissements contrôlés de rôles contact liés à ces workflows, l'ajout manuel contrôlé d'un rôle depuis une fiche contact, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
+* aucune mutation autre que la création contrôlée d'un contact manuel, la création contrôlée d'une candidature manuelle depuis un contact existant, la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, les enrichissements contrôlés de rôles contact liés à ces workflows jusqu'au rôle `adopter`, l'ajout manuel contrôlé d'un rôle depuis une fiche contact, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
 * aucun statut `completed` ;
 * aucune migration ;
 * aucune RLS ;
@@ -3647,7 +3674,7 @@ Pistes possibles :
 * `/documents/[id]` est désormais complète et harmonisée côté lecture seule ;
 * la création manuelle de contact depuis `/contacts/new` est disponible avec rôle initial optionnel, sans note, candidature, réservation ou document automatique, et refuse les soumissions vides ou uniquement remplies par des valeurs par défaut ;
 * la création manuelle de candidature depuis `/contacts/[id]/applications/new` est disponible sans dédoublonnage automatique, sans réservation, document ou note automatique, avec enrichissement contrôlé du rôle `candidate` ;
-* le jalon rôles contact a été testé de bout en bout : rôle initial optionnel, ajout manuel, `candidate`, `pre_reservation_holder`, puis `reservation_holder`, avec désactivation des rôles transitoires validée ;
+* le jalon rôles contact couvre désormais le rôle initial optionnel, l'ajout manuel, `candidate`, `pre_reservation_holder`, `reservation_holder`, puis `adopter`, avec désactivation des rôles transitoires validée jusqu'à PR145 ;
 * une gestion complète des rôles contact pourra être conçue plus tard si nécessaire, dans un lot dédié ;
 * le parcours manuel contact → candidature → qualification → réservation brouillon est validé fonctionnellement et visible depuis les fiches liées ;
 * la chaîne candidature → réservation → paiement → animal est validée globalement comme point de stabilité ;
