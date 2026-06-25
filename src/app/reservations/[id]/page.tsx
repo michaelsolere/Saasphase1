@@ -598,8 +598,8 @@ export default async function ReservationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                La réservation a été confirmée, mais le rôle du contact n’a pas
-                pu être mis à jour. Aucune autre donnée n’a été modifiée.
+                L’opération a bien été réalisée, mais le rôle du contact n’a
+                pas pu être mis à jour. Aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
