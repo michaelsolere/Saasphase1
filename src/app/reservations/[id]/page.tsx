@@ -386,9 +386,9 @@ export default async function ReservationDetailPage({
   const postAdoptionEvents =
     rawPostAdoptionEvents as RelatedPostAdoptionEvent[] | null;
 
-  // Fetch read-only notes linked to the adopted reservation.
+  // Fetch read-only notes linked to the reservation.
   const { data: rawReservationNotes, error: reservationNotesError } =
-    reservation?.id && reservation.status === "adopted"
+    reservation?.id
       ? await supabase
           .from("notes")
           .select("id, title, body, note_type, visibility, created_at, created_by, profiles!created_by ( display_name )")
@@ -1371,70 +1371,64 @@ export default async function ReservationDetailPage({
                       )}
                     </div>
 
-                    <div className="mt-8 border-t pt-6">
-                      <h3 className="text-base font-semibold">
-                        Notes liées à la réservation
-                      </h3>
-                      <p className="mt-2 max-w-2xl text-xs leading-5 text-muted">
-                        Ces notes apparaissent dans le contexte d’une
-                        réservation adoptée, sans constituer un type métier
-                        spécifique de suivi post-adoption.
-                      </p>
-
-                      {reservationNotesError ? (
-                        <p role="alert" className="mt-5 text-sm text-amber-800">
-                          Impossible de charger les notes liées à la
-                          réservation.
-                        </p>
-                      ) : reservationNotes && reservationNotes.length > 0 ? (
-                        <div className="mt-5 divide-y divide-border">
-                          {reservationNotes.map((note) => {
-                            const authorName =
-                              note.profiles?.display_name || "Auteur inconnu";
-
-                            return (
-                              <div
-                                key={note.id}
-                                className="py-5 first:pt-0 last:pb-0"
-                              >
-                                <div className="space-y-2">
-                                  {note.title ? (
-                                    <p className="font-semibold text-foreground text-sm">
-                                      {note.title}
-                                    </p>
-                                  ) : null}
-                                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
-                                    {note.body}
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                                    <span>
-                                      {formatApplicationDate(note.created_at)}
-                                    </span>
-                                    <span aria-hidden="true">•</span>
-                                    <span>Type : {note.note_type}</span>
-                                    <span aria-hidden="true">•</span>
-                                    <span>Visibilité : {note.visibility}</span>
-                                    <span aria-hidden="true">•</span>
-                                    <span>Par {authorName}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
-                          Aucune note liée à cette réservation pour le moment.
-                        </p>
-                      )}
-                    </div>
-
                     <p className="mt-6 rounded-xl border border-dashed bg-background px-4 py-3 text-xs leading-5 text-muted">
                       Les documents déjà liés à cette réservation restent
                       visibles dans la section Documents liés.
                     </p>
                   </section>
                 ) : null}
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Notes liées à la réservation
+                  </h2>
+
+                  {reservationNotesError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les notes liées à la réservation.
+                    </p>
+                  ) : reservationNotes && reservationNotes.length > 0 ? (
+                    <div className="mt-5 divide-y divide-border">
+                      {reservationNotes.map((note) => {
+                        const authorName =
+                          note.profiles?.display_name || "Auteur inconnu";
+
+                        return (
+                          <div
+                            key={note.id}
+                            className="py-5 first:pt-0 last:pb-0"
+                          >
+                            <div className="space-y-2">
+                              {note.title ? (
+                                <p className="font-semibold text-foreground text-sm">
+                                  {note.title}
+                                </p>
+                              ) : null}
+                              <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                                {note.body}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+                                <span>
+                                  {formatApplicationDate(note.created_at)}
+                                </span>
+                                <span aria-hidden="true">•</span>
+                                <span>Type : {note.note_type}</span>
+                                <span aria-hidden="true">•</span>
+                                <span>Visibilité : {note.visibility}</span>
+                                <span aria-hidden="true">•</span>
+                                <span>Par {authorName}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
+                      Aucune note liée à cette réservation pour le moment.
+                    </p>
+                  )}
+                </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
