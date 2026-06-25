@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `7e88f46f Merge pull request #123 from michaelsolere/feature/contact-application-notes-events-consistency`
-Documentation projet à jour jusqu'à PR123.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `3ae5c4a8 Merge pull request #128 from michaelsolere/feature/document-related-events-readonly`
+Documentation projet à jour jusqu'à PR128.
 
 Le dépôt contient désormais :
 
@@ -61,6 +61,8 @@ Le dépôt contient désormais :
 * l'affichage de l'animal lié sur la fiche détail d'une réservation (`/reservations/[id]`) avec lien vers `/animals/[id]` ;
 * une liste privée des paiements en lecture seule (`/payments`) ;
 * une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
+* l'affichage des notes liées sur la fiche détail d'un paiement (`/payments/[id]`) en lecture seule, sans modifier le champ simple `payments.notes` ;
+* l'affichage des événements liés sur la fiche détail d'un paiement (`/payments/[id]`) en lecture seule ;
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
 * un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
@@ -73,6 +75,8 @@ Le dépôt contient désormais :
 * l'affichage de la candidature liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/candidatures/[id]` ;
 * l'affichage de la réservation liée sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/reservations/[id]` ;
 * l'affichage du paiement lié sur la fiche détail d'un document (`/documents/[id]`) avec lien vers `/payments/[id]` ;
+* l'affichage des notes liées sur la fiche détail d'un document (`/documents/[id]`) en lecture seule ;
+* l'affichage des événements liés sur la fiche détail d'un document (`/documents/[id]`) en lecture seule ;
 * l'harmonisation des headers des sections liées sur la fiche détail document ;
 * la conservation de l'ordre principal des sections de la fiche détail document ;
 * la conservation de l'aside `Liens métier` sur la fiche détail document ;
@@ -3042,6 +3046,90 @@ Non-effets de bord :
 * aucune mutation ;
 * aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
 
+## PR125 — feat(payments): show related notes
+
+Objectif : ajouter une section `Notes liées` en lecture seule sur la fiche paiement `/payments/[id]`.
+
+Changement UI sur `/payments/[id]` :
+* lecture des notes liées via `notes.payment_id` ;
+* filtre : `payment_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du contenu, du type, de la visibilité, de la date de création et de l'auteur si disponible ;
+* conservation du champ simple `payments.notes` et de son affichage existant.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de note ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement paiement, document, contact ou réservation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR126 — feat(payments): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche paiement `/payments/[id]`.
+
+Changement UI sur `/payments/[id]` :
+* lecture des événements liés via `events.payment_id` ;
+* filtre : `payment_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la priorité, de la description si disponible et de la date de création si utile ;
+* conservation des informations du paiement, de la note simple, des documents liés, du contact lié, de la réservation liée et des notes liées.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement paiement, note liée, document, contact ou réservation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR127 — feat(documents): show related notes
+
+Objectif : ajouter une section `Notes liées` en lecture seule sur la fiche document `/documents/[id]`.
+
+Changement UI sur `/documents/[id]` :
+* lecture des notes liées via `notes.document_id` ;
+* filtre : `document_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du contenu, du type, de la visibilité, de la date de création et de l'auteur si disponible ;
+* conservation des informations du document, des métadonnées fichier, des sections liées et de l'aside `Liens métier`.
+
+Non-effets de bord :
+* aucune création, édition ou suppression de note ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement document, upload, téléchargement, preview, signature ou génération ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR128 — feat(documents): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche document `/documents/[id]`.
+
+Changement UI sur `/documents/[id]` :
+* lecture des événements liés via `events.document_id` ;
+* filtre : `document_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la priorité, de la description si disponible et de la date de création si utile ;
+* conservation des informations du document, des sections métier liées, de la section `Notes liées` et de l'aside `Liens métier`.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement document, note liée, upload, téléchargement, preview, signature ou génération ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -3133,7 +3221,7 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
+Le bloc Portées / Animaux / Paiements / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée, animal, paiement et document, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
 
 Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
@@ -3161,6 +3249,8 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/documents/[id]` affiche la candidature liée au document ;
 * `/documents/[id]` affiche la réservation liée au document ;
 * `/documents/[id]` affiche le paiement lié au document ;
+* `/documents/[id]` affiche les notes liées au document en lecture seule ;
+* `/documents/[id]` affiche les événements liés au document en lecture seule ;
 * `/documents/[id]` harmonise les headers de ses sections liées ;
 * `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
@@ -3190,6 +3280,8 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/reservations/[id]` lit en lecture seule les notes liées à une réservation pour tous les statuts, sans filtre `note_type` post-adoption dédié ;
 * `/reservations/[id]` conserve le sous-bloc `Événements de suivi` dans `Suivi post-adoption` ;
 * `/payments/[id]` permet de marquer une demande de paiement `requested` comme réglée `paid` ;
+* `/payments/[id]` affiche les notes liées au paiement en lecture seule, sans modifier le champ simple `payments.notes` ;
+* `/payments/[id]` affiche les événements liés au paiement en lecture seule ;
 * les documents liés pointent vers `/documents/[id]` ;
 * les listes `/litters` et `/animals` proposent un lien `Consulter` vers chaque fiche détail ;
 * les fixtures locales permettent de tester directement `/litters/c0000000-0000-4000-8000-000000000001` ;
@@ -3219,6 +3311,9 @@ Limites conservées explicitement :
 * aucune création, édition ou suppression d'événement lié depuis la fiche candidature ;
 * aucune section de notes doublon sur les fiches contact ou candidature ;
 * aucune suppression ou transformation des formulaires existants de notes internes ;
+* aucune création, édition ou suppression de note liée depuis la fiche paiement ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche paiement ;
+* aucune modification du champ simple `payments.notes` par les sections liées ;
 * aucune création de réservation depuis la fiche animal ;
 * aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn` ou l'expiration manuelle `active` → `expired` ;
 * aucun changement de statut de réservation autre que les transitions manuelles `draft` → `active`, `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
@@ -3247,12 +3342,13 @@ Limites conservées explicitement :
 * aucune génération PDF ;
 * aucune signature électronique ;
 * aucune création, édition ou suppression de document ;
+* aucune création, édition ou suppression de note liée depuis la fiche document ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche document ;
 * aucune création, édition ou suppression de contact depuis la fiche document ;
 * aucune création, édition ou suppression de candidature depuis la fiche document ;
 * aucune création, édition ou suppression de réservation depuis la fiche document ;
 * aucune création, édition, suppression ou remboursement de paiement depuis la fiche document ;
-* aucune nouvelle requête Supabase depuis la fiche document ;
-* aucun changement de données chargées depuis la fiche document ;
+* aucune écriture métier depuis la fiche document ;
 * pas de vrai fichier pour les documents seedés ;
 * aucune timeline ;
 * aucun Gantt ;
@@ -3288,9 +3384,10 @@ Pistes possibles :
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
 * la fiche réservation explique désormais les statuts finaux, affiche les notes liées à la réservation pour tous les statuts, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements liés ;
 * les fiches portée et animal affichent désormais documents, notes et événements liés en lecture seule ;
+* les fiches paiement et document affichent désormais notes et événements liés en lecture seule ;
 * les fiches contact et candidature affichent désormais les événements liés en lecture seule ;
 * l'accueil statique pointe plus clairement vers les modules déjà disponibles ;
-* enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
+* enrichir plus tard d'autres relations uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
 * concevoir plus tard le téléchargement de documents, uniquement après décision explicite ;
