@@ -26,20 +26,34 @@ function buildDisplayName({
   lastName,
   email,
   phone,
+  secondaryPhone,
+  addressLine1,
+  postalCode,
+  city,
 }: {
   requestedDisplayName: string | null;
   firstName: string | null;
   lastName: string | null;
   email: string | null;
   phone: string | null;
+  secondaryPhone: string | null;
+  addressLine1: string | null;
+  postalCode: string | null;
+  city: string | null;
 }) {
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const addressLabel = [addressLine1, postalCode, city]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
 
   return (
     requestedDisplayName ||
     fullName ||
     email ||
     phone ||
+    secondaryPhone ||
+    addressLabel ||
     "Contact manuel"
   );
 }
@@ -58,12 +72,32 @@ export async function createContact(formData: FormData) {
   const postalCode = normalizeOptionalText(formData.get("postal_code"));
   const city = normalizeOptionalText(formData.get("city"));
   const country = normalizeOptionalText(formData.get("country"), 2) ?? "FR";
+  const hasUsefulContactInformation = Boolean(
+    requestedDisplayName ||
+      firstName ||
+      lastName ||
+      email ||
+      phone ||
+      secondaryPhone ||
+      addressLine1 ||
+      postalCode ||
+      city,
+  );
+
+  if (!hasUsefulContactInformation) {
+    redirect(contactCreateErrorUrl);
+  }
+
   const displayName = buildDisplayName({
     requestedDisplayName,
     firstName,
     lastName,
     email,
     phone,
+    secondaryPhone,
+    addressLine1,
+    postalCode,
+    city,
   });
 
   const supabase = await createClient();
