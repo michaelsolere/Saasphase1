@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `78d3642d Merge pull request #118 from michaelsolere/feature/animal-related-notes-readonly`
-Documentation projet à jour jusqu'à PR118.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec treize écritures métier contrôlées, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées aux réservations généralisées en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes et événements liés, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
+Dernier commit connu : `7e88f46f Merge pull request #123 from michaelsolere/feature/contact-application-notes-events-consistency`
+Documentation projet à jour jusqu'à PR123.
 
 Le dépôt contient désormais :
 
@@ -26,7 +26,7 @@ Le dépôt contient désormais :
 * un formulaire public de candidature ;
 * un écran privé de revue des candidatures ;
 * une authentification minimale ;
-* un accueil avec liens rapides statiques vers les modules privés existants ;
+* un accueil avec liens rapides statiques clarifiés vers les modules privés existants ;
 * un compte Auth local de développement ;
 * une fiche détail candidature en lecture seule ;
 * des actions de qualification de candidature ;
@@ -50,11 +50,14 @@ Le dépôt contient désormais :
 * des liens de navigation croisés entre candidatures et contacts dans l’espace privé ;
 * l'affichage des candidatures liées sur la fiche détail d'un contact ;
 * la création et l'affichage sécurisé de notes internes sur la fiche d'un contact ;
+* l'affichage des événements liés sur la fiche détail d'un contact (`/contacts/[id]`) en lecture seule ;
 * un lien direct de retour vers la liste des contacts depuis la fiche détail ;
 * une liste privée des réservations en lecture seule (`/reservations`) ;
 * une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
 * l'affichage des réservations liées sur la fiche détail d'un contact ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
+* l'affichage des événements liés sur la fiche détail d'une candidature (`/candidatures/[id]`) en lecture seule ;
+* un état d'erreur neutre pour les notes internes de candidature si leur chargement échoue ;
 * l'affichage de l'animal lié sur la fiche détail d'une réservation (`/reservations/[id]`) avec lien vers `/animals/[id]` ;
 * une liste privée des paiements en lecture seule (`/payments`) ;
 * une fiche détail de paiement en lecture seule (`/payments/[id]`) ;
@@ -2966,6 +2969,79 @@ Non-effets de bord :
 * aucune mutation ;
 * aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
 
+## PR120 — feat(home): polish quick links
+
+Objectif : clarifier les liens rapides statiques de l'accueil.
+
+Changement UI sur `/` :
+* descriptions statiques ajustées pour les modules existants ;
+* meilleure mention des fiches portée et animal enrichies en lecture seule ;
+* aucun compteur dynamique ;
+* aucune requête Supabase ajoutée.
+
+Non-effets de bord :
+* aucun vrai dashboard dynamique ;
+* aucune nouvelle route ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR121 — feat(contacts): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche contact `/contacts/[id]`.
+
+Changement UI sur `/contacts/[id]` :
+* lecture des événements liés via `events.contact_id` ;
+* filtre : `contact_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la priorité, de la description si disponible et de la date de création si utile.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR122 — feat(applications): show related events
+
+Objectif : ajouter une section `Événements liés` en lecture seule sur la fiche candidature `/candidatures/[id]`.
+
+Changement UI sur `/candidatures/[id]` :
+* lecture des événements liés via `events.application_id` ;
+* filtre : `application_id = id` ;
+* filtre : `deleted_at is null` ;
+* tri : `created_at` décroissant ;
+* affichage du titre ou type, de la date utile, du statut, de la priorité, de la description si disponible et de la date de création si utile.
+
+Non-effets de bord :
+* aucune création, édition ou suppression d'événement ;
+* aucun bouton ;
+* aucun formulaire ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement qualification, note, contact, réservation ou document ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## PR123 — refactor(contacts-applications): polish notes and events sections
+
+Objectif : harmoniser légèrement la cohérence notes / événements sur les fiches contact et candidature.
+
+Changement UI sur `/candidatures/[id]` :
+* conservation de la section `Notes internes` existante ;
+* conservation du formulaire de création de note interne ;
+* ajout d'un état d'erreur neutre si les notes internes ne peuvent pas être chargées, cohérent avec la fiche contact.
+
+Non-effets de bord :
+* aucune section de notes doublon ;
+* aucune modification de la création de note ;
+* aucune création, édition ou suppression de note ou d'événement ;
+* aucune action serveur ;
+* aucune mutation ;
+* aucun changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -3057,13 +3133,14 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours.
+Le bloc Portées / Animaux / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée et animal, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
 
 Le projet a aussi validé treize écritures métier contrôlées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
 
 La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées à une réservation sont désormais visibles en lecture seule pour tous les statuts. Le suivi post-adoption reste amorcé en lecture seule sur les réservations `adopted`, avec affichage des événements `post_adoption_follow_up` existants et rappel des documents liés. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
 État fonctionnel :
+* `/` affiche des liens rapides statiques clarifiés vers les modules existants ;
 * `/litters` liste les portées existantes ;
 * `/litters/[id]` affiche la fiche détail d'une portée ;
 * `/litters/[id]` affiche les animaux liés à la portée ;
@@ -3087,6 +3164,9 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/documents/[id]` harmonise les headers de ses sections liées ;
 * `/documents/[id]` propose des liens vers les fiches contact, candidature, réservation et paiement liées ;
 * `/documents/[id]` conserve l'aside `Liens métier` ;
+* `/contacts/[id]` affiche les événements liés au contact en lecture seule ;
+* `/candidatures/[id]` affiche les événements liés à la candidature en lecture seule ;
+* `/candidatures/[id]` affiche un état d'erreur neutre si les notes internes ne peuvent pas être chargées ;
 * `/candidatures/[id]` peut créer une réservation brouillon depuis une candidature qualifiée sans réservation liée ;
 * `/candidatures/[id]` affiche la réservation créée dans la section `Réservations liées` ;
 * `/reservations` affiche la réservation brouillon créée ;
@@ -3132,6 +3212,13 @@ Limites conservées explicitement :
 * aucune création, édition ou suppression de note liée depuis la fiche animal ;
 * aucune création, édition ou suppression d'événement lié depuis la fiche animal ;
 * aucune réservation depuis animal ;
+* aucun vrai dashboard dynamique sur l'accueil ;
+* aucun compteur dynamique sur l'accueil ;
+* aucune requête Supabase ajoutée sur l'accueil ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche contact ;
+* aucune création, édition ou suppression d'événement lié depuis la fiche candidature ;
+* aucune section de notes doublon sur les fiches contact ou candidature ;
+* aucune suppression ou transformation des formulaires existants de notes internes ;
 * aucune création de réservation depuis la fiche animal ;
 * aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn` ou l'expiration manuelle `active` → `expired` ;
 * aucun changement de statut de réservation autre que les transitions manuelles `draft` → `active`, `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
@@ -3201,6 +3288,8 @@ Pistes possibles :
 * les statuts finaux de réservation sont centralisés côté code autour de `adopted`, `withdrawn`, `cancelled`, `expired` et `archived` ;
 * la fiche réservation explique désormais les statuts finaux, affiche les notes liées à la réservation pour tous les statuts, affiche une synthèse d'adoption en lecture seule et amorce le suivi post-adoption en lecture seule avec événements liés ;
 * les fiches portée et animal affichent désormais documents, notes et événements liés en lecture seule ;
+* les fiches contact et candidature affichent désormais les événements liés en lecture seule ;
+* l'accueil statique pointe plus clairement vers les modules déjà disponibles ;
 * enrichir plus tard d'autres relations documentaires uniquement si la relation métier existe déjà et reste en lecture seule ;
 * concevoir plus tard l'upload de documents, uniquement après décision explicite ;
 * concevoir plus tard la preview de documents, uniquement après décision explicite ;
