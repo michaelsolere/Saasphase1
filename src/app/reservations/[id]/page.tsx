@@ -243,6 +243,7 @@ export default async function ReservationDetailPage({
     activation_status?: string;
     role_status?: string;
     adoption_status?: string;
+    animal_status?: string;
     cancellation_status?: string;
     withdrawal_status?: string;
     expiration_status?: string;
@@ -627,6 +628,16 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 L’adoption n’a pas pu être finalisée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.animal_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’adoption a été finalisée, mais le statut de l’animal n’a pas
+                pu être mis à jour. Aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
