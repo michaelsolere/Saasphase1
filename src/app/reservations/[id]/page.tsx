@@ -241,6 +241,7 @@ export default async function ReservationDetailPage({
     price_status?: string;
     payment_create_status?: string;
     activation_status?: string;
+    role_status?: string;
     adoption_status?: string;
     cancellation_status?: string;
     withdrawal_status?: string;
@@ -589,6 +590,16 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 La réservation n’a pas pu être confirmée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.role_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La réservation a été confirmée, mais le rôle du contact n’a pas
+                pu être mis à jour. Aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
