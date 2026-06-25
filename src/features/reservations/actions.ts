@@ -52,6 +52,10 @@ function adoptionRoleUrl(reservationId: string) {
   return `/reservations/${reservationId}?adoption_status=success&role_status=error`;
 }
 
+function adoptionAnimalUrl(reservationId: string) {
+  return `/reservations/${reservationId}?adoption_status=success&animal_status=error`;
+}
+
 function cancellationUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
@@ -451,7 +455,7 @@ export async function adoptReservation(formData: FormData) {
 
   const { data: reservation, error: readError } = await supabase
     .from("reservations")
-    .select("id, organization_id, contact_id, status, deleted_at")
+    .select("id, organization_id, contact_id, animal_id, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -551,6 +555,35 @@ export async function adoptReservation(formData: FormData) {
         redirect(adoptionRoleUrl(reservationId));
       }
     }
+  }
+
+  if (reservation.animal_id) {
+    const { data: updatedAnimal, error: animalUpdateError } = await supabase
+      .from("animals")
+      .update({
+        status: "adopted",
+        ownership_status: "adopted_out",
+        updated_at: now,
+        updated_by: user.id,
+      })
+      .eq("id", reservation.animal_id)
+      .eq("organization_id", reservation.organization_id)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (animalUpdateError || !updatedAnimal) {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${reservation.contact_id}`);
+      revalidatePath("/reservations");
+      revalidatePath(`/reservations/${reservationId}`);
+      revalidatePath("/animals");
+      revalidatePath(`/animals/${reservation.animal_id}`);
+      redirect(adoptionAnimalUrl(reservationId));
+    }
+
+    revalidatePath("/animals");
+    revalidatePath(`/animals/${reservation.animal_id}`);
   }
 
   revalidatePath("/contacts");
