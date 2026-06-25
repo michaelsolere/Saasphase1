@@ -43,6 +43,19 @@ type RelatedNote = {
   profiles: { display_name: string | null } | null;
 };
 
+type RelatedEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  event_type: string;
+  status: string;
+  priority: string;
+  planned_at: string | null;
+  planned_date: string | null;
+  actual_at: string | null;
+  created_at: string;
+};
+
 function formatDate(value: string | null) {
   if (!value) {
     return "Non renseigné";
@@ -74,6 +87,14 @@ function getUsefulDocumentDate(document: RelatedDocument) {
   }
 
   return { label: "Créé le", value: document.created_at };
+}
+
+function getUsefulEventDate(event: RelatedEvent) {
+  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
+}
+
+function getEventTypeLabel(value: string) {
+  return value.replaceAll("_", " ");
 }
 
 function NotFoundOrUnauthorized() {
@@ -185,6 +206,64 @@ function RelatedNotesSection({
   );
 }
 
+function RelatedEventsSection({
+  events,
+  hasError,
+}: {
+  events: RelatedEvent[] | null;
+  hasError: boolean;
+}) {
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Événements liés</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Impossible de charger les événements liés.
+        </p>
+      ) : !events || events.length === 0 ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucun événement lié à ce paiement.
+        </p>
+      ) : (
+        <div className="mt-6 divide-y divide-border">
+          {events.map((event) => (
+            <div key={event.id} className="py-5 first:pt-0 last:pb-0">
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground">
+                    {event.title || getEventTypeLabel(event.event_type)}
+                  </span>
+                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                    {event.status}
+                  </span>
+                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                    Priorité : {event.priority}
+                  </span>
+                </div>
+                <p className="text-xs text-muted">
+                  Type : {getEventTypeLabel(event.event_type)}
+                </p>
+                <p className="text-xs text-muted">
+                  Date utile : {formatDate(getUsefulEventDate(event))}
+                </p>
+                <p className="text-xs text-muted">
+                  Créé le {formatDate(event.created_at)}
+                </p>
+                {event.description ? (
+                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                    {event.description}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default async function PaymentDetailPage({
   params,
   searchParams,
@@ -239,6 +318,17 @@ export default async function PaymentDetailPage({
     : { data: null, error: null };
 
   const paymentNotes = rawNotes as RelatedNote[] | null;
+
+  const { data: rawEvents, error: eventsError } = payment?.id
+    ? await supabase
+        .from("events")
+        .select("id, title, description, event_type, status, priority, planned_at, planned_date, actual_at, created_at")
+        .eq("payment_id", payment.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  const paymentEvents = rawEvents as RelatedEvent[] | null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -465,6 +555,11 @@ export default async function PaymentDetailPage({
                 <RelatedNotesSection
                   notes={paymentNotes}
                   hasError={Boolean(notesError)}
+                />
+
+                <RelatedEventsSection
+                  events={paymentEvents}
+                  hasError={Boolean(eventsError)}
                 />
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
