@@ -141,8 +141,11 @@ export async function createApplicationForContact(formData: FormData) {
     redirect(applicationRoleUrl(application.id));
   }
 
+  let candidateRoleWasAdded = false;
+
   if (!existingCandidateRole) {
-    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
     const { error: roleInsertError } = await supabase
       .from("contact_roles")
       .insert({
@@ -161,6 +164,32 @@ export async function createApplicationForContact(formData: FormData) {
       revalidatePath("/candidatures");
       revalidatePath(`/candidatures/${application.id}`);
       redirect(applicationRoleUrl(application.id));
+    }
+
+    candidateRoleWasAdded = !roleInsertError;
+
+    if (candidateRoleWasAdded) {
+      const { error: prospectDeactivateError } = await supabase
+        .from("contact_roles")
+        .update({
+          is_active: false,
+          ended_at: today,
+          updated_at: now,
+          updated_by: user.id,
+        })
+        .eq("organization_id", contact.organization_id)
+        .eq("contact_id", contact.id)
+        .eq("role", "prospect")
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      if (prospectDeactivateError) {
+        revalidatePath("/contacts");
+        revalidatePath(`/contacts/${contactId}`);
+        revalidatePath("/candidatures");
+        revalidatePath(`/candidatures/${application.id}`);
+        redirect(applicationRoleUrl(application.id));
+      }
     }
   }
 
