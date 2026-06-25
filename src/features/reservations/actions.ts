@@ -502,6 +502,8 @@ export async function adoptReservation(formData: FormData) {
     redirect(adoptionRoleUrl(reservationId));
   }
 
+  let adopterRoleWasAdded = false;
+
   if (!existingAdopterRole) {
     const today = now.slice(0, 10);
     const { error: roleInsertError } = await supabase
@@ -522,6 +524,32 @@ export async function adoptReservation(formData: FormData) {
       revalidatePath("/reservations");
       revalidatePath(`/reservations/${reservationId}`);
       redirect(adoptionRoleUrl(reservationId));
+    }
+
+    adopterRoleWasAdded = !roleInsertError;
+
+    if (adopterRoleWasAdded) {
+      const { error: holderRoleDeactivateError } = await supabase
+        .from("contact_roles")
+        .update({
+          is_active: false,
+          ended_at: today,
+          updated_at: now,
+          updated_by: user.id,
+        })
+        .eq("organization_id", reservation.organization_id)
+        .eq("contact_id", reservation.contact_id)
+        .eq("role", "reservation_holder")
+        .eq("is_active", true)
+        .is("deleted_at", null);
+
+      if (holderRoleDeactivateError) {
+        revalidatePath("/contacts");
+        revalidatePath(`/contacts/${reservation.contact_id}`);
+        revalidatePath("/reservations");
+        revalidatePath(`/reservations/${reservationId}`);
+        redirect(adoptionRoleUrl(reservationId));
+      }
     }
   }
 
