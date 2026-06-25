@@ -10,8 +10,31 @@ import {
 } from "./transitions";
 import { createClient } from "@/lib/supabase/server";
 
+const desiredSexPreferences = new Set([
+  "male_only",
+  "female_only",
+  "male_preferred_female_possible",
+  "female_preferred_male_possible",
+  "no_preference",
+  "unknown",
+]);
+
 function isQualificationAction(value: string): value is QualificationAction {
   return value in actionTargets;
+}
+
+function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return trimmedValue.slice(0, maxLength);
 }
 
 function detailUrl(applicationId: string, outcome: "success" | "error") {
@@ -23,6 +46,79 @@ function reservationUrl(
   outcome: "created" | "already_exists" | "not_qualified" | "error",
 ) {
   return `/candidatures/${applicationId}?reservation_status=${outcome}`;
+}
+
+function contactApplicationUrl(contactId: string, outcome: "error") {
+  return `/contacts/${contactId}/applications/new?status=${outcome}`;
+}
+
+export async function createApplicationForContact(formData: FormData) {
+  const contactId = formData.get("contact_id");
+
+  if (typeof contactId !== "string" || !contactId) {
+    redirect("/contacts?erreur=candidature");
+  }
+
+  const species = normalizeOptionalText(formData.get("species")) ?? "dog";
+  const breed =
+    normalizeOptionalText(formData.get("breed")) ?? "Golden Retriever";
+  const desiredSexPreferenceValue =
+    normalizeOptionalText(formData.get("desired_sex_preference")) ?? "unknown";
+  const desiredSexPreference = desiredSexPreferences.has(
+    desiredSexPreferenceValue,
+  )
+    ? desiredSexPreferenceValue
+    : "unknown";
+  const projectDescription = normalizeOptionalText(
+    formData.get("project_description"),
+    2_000,
+  );
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: contact, error: contactReadError } = await supabase
+    .from("contacts")
+    .select("id, organization_id")
+    .eq("id", contactId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (contactReadError || !contact?.organization_id) {
+    redirect(contactApplicationUrl(contactId, "error"));
+  }
+
+  const { data: application, error: insertError } = await supabase
+    .from("applications")
+    .insert({
+      organization_id: contact.organization_id,
+      contact_id: contact.id,
+      species,
+      breed,
+      desired_sex_preference: desiredSexPreference,
+      project_description: projectDescription,
+      status: "new",
+      created_by: user.id,
+      updated_by: user.id,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (insertError || !application?.id) {
+    redirect(contactApplicationUrl(contactId, "error"));
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${contactId}`);
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${application.id}`);
+  redirect(`/candidatures/${application.id}`);
 }
 
 export async function updateApplicationStatus(formData: FormData) {

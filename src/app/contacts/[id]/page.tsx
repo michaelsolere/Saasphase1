@@ -312,6 +312,12 @@ export default async function ContactDetailPage({
                   Créé le {formatApplicationDate(contact.created_at)}
                 </p>
               </div>
+              <Link
+                href={`/contacts/${contact.id}/applications/new`}
+                className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+              >
+                Créer une candidature
+              </Link>
             </header>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
