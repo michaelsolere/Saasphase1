@@ -275,8 +275,9 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                La candidature a été créée, mais le rôle candidat n’a pas pu
-                être ajouté au contact. Vous pourrez le compléter plus tard.
+                L’opération a bien été réalisée, mais le rôle métier associé
+                n’a pas pu être ajouté au contact. Vous pourrez le compléter
+                plus tard.
               </p>
             ) : null}
 
