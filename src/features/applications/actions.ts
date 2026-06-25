@@ -56,6 +56,10 @@ function applicationRoleUrl(applicationId: string) {
   return `/candidatures/${applicationId}?role_status=error`;
 }
 
+function reservationRoleUrl(applicationId: string) {
+  return `/candidatures/${applicationId}?reservation_status=created&role_status=error`;
+}
+
 export async function createApplicationForContact(formData: FormData) {
   const contactId = formData.get("contact_id");
 
@@ -307,6 +311,52 @@ export async function createReservationFromApplication(formData: FormData) {
     redirect(reservationUrl(applicationId, "error"));
   }
 
+  const { data: existingPreReservationRole, error: existingRoleError } =
+    await supabase
+      .from("contact_roles")
+      .select("id")
+      .eq("organization_id", application.organization_id)
+      .eq("contact_id", application.contact_id)
+      .eq("role", "pre_reservation_holder")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+  if (existingRoleError) {
+    revalidatePath("/contacts");
+    revalidatePath(`/contacts/${application.contact_id}`);
+    revalidatePath("/candidatures");
+    revalidatePath(`/candidatures/${applicationId}`);
+    revalidatePath("/reservations");
+    redirect(reservationRoleUrl(applicationId));
+  }
+
+  if (!existingPreReservationRole) {
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: application.organization_id,
+        contact_id: application.contact_id,
+        role: "pre_reservation_holder",
+        started_at: today,
+        is_active: true,
+        created_by: user.id,
+        updated_by: user.id,
+      });
+
+    if (roleInsertError && roleInsertError.code !== "23505") {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${application.contact_id}`);
+      revalidatePath("/candidatures");
+      revalidatePath(`/candidatures/${applicationId}`);
+      revalidatePath("/reservations");
+      redirect(reservationRoleUrl(applicationId));
+    }
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${application.contact_id}`);
   revalidatePath("/candidatures");
   revalidatePath(`/candidatures/${applicationId}`);
   revalidatePath("/reservations");
