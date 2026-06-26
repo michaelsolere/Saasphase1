@@ -203,7 +203,7 @@ function DetailItem({
   value,
 }: {
   label: string;
-  value: string | null;
+  value: React.ReactNode;
 }) {
   return (
     <div>
@@ -458,17 +458,34 @@ export default async function ReservationDetailPage({
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
 
-  let balanceLabel = "";
+  let balanceLabel = "Solde restant";
+  let balanceValue: React.ReactNode = "";
   if (priceCents === null) {
-    balanceLabel = "Solde non déterminé";
+    balanceLabel = "Solde restant";
+    balanceValue = <span className="text-muted-foreground">Solde non déterminé</span>;
   } else {
     const remainingBalanceCents = priceCents - paidCents + refundedCents;
     if (remainingBalanceCents > 0) {
-      balanceLabel = `Reste à régler : ${formatPrice(remainingBalanceCents, currency)}`;
+      balanceLabel = "Reste à régler";
+      balanceValue = (
+        <span className="font-semibold text-amber-700">
+          {formatPrice(remainingBalanceCents, currency)}
+        </span>
+      );
     } else if (remainingBalanceCents === 0) {
-      balanceLabel = "Soldé";
+      balanceLabel = "Réservation soldée";
+      balanceValue = (
+        <span className="font-semibold text-emerald-700">
+          Réservation soldée
+        </span>
+      );
     } else {
-      balanceLabel = `Trop-perçu : ${formatPrice(Math.abs(remainingBalanceCents), currency)}`;
+      balanceLabel = "Trop-perçu";
+      balanceValue = (
+        <span className="font-semibold text-rose-700">
+          {formatPrice(Math.abs(remainingBalanceCents), currency)}
+        </span>
+      );
     }
   }
   const documentCount = reservationDocuments?.length ?? 0;
@@ -865,8 +882,8 @@ export default async function ReservationDetailPage({
                       />
                     ) : null}
                     <DetailItem
-                      label="Solde restant"
-                      value={balanceLabel}
+                      label={balanceLabel}
+                      value={balanceValue}
                     />
                   </dl>
 
@@ -1578,24 +1595,16 @@ export default async function ReservationDetailPage({
                   ) : reservationPayments && reservationPayments.length > 0 ? (
                     <div className="divide-y divide-border">
                       {reservationPayments.map((payment) => {
-                        let dateLabel = "Date";
-                        let dateValue = payment.paid_at ?? payment.created_at;
-
+                        let dateDisplay = "";
                         if (payment.status === "paid" && payment.paid_at) {
-                          dateLabel = "Payé le";
-                          dateValue = payment.paid_at;
+                          dateDisplay = `Payé le ${formatApplicationDate(payment.paid_at)}`;
                         } else if ((payment.status === "requested" || payment.status === "pending") && payment.due_date) {
-                          dateLabel = "Échéance";
-                          dateValue = payment.due_date;
+                          dateDisplay = `Échéance : ${formatApplicationDate(payment.due_date)}`;
                         } else if (payment.requested_at) {
-                          dateLabel = "Demandé le";
-                          dateValue = payment.requested_at;
+                          dateDisplay = `Demandé le ${formatApplicationDate(payment.requested_at)}`;
                         } else {
-                          dateLabel = "Créé le";
-                          dateValue = payment.created_at;
+                          dateDisplay = `Créé le ${formatApplicationDate(payment.created_at)}`;
                         }
-
-                        const dateText = formatApplicationDate(dateValue);
 
                         return (
                           <div
@@ -1619,7 +1628,7 @@ export default async function ReservationDetailPage({
                                   Méthode : {getPaymentMethodLabel(payment.payment_method)}
                                 </p>
                                 <p className="text-xs text-muted">
-                                  {dateLabel} : {dateText}
+                                  {dateDisplay}
                                 </p>
                                 {payment.notes ? (
                                   <p className="text-xs text-muted/80 italic mt-1">
