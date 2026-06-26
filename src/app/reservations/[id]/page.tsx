@@ -54,6 +54,9 @@ type RelatedPayment = {
   payment_method: string;
   paid_at: string | null;
   created_at: string;
+  notes: string | null;
+  due_date: string | null;
+  requested_at: string | null;
 };
 
 type RelatedDocument = {
@@ -364,7 +367,7 @@ export default async function ReservationDetailPage({
   const { data: rawPayments, error: paymentsError } = reservation?.id
     ? await supabase
         .from("payments")
-        .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at")
+        .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, notes, due_date, requested_at")
         .eq("reservation_id", reservation.id)
         .is("deleted_at", null)
         .order("paid_at", { ascending: false, nullsFirst: false })
@@ -1575,9 +1578,24 @@ export default async function ReservationDetailPage({
                   ) : reservationPayments && reservationPayments.length > 0 ? (
                     <div className="divide-y divide-border">
                       {reservationPayments.map((payment) => {
-                        const dateText = formatApplicationDate(
-                          payment.paid_at ?? payment.created_at,
-                        );
+                        let dateLabel = "Date";
+                        let dateValue = payment.paid_at ?? payment.created_at;
+
+                        if (payment.status === "paid" && payment.paid_at) {
+                          dateLabel = "Payé le";
+                          dateValue = payment.paid_at;
+                        } else if ((payment.status === "requested" || payment.status === "pending") && payment.due_date) {
+                          dateLabel = "Échéance";
+                          dateValue = payment.due_date;
+                        } else if (payment.requested_at) {
+                          dateLabel = "Demandé le";
+                          dateValue = payment.requested_at;
+                        } else {
+                          dateLabel = "Créé le";
+                          dateValue = payment.created_at;
+                        }
+
+                        const dateText = formatApplicationDate(dateValue);
 
                         return (
                           <div
@@ -1601,8 +1619,13 @@ export default async function ReservationDetailPage({
                                   Méthode : {getPaymentMethodLabel(payment.payment_method)}
                                 </p>
                                 <p className="text-xs text-muted">
-                                  Date : {dateText}
+                                  {dateLabel} : {dateText}
                                 </p>
+                                {payment.notes ? (
+                                  <p className="text-xs text-muted/80 italic mt-1">
+                                    Note : {payment.notes}
+                                  </p>
+                                ) : null}
                               </div>
                               <Link
                                 href={`/payments/${payment.id}`}
