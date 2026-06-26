@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé, ainsi que l'ajout d'une aide client de saisie au formulaire de paiement de réservation pour préremplir le montant depuis le solde restant.
-Dernier commit connu : `5300010b Merge pull request #166 from michaelsolere/feature/reservation-payment-fill-balance`
-Documentation projet à jour jusqu'à PR166.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé, l'ajout d'une aide client de saisie au formulaire de paiement de réservation pour préremplir le montant depuis le solde restant, ainsi que l'enregistrement manuel d'un remboursement simple depuis la fiche réservation.
+Dernier commit connu : `2a931796 Merge pull request #168 from michaelsolere/feature/reservation-refund-form`
+Documentation projet à jour jusqu'à PR168.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -62,6 +62,7 @@ Le dépôt contient désormais :
 * une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
 * le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et dans la liste des réservations, avec des indicateurs colorés selon l'état financier (soldé, reste à régler, trop-perçu ou solde non déterminé) ;
 * une aide visuelle et contextuelle à côté du formulaire de paiement manuel sur la fiche réservation, affichant des instructions de saisie, l'état de solde dynamique (solde non déterminé, reste à régler, réservation soldée ou trop-perçu) et proposant une aide client de saisie (bouton permettant de remplir automatiquement le montant avec le solde restant si positif et de basculer le type de paiement sur solde), tout en laissant le formulaire disponible ;
+* l'enregistrement manuel d'un remboursement simple depuis la fiche réservation via une action serveur dédiée et un formulaire de remboursement client séparé, avec aide à la saisie ("Remplir avec le trop-perçu") s'il y a un trop-perçu, ou avertissement s'il n'y en a pas ;
 * l'affichage des réservations liées sur la fiche détail d'un contact, avec information d'adoption et lien vers l'animal lié quand disponible ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
 * l'affichage des événements liés sur la fiche détail d'une candidature (`/candidatures/[id]`) en lecture seule ;
@@ -3702,6 +3703,44 @@ Limites conservées :
 * aucun blocage de l’adoption selon le solde ;
 * aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
 
+## PR168 — feat(payments): add reservation refund form
+
+Merge commit : `2a931796 Merge pull request #168 from michaelsolere/feature/reservation-refund-form`
+
+Objectif : permettre d'enregistrer manuellement un remboursement simple lié à une réservation depuis sa fiche détail.
+
+Règles métier :
+* Un remboursement simple est stocké en tant que ligne positive dans la table `payments`.
+* **Valeurs forcées côté serveur** :
+  * `payment_type = 'refund'`
+  * `status = 'paid'`
+  * `currency = 'EUR'`
+  * `paid_at` correspond à la date de remboursement saisie (convertie en ISO string).
+  * `requested_at = null`, `due_date = null`, `refunded_at = null`.
+* **Calcul du solde** : la création du remboursement augmente `refunded_cents`, ce qui fait remonter le solde ($price\_cents - paid\_cents + refunded\_cents$) vers zéro ou vers un reste à régler.
+* **Non-mutation** : le paiement d'origine n'est pas modifié et aucun statut de réservation n'est altéré automatiquement.
+
+Comportement de l'UI :
+* Formulaire séparé « Enregistrer un remboursement » (contenant les champs : montant, date du remboursement, moyen, note).
+* **Si trop-perçu** (solde négatif) : affichage du trop-perçu et d'un bouton d'aide `"Remplir avec le trop-perçu"` pour préremplir le montant en valeur absolue (sans soumettre le formulaire).
+* **Si pas de trop-perçu** : affichage d'un avertissement visuel précisant que le remboursement augmentera le reste à régler du client. Le formulaire reste néanmoins disponible dans tous les cas.
+* Redirections et bandeaux de retour explicites de succès/erreur via l'URL (`payment_refund_status=success` ou `error`).
+
+Fichiers modifiés / créés :
+* [src/features/payments/actions.ts](file:///Users/mika/Documents/Saas%20phase%201/src/features/payments/actions.ts) [MODIFY] (ajout de l'action serveur dédiée `createReservationRefund`)
+* [src/features/payments/reservation-refund-form.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/features/payments/reservation-refund-form.tsx) [NEW] (composant client contenant le formulaire)
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx) [MODIFY] (intégration du formulaire de remboursement et des bannières de statut)
+
+Limites conservées :
+* pas de gestion de `partial_refund` ;
+* pas de montant négatif ;
+* pas de modification du paiement d'origine ;
+* pas de passage du paiement d'origine en refunded ;
+* pas de changement automatique du statut de réservation ;
+* pas de reçu PDF, facture, avoir, contrat ou signature généré ;
+* pas d’intégration Stripe ou de paiement en ligne ;
+* aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
+
 ## Décisions techniques à conserver
 
 ### Statuts métier
@@ -3847,6 +3886,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * `/reservations/[id]` accepte un champ date vide pour retirer l’échéance de pré-réservation ;
 * `/reservations/[id]` permet de créer manuellement un paiement lié à la réservation ;
 * `/reservations/[id]` propose un bouton client d'aide à la saisie pour préremplir le montant du paiement avec le solde restant si positif et basculer le type sur Solde, sans soumettre ni créer le paiement automatiquement ;
+* `/reservations/[id]` permet d'enregistrer manuellement un remboursement simple lié à la réservation (`payment_type = refund`, `status = paid`) via un formulaire dédié toujours disponible, avec bouton d'aide Remplir avec le trop-perçu s'il y a un trop-perçu ou avertissement s'il n'y en a pas ;
 * `/reservations/[id]` permet de confirmer manuellement une réservation `draft` en `active`, ajoute le rôle `reservation_holder` au contact si absent et désactive `pre_reservation_holder` après ajout réel de `reservation_holder` ;
 * `/reservations/[id]` permet de finaliser manuellement une réservation `active` en `adopted`, ajoute le rôle `adopter` au contact si absent, désactive `reservation_holder` et `candidate` après ajout réel de `adopter`, et met à jour l'animal lié en `adopted` / `adopted_out` si présent ;
 * `/reservations/[id]` permet d'annuler manuellement une réservation `active` en `cancelled` ;
@@ -3871,7 +3911,7 @@ La fiche réservation a été clarifiée côté UX pour les actions finales : le
 * les fixtures locales permettent de tester directement `/documents/b0000000-0000-4000-8000-000000000005` ;
 * les fixtures locales permettent de tester directement `/candidatures/80000000-0000-4000-8000-000000000002` ;
 * les fixtures locales permettent de tester directement `/contacts/70000000-0000-4000-8000-000000000002` ;
-* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'un contact manuel depuis `/contacts/new`, de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, de la finalisation manuelle `active` → `adopted`, de l'annulation manuelle `active` → `cancelled`, du désistement manuel `active` → `withdrawn`, et de l'expiration manuelle `active` → `expired`.
+* la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'un contact manuel depuis `/contacts/new`, de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, de l'enregistrement contrôlé d'un remboursement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, de la finalisation manuelle `active` → `adopted`, de l'annulation manuelle `active` → `cancelled`, du désistement manuel `active` → `withdrawn`, et de l'expiration manuelle `active` → `expired`.
 
 Limites conservées explicitement :
 * aucune création de portée ;
@@ -3913,7 +3953,7 @@ Limites conservées explicitement :
 * aucune création, édition ou suppression d'événement lié depuis la fiche paiement ;
 * aucune modification du champ simple `payments.notes` par les sections liées ;
 * aucune création de réservation depuis la fiche animal ;
-* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn` ou l'expiration manuelle `active` → `expired` ;
+* aucune édition de réservation autre que le tarif convenu (`price_cents`), le commentaire interne (`internal_comment`), l'échéance de pré-réservation (`pre_reservation_deadline`), l'attribution de l'animal (`animal_id`) et son retrait, aucun autre ajout que la création manuelle de paiement ou l'enregistrement manuel de remboursement, et aucun autre changement d'état que le passage d'une demande de paiement à payé, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn` ou l'expiration manuelle `active` → `expired` ;
 * aucun changement de statut de réservation autre que les transitions manuelles `draft` → `active`, `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` ;
 * aucun remboursement déclenché par les transitions finales de réservation ;
 * aucun avoir déclenché par les transitions finales de réservation ;
@@ -3956,7 +3996,7 @@ Limites conservées explicitement :
 * aucune timeline ;
 * aucun Gantt ;
 * aucun journal de mise-bas ;
-* aucune mutation autre que la création contrôlée d'un contact manuel, la création contrôlée d'une candidature manuelle depuis un contact existant, la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, les enrichissements contrôlés de rôles contact liés à ces workflows jusqu'au rôle `adopter`, l'ajout manuel contrôlé d'un rôle depuis une fiche contact, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la mise à jour contrôlée du statut de l'animal lié lors de la finalisation en adoption, la création contrôlée de paiement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
+* aucune mutation autre que la création contrôlée d'un contact manuel, la création contrôlée d'une candidature manuelle depuis un contact existant, la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, les enrichissements contrôlés de rôles contact liés à ces workflows jusqu'au rôle `adopter`, l'ajout manuel contrôlé d'un rôle depuis une fiche contact, l'édition contrôlée du tarif convenu, l'édition contrôlée du commentaire interne, l'édition contrôlée de l'échéance de pré-réservation, l'attribution contrôlée d'un animal, le retrait contrôlé d'attribution animal/réservation, la mise à jour contrôlée du statut de l'animal lié lors de la finalisation en adoption, la création contrôlée de paiement manuel d'une réservation existante, l'enregistrement contrôlé d'un remboursement manuel d'une réservation existante, le passage contrôlé d'un paiement de `requested` à `paid`, la confirmation manuelle `draft` → `active`, la finalisation manuelle `active` → `adopted`, l'annulation manuelle `active` → `cancelled`, le désistement manuel `active` → `withdrawn`, et l'expiration manuelle `active` → `expired` ;
 * aucun statut `completed` ;
 * aucune migration ;
 * aucune RLS ;
@@ -3981,6 +4021,7 @@ Pistes possibles :
 * l'édition contrôlée du commentaire interne d'une réservation est validée localement ;
 * l'édition contrôlée de l'échéance de pré-réservation d'une réservation est validée localement ;
 * la création contrôlée de paiement manuel d'une réservation est validée localement ;
+* l'enregistrement contrôlé d'un remboursement manuel d'une réservation est validé localement ;
 * le passage contrôlé d'une demande de paiement à payé est validé localement ;
 * l'attribution contrôlée d'un animal à une réservation est validée localement ;
 * le retrait contrôlé d'attribution animal/réservation est validé localement ;
@@ -4006,7 +4047,6 @@ Pistes possibles :
 * concevoir plus tard une édition contrôlée des rangs ou d'autres attributs de réservation ;
 * concevoir plus tard un formulaire de complétion de réservation ;
 * concevoir plus tard le paiement en ligne / Stripe dans une PR dédiée ;
-* concevoir plus tard les remboursements manuels dans une PR dédiée ;
 * concevoir plus tard les annulations/éditions de paiement dans une PR dédiée ;
 * améliorer plus tard l'ergonomie de la fiche réservation seulement si de nouveaux usages rendent la page trop dense ;
 * ajouter plus tard une fixture ou un test e2e post-adoption si un scénario fiable est défini ;
