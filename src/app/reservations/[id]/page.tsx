@@ -34,7 +34,7 @@ import {
   unassignAnimalFromReservation,
   withdrawReservation,
 } from "@/features/reservations/actions";
-import { createReservationPayment } from "@/features/payments/actions";
+import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import {
   FINAL_RESERVATION_STATUSES,
@@ -1711,106 +1711,14 @@ export default async function ReservationDetailPage({
                       }
                     })()}
 
-                    <form action={createReservationPayment} className="space-y-4">
-                      <input
-                        type="hidden"
-                        name="reservation_id"
-                        value={id}
-                      />
-
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                            Montant (en €)
-                          </label>
-                          <input
-                            name="amount"
-                            type="text"
-                            required
-                            placeholder="ex: 150 ou 150.50"
-                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                            Type de paiement
-                          </label>
-                          <select
-                            name="payment_type"
-                            required
-                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                          >
-                            <option value="arrhes">Arrhes</option>
-                            <option value="balance">Solde</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                            Statut
-                          </label>
-                          <select
-                            name="status"
-                            required
-                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                          >
-                            <option value="paid">Payé</option>
-                            <option value="requested">Demandé</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                            Moyen de paiement
-                          </label>
-                          <select
-                            name="payment_method"
-                            required
-                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                          >
-                            <option value="bank_transfer">Virement</option>
-                            <option value="cash">Espèces</option>
-                            <option value="card">Carte bancaire</option>
-                            <option value="cheque">Chèque</option>
-                            <option value="other">Autre</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                            Date
-                          </label>
-                          <input
-                            name="payment_date"
-                            type="date"
-                            required
-                            defaultValue={formatDateInputValue(new Date().toISOString())}
-                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="text-xs font-semibold uppercase tracking-wide text-muted block mb-2">
-                          Note (optionnelle)
-                        </label>
-                        <textarea
-                          name="notes"
-                          rows={3}
-                          maxLength={2000}
-                          placeholder="Commentaire interne sur ce paiement..."
-                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent resize-y"
-                        />
-                      </div>
-
-                      <button
-                        type="submit"
-                        className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                      >
-                        Enregistrer le paiement
-                      </button>
-                    </form>
+                    <ReservationPaymentForm
+                      reservationId={id}
+                      remainingBalanceCents={
+                        reservation.price_cents !== null
+                          ? reservation.price_cents - (reservation.paid_cents ?? 0) + (reservation.refunded_cents ?? 0)
+                          : 0
+                      }
+                    />
                   </div>
                 </section>
 
