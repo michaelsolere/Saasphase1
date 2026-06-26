@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé, l'ajout d'une aide client de saisie au formulaire de paiement de réservation pour préremplir le montant depuis le solde restant, ainsi que l'enregistrement manuel d'un remboursement simple depuis la fiche réservation.
-Dernier commit connu : `2a931796 Merge pull request #168 from michaelsolere/feature/reservation-refund-form`
-Documentation projet à jour jusqu'à PR168.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé, l'ajout d'une aide client de saisie au formulaire de paiement de réservation pour préremplir le montant depuis le solde restant, l'enregistrement manuel d'un remboursement simple depuis la fiche réservation, l'association ou modification d'une portée/groupe souhaité depuis la fiche candidature, et le lancement de la campagne de pré-réservation (Lot 1) depuis la fiche portée.
+Dernier commit connu : `bcc6ed66 Merge pull request #174 from michaelsolere/fix/litter-qualified-applications-undefined-uuid`
+Documentation projet à jour jusqu'à PR174.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -3740,6 +3740,76 @@ Limites conservées :
 * pas de reçu PDF, facture, avoir, contrat ou signature généré ;
 * pas d’intégration Stripe ou de paiement en ligne ;
 * aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
+
+## PR170 — feat(litters): launch pre-reservation campaign from litter detail
+
+Merge commit : `5026e795 feat(litters): launch pre-reservation campaign from litter detail (#170)`
+
+Objectif : Lancer la campagne de pré-réservation (demande de paiement 1/2 de 250 € d'avance sur arrhes) pour une portée à partir de sa fiche détail.
+
+Règles métier :
+* Ajout d'une section « Campagne de pré-réservation » sur la fiche portée (`/litters/[id]`).
+* Affichage des candidatures au statut `qualified` qui ciblent spécifiquement cette portée (`desired_litter_id`).
+* L'éleveur coche les candidats de la liste et clique sur « Lancer la campagne de pré-réservation ».
+* Pour chaque candidat sélectionné, le système :
+  * Crée une réservation au statut `pre_reservation_requested` (ou met à jour une réservation existante au statut `draft`).
+  * Crée une demande de paiement associée de 250 € (25000 cents, devise `EUR`, `payment_type = 'arrhes'`, `status = 'requested'`, `payment_method = 'bank_transfer'`) avec une échéance fixée à J+15 après confirmation de la gestation.
+  * Assigne la note de paiement suivante : `« Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+15 après confirmation de gestation. »`.
+* **Limites Phase 1** :
+  * Aucun e-mail réel n'est encore envoyé (le bouton simule et déroule les créations serveur de réservation et paiement).
+  * La deuxième demande de paiement de 250 € est exclue de ce lot (elle fera l'objet d'un lot séparé ultérieur).
+  * Pas de modification automatique du statut de la candidature.
+  * Pas de modification de `markPaymentAsPaid`.
+
+Fichiers modifiés / créés :
+* [src/features/reservations/actions.ts](file:///Users/mika/Documents/Saas%20phase%201/src/features/reservations/actions.ts) [MODIFY] (implémentation de `launchPreReservationCampaign`)
+* [src/app/litters/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/litters/%5Bid%5D/page.tsx) [MODIFY] (panneau et formulaire de campagne)
+
+## PR171 — feat(applications): edit desired litter
+
+Merge commit : `960403eb feat(applications): edit desired litter (#171)`
+
+Objectif : Permettre à l'éleveur d'éditer ou de rattacher une candidature à une portée ou un groupe de portées depuis sa fiche détail.
+
+Règles métier :
+* Ajout d'une section dédiée sur la fiche détail de candidature (`/candidatures/[id]`) pour modifier la portée ou le groupe de portées souhaité.
+* Met à jour les colonnes `desired_litter_id` et `desired_litter_group_id` via l'action serveur `updateApplicationDesiredLitter`.
+* Permet d'associer une candidature à une portée pour qu'elle soit détectée et affichée dans la liste de la campagne de pré-réservation de la fiche portée.
+* **Limites Phase 1** :
+  * Aucune création automatique de paiement ou de réservation lors de ce rattachement.
+
+Fichiers modifiés / créés :
+* [src/features/applications/actions.ts](file:///Users/mika/Documents/Saas%20phase%201/src/features/applications/actions.ts) [MODIFY] (ajout de `updateApplicationDesiredLitter`)
+* [src/app/candidatures/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/candidatures/%5Bid%5D/page.tsx) [MODIFY] (intégration du formulaire de choix de portée/groupe)
+
+## PR172, PR173, PR174 — fix(litters): load qualified applications queries and guards
+
+Merge commits :
+* PR172 : `8b513acc Merge pull request #172 from michaelsolere/fix/litter-qualified-applications-loading`
+* PR173 : `97306b06 Merge pull request #173 from michaelsolere/fix/litter-qualified-applications-loading-v2`
+* PR174 : `bcc6ed66 Merge pull request #174 from michaelsolere/fix/litter-qualified-applications-undefined-uuid`
+
+Objectif : Corriger et fiabiliser le chargement des candidatures qualifiées sur la fiche portée.
+
+Règles métier & Technique :
+* **PR172** : Tentative de correction en remplaçant la jointure PostgREST implicite `contacts!contact_id` par le nom de la contrainte composite `contacts!applications_contact_organization_fk`.
+* **PR173** : Pour contourner les limites de résolution de jointures composites sous RLS de PostgREST, refactoring complet en deux requêtes distinctes exécutées en séquence (candidatures puis contacts correspondants) avec fusion et enrichissement côté TypeScript. Gère de manière robuste les erreurs de contacts en affectant `"Contact non chargé"`.
+* **PR174** : Résolution finale de l'erreur SQL/PostgREST `invalid input syntax for type uuid: "undefined"` (code `22P02`) en sélectionnant `organization_id` dans la requête principale de chargement de portée (`rawLitter`), et en ajoutant des gardes explicites pour empêcher l'évaluation de filtres UUID de Supabase avec des valeurs `undefined` ou `null`.
+
+Fichiers modifiés / créés :
+* [src/app/litters/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/litters/%5Bid%5D/page.tsx) [MODIFY] (sélection de `organization_id`, requêtes séparées applications/contacts et gardes robustes anti-undefined)
+
+## Jalon validé : Campagne de pré-réservation — Lot 1
+
+Le Lot 1 de la campagne de pré-réservation est validé et fonctionnel en navigateur :
+* **Rattachement** : L'éleveur peut rattacher une candidature à une portée ou un groupe depuis la fiche de la candidature.
+* **Chargement** : Les candidatures qualifiées ciblées apparaissent correctement sur la fiche portée sans erreur de jointure ou d'UUID undefined.
+* **Lancement de campagne** : La sélection et la soumission du formulaire fonctionnent.
+* **Création/Mise à jour** : Une réservation `pre_reservation_requested` et une demande de paiement de 250 € d'arrhes (`requested`, J+15) sont créées pour chaque candidat sélectionné.
+* **Limites fonctionnelles à retenir** :
+  * Le bouton s'intitule *Lancer la campagne de pré-réservation*, mais aucun e-mail réel n'est envoyé.
+  * Seul le premier paiement (demande d'avance sur arrhes de 250 €) est créé.
+  * La deuxième demande de paiement de 250 € est exclue de ce lot et devra faire l'objet d'un déclenchement manuel séparé (Lot 2) lorsque les conditions conviennent à l'adoptant (validation éleveur, attribution chiot, etc.).
 
 ## Décisions techniques à conserver
 
