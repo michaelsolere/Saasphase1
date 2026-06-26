@@ -907,6 +907,28 @@ export default async function ReservationDetailPage({
                     />
                   </dl>
 
+                  {reservation.status === "pre_reservation_requested" ? (
+                    <div className="mt-8 rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        Pré-réservation demandée
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-amber-950">
+                        La campagne de pré-réservation a été lancée. Le dossier est en attente du premier paiement de 250 €.
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {reservation.status === "pre_reservation_paid" ? (
+                    <div className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                        Dossier en pré-réservation payée
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-emerald-950">
+                        Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément d’arrhes n’est demandé automatiquement à ce stade.
+                      </p>
+                    </div>
+                  ) : null}
+
                   {isFinalReservationStatus(reservation.status) ? (
                     <div className="mt-8 rounded-xl border bg-background px-4 py-4">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
