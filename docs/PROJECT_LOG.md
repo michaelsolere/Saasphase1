@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, ainsi que l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation
-Dernier commit connu : `32486e90 Merge pull request #162 from michaelsolere/feature/reservation-payments-light-readability`
-Documentation projet à jour jusqu'à PR162.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, ainsi que la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé
+Dernier commit connu : `73d65f75 Merge pull request #164 from michaelsolere/fix/reservation-balance-and-payment-date-visibility`
+Documentation projet à jour jusqu'à PR164.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -74,7 +74,7 @@ Le dépôt contient désormais :
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
 * un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
-* l'affichage des paiements liés sur la fiche détail d'une réservation, avec une lisibilité améliorée en lecture seule (dates explicites, notes de paiement) ;
+* l'affichage des paiements liés sur la fiche détail d'une réservation, avec une lisibilité améliorée et une correction de la visibilité réelle (dates explicites sans libellé Date ambigu, notes de paiement) ;
 * une liste privée des documents en lecture seule (`/documents`) ;
 * une fiche détail de document en lecture seule (`/documents/[id]`) ;
 * un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
@@ -3615,6 +3615,48 @@ Comportements ajoutés :
 
 Fichiers modifiés :
 * [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx)
+
+Limites conservées :
+* aucune création de paiement ;
+* aucune modification de paiement ;
+* aucune logique de remboursement ;
+* aucune action serveur modifiée ;
+* aucun blocage de l'adoption selon le solde ;
+* aucun masquage ou désactivation du formulaire d'ajout de paiement ;
+* aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
+
+## PR164 — fix(reservations): make balance and payment dates visible
+
+Merge commit : `73d65f75 Merge pull request #164 from michaelsolere/fix/reservation-balance-and-payment-date-visibility`
+
+Objectif : corriger la visibilité réelle du solde (sur fiche détail et liste) et clarifier le libellé des dates dans les paiements liés suite aux retours de test groupé.
+
+Contexte & Problèmes corrigés :
+* **Visibilité fiche détail** : le solde restant n’était pas assez visible ou lisible (affiché avec une double étiquette redondante sous l'étiquette générique "Solde restant" et sans distinction de couleur).
+* **Calcul liste réservations** : l'indicateur du reste à régler n'était pas entièrement exact car la colonne `refunded_cents` n'était pas sélectionnée dans la requête Supabase de `/reservations`, provoquant un calcul erroné en cas de remboursements.
+* **Libellé de date ambigu** : la section des paiements liés continuait d'afficher le préfixe ambigu `"Date : [dateText]"` dans certains cas, et la ponctuation était maladroite.
+
+Corrections apportées :
+* **Fiche détail réservation** :
+  * Modification du composant `DetailItem` local pour accepter un type `React.ReactNode` comme valeur, permettant d'ajouter des styles de couleur dynamiques.
+  * Gestion d'un libellé dynamique (`balanceLabel`) et d'une valeur formatée/stylisée (`balanceValue`) selon les 4 états du solde :
+    * Tarif absent (`price_cents === null`) : Label = `"Solde restant"`, Valeur = `"Solde non déterminé"` (grisé `text-muted-foreground`)
+    * Solde positif : Label = `"Reste à régler"`, Valeur = *[Montant]* (orange `text-amber-700 font-semibold`)
+    * Solde nul : Label = `"Réservation soldée"`, Valeur = `"Réservation soldée"` (vert `text-emerald-700 font-semibold`)
+    * Solde négatif : Label = `"Trop-perçu"`, Valeur = *[Montant absolu]* (rouge `text-rose-700 font-semibold`)
+* **Liste des réservations** :
+  * Ajout de `refunded_cents` dans le select de la requête Supabase sur `/reservations` pour fiabiliser le calcul.
+* **Paiements liés** :
+  * Remplacement total du préfixe ambigu `"Date :"` par un formatage grammaticalement explicite :
+    * paiement paid et `paid_at` existe : *"Payé le [formatted_date]"*
+    * paiement requested/pending et `due_date` existe : *"Échéance : [formatted_date]"*
+    * paiement avec `requested_at` existe : *"Demandé le [formatted_date]"*
+    * sinon fallback : *"Créé le [formatted_date]"*
+  * Maintien de la structure verticale et des notes.
+
+Fichiers modifiés :
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx)
+* [src/app/reservations/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/page.tsx)
 
 Limites conservées :
 * aucune création de paiement ;
