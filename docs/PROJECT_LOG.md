@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, ainsi que l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement
-Dernier commit connu : `b11b7849 Merge pull request #160 from michaelsolere/feature/reservation-payment-form-balance-guidance`
-Documentation projet à jour jusqu'à PR160.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, ainsi que l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation
+Dernier commit connu : `32486e90 Merge pull request #162 from michaelsolere/feature/reservation-payments-light-readability`
+Documentation projet à jour jusqu'à PR162.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -74,7 +74,7 @@ Le dépôt contient désormais :
 * des liens simples vers les contacts et réservations associés depuis la liste et la fiche détail des paiements ;
 * un lien `Consulter` depuis la liste des paiements vers chaque fiche détail ;
 * l'affichage des paiements liés sur la fiche détail d'un contact ;
-* l'affichage des paiements liés sur la fiche détail d'une réservation ;
+* l'affichage des paiements liés sur la fiche détail d'une réservation, avec une lisibilité améliorée en lecture seule (dates explicites, notes de paiement) ;
 * une liste privée des documents en lecture seule (`/documents`) ;
 * une fiche détail de document en lecture seule (`/documents/[id]`) ;
 * un lien `Consulter` depuis la liste des documents vers chaque fiche détail ;
@@ -3595,6 +3595,34 @@ Limites conservées :
 * aucune logique de validation serveur ou d'écriture modifiée ;
 * aucun changement des statuts de réservation ;
 * aucun blocage de l'adoption selon le solde ;
+* aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
+
+## PR162 — feat(reservations): improve related payments readability
+
+Merge commit : `32486e90 Merge pull request #162 from michaelsolere/feature/reservation-payments-light-readability`
+
+Objectif : améliorer l'affichage read-only des paiements liés sur `/reservations/[id]` pour offrir une meilleure lisibilité métier des règlements, sans procéder à une refonte visuelle lourde.
+
+Comportements ajoutés :
+* **Données ajoutées à la sélection** : récupération des champs `notes`, `due_date` et `requested_at` pour chaque paiement lié à la réservation.
+* **Affichage des dates plus explicites** :
+  * Si le paiement est payé (`status = 'paid'`) avec une date de paiement : *"Payé le [Date]"*
+  * Si le paiement est demandé/en attente (`status = 'requested'` ou `'pending'`) avec une date d'échéance : *"Échéance : [Date]"*
+  * Si le paiement a une date de demande : *"Demandé le [Date]"*
+  * Fallback par défaut : *"Créé le [Date]"*
+* **Affichage des notes** : affichage discret de la note du paiement en italique sous les informations de paiement si elle est présente.
+* **Conservation de la structure** : la liste verticale existante est maintenue, sans transformation en cartes premium.
+
+Fichiers modifiés :
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx)
+
+Limites conservées :
+* aucune création de paiement ;
+* aucune modification de paiement ;
+* aucune logique de remboursement ;
+* aucune action serveur modifiée ;
+* aucun blocage de l'adoption selon le solde ;
+* aucun masquage ou désactivation du formulaire d'ajout de paiement ;
 * aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
 
 ## Décisions techniques à conserver
