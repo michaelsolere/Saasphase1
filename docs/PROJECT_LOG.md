@@ -13,9 +13,12 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi et synthèse d'adoption read-only
-Dernier commit connu : `4f8501ae Merge pull request #157 from michaelsolere/fix/deactivate-candidate-role-on-adoption`
-Documentation projet à jour jusqu'à PR157.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, ainsi que le calcul et l'affichage en lecture seule du solde restant d'une réservation sur la fiche détail et la liste des réservations
+Dernier commit connu : `546486e3 feat(reservations): show remaining balance`
+Documentation projet à jour jusqu'au commit `546486e3`.
+
+> [!IMPORTANT]
+> **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
 
 Le dépôt contient désormais :
 
@@ -57,6 +60,7 @@ Le dépôt contient désormais :
 * un lien direct de retour vers la liste des contacts depuis la fiche détail ;
 * une liste privée des réservations en lecture seule (`/reservations`) ;
 * une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
+* le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et dans la liste des réservations, avec des indicateurs colorés selon l'état financier (soldé, reste à régler, trop-perçu ou solde non déterminé) ;
 * l'affichage des réservations liées sur la fiche détail d'un contact, avec information d'adoption et lien vers l'animal lié quand disponible ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
 * l'affichage des événements liés sur la fiche détail d'une candidature (`/candidatures/[id]`) en lecture seule ;
@@ -3532,6 +3536,39 @@ Limites conservées :
 * pas de traitement `former_adopter` ;
 * pas de désactivation de rôle structurel ;
 * pas de changement Supabase, RLS, RPC, migration, seed, type généré ou package.
+
+## Commit direct — 546486e3 feat(reservations): show remaining balance
+
+Intégration directe sur `main` exceptionnellement validée après succès des validations de build, de lint et de check de diff.
+
+Objectif : calculer et afficher en lecture seule le solde financier d'une réservation pour donner une visibilité immédiate à l'éleveur.
+
+Calcul du solde restant :
+* S'appuie sur les données existantes de la vue `reservation_overview` : `price_cents` (tarif convenu), `paid_cents` (total réglé), `refunded_cents` (total remboursé).
+* Formule : `remaining_balance_cents = price_cents - paidCents + refundedCents`
+
+Comportements ajoutés :
+* **Cas tarif absent** (`price_cents` est nul) :
+  * Fiche détail et liste affichent : `Solde non déterminé`
+* **Cas solde positif** :
+  * Fiche détail et liste affichent : `Reste à régler : [Montant]` (couleur orange)
+* **Cas solde nul** :
+  * Fiche détail et liste affichent : `Soldé` (couleur verte font-medium)
+* **Cas solde négatif** (trop-perçu) :
+  * Fiche détail et liste affichent : `Trop-perçu : [Montant absolu]` (couleur rouge)
+
+Fichiers modifiés :
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx)
+* [src/features/reservations/reservation-list.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/features/reservations/reservation-list.tsx)
+
+Limites conservées :
+* aucune création de paiement ;
+* aucune modification de paiement ;
+* aucune logique de remboursement ;
+* aucune action serveur modifiée ;
+* aucun blocage de l'adoption selon le solde ;
+* aucun masquage ou désactivation du formulaire d'ajout de paiement ;
+* aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
 
 ## Décisions techniques à conserver
 
