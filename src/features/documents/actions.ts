@@ -43,7 +43,25 @@ export async function initializeReservationDocuments(formData: FormData) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
   }
 
-  // 3. Fetch existing expected documents for this reservation
+  // 3. Server-side validation of completed deposit (arrhes)
+  const { data: payments, error: paymentsError } = await supabase
+    .from("payments")
+    .select("id, status")
+    .eq("reservation_id", reservationId)
+    .eq("payment_type", "arrhes")
+    .eq("amount_cents", 25000)
+    .is("deleted_at", null);
+
+  if (paymentsError || !payments) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
+  const paidPayments = payments.filter((p) => p.status === "paid");
+  if (paidPayments.length < 2) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
+  // 4. Fetch existing expected documents for this reservation
   const { data: existingDocs, error: docsError } = await supabase
     .from("documents")
     .select("id, document_type")
@@ -64,7 +82,7 @@ export async function initializeReservationDocuments(formData: FormData) {
 
   let createdCount = 0;
 
-  // 4. Create missing documents
+  // 5. Create missing documents
   if (!hasCommitment) {
     const { error: insErr } = await supabase.from("documents").insert({
       organization_id: reservation.organization_id,
@@ -139,10 +157,10 @@ export async function markDocumentAsSent(formData: FormData) {
     redirect("/login");
   }
 
-  // Fetch document
+  // 1. Relire le document avec id, status, reservation_id, document_type
   const { data: document, error: readError } = await supabase
     .from("documents")
-    .select("id, status")
+    .select("id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -151,7 +169,17 @@ export async function markDocumentAsSent(formData: FormData) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
   }
 
-  // Update status to sent
+  // 2. Vérifications de garde
+  if (
+    document.reservation_id !== reservationId ||
+    (document.document_type !== "commitment_certificate" &&
+      document.document_type !== "reservation_contract") ||
+    document.status !== "to_generate"
+  ) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
+  // 3. Update status to sent avec clauses renforcées
   const { error: updateError } = await supabase
     .from("documents")
     .update({
@@ -160,7 +188,9 @@ export async function markDocumentAsSent(formData: FormData) {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId);
+    .eq("id", documentId)
+    .eq("reservation_id", reservationId)
+    .in("document_type", ["commitment_certificate", "reservation_contract"]);
 
   if (updateError) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
@@ -194,10 +224,10 @@ export async function markDocumentAsSigned(formData: FormData) {
     redirect("/login");
   }
 
-  // Fetch document
+  // 1. Relire le document avec id, status, reservation_id, document_type
   const { data: document, error: readError } = await supabase
     .from("documents")
-    .select("id, status")
+    .select("id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -206,7 +236,17 @@ export async function markDocumentAsSigned(formData: FormData) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
   }
 
-  // Update status to signed
+  // 2. Vérifications de garde
+  if (
+    document.reservation_id !== reservationId ||
+    (document.document_type !== "commitment_certificate" &&
+      document.document_type !== "reservation_contract") ||
+    document.status !== "sent"
+  ) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
+  // 3. Update status to signed avec clauses renforcées
   const { error: updateError } = await supabase
     .from("documents")
     .update({
@@ -215,7 +255,9 @@ export async function markDocumentAsSigned(formData: FormData) {
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", documentId);
+    .eq("id", documentId)
+    .eq("reservation_id", reservationId)
+    .in("document_type", ["commitment_certificate", "reservation_contract"]);
 
   if (updateError) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
