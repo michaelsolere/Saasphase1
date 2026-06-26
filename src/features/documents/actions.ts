@@ -57,7 +57,7 @@ export async function initializeReservationDocuments(formData: FormData) {
   }
 
   const paidPayments = payments.filter((p) => p.status === "paid");
-  if (paidPayments.length < 2) {
+  if (paidPayments.length < 1) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
   }
 

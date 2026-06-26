@@ -391,6 +391,7 @@ export default async function ReservationDetailPage({
   ) || [];
   const hasSecondPayment = arrhesPayments.length >= 2;
   const hasSecondPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 2;
+  const hasFirstPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 1;
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = reservation?.id
@@ -1230,36 +1231,36 @@ export default async function ReservationDetailPage({
                                   )}
                                 </p>
                               </div>
-
-                              {hasSecondPaid && needsDocInitialization ? (
-                                <form
-                                  action={initializeReservationDocuments}
-                                  className="border-t pt-4"
-                                >
-                                  <input
-                                    type="hidden"
-                                    name="reservation_id"
-                                    value={id}
-                                  />
-                                  <p className="max-w-2xl text-xs leading-5 text-muted">
-                                    Les arrhes sont complètes. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
-                                  </p>
-                                  <button
-                                    type="submit"
-                                    className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                                  >
-                                    Initialiser les documents de réservation
-                                  </button>
-                                </form>
-                              ) : hasSecondPaid ? (
-                                <div className="border-t pt-4">
-                                  <p className="text-xs text-muted">
-                                    Documents de réservation initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
-                                  </p>
-                                </div>
-                              ) : null}
                             </div>
                           )}
+
+                          {hasFirstPaid && needsDocInitialization ? (
+                            <form
+                              action={initializeReservationDocuments}
+                              className="border-t mt-6 pt-6"
+                            >
+                              <input
+                                type="hidden"
+                                name="reservation_id"
+                                value={id}
+                              />
+                              <p className="max-w-2xl text-xs leading-5 text-muted">
+                                Le premier versement des arrhes est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                              </p>
+                              <button
+                                type="submit"
+                                className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              >
+                                Initialiser les documents de réservation
+                              </button>
+                            </form>
+                          ) : hasFirstPaid ? (
+                            <div className="border-t mt-6 pt-6">
+                              <p className="text-xs text-muted">
+                                Documents de réservation initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
