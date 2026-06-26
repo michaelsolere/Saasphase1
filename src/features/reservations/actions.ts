@@ -952,3 +952,194 @@ export async function unassignAnimalFromReservation(formData: FormData) {
 
   redirect(`/reservations/${reservationId}?animal_unassign_status=success`);
 }
+
+// ---------------------------------------------------------------------------
+// Campagne de pré-réservation
+// ---------------------------------------------------------------------------
+
+/**
+ * Lance une campagne de pré-réservation pour les candidatures qualifiées
+ * sélectionnées par l'éleveur depuis la fiche portée.
+ *
+ * Pour chaque candidature sélectionnée :
+ *   1. Crée une réservation en statut `pre_reservation_requested` (ou met à jour
+ *      un brouillon existant lié à cette candidature + portée).
+ *   2. Crée une demande de paiement de 250 € (type `arrhes`, statut `requested`,
+ *      échéance J+15).
+ *
+ * Décisions Phase 1 :
+ *   - Pas de changement automatique du statut de candidature.
+ *   - Pas d'e-mail réel envoyé.
+ *   - Pas de paiement automatique.
+ *   - Libellé : "avance sur arrhes" (ne jamais écrire "acompte").
+ */
+export async function launchPreReservationCampaign(formData: FormData) {
+  const litterId = formData.get("litter_id");
+
+  if (typeof litterId !== "string" || !isUuid(litterId)) {
+    redirect("/litters?campaign_status=error");
+  }
+
+  // Auth
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Relire la portée pour récupérer organization_id + species/breed
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id, species, breed")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter) {
+    redirect(`/litters/${litterId}?campaign_status=error`);
+  }
+
+  // Récupérer les application_id sélectionnés depuis le formulaire
+  const rawApplicationIds = formData.getAll("application_ids[]");
+  const applicationIds = rawApplicationIds.filter(
+    (v): v is string => typeof v === "string" && isUuid(v),
+  );
+
+  if (applicationIds.length === 0) {
+    redirect(`/litters/${litterId}?campaign_status=no_selection`);
+  }
+
+  // Vérifier que toutes les candidatures sont qualifiées et appartiennent
+  // bien à cette portée et à la même organisation
+  const { data: applications, error: appsError } = await supabase
+    .from("applications")
+    .select("id, contact_id, desired_sex_preference, status")
+    .eq("organization_id", litter.organization_id)
+    .eq("desired_litter_id", litterId)
+    .eq("status", "qualified")
+    .is("deleted_at", null)
+    .in("id", applicationIds);
+
+  if (appsError) {
+    redirect(`/litters/${litterId}?campaign_status=error`);
+  }
+
+  if (!applications || applications.length === 0) {
+    redirect(`/litters/${litterId}?campaign_status=no_eligible`);
+  }
+
+  // Calculer l'échéance J+15 (date ISO YYYY-MM-DD)
+  const dueDate = new Date();
+  dueDate.setUTCDate(dueDate.getUTCDate() + 15);
+  const dueDateStr = dueDate.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const note =
+    "Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+15 après confirmation de gestation.";
+
+  let successCount = 0;
+  let errorCount = 0;
+
+  for (const app of applications) {
+    // 1. Vérifier s'il existe déjà une réservation liée à cette candidature + portée
+    const { data: existingReservation } = await supabase
+      .from("reservations")
+      .select("id, status")
+      .eq("organization_id", litter.organization_id)
+      .eq("contact_id", app.contact_id)
+      .eq("application_id", app.id)
+      .eq("litter_id", litterId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    let reservationId: string | null = null;
+
+    if (existingReservation) {
+      // Si la réservation est déjà à pre_reservation_requested ou plus avancée,
+      // on ne la modifie pas — on ignore silencieusement.
+      if (existingReservation.status !== "draft") {
+        continue;
+      }
+      // Mettre à jour le brouillon existant vers pre_reservation_requested
+      const { error: updateErr } = await supabase
+        .from("reservations")
+        .update({
+          status: "pre_reservation_requested",
+          updated_at: new Date().toISOString(),
+          updated_by: user.id,
+        })
+        .eq("id", existingReservation.id)
+        .eq("organization_id", litter.organization_id)
+        .eq("status", "draft")
+        .is("deleted_at", null);
+
+      if (updateErr) {
+        errorCount++;
+        continue;
+      }
+      reservationId = existingReservation.id;
+    } else {
+      // Créer une nouvelle réservation en pre_reservation_requested
+      const { data: newReservation, error: insertErr } = await supabase
+        .from("reservations")
+        .insert({
+          organization_id: litter.organization_id,
+          contact_id: app.contact_id,
+          application_id: app.id,
+          litter_id: litterId,
+          species: litter.species ?? "dog",
+          breed: litter.breed ?? "Golden Retriever",
+          reserved_sex_preference: app.desired_sex_preference ?? "unknown",
+          status: "pre_reservation_requested",
+          created_by: user.id,
+          updated_by: user.id,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (insertErr || !newReservation) {
+        errorCount++;
+        continue;
+      }
+      reservationId = newReservation.id;
+    }
+
+    // 2. Créer la demande de paiement de 250 € (arrhes, requested, J+15)
+    const { error: paymentErr } = await supabase.from("payments").insert({
+      organization_id: litter.organization_id,
+      contact_id: app.contact_id,
+      reservation_id: reservationId,
+      amount_cents: 25000, // 250,00 €
+      currency: "EUR",
+      payment_type: "arrhes",
+      status: "requested",
+      payment_method: "bank_transfer",
+      requested_at: new Date().toISOString(),
+      due_date: dueDateStr,
+      notes: note,
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+    if (paymentErr) {
+      errorCount++;
+      continue;
+    }
+
+    successCount++;
+  }
+
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters");
+  revalidatePath("/reservations");
+
+  if (successCount === 0 && errorCount > 0) {
+    redirect(`/litters/${litterId}?campaign_status=error`);
+  }
+
+  redirect(
+    `/litters/${litterId}?campaign_status=success&campaign_count=${successCount}`,
+  );
+}

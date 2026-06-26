@@ -26,6 +26,7 @@ import {
   formatPrice,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
+import { launchPreReservationCampaign } from "@/features/reservations/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -75,6 +76,17 @@ type RelatedReservation = Pick<
   | "reserved_sex_preference"
   | "created_at"
 >;
+type QualifiedApplication = Pick<
+  Database["public"]["Tables"]["applications"]["Row"],
+  | "id"
+  | "contact_id"
+  | "desired_sex_preference"
+  | "status"
+  | "active_rank"
+  | "initial_rank"
+> & {
+  contacts: { display_name: string | null } | null;
+};
 type RelatedNote = Pick<
   Database["public"]["Tables"]["notes"]["Row"],
   | "id"
@@ -568,10 +580,13 @@ function RelatedDocumentsSection({
 
 export default async function LitterDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ campaign_status?: string; campaign_count?: string }>;
 }) {
   const { id } = await params;
+  const { campaign_status, campaign_count } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -665,6 +680,24 @@ export default async function LitterDetailPage({
 
   const litterDocuments = rawDocuments as RelatedDocument[] | null;
 
+  // Candidatures qualifiées liées à cette portée (pour la campagne de pré-réservation)
+  const { data: rawQualifiedApplications, error: qualifiedAppsError } = litter
+    ? await supabase
+        .from("applications")
+        .select(
+          "id, contact_id, desired_sex_preference, status, active_rank, initial_rank, contacts!contact_id ( display_name )",
+        )
+        .eq("organization_id", litter.organization_id)
+        .eq("desired_litter_id", id)
+        .eq("status", "qualified")
+        .is("deleted_at", null)
+        .order("active_rank", { ascending: true, nullsFirst: false })
+        .order("initial_rank", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+    : { data: null, error: null };
+
+  const qualifiedApplications = rawQualifiedApplications as QualifiedApplication[] | null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <Link
@@ -684,7 +717,7 @@ export default async function LitterDetailPage({
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Portée · Lecture seule
+                  Portée
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
                   {getLitterDisplayName(litter.name, litter.id)}
@@ -693,10 +726,42 @@ export default async function LitterDetailPage({
                   Créée le {formatLitterDate(litter.created_at)}
                 </p>
               </div>
-              <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
-                Lecture seule
-              </span>
             </header>
+
+            {/* Feedback campagne de pré-réservation */}
+            {campaign_status === "success" && (
+              <div
+                role="status"
+                className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                ✓ Campagne lancée avec succès —{" "}
+                {campaign_count ?? "0"} pré-réservation(s) créée(s) et demande(s) de paiement envoyée(s).
+              </div>
+            )}
+            {campaign_status === "no_selection" && (
+              <div
+                role="alert"
+                className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucune candidature sélectionnée. Cochez au moins une case avant de lancer la campagne.
+              </div>
+            )}
+            {campaign_status === "no_eligible" && (
+              <div
+                role="alert"
+                className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucune candidature qualifiée trouvée pour cette portée parmi les sélections.
+              </div>
+            )}
+            {campaign_status === "error" && (
+              <div
+                role="alert"
+                className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors du lancement de la campagne. Aucune modification n&apos;a été appliquée pour les candidatures en erreur.
+              </div>
+            )}
 
             <div className="space-y-6 py-8">
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -797,6 +862,82 @@ export default async function LitterDetailPage({
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
               />
+
+              {/* ---- Campagne de pré-réservation ---- */}
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">Campagne de pré-réservation</h2>
+                <p className="mt-2 text-sm text-muted">
+                  Sélectionnez les candidatures qualifiées pour lesquelles vous souhaitez lancer
+                  une demande d&apos;avance sur arrhes (250 €, échéance J+15).
+                  Une pré-réservation et une demande de paiement seront créées pour chacune.
+                </p>
+
+                {qualifiedAppsError ? (
+                  <p role="alert" className="mt-5 text-sm text-amber-800">
+                    Impossible de charger les candidatures qualifiées.
+                  </p>
+                ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
+                  <p className="mt-5 text-sm text-muted">
+                    Aucune candidature qualifiée liée à cette portée.
+                  </p>
+                ) : (
+                  <form action={launchPreReservationCampaign} className="mt-6">
+                    <input type="hidden" name="litter_id" value={id} />
+
+                    <fieldset>
+                      <legend className="sr-only">Candidatures qualifiées</legend>
+                      <div className="divide-y divide-border rounded-xl border bg-background">
+                        {qualifiedApplications.map((app) => {
+                          const contactName =
+                            app.contacts?.display_name ?? "Contact inconnu";
+                          const sexPref = getSexPreferenceLabel(
+                            app.desired_sex_preference,
+                          );
+                          const rank = app.active_rank ?? app.initial_rank;
+
+                          return (
+                            <label
+                              key={app.id}
+                              htmlFor={`app-${app.id}`}
+                              className="flex cursor-pointer items-start gap-4 px-4 py-4 hover:bg-muted-soft"
+                            >
+                              <input
+                                type="checkbox"
+                                id={`app-${app.id}`}
+                                name="application_ids[]"
+                                value={app.id}
+                                defaultChecked
+                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent"
+                              />
+                              <div className="min-w-0 flex-1 space-y-0.5">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {contactName}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Préférence : {sexPref}
+                                  {rank ? ` · Rang : ${rank}` : ""}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+
+                    <div className="mt-5 flex items-center gap-4">
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        Lancer la campagne de pré-réservation
+                      </button>
+                      <p className="text-xs text-muted">
+                        Aucun e-mail ne sera envoyé automatiquement.
+                      </p>
+                    </div>
+                  </form>
+                )}
+              </section>
 
               <RelatedReservationsSection
                 reservations={litterReservations}
