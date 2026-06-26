@@ -37,6 +37,11 @@ import {
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
+import {
+  initializeReservationDocuments,
+  markDocumentAsSent,
+  markDocumentAsSigned,
+} from "@/features/documents/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import {
   FINAL_RESERVATION_STATUSES,
@@ -256,6 +261,7 @@ export default async function ReservationDetailPage({
     animal_assign_status?: string;
     animal_unassign_status?: string;
     balance_request_status?: string;
+    document_action_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -397,6 +403,10 @@ export default async function ReservationDetailPage({
     : { data: null, error: null };
 
   const reservationDocuments = rawDocuments as RelatedDocument[] | null;
+
+  const hasCommitmentDoc = reservationDocuments?.some((d) => d.document_type === "commitment_certificate") ?? false;
+  const hasContractDoc = reservationDocuments?.some((d) => d.document_type === "reservation_contract") ?? false;
+  const needsDocInitialization = !hasCommitmentDoc || !hasContractDoc;
 
   // Fetch read-only post-adoption follow-up events.
   const { data: rawPostAdoptionEvents, error: postAdoptionEventsError } =
@@ -632,6 +642,24 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 La demande de complément des arrhes n’a pas pu être créée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.document_action_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                L’action sur le document a été effectuée avec succès.
+              </p>
+            ) : null}
+
+            {query.document_action_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -1192,14 +1220,44 @@ export default async function ReservationDetailPage({
                               </button>
                             </form>
                           ) : (
-                            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
-                              <p className="text-sm text-slate-700">
-                                {hasSecondPaid ? (
-                                  "Le complément des arrhes a été payé (2/2 payés)."
-                                ) : (
-                                  "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise."
-                                )}
-                              </p>
+                            <div className="mt-4 space-y-4">
+                              <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                                <p className="text-sm text-slate-700">
+                                  {hasSecondPaid ? (
+                                    "Le complément des arrhes a été payé (2/2 payés)."
+                                  ) : (
+                                    "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise."
+                                  )}
+                                </p>
+                              </div>
+
+                              {hasSecondPaid && needsDocInitialization ? (
+                                <form
+                                  action={initializeReservationDocuments}
+                                  className="border-t pt-4"
+                                >
+                                  <input
+                                    type="hidden"
+                                    name="reservation_id"
+                                    value={id}
+                                  />
+                                  <p className="max-w-2xl text-xs leading-5 text-muted">
+                                    Les arrhes sont complètes. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                                  </p>
+                                  <button
+                                    type="submit"
+                                    className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                                  >
+                                    Initialiser les documents de réservation
+                                  </button>
+                                </form>
+                              ) : hasSecondPaid ? (
+                                <div className="border-t pt-4">
+                                  <p className="text-xs text-muted">
+                                    Documents de réservation initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
+                                  </p>
+                                </div>
+                              ) : null}
                             </div>
                           )}
                         </div>
@@ -1872,11 +1930,14 @@ export default async function ReservationDetailPage({
                     <div className="divide-y divide-border">
                       {reservationDocuments.map((document) => {
                         const usefulDate = getUsefulDocumentDate(document);
+                        const isChecklistDoc =
+                          document.document_type === "commitment_certificate" ||
+                          document.document_type === "reservation_contract";
 
                         return (
                           <div
                             key={document.id}
-                            className="py-5 first:pt-0 last:pb-0"
+                            className="py-5 first:pt-0 last:pb-0 flex flex-col justify-between gap-4 sm:flex-row sm:items-start"
                           >
                             <div className="space-y-2">
                               <div className="flex flex-wrap items-center gap-3">
@@ -1884,7 +1945,7 @@ export default async function ReservationDetailPage({
                                   {document.title}
                                 </span>
                                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                  {getDocumentStatusLabel(document.status)}
+                                  {getDocumentStatusLabel(document.status, document.document_type)}
                                 </span>
                               </div>
                               <p className="text-xs text-muted">
@@ -1904,6 +1965,36 @@ export default async function ReservationDetailPage({
                                 )}
                               </p>
                             </div>
+
+                            {isChecklistDoc ? (
+                              <div className="flex flex-col gap-2 sm:items-end">
+                                {document.status === "to_generate" ? (
+                                  <form action={markDocumentAsSent}>
+                                    <input type="hidden" name="document_id" value={document.id} />
+                                    <input type="hidden" name="reservation_id" value={id} />
+                                    <button
+                                      type="submit"
+                                      className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+                                    >
+                                      Marquer comme envoyé
+                                    </button>
+                                  </form>
+                                ) : null}
+
+                                {document.status === "sent" ? (
+                                  <form action={markDocumentAsSigned}>
+                                    <input type="hidden" name="document_id" value={document.id} />
+                                    <input type="hidden" name="reservation_id" value={id} />
+                                    <button
+                                      type="submit"
+                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100/50"
+                                    >
+                                      Marquer comme reçu signé
+                                    </button>
+                                  </form>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}

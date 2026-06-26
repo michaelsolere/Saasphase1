@@ -31,8 +31,11 @@ export function getDocumentTypeLabel(value: string | null) {
   return typeLabels[value] ?? value.replaceAll("_", " ");
 }
 
-export function getDocumentStatusLabel(value: string | null) {
+export function getDocumentStatusLabel(value: string | null, documentType?: string | null) {
   if (!value) return "Statut inconnu";
+  if (value === "signed" && (documentType === "reservation_contract" || documentType === "commitment_certificate")) {
+    return "Reçu signé";
+  }
   return statusLabels[value] ?? value.replaceAll("_", " ");
 }
 
