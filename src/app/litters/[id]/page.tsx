@@ -685,7 +685,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("applications")
         .select(
-          "id, contact_id, desired_sex_preference, status, active_rank, initial_rank, contacts!applications_contact_organization_fk ( display_name )",
+          "id, contact_id, desired_sex_preference, status, active_rank, initial_rank",
         )
         .eq("organization_id", litter.organization_id)
         .eq("desired_litter_id", id)
@@ -696,7 +696,59 @@ export default async function LitterDetailPage({
         .order("created_at", { ascending: true })
     : { data: null, error: null };
 
-  const qualifiedApplications = rawQualifiedApplications as QualifiedApplication[] | null;
+  if (qualifiedAppsError) {
+    console.error("QUALIFIED_APPS_ERROR_DETAILS:", {
+      message: qualifiedAppsError.message,
+      details: qualifiedAppsError.details,
+      hint: qualifiedAppsError.hint,
+      code: qualifiedAppsError.code,
+    });
+  }
+
+  let qualifiedApplications: QualifiedApplication[] | null = null;
+
+  if (litter && rawQualifiedApplications && rawQualifiedApplications.length > 0) {
+    const contactIds = Array.from(
+      new Set(
+        rawQualifiedApplications
+          .map((app) => app.contact_id)
+          .filter((cid): cid is string => Boolean(cid)),
+      ),
+    );
+
+    if (contactIds.length > 0) {
+      const { data: contactsData, error: contactsError } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("organization_id", litter.organization_id)
+        .in("id", contactIds);
+
+      if (contactsError) {
+        console.error("QUALIFIED_APPS_CONTACTS_ERROR:", contactsError);
+        qualifiedApplications = rawQualifiedApplications.map((app) => ({
+          ...app,
+          contacts: { display_name: "Contact non chargé" },
+        }));
+      } else {
+        const contactMap = new Map<string, { display_name: string | null }>();
+        contactsData?.forEach((c) => {
+          contactMap.set(c.id, { display_name: c.display_name });
+        });
+
+        qualifiedApplications = rawQualifiedApplications.map((app) => ({
+          ...app,
+          contacts: app.contact_id ? (contactMap.get(app.contact_id) ?? null) : null,
+        }));
+      }
+    } else {
+      qualifiedApplications = rawQualifiedApplications.map((app) => ({
+        ...app,
+        contacts: null,
+      }));
+    }
+  } else if (rawQualifiedApplications) {
+    qualifiedApplications = [];
+  }
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
