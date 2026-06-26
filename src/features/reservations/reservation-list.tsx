@@ -82,6 +82,40 @@ export function ReservationList({
                         Payé : {formatPrice(res.paid_cents, res.currency)}
                       </div>
                     ) : null}
+                    {(() => {
+                      const priceCents = res.price_cents;
+                      const paidCents = res.paid_cents ?? 0;
+                      const refundedCents = res.refunded_cents ?? 0;
+
+                      if (priceCents === null) {
+                        return (
+                          <div className="mt-1 text-xs text-muted/60">
+                            Solde non déterminé
+                          </div>
+                        );
+                      }
+
+                      const remainingBalanceCents = priceCents - paidCents + refundedCents;
+                      if (remainingBalanceCents > 0) {
+                        return (
+                          <div className="mt-1 text-xs text-amber-700">
+                            Reste à régler : {formatPrice(remainingBalanceCents, res.currency)}
+                          </div>
+                        );
+                      } else if (remainingBalanceCents === 0) {
+                        return (
+                          <div className="mt-1 text-xs text-emerald-700 font-medium">
+                            Soldé
+                          </div>
+                        );
+                      } else {
+                        return (
+                          <div className="mt-1 text-xs text-rose-700">
+                            Trop-perçu : {formatPrice(Math.abs(remainingBalanceCents), res.currency)}
+                          </div>
+                        );
+                      }
+                    })()}
                   </td>
                   <td className="px-5 py-5 align-top text-muted">
                     {res.animal_display_name ?? "Non attribué"}

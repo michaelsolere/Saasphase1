@@ -448,6 +448,26 @@ export default async function ReservationDetailPage({
           : ""
       }`
     : "Paiements indisponibles";
+
+  // Remaining balance calculation
+  const priceCents = reservation?.price_cents ?? null;
+  const paidCents = reservation?.paid_cents ?? 0;
+  const refundedCents = reservation?.refunded_cents ?? 0;
+  const currency = reservation?.currency ?? "EUR";
+
+  let balanceLabel = "";
+  if (priceCents === null) {
+    balanceLabel = "Solde non déterminé";
+  } else {
+    const remainingBalanceCents = priceCents - paidCents + refundedCents;
+    if (remainingBalanceCents > 0) {
+      balanceLabel = `Reste à régler : ${formatPrice(remainingBalanceCents, currency)}`;
+    } else if (remainingBalanceCents === 0) {
+      balanceLabel = "Soldé";
+    } else {
+      balanceLabel = `Trop-perçu : ${formatPrice(Math.abs(remainingBalanceCents), currency)}`;
+    }
+  }
   const documentCount = reservationDocuments?.length ?? 0;
   const followUpEventCount = postAdoptionEvents?.length ?? 0;
   const followUpNoteCount = reservationNotes?.length ?? 0;
@@ -841,6 +861,10 @@ export default async function ReservationDetailPage({
                         value={formatPrice(reservation.refunded_cents, reservation.currency)}
                       />
                     ) : null}
+                    <DetailItem
+                      label="Solde restant"
+                      value={balanceLabel}
+                    />
                   </dl>
 
                   {isFinalReservationStatus(reservation.status) ? (
