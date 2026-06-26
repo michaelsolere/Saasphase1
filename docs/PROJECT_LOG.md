@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, ainsi que le calcul et l'affichage en lecture seule du solde restant d'une réservation sur la fiche détail et la liste des réservations
-Dernier commit connu : `546486e3 feat(reservations): show remaining balance`
-Documentation projet à jour jusqu'au commit `546486e3`.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, ainsi que l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement
+Dernier commit connu : `b11b7849 Merge pull request #160 from michaelsolere/feature/reservation-payment-form-balance-guidance`
+Documentation projet à jour jusqu'à PR160.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -61,6 +61,7 @@ Le dépôt contient désormais :
 * une liste privée des réservations en lecture seule (`/reservations`) ;
 * une fiche détail de réservation en lecture seule (`/reservations/[id]`) ;
 * le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et dans la liste des réservations, avec des indicateurs colorés selon l'état financier (soldé, reste à régler, trop-perçu ou solde non déterminé) ;
+* une aide visuelle et contextuelle à côté du formulaire de paiement manuel sur la fiche réservation, affichant des instructions de saisie et l'état de solde dynamique (solde non déterminé, reste à régler, réservation soldée ou trop-perçu), tout en laissant le formulaire d'enregistrement disponible ;
 * l'affichage des réservations liées sur la fiche détail d'un contact, avec information d'adoption et lien vers l'animal lié quand disponible ;
 * l'affichage des réservations liées sur la fiche détail d'une candidature ;
 * l'affichage des événements liés sur la fiche détail d'une candidature (`/candidatures/[id]`) en lecture seule ;
@@ -3568,6 +3569,32 @@ Limites conservées :
 * aucune action serveur modifiée ;
 * aucun blocage de l'adoption selon le solde ;
 * aucun masquage ou désactivation du formulaire d'ajout de paiement ;
+* aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
+
+## PR160 — feat(reservations): add payment form balance guidance
+
+Merge commit : `b11b7849 Merge pull request #160 from michaelsolere/feature/reservation-payment-form-balance-guidance`
+
+Objectif : ajouter une aide visuelle et contextuelle à côté du formulaire de paiement manuel sur la fiche réservation pour guider la saisie de l'éleveur en fonction du solde actuel.
+
+Comportement ajouté :
+* Ajout d'un bloc d'aide à la saisie dynamique basé sur le calcul du solde restant.
+* Quatre cas d'état gérés avec des alertes visuelles ciblées :
+  * **Tarif absent** (`price_cents` est nul) : *"Solde non déterminé"* + *"Le solde ne peut pas être calculé tant qu’aucun tarif convenu n’est renseigné."*
+  * **Solde positif** (reste à régler) : *"Reste à régler : [Montant]"* + *"Solde restant actuel : [Montant]. Vous pouvez l’utiliser comme montant de solde si le paiement correspond au règlement final."* (fond orange `bg-amber-50/60`).
+  * **Solde nul** (soldé) : *"Réservation soldée"* + *"Cette réservation apparaît soldée. Vous pouvez tout de même enregistrer un paiement si nécessaire, par exemple pour corriger une situation particulière."* (fond vert `bg-emerald-50/60`).
+  * **Solde négatif** (trop-perçu) : *"Trop-perçu : [Montant]"* + *"Cette réservation présente un trop-perçu de [Montant]. Vérifiez la situation avant d’ajouter un nouveau paiement."* (fond rouge `bg-rose-50/60`).
+
+Périmètre UI & Conservation :
+* Le formulaire de saisie de paiement reste actif et visible dans toutes les situations (y compris si la réservation est soldée).
+* Pas de préremplissage automatique du montant.
+* Pas de bouton raccourci "utiliser le solde".
+
+Limites conservées :
+* aucune création de paiement ou d'action de remboursement modifiée ;
+* aucune logique de validation serveur ou d'écriture modifiée ;
+* aucun changement des statuts de réservation ;
+* aucun blocage de l'adoption selon le solde ;
 * aucun changement Supabase, RLS, RPC, migration, vue SQL, seed, type généré ou package.
 
 ## Décisions techniques à conserver
