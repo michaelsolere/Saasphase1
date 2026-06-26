@@ -438,3 +438,132 @@ export async function createApplicationNote(formData: FormData) {
   revalidatePath(`/candidatures/${applicationId}`);
   redirect(`/candidatures/${applicationId}?note_status=success`);
 }
+
+// ---------------------------------------------------------------------------
+// Rattachement portée / groupe de portées
+// ---------------------------------------------------------------------------
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+function desiredLitterUrl(
+  applicationId: string,
+  outcome: "success" | "error",
+) {
+  return `/candidatures/${applicationId}?litter_status=${outcome}`;
+}
+
+/**
+ * Met à jour les champs desired_litter_id et desired_litter_group_id
+ * sur une candidature existante.
+ *
+ * - Accepte une valeur vide pour supprimer le lien.
+ * - Ne touche pas aux réservations, paiements, rôles, animaux.
+ * - Vérifie que la portée et le groupe appartiennent à la même organisation.
+ */
+export async function updateApplicationDesiredLitter(formData: FormData) {
+  const applicationId = formData.get("application_id");
+
+  if (typeof applicationId !== "string" || !applicationId) {
+    redirect("/candidatures?erreur=portee");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Relire la candidature (organisation)
+  const { data: application, error: readError } = await supabase
+    .from("applications")
+    .select("id, organization_id")
+    .eq("id", applicationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !application) {
+    redirect(desiredLitterUrl(applicationId, "error"));
+  }
+
+  // Valider desired_litter_id (peut être vide)
+  const rawLitterId = formData.get("desired_litter_id");
+  let desiredLitterId: string | null = null;
+
+  if (typeof rawLitterId === "string" && rawLitterId.trim()) {
+    const trimmed = rawLitterId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(desiredLitterUrl(applicationId, "error"));
+    }
+    // Vérifier que la portée appartient à la même organisation
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("id")
+      .eq("id", trimmed)
+      .eq("organization_id", application.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (litterError || !litter) {
+      redirect(desiredLitterUrl(applicationId, "error"));
+    }
+    desiredLitterId = trimmed;
+  }
+
+  // Valider desired_litter_group_id (peut être vide)
+  const rawGroupId = formData.get("desired_litter_group_id");
+  let desiredLitterGroupId: string | null = null;
+
+  if (typeof rawGroupId === "string" && rawGroupId.trim()) {
+    const trimmed = rawGroupId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(desiredLitterUrl(applicationId, "error"));
+    }
+    // Vérifier que le groupe appartient à la même organisation
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", trimmed)
+      .eq("organization_id", application.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(desiredLitterUrl(applicationId, "error"));
+    }
+    desiredLitterGroupId = trimmed;
+  }
+
+  // Mettre à jour la candidature
+  const { error: updateError } = await supabase
+    .from("applications")
+    .update({
+      desired_litter_id: desiredLitterId,
+      desired_litter_group_id: desiredLitterGroupId,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", applicationId)
+    .eq("organization_id", application.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(desiredLitterUrl(applicationId, "error"));
+  }
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+
+  // Revalider la fiche portée si une portée est liée
+  if (desiredLitterId) {
+    revalidatePath(`/litters/${desiredLitterId}`);
+  }
+
+  redirect(desiredLitterUrl(applicationId, "success"));
+}

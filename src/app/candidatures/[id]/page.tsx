@@ -6,7 +6,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
-import { createReservationFromApplication } from "@/features/applications/actions";
+import { createReservationFromApplication, updateApplicationDesiredLitter } from "@/features/applications/actions";
 import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
@@ -144,6 +144,7 @@ export default async function ApplicationDetailPage({
     note_status?: string;
     reservation_status?: string;
     role_status?: string;
+    litter_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -217,6 +218,41 @@ export default async function ApplicationDetailPage({
     : { data: null, error: null };
 
   const applicationEvents = rawEvents as RelatedEvent[] | null;
+
+  // Champs desired_litter_id et desired_litter_group_id (non présents dans application_overview)
+  const { data: rawAppFields } = applicationId
+    ? await supabase
+        .from("applications")
+        .select("desired_litter_id, desired_litter_group_id")
+        .eq("id", applicationId)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null };
+
+  const currentLitterId = rawAppFields?.desired_litter_id ?? null;
+  const currentGroupId = rawAppFields?.desired_litter_group_id ?? null;
+
+  // Portées disponibles (même organisation, non supprimées)
+  const { data: availableLitters } =
+    application?.organization_id
+      ? await supabase
+          .from("litters")
+          .select("id, name")
+          .eq("organization_id", application.organization_id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : { data: null };
+
+  // Groupes de portées disponibles (même organisation, non supprimés)
+  const { data: availableGroups } =
+    application?.organization_id
+      ? await supabase
+          .from("litter_groups")
+          .select("id, name")
+          .eq("organization_id", application.organization_id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : { data: null };
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -321,6 +357,24 @@ export default async function ApplicationDetailPage({
               </p>
             ) : null}
 
+            {query.litter_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La portée souhaitée a bien été mise à jour.
+              </p>
+            ) : null}
+
+            {query.litter_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La portée souhaitée n&apos;a pas pu être mise à jour. Réessayez.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -362,6 +416,79 @@ export default async function ApplicationDetailPage({
                     status={application.status}
                   />
                 </div>
+              </section>
+            ) : null}
+
+            {/* ---- Portée ou groupe souhaité ---- */}
+            {application.id && application.organization_id ? (
+              <section className="border-b py-6">
+                <h2 className="font-semibold">Portée ou groupe souhaité</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Rattachez cette candidature à une portée précise pour la
+                  retrouver lors d&apos;une campagne de pré-réservation.
+                </p>
+
+                <form
+                  action={updateApplicationDesiredLitter}
+                  className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end"
+                >
+                  <input
+                    type="hidden"
+                    name="application_id"
+                    value={application.id}
+                  />
+
+                  <div className="flex-1">
+                    <label
+                      htmlFor="desired_litter_id"
+                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Portée souhaitée
+                    </label>
+                    <select
+                      id="desired_litter_id"
+                      name="desired_litter_id"
+                      defaultValue={currentLitterId ?? ""}
+                      className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="">Aucune portée précise</option>
+                      {availableLitters?.map((litter) => (
+                        <option key={litter.id} value={litter.id}>
+                          {litter.name ?? `Portée ${litter.id.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex-1">
+                    <label
+                      htmlFor="desired_litter_group_id"
+                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Groupe de portées
+                    </label>
+                    <select
+                      id="desired_litter_group_id"
+                      name="desired_litter_group_id"
+                      defaultValue={currentGroupId ?? ""}
+                      className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    >
+                      <option value="">Aucun groupe précis</option>
+                      {availableGroups?.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+                  >
+                    Enregistrer
+                  </button>
+                </form>
               </section>
             ) : null}
 
