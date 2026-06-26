@@ -946,12 +946,25 @@ export default async function ReservationDetailPage({
 
                   {reservation.status === "pre_reservation_paid" ? (
                     <div className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-4">
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                        Dossier en pré-réservation payée
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-emerald-950">
-                        Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément d’arrhes n’est demandé automatiquement à ce stade.
-                      </p>
+                      {hasSecondPaid ? (
+                        <>
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                            Dossier en pré-réservation payée — Arrhes complètes
+                          </h3>
+                          <p className="mt-2 text-sm leading-6 text-emerald-950">
+                            Arrhes complètes : 500 € / 500 € payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
+                            Dossier en pré-réservation payée
+                          </h3>
+                          <p className="mt-2 text-sm leading-6 text-emerald-950">
+                            Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément d’arrhes n’est demandé automatiquement à ce stade.
+                          </p>
+                        </>
+                      )}
                     </div>
                   ) : null}
 
