@@ -599,7 +599,7 @@ export default async function LitterDetailPage({
   const { data: rawLitter, error: readError } = await supabase
     .from("litters")
     .select(
-      "id, name, species, breed, status, litter_group_id, mother_id, father_id, mating_date, mating_date_2, estimated_ovulation_date, expected_birth_date, actual_birth_date, pregnancy_confirmed_at, pregnancy_confirmation_method, expected_puppy_count, born_total_count, born_male_count, born_female_count, alive_count, notes, created_at, updated_at, deleted_at",
+      "id, organization_id, name, species, breed, status, litter_group_id, mother_id, father_id, mating_date, mating_date_2, estimated_ovulation_date, expected_birth_date, actual_birth_date, pregnancy_confirmed_at, pregnancy_confirmation_method, expected_puppy_count, born_total_count, born_male_count, born_female_count, alive_count, notes, created_at, updated_at, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -681,7 +681,8 @@ export default async function LitterDetailPage({
   const litterDocuments = rawDocuments as RelatedDocument[] | null;
 
   // Candidatures qualifiées liées à cette portée (pour la campagne de pré-réservation)
-  const { data: rawQualifiedApplications, error: qualifiedAppsError } = litter
+  const shouldLoadApps = litter && litter.id && litter.organization_id;
+  const { data: rawQualifiedApplications, error: qualifiedAppsError } = shouldLoadApps
     ? await supabase
         .from("applications")
         .select(
@@ -716,7 +717,7 @@ export default async function LitterDetailPage({
       ),
     );
 
-    if (contactIds.length > 0) {
+    if (contactIds.length > 0 && litter.organization_id) {
       const { data: contactsData, error: contactsError } = await supabase
         .from("contacts")
         .select("id, display_name")
