@@ -33,6 +33,7 @@ import {
   expireReservation,
   unassignAnimalFromReservation,
   withdrawReservation,
+  requestPreReservationBalance,
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
@@ -254,6 +255,7 @@ export default async function ReservationDetailPage({
     expiration_status?: string;
     animal_assign_status?: string;
     animal_unassign_status?: string;
+    balance_request_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -377,6 +379,12 @@ export default async function ReservationDetailPage({
     : { data: null, error: null };
 
   const reservationPayments = rawPayments as RelatedPayment[] | null;
+
+  const arrhesPayments = reservationPayments?.filter(
+    (p) => p.payment_type === "arrhes" && p.amount_cents === 25000
+  ) || [];
+  const hasSecondPayment = arrhesPayments.length >= 2;
+  const hasSecondPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 2;
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = reservation?.id
@@ -606,6 +614,24 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.balance_request_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La demande de complément des arrhes a bien été créée.
+              </p>
+            ) : null}
+
+            {query.balance_request_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La demande de complément des arrhes n’a pas pu être créée. Aucune donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -993,7 +1019,9 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : null}
 
-                  {reservation.status === "draft" || reservation.status === "active" ? (
+                  {reservation.status === "draft" ||
+                  reservation.status === "active" ||
+                  reservation.status === "pre_reservation_paid" ? (
                     <div className="mt-8 border-t pt-6">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
                         Actions de statut
@@ -1125,6 +1153,42 @@ export default async function ReservationDetailPage({
                               </form>
                             </div>
                           </div>
+                        </div>
+                      ) : null}
+
+                      {reservation.status === "pre_reservation_paid" ? (
+                        <div className="mt-4">
+                          {!hasSecondPayment ? (
+                            <form
+                              action={requestPreReservationBalance}
+                              className="mt-4"
+                            >
+                              <input
+                                type="hidden"
+                                name="reservation_id"
+                                value={id}
+                              />
+                              <p className="max-w-2xl text-xs leading-5 text-muted">
+                                Cette action va émettre la deuxième demande de paiement de 250 € pour finaliser le complément des arrhes (total attendu : 500 €).
+                              </p>
+                              <button
+                                type="submit"
+                                className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              >
+                                Demander le complément des arrhes
+                              </button>
+                            </form>
+                          ) : (
+                            <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
+                              <p className="text-sm text-slate-700">
+                                {hasSecondPaid ? (
+                                  "Le complément des arrhes a été payé (2/2 payés)."
+                                ) : (
+                                  "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise."
+                                )}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       ) : null}
                     </div>

@@ -1143,3 +1143,94 @@ export async function launchPreReservationCampaign(formData: FormData) {
     `/litters/${litterId}?campaign_status=success&campaign_count=${successCount}`,
   );
 }
+
+export async function requestPreReservationBalance(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=complement_arrhes");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // 1. Relecture serveur de la réservation
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id, status, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation) {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  // 2. Valider le statut : doit être pre_reservation_paid
+  if (reservation.status !== "pre_reservation_paid") {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  // 3. Récupérer les paiements actifs de type arrhes et montant 25000
+  const { data: payments, error: paymentsError } = await supabase
+    .from("payments")
+    .select("id, status")
+    .eq("reservation_id", reservationId)
+    .eq("payment_type", "arrhes")
+    .eq("amount_cents", 25000)
+    .is("deleted_at", null);
+
+  if (paymentsError || !payments) {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  const paidPayments = payments.filter((p) => p.status === "paid");
+
+  // Si on a déjà 2 demandes ou plus, on renvoie une erreur contrôlée (doublon)
+  if (payments.length >= 2) {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  // Il doit y avoir exactement une demande active de 250 € d'arrhes qui est payée
+  if (payments.length !== 1 || paidPayments.length !== 1) {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  // 4. Calcul de l'échéance J+15
+  const dueDate = new Date();
+  dueDate.setDate(dueDate.getDate() + 15);
+  const dueDateStr = dueDate.toISOString().split("T")[0];
+
+  // 5. Création de la deuxième demande de paiement
+  const { error: insertError } = await supabase.from("payments").insert({
+    organization_id: reservation.organization_id,
+    contact_id: reservation.contact_id,
+    reservation_id: reservation.id,
+    amount_cents: 25000,
+    currency: "EUR",
+    payment_type: "arrhes",
+    status: "requested",
+    payment_method: "bank_transfer",
+    requested_at: new Date().toISOString(),
+    due_date: dueDateStr,
+    notes: "Demande 2/2 — complément des arrhes. Total attendu des arrhes : 500 €.",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (insertError) {
+    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+  }
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  redirect(`/reservations/${reservationId}?balance_request_status=success`);
+}
