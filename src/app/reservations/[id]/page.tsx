@@ -35,6 +35,7 @@ import {
   withdrawReservation,
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
+import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import {
   FINAL_RESERVATION_STATUSES,
@@ -243,6 +244,7 @@ export default async function ReservationDetailPage({
     deadline_status?: string;
     price_status?: string;
     payment_create_status?: string;
+    payment_refund_status?: string;
     activation_status?: string;
     role_status?: string;
     adoption_status?: string;
@@ -604,6 +606,24 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.payment_refund_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Remboursement enregistré. Le solde de la réservation a été mis à jour.
+              </p>
+            ) : null}
+
+            {query.payment_refund_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Impossible d’enregistrer le remboursement. Vérifiez les informations saisies et réessayez. Aucune autre donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -1712,6 +1732,24 @@ export default async function ReservationDetailPage({
                     })()}
 
                     <ReservationPaymentForm
+                      reservationId={id}
+                      remainingBalanceCents={
+                        reservation.price_cents !== null
+                          ? reservation.price_cents - (reservation.paid_cents ?? 0) + (reservation.refunded_cents ?? 0)
+                          : 0
+                      }
+                    />
+                  </div>
+
+                  <div className="border-t border-border pt-8 mt-8">
+                    <h3 className="text-lg font-semibold mb-2">
+                      Enregistrer un remboursement
+                    </h3>
+                    <p className="text-xs text-muted mb-6">
+                      Ce formulaire enregistre un remboursement lié à cette réservation sous forme de paiement positif de type remboursement. Il ne modifie pas le paiement d’origine ni le statut de la réservation et ne génère aucun document.
+                    </p>
+
+                    <ReservationRefundForm
                       reservationId={id}
                       remainingBalanceCents={
                         reservation.price_cents !== null
