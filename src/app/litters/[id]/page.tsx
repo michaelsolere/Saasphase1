@@ -685,7 +685,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("applications")
         .select(
-          "id, contact_id, desired_sex_preference, status, active_rank, initial_rank, contacts!contact_id ( display_name )",
+          "id, contact_id, desired_sex_preference, status, active_rank, initial_rank, contacts!applications_contact_organization_fk ( display_name )",
         )
         .eq("organization_id", litter.organization_id)
         .eq("desired_litter_id", id)
