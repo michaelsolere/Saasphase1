@@ -89,6 +89,7 @@ type RelatedAnimal = {
   lof_number: string | null;
   collar_color_current: string | null;
   collar_color_initial: string | null;
+  species: string;
   breed: string;
   status: string;
   call_name: string | null;
@@ -101,6 +102,8 @@ type OtherRelatedDocument = {
   document_type: string;
   status: string;
   signature_required: boolean;
+  sent_at: string | null;
+  signed_at: string | null;
 };
 
 type RelatedPayment = {
@@ -1204,6 +1207,430 @@ function ReservationContractPreview({
   );
 }
 
+function SaleCertificatePreview({
+  document,
+  sellerOrganization,
+  sellerRepresentative,
+  documentSettings,
+  relatedContact,
+  relatedReservation,
+  relatedLitter,
+  relatedLitterGroup,
+  relatedAnimal,
+  otherRelatedDocuments,
+  mother,
+  father,
+}: {
+  document: DBDocument;
+  sellerOrganization: SellerOrganization | null;
+  sellerRepresentative: SellerRepresentative | null;
+  documentSettings: OrganizationDocumentSettings | null;
+  relatedContact: RelatedContact | null;
+  relatedReservation: ReservationOverview | null;
+  relatedLitter: RelatedLitter | null;
+  relatedLitterGroup: { id: string; name: string } | null;
+  relatedAnimal: RelatedAnimal | null;
+  otherRelatedDocuments: OtherRelatedDocument[];
+  mother: {
+    id: string;
+    display_name: string | null;
+    identification_number: string | null;
+    lof_number: string | null;
+  } | null;
+  father: {
+    id: string;
+    display_name: string | null;
+    identification_number: string | null;
+    lof_number: string | null;
+  } | null;
+}) {
+  if (document.document_type !== "sale_certificate") {
+    return null;
+  }
+
+  const currency = relatedReservation?.currency ?? "EUR";
+  const priceCents = relatedReservation?.price_cents ?? null;
+  const paidCents = relatedReservation?.paid_cents ?? null;
+  const refundedCents = relatedReservation?.refunded_cents ?? null;
+  const netPaidCents = getNetPaidCents(paidCents, refundedCents);
+  const remainingCents =
+    priceCents === null ? null : Math.max(0, priceCents - netPaidCents);
+  const sellerContactMissing =
+    !sellerOrganization?.email ||
+    !sellerOrganization.phone ||
+    (!sellerOrganization.address_line1 &&
+      !sellerOrganization.postal_code &&
+      !sellerOrganization.city);
+  const adopterAddressMissing =
+    !relatedContact?.address_line1 &&
+    !relatedContact?.postal_code &&
+    !relatedContact?.city;
+  const commitmentCertificate = otherRelatedDocuments.find(
+    (doc) => doc.document_type === "commitment_certificate",
+  );
+  const reservationContract = otherRelatedDocuments.find(
+    (doc) => doc.document_type === "reservation_contract",
+  );
+  const commitmentReferenceDate =
+    commitmentCertificate?.signed_at ?? commitmentCertificate?.sent_at ?? null;
+  const saleDate =
+    relatedReservation?.adoption_completed_at ??
+    relatedReservation?.adoption_planned_at ??
+    null;
+  const commitmentDelayDays = getDaysBetweenDates(
+    commitmentReferenceDate,
+    saleDate,
+  );
+  const saleCertificateAttentionPoints = [
+    !relatedAnimal ? "Animal non attribué." : null,
+    relatedAnimal && !relatedAnimal.identification_number
+      ? "Identification de l’animal absente."
+      : null,
+    !saleDate ? "Date de cession / départ absente." : null,
+    relatedAnimal && !relatedAnimal.birth_date
+      ? "Date de naissance de l’animal absente."
+      : null,
+    adopterAddressMissing ? "Adresse adoptant absente." : null,
+    !sellerRepresentative ? "Signataire par défaut absent." : null,
+    sellerRepresentative && !sellerRepresentative.representative_role
+      ? "Qualité du signataire absente."
+      : null,
+    sellerContactMissing ? "Coordonnées vendeur incomplètes." : null,
+    !commitmentCertificate
+      ? "Certificat d’engagement associé absent ou non détecté."
+      : null,
+    commitmentCertificate && commitmentCertificate.status !== "signed"
+      ? "Certificat d’engagement non marqué comme reçu signé."
+      : null,
+    !reservationContract
+      ? "Contrat de réservation associé absent ou non détecté."
+      : null,
+    priceCents === null ? "Prix total absent." : null,
+    remainingCents !== null && remainingCents > 0
+      ? "Solde restant non nul selon les paiements liés."
+      : null,
+    "Texte de l’attestation absent : aucun champ dédié n’existe encore dans les paramètres documentaires.",
+    "Facture non générée : la facture est hors périmètre de cet aperçu.",
+  ].filter(Boolean) as string[];
+
+  return (
+    <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
+      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
+        <p className="text-xs font-semibold uppercase tracking-wide">
+          Aperçu interne non définitif
+        </p>
+        <p className="mt-2 text-sm leading-6">
+          Ce bloc ne génère aucune attestation. Le texte devra être validé avant
+          toute utilisation réelle. La facture est un document distinct et n’est
+          pas générée ici.
+        </p>
+      </div>
+
+      <div className="mt-7 border-b pb-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+          Prévisualisation interne
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          Attestation de vente / cession
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Structure indicative destinée à vérifier les données disponibles pour
+          une future attestation. Ce bloc ne vaut pas attestation réelle.
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-8">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Vendeur / cédant
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom commercial" value={sellerOrganization?.name} />
+            <DetailItem
+              label="Raison sociale"
+              value={sellerOrganization?.legal_name}
+            />
+            <DetailItem
+              label="Forme juridique"
+              value={getLegalFormLabel(sellerOrganization?.legal_form ?? null)}
+            />
+            <DetailItem
+              label="SIRET / identifiant"
+              value={sellerOrganization?.siret}
+            />
+            <DetailItem label="Email" value={sellerOrganization?.email} />
+            <DetailItem label="Téléphone" value={sellerOrganization?.phone} />
+            <DetailItem
+              label="Signataire"
+              value={sellerRepresentative?.display_name}
+            />
+            <DetailItem
+              label="Qualité du signataire"
+              value={sellerRepresentative?.representative_role}
+            />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse vendeur
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {sellerOrganization?.address_line1 ||
+                sellerOrganization?.address_line2 ||
+                sellerOrganization?.postal_code ||
+                sellerOrganization?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {sellerOrganization.address_line1 ? (
+                      <div>{sellerOrganization.address_line1}</div>
+                    ) : null}
+                    {sellerOrganization.address_line2 ? (
+                      <div>{sellerOrganization.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
+                      {sellerOrganization.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(sellerOrganization.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Adoptant / acquéreur
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom complet" value={relatedContact?.display_name} />
+            <DetailItem label="Email" value={relatedContact?.email} />
+            <DetailItem label="Téléphone" value={relatedContact?.phone} />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse adoptant
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {relatedContact?.address_line1 ||
+                relatedContact?.address_line2 ||
+                relatedContact?.postal_code ||
+                relatedContact?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {relatedContact.address_line1 ? (
+                      <div>{relatedContact.address_line1}</div>
+                    ) : null}
+                    {relatedContact.address_line2 ? (
+                      <div>{relatedContact.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {relatedContact.postal_code || "Non renseigné"}{" "}
+                      {relatedContact.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(relatedContact.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Animal cédé
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem
+              label="Espèce"
+              value={relatedAnimal?.species ?? relatedLitter?.species}
+            />
+            <DetailItem
+              label="Race"
+              value={relatedAnimal?.breed ?? relatedLitter?.breed}
+            />
+            <DetailItem label="Nom" value={relatedAnimal?.display_name} />
+            <DetailItem
+              label="Sexe"
+              value={getAnimalSexLabel(relatedAnimal?.sex ?? null)}
+            />
+            <DetailItem
+              label="Date de naissance"
+              value={formatApplicationDate(relatedAnimal?.birth_date ?? null)}
+            />
+            <DetailItem
+              label="Identification"
+              value={relatedAnimal?.identification_number}
+            />
+            <DetailItem label="LOF" value={relatedAnimal?.lof_number} />
+            <DetailItem
+              label="Couleur / collier"
+              value={
+                relatedAnimal?.collar_color_current ||
+                relatedAnimal?.collar_color_initial
+              }
+            />
+            <DetailItem
+              label="Portée"
+              value={relatedLitter?.name ?? relatedReservation?.litter_name}
+            />
+            <DetailItem
+              label="Groupe de portée"
+              value={relatedLitterGroup?.name ?? relatedReservation?.litter_group_name}
+            />
+            <DetailItem label="Mère" value={mother?.display_name} />
+            <DetailItem label="Père" value={father?.display_name} />
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Cession / adoption
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem
+              label="Date de cession effective"
+              value={formatApplicationDate(
+                relatedReservation?.adoption_completed_at ?? null,
+              )}
+            />
+            <DetailItem
+              label="Départ / adoption prévue"
+              value={formatApplicationDate(
+                relatedReservation?.adoption_planned_at ?? null,
+              )}
+            />
+            <DetailItem
+              label="Réservation liée"
+              value={
+                relatedReservation?.id ? (
+                  <Link
+                    href={`/reservations/${relatedReservation.id}`}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    {relatedReservation.contact_display_name ??
+                      relatedReservation.id}
+                  </Link>
+                ) : null
+              }
+            />
+            <DetailItem
+              label="Portée / groupe"
+              value={
+                relatedLitter?.name ??
+                relatedReservation?.litter_name ??
+                relatedLitterGroup?.name ??
+                relatedReservation?.litter_group_name
+              }
+            />
+            <DetailItem
+              label="Prix total"
+              value={formatPrice(priceCents, currency)}
+            />
+            <DetailItem
+              label="Montant payé net"
+              value={formatPrice(netPaidCents, currency)}
+            />
+            <DetailItem
+              label="Solde restant"
+              value={
+                remainingCents === null
+                  ? "Non calculable"
+                  : formatPrice(remainingCents, currency)
+              }
+            />
+            <DetailItem
+              label="Facture"
+              value="Document distinct non généré ici"
+            />
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Documents associés
+          </h3>
+          {!otherRelatedDocuments.length ? (
+            <p className="mt-3 text-sm text-muted">
+              Aucun autre document lié à cette réservation.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {otherRelatedDocuments.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="rounded-lg border bg-background/30 p-3 text-sm"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{doc.title}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {getDocumentTypeLabel(doc.document_type)} ·{" "}
+                        {getDocumentStatusLabel(doc.status, doc.document_type)}
+                      </p>
+                    </div>
+                    <Link
+                      href={`/documents/${doc.id}`}
+                      className="text-xs font-semibold text-accent hover:underline"
+                    >
+                      Visualiser
+                    </Link>
+                  </div>
+                  {doc.document_type === "commitment_certificate" ? (
+                    <div className="mt-3 rounded-md border bg-surface p-3 text-xs leading-5 text-muted">
+                      <p>Envoi : {formatApplicationDate(doc.sent_at)}</p>
+                      <p>Signature : {formatApplicationDate(doc.signed_at)}</p>
+                      <p>
+                        Délai indicatif :{" "}
+                        {commitmentDelayDays === null
+                          ? "à vérifier lorsque les dates seront renseignées."
+                          : `${commitmentDelayDays} jour(s) entre la date du certificat et la date de cession / départ connue.`}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Texte / mentions de l’attestation
+          </h3>
+          <p className="mt-3 whitespace-pre-wrap rounded-lg border bg-background/30 p-4 text-sm leading-7 text-muted">
+            Texte de l’attestation de vente à compléter dans les paramètres
+            documentaires.
+          </p>
+          {documentSettings?.legal_mentions ? (
+            <LongTextItem
+              label="Mentions légales existantes"
+              value={documentSettings.legal_mentions}
+            />
+          ) : null}
+        </div>
+
+        {saleCertificateAttentionPoints.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
+            <h3 className="text-sm font-semibold text-amber-950">
+              Points d’attention propres à l’attestation de vente
+            </h3>
+            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
+              {saleCertificateAttentionPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function RelatedNotesSection({
   notes,
   hasError,
@@ -1601,7 +2028,7 @@ export default async function DocumentDetailPage({
   const { data: rawAnimal, error: animalError } = targetAnimalId
     ? await supabase
         .from("animals")
-        .select("id, display_name, sex, birth_date, identification_number, lof_number, collar_color_current, collar_color_initial, breed, status, call_name, chosen_name_by_adopter")
+        .select("id, display_name, sex, birth_date, identification_number, lof_number, collar_color_current, collar_color_initial, species, breed, status, call_name, chosen_name_by_adopter")
         .eq("id", targetAnimalId)
         .maybeSingle()
     : { data: null, error: null };
@@ -1651,7 +2078,7 @@ export default async function DocumentDetailPage({
   if (document?.reservation_id) {
     const { data: otherDocs } = await supabase
       .from("documents")
-      .select("id, title, document_type, status, signature_required")
+      .select("id, title, document_type, status, signature_required, sent_at, signed_at")
       .eq("reservation_id", document.reservation_id)
       .is("deleted_at", null);
 
@@ -1736,6 +2163,46 @@ export default async function DocumentDetailPage({
       !documentSettings?.reservation_contract_terms
     ) {
       pointsOfAttention.push("Conditions du contrat de réservation à compléter");
+    }
+    if (document.document_type === "sale_certificate") {
+      if (!relatedAnimal) {
+        pointsOfAttention.push("Attestation de vente : animal attribué absent");
+      } else {
+        if (!relatedAnimal.identification_number) {
+          pointsOfAttention.push("Attestation de vente : identification de l’animal absente");
+        }
+        if (!relatedAnimal.birth_date) {
+          pointsOfAttention.push("Attestation de vente : date de naissance de l’animal absente");
+        }
+      }
+      if (!relatedReservation?.adoption_completed_at && !relatedReservation?.adoption_planned_at) {
+        pointsOfAttention.push("Attestation de vente : date de cession ou départ absente");
+      }
+      if (!otherRelatedDocuments.some((doc) => doc.document_type === "commitment_certificate")) {
+        pointsOfAttention.push("Attestation de vente : certificat d’engagement associé non détecté");
+      }
+      if (!otherRelatedDocuments.some((doc) => doc.document_type === "reservation_contract")) {
+        pointsOfAttention.push("Attestation de vente : contrat de réservation associé non détecté");
+      }
+      if (relatedReservation?.price_cents === null || relatedReservation?.price_cents === undefined) {
+        pointsOfAttention.push("Attestation de vente : prix total absent");
+      }
+      if (
+        relatedReservation?.price_cents !== null &&
+        relatedReservation?.price_cents !== undefined
+      ) {
+        const remainingCents = Math.max(
+          0,
+          relatedReservation.price_cents -
+            (relatedReservation.paid_cents ?? 0) +
+            (relatedReservation.refunded_cents ?? 0),
+        );
+        if (remainingCents > 0) {
+          pointsOfAttention.push("Attestation de vente : solde restant non nul");
+        }
+      }
+      pointsOfAttention.push("Attestation de vente : texte dédié à compléter dans les paramètres documentaires");
+      pointsOfAttention.push("Facture hors périmètre : aucune facture n’est générée ici");
     }
     if (relatedContact) {
       if (!relatedContact.address_line1 && !relatedContact.postal_code && !relatedContact.city) {
@@ -1911,6 +2378,21 @@ export default async function DocumentDetailPage({
                   relatedLitterGroup={relatedLitterGroup}
                   relatedAnimal={relatedAnimal}
                   relatedPayments={relatedPayments}
+                />
+
+                <SaleCertificatePreview
+                  document={document}
+                  sellerOrganization={sellerOrganization}
+                  sellerRepresentative={sellerRepresentative}
+                  documentSettings={documentSettings}
+                  relatedContact={relatedContact}
+                  relatedReservation={relatedReservation}
+                  relatedLitter={relatedLitter}
+                  relatedLitterGroup={relatedLitterGroup}
+                  relatedAnimal={relatedAnimal}
+                  otherRelatedDocuments={otherRelatedDocuments}
+                  mother={mother}
+                  father={father}
                 />
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
