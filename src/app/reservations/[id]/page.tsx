@@ -1337,7 +1337,18 @@ export default async function ReservationDetailPage({
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem
                       label="Portée"
-                      value={reservation.litter_name}
+                      value={
+                        reservation.litter_id ? (
+                          <Link
+                            href={`/litters/${reservation.litter_id}`}
+                            className="font-medium text-accent hover:underline"
+                          >
+                            {reservation.litter_name}
+                          </Link>
+                        ) : (
+                          reservation.litter_name
+                        )
+                      }
                     />
                     <DetailItem
                       label="Groupe de portée"
@@ -1345,7 +1356,18 @@ export default async function ReservationDetailPage({
                     />
                     <DetailItem
                       label="Animal attribué"
-                      value={reservation.animal_display_name}
+                      value={
+                        reservation.animal_id ? (
+                          <Link
+                            href={`/animals/${reservation.animal_id}`}
+                            className="font-medium text-accent hover:underline"
+                          >
+                            {reservation.animal_display_name}
+                          </Link>
+                        ) : (
+                          reservation.animal_display_name
+                        )
+                      }
                     />
                     <DetailItem
                       label="Date d'adoption prévue"
@@ -2016,7 +2038,16 @@ export default async function ReservationDetailPage({
                 <div>
                   <h2 className="text-lg font-semibold">Client associé</h2>
                   <div className="mt-4">
-                    <p className="font-medium text-sm">{reservation.contact_display_name ?? "Client anonyme"}</p>
+                    {reservation.contact_id ? (
+                      <Link
+                        href={`/contacts/${reservation.contact_id}`}
+                        className="font-medium text-sm text-accent hover:underline"
+                      >
+                        {reservation.contact_display_name ?? "Client anonyme"}
+                      </Link>
+                    ) : (
+                      <p className="font-medium text-sm">{reservation.contact_display_name ?? "Client anonyme"}</p>
+                    )}
                     {reservation.contact_id ? (
                       <Link
                         href={`/contacts/${reservation.contact_id}`}
