@@ -37,6 +37,7 @@ import {
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
+import { markReservationPaymentAsPaid } from "@/features/payments/actions";
 import {
   initializeReservationDocuments,
   markDocumentAsSent,
@@ -273,6 +274,7 @@ export default async function ReservationDetailPage({
     deadline_status?: string;
     price_status?: string;
     payment_create_status?: string;
+    payment_mark_status?: string;
     payment_refund_status?: string;
     activation_status?: string;
     role_status?: string;
@@ -849,6 +851,33 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.payment_mark_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le paiement a bien été marqué comme payé.
+              </p>
+            ) : null}
+
+            {query.payment_mark_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le paiement n’a pas pu être marqué comme payé. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.payment_mark_status === "invalid_state" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Ce paiement n’est plus dans un état permettant de le marquer comme payé depuis la réservation.
               </p>
             ) : null}
 
@@ -2224,12 +2253,34 @@ export default async function ReservationDetailPage({
                                   </p>
                                 ) : null}
                               </div>
-                              <Link
-                                href={`/payments/${payment.id}`}
-                                className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
-                              >
-                                Consulter
-                              </Link>
+                              <div className="flex flex-col gap-2 sm:items-end">
+                                <Link
+                                  href={`/payments/${payment.id}`}
+                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft text-center"
+                                >
+                                  Consulter
+                                </Link>
+                                {payment.status === "requested" ? (
+                                  <form action={markReservationPaymentAsPaid}>
+                                    <input
+                                      type="hidden"
+                                      name="payment_id"
+                                      value={payment.id}
+                                    />
+                                    <input
+                                      type="hidden"
+                                      name="reservation_id"
+                                      value={id}
+                                    />
+                                    <button
+                                      type="submit"
+                                      className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100/60"
+                                    >
+                                      Marquer payé
+                                    </button>
+                                  </form>
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         );
