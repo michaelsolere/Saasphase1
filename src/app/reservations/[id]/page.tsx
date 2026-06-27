@@ -39,8 +39,6 @@ import { ReservationPaymentForm } from "@/features/payments/reservation-payment-
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
 import {
   initializeReservationDocuments,
-  markDocumentAsSent,
-  markDocumentAsSigned,
 } from "@/features/documents/actions";
 import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
 import {
@@ -50,6 +48,7 @@ import {
 import { ReservationNoteForm } from "@/features/reservations/note-form";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
 import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
+import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -2625,29 +2624,33 @@ export default async function ReservationDetailPage({
                               {isChecklistDoc ? (
                                 <>
                                   {document.status === "to_generate" ? (
-                                    <form action={markDocumentAsSent} className="w-full">
-                                      <input type="hidden" name="document_id" value={document.id} />
-                                      <input type="hidden" name="reservation_id" value={id} />
-                                      <button
-                                        type="submit"
-                                        className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted w-full text-center"
-                                      >
-                                        Marquer comme envoyé
-                                      </button>
-                                    </form>
+                                    <DocumentConfirmDialog
+                                      actionType="sent"
+                                      documentId={document.id}
+                                      reservationId={id}
+                                      documentLabel={getDocumentTypeLabel(
+                                        document.document_type,
+                                      )}
+                                      statusLabel={getDocumentStatusLabel(
+                                        document.status,
+                                        document.document_type,
+                                      )}
+                                    />
                                   ) : null}
 
                                   {document.status === "sent" ? (
-                                    <form action={markDocumentAsSigned} className="w-full">
-                                      <input type="hidden" name="document_id" value={document.id} />
-                                      <input type="hidden" name="reservation_id" value={id} />
-                                      <button
-                                        type="submit"
-                                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100/50 w-full text-center"
-                                      >
-                                        Marquer comme reçu signé
-                                      </button>
-                                    </form>
+                                    <DocumentConfirmDialog
+                                      actionType="signed"
+                                      documentId={document.id}
+                                      reservationId={id}
+                                      documentLabel={getDocumentTypeLabel(
+                                        document.document_type,
+                                      )}
+                                      statusLabel={getDocumentStatusLabel(
+                                        document.status,
+                                        document.document_type,
+                                      )}
+                                    />
                                   ) : null}
                                 </>
                               ) : null}
