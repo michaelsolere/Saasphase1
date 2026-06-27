@@ -321,16 +321,23 @@ export default async function ReservationDetailPage({
     status: string;
     species: string;
     breed: string;
+    litter_id: string | null;
   }> = [];
   let availableAnimalsError: unknown = null;
 
   if (reservation && reservation.organization_id && !reservation.animal_id) {
-    const { data: rawAnimals, error: fetchAnimalsError } = await supabase
+    const rawAnimalsQuery = supabase
       .from("animals")
-      .select("id, display_name, temporary_name, call_name, official_name, sex, status, species, breed")
+      .select("id, display_name, temporary_name, call_name, official_name, sex, status, species, breed, litter_id")
       .eq("organization_id", reservation.organization_id)
       .is("deleted_at", null)
       .in("status", ["born", "active", "available"]);
+
+    if (reservation.litter_id) {
+      rawAnimalsQuery.eq("litter_id", reservation.litter_id);
+    }
+
+    const { data: rawAnimals, error: fetchAnimalsError } = await rawAnimalsQuery;
 
     if (fetchAnimalsError) {
       availableAnimalsError = fetchAnimalsError;
@@ -1816,7 +1823,9 @@ export default async function ReservationDetailPage({
                             </p>
                           ) : availableAnimals.length === 0 ? (
                             <p className="text-sm text-muted">
-                              Aucun animal disponible pour attribution.
+                              {reservation.litter_id
+                                ? "Aucun animal disponible dans cette portée."
+                                : "Aucun animal attribuable trouvé pour cette réservation."}
                             </p>
                           ) : (
                             <form action={assignAnimalToReservation} className="space-y-4">
@@ -1825,6 +1834,11 @@ export default async function ReservationDetailPage({
                                 <label htmlFor="animal_id" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-2">
                                   Attribuer un animal
                                 </label>
+                                <p className="mb-3 text-xs leading-5 text-muted">
+                                  {reservation.litter_id
+                                    ? "Seuls les animaux disponibles de la portée liée sont proposés."
+                                    : "Seuls les animaux disponibles de l’organisation sont proposés."}
+                                </p>
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                                   <div className="max-w-xs flex-1">
                                     <select
