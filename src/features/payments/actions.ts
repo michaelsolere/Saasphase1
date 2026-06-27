@@ -12,6 +12,18 @@ function paymentRedirectUrl(
   return `/reservations/${reservationId}?payment_create_status=${outcome}`;
 }
 
+function reservationPaymentMarkUrl(
+  reservationId: string,
+  outcome: "success" | "error" | "invalid_state",
+) {
+  return `/reservations/${reservationId}?payment_mark_status=${outcome}`;
+}
+
+function isUuid(value: string) {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(value);
+}
+
 export async function createReservationPayment(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
@@ -299,6 +311,88 @@ export async function markPaymentAsPaid(formData: FormData) {
   }
 
   redirect(`/payments/${payment.id}?payment_mark_status=success`);
+}
+
+export async function markReservationPaymentAsPaid(formData: FormData) {
+  const paymentId = formData.get("payment_id");
+  const reservationId = formData.get("reservation_id");
+
+  if (
+    typeof paymentId !== "string" ||
+    !isUuid(paymentId) ||
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId)
+  ) {
+    redirect("/reservations?erreur=paiement_contexte");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    redirect(reservationPaymentMarkUrl(reservationId, "error"));
+  }
+
+  const { data: payment, error: paymentError } = await supabase
+    .from("payments")
+    .select("id, organization_id, reservation_id, status, deleted_at")
+    .eq("id", paymentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (paymentError || !payment) {
+    redirect(reservationPaymentMarkUrl(reservationId, "error"));
+  }
+
+  if (
+    payment.reservation_id !== reservation.id ||
+    payment.organization_id !== reservation.organization_id
+  ) {
+    redirect(reservationPaymentMarkUrl(reservationId, "error"));
+  }
+
+  if (payment.status !== "requested") {
+    redirect(reservationPaymentMarkUrl(reservationId, "invalid_state"));
+  }
+
+  const { data: updatedPayment, error: updateError } = await supabase
+    .from("payments")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", payment.id)
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservation.id)
+    .eq("status", "requested")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !updatedPayment) {
+    redirect(reservationPaymentMarkUrl(reservationId, "error"));
+  }
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/reservations");
+  revalidatePath(`/payments/${paymentId}`);
+  revalidatePath("/payments");
+
+  redirect(reservationPaymentMarkUrl(reservationId, "success"));
 }
 
 export async function createReservationRefund(formData: FormData) {
