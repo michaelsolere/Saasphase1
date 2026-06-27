@@ -372,6 +372,10 @@ function getFinancialStatus(priceCents: number | null, paidCents: number | null,
   return "Reste dû";
 }
 
+function getNetPaidCents(paidCents: number | null, refundedCents: number | null) {
+  return Math.max(0, (paidCents ?? 0) - (refundedCents ?? 0));
+}
+
 function getExpectedNextStep(document: { status: string; signature_required: boolean }) {
   switch (document.status) {
     case "draft":
@@ -776,6 +780,420 @@ function CommitmentCertificatePreview({
             </h3>
             <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
               {certificateAttentionPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ReservationContractPreview({
+  document,
+  sellerOrganization,
+  sellerRepresentative,
+  documentSettings,
+  relatedContact,
+  relatedApplication,
+  relatedReservation,
+  relatedLitter,
+  relatedLitterGroup,
+  relatedAnimal,
+  relatedPayments,
+}: {
+  document: DBDocument;
+  sellerOrganization: SellerOrganization | null;
+  sellerRepresentative: SellerRepresentative | null;
+  documentSettings: OrganizationDocumentSettings | null;
+  relatedContact: RelatedContact | null;
+  relatedApplication: RelatedApplication | null;
+  relatedReservation: ReservationOverview | null;
+  relatedLitter: RelatedLitter | null;
+  relatedLitterGroup: { id: string; name: string } | null;
+  relatedAnimal: RelatedAnimal | null;
+  relatedPayments: RelatedPayment[];
+}) {
+  if (document.document_type !== "reservation_contract") {
+    return null;
+  }
+
+  const currency = relatedReservation?.currency ?? "EUR";
+  const priceCents = relatedReservation?.price_cents ?? null;
+  const paidCents = relatedReservation?.paid_cents ?? null;
+  const refundedCents = relatedReservation?.refunded_cents ?? null;
+  const netPaidCents = getNetPaidCents(paidCents, refundedCents);
+  const remainingCents =
+    priceCents === null ? null : Math.max(0, priceCents - netPaidCents);
+  const financialStatus = getFinancialStatus(priceCents, paidCents, refundedCents);
+  const species = relatedLitter?.species || relatedApplication?.species;
+  const breed =
+    relatedAnimal?.breed || relatedLitter?.breed || relatedApplication?.breed;
+  const sellerAddressMissing =
+    !sellerOrganization?.address_line1 &&
+    !sellerOrganization?.postal_code &&
+    !sellerOrganization?.city;
+  const adopterAddressMissing =
+    !relatedContact?.address_line1 &&
+    !relatedContact?.postal_code &&
+    !relatedContact?.city;
+  const contractAttentionPoints = [
+    priceCents === null ? "Prix total convenu absent." : null,
+    adopterAddressMissing ? "Adresse adoptant absente." : null,
+    !sellerRepresentative ? "Signataire par défaut absent." : null,
+    sellerRepresentative && !sellerRepresentative.representative_role
+      ? "Qualité du signataire absente."
+      : null,
+    !sellerOrganization?.legal_form ? "Forme juridique du vendeur absente." : null,
+    !sellerOrganization?.siret ? "SIRET ou identifiant légal absent." : null,
+    sellerAddressMissing ? "Adresse vendeur incomplète." : null,
+    !documentSettings?.deposit_terms ? "Conditions d’arrhes absentes." : null,
+    !documentSettings?.refund_terms
+      ? "Conditions de remboursement absentes."
+      : null,
+    !documentSettings?.postponement_terms
+      ? "Conditions de report absentes."
+      : null,
+    !documentSettings?.credit_terms ? "Conditions d’avoir absentes." : null,
+    !documentSettings?.reservation_contract_terms
+      ? "Conditions générales du contrat de réservation absentes."
+      : null,
+    !relatedAnimal ? "Animal non attribué pour l’instant (information non bloquante)." : null,
+    !relatedLitter && relatedLitterGroup
+      ? "Portée précise absente, groupe de portées disponible (information non bloquante)."
+      : null,
+  ].filter(Boolean) as string[];
+
+  return (
+    <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
+      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
+        <p className="text-xs font-semibold uppercase tracking-wide">
+          Aperçu interne non définitif
+        </p>
+        <p className="mt-2 text-sm leading-6">
+          Ce bloc ne génère aucun contrat. Le texte devra être validé avant
+          toute utilisation réelle.
+        </p>
+      </div>
+
+      <div className="mt-7 border-b pb-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+          Prévisualisation interne
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          Contrat de réservation
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Structure indicative multi-parcours destinée à vérifier les données
+          disponibles avant un futur prototype documentaire.
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-8">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Vendeur / élevage
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom commercial" value={sellerOrganization?.name} />
+            <DetailItem
+              label="Raison sociale"
+              value={sellerOrganization?.legal_name}
+            />
+            <DetailItem
+              label="Forme juridique"
+              value={getLegalFormLabel(sellerOrganization?.legal_form ?? null)}
+            />
+            <DetailItem
+              label="SIRET / identifiant"
+              value={sellerOrganization?.siret}
+            />
+            <DetailItem label="Email" value={sellerOrganization?.email} />
+            <DetailItem label="Téléphone" value={sellerOrganization?.phone} />
+            <DetailItem
+              label="Signataire"
+              value={sellerRepresentative?.display_name}
+            />
+            <DetailItem
+              label="Qualité du signataire"
+              value={sellerRepresentative?.representative_role}
+            />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse vendeur
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {sellerOrganization?.address_line1 ||
+                sellerOrganization?.address_line2 ||
+                sellerOrganization?.postal_code ||
+                sellerOrganization?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {sellerOrganization.address_line1 ? (
+                      <div>{sellerOrganization.address_line1}</div>
+                    ) : null}
+                    {sellerOrganization.address_line2 ? (
+                      <div>{sellerOrganization.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
+                      {sellerOrganization.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(sellerOrganization.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Adoptant</h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom complet" value={relatedContact?.display_name} />
+            <DetailItem label="Email" value={relatedContact?.email} />
+            <DetailItem label="Téléphone" value={relatedContact?.phone} />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse adoptant
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {relatedContact?.address_line1 ||
+                relatedContact?.address_line2 ||
+                relatedContact?.postal_code ||
+                relatedContact?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {relatedContact.address_line1 ? (
+                      <div>{relatedContact.address_line1}</div>
+                    ) : null}
+                    {relatedContact.address_line2 ? (
+                      <div>{relatedContact.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {relatedContact.postal_code || "Non renseigné"}{" "}
+                      {relatedContact.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(relatedContact.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Objet de la réservation
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Espèce" value={species} />
+            <DetailItem label="Race" value={breed} />
+            <DetailItem
+              label="Sexe souhaité"
+              value={getSexPreferenceLabel(
+                relatedReservation?.reserved_sex_preference ??
+                  relatedApplication?.desired_sex_preference ??
+                  null,
+              )}
+            />
+            <DetailItem
+              label="Portée précise"
+              value={relatedLitter?.name ?? relatedReservation?.litter_name}
+            />
+            <DetailItem
+              label="Groupe de portées"
+              value={relatedLitterGroup?.name ?? relatedReservation?.litter_group_name}
+            />
+            <DetailItem
+              label="Animal attribué"
+              value={
+                relatedAnimal?.display_name ??
+                "Animal non attribué pour l’instant"
+              }
+            />
+            <DetailItem
+              label="Sexe de l’animal"
+              value={getAnimalSexLabel(relatedAnimal?.sex ?? null)}
+            />
+            <DetailItem
+              label="Date de naissance"
+              value={formatApplicationDate(relatedAnimal?.birth_date ?? null)}
+            />
+            <DetailItem
+              label="Identification"
+              value={relatedAnimal?.identification_number}
+            />
+            <DetailItem label="LOF" value={relatedAnimal?.lof_number} />
+            <DetailItem
+              label="Collier / couleur"
+              value={
+                relatedAnimal?.collar_color_current ||
+                relatedAnimal?.collar_color_initial
+              }
+            />
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Partie financière
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem
+              label="Prix total convenu"
+              value={formatPrice(priceCents, currency)}
+            />
+            <DetailItem
+              label="Montant payé net"
+              value={formatPrice(netPaidCents, currency)}
+            />
+            <DetailItem
+              label="Reste dû"
+              value={
+                remainingCents === null
+                  ? "Non calculable"
+                  : formatPrice(remainingCents, currency)
+              }
+            />
+            <DetailItem
+              label="État financier"
+              value={<span className="font-semibold text-accent">{financialStatus}</span>}
+            />
+          </dl>
+
+          <div className="mt-5 rounded-lg border bg-background/30 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+              Paiements liés
+            </p>
+            {relatedPayments.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">
+                Aucun paiement enregistré.
+              </p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {relatedPayments.map((payment) => {
+                  const usefulDate = getUsefulPaymentDate(payment);
+                  return (
+                    <div
+                      key={payment.id}
+                      className="rounded-lg border bg-surface p-3 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">
+                          {formatPrice(payment.amount_cents, payment.currency)}
+                        </span>
+                        <span className="text-xs text-muted">
+                          {getPaymentTypeLabel(payment.payment_type)} ·{" "}
+                          {getPaymentStatusLabel(payment.status)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted">
+                        {usefulDate.label} : {formatApplicationDate(usefulDate.value)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Conditions documentaires
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Prévisualisation des paramètres saisis. Ces textes ne constituent
+            pas une validation juridique.
+          </p>
+          <dl className="mt-4 grid gap-5">
+            <LongTextItem
+              label="Conditions d’arrhes"
+              value={documentSettings?.deposit_terms ?? null}
+              emptyLabel="Conditions d’arrhes à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Conditions de remboursement"
+              value={documentSettings?.refund_terms ?? null}
+              emptyLabel="Conditions de remboursement à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Conditions de report"
+              value={documentSettings?.postponement_terms ?? null}
+              emptyLabel="Conditions de report à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Conditions d’avoir"
+              value={documentSettings?.credit_terms ?? null}
+              emptyLabel="Conditions d’avoir à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Conditions de retenue"
+              value={documentSettings?.withholding_terms ?? null}
+              emptyLabel="Conditions de retenue à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Conditions générales du contrat"
+              value={documentSettings?.reservation_contract_terms ?? null}
+              emptyLabel="Conditions générales du contrat à compléter dans les paramètres documentaires."
+            />
+            <LongTextItem
+              label="Mentions légales"
+              value={documentSettings?.legal_mentions ?? null}
+              emptyLabel="Mentions légales à compléter dans les paramètres documentaires."
+            />
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Dates et signature
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem
+              label="Création du document"
+              value={formatApplicationDate(document.created_at)}
+            />
+            <DetailItem
+              label="Envoi"
+              value={formatApplicationDate(document.sent_at)}
+            />
+            <DetailItem
+              label="Signature"
+              value={formatApplicationDate(document.signed_at)}
+            />
+            <DetailItem
+              label="Date de réservation"
+              value={formatApplicationDate(relatedReservation?.created_at ?? null)}
+            />
+            <DetailItem
+              label="Adoption / départ prévu"
+              value={formatApplicationDate(
+                relatedReservation?.adoption_planned_at ?? null,
+              )}
+            />
+            <DetailItem
+              label="Ville de signature"
+              value={documentSettings?.signature_city_default}
+            />
+          </dl>
+        </div>
+
+        {contractAttentionPoints.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
+            <h3 className="text-sm font-semibold text-amber-950">
+              Points d’attention propres au contrat de réservation
+            </h3>
+            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
+              {contractAttentionPoints.map((point) => (
                 <li key={point}>{point}</li>
               ))}
             </ul>
@@ -1479,6 +1897,20 @@ export default async function DocumentDetailPage({
                   relatedLitter={relatedLitter}
                   relatedLitterGroup={relatedLitterGroup}
                   relatedAnimal={relatedAnimal}
+                />
+
+                <ReservationContractPreview
+                  document={document}
+                  sellerOrganization={sellerOrganization}
+                  sellerRepresentative={sellerRepresentative}
+                  documentSettings={documentSettings}
+                  relatedContact={relatedContact}
+                  relatedApplication={relatedApplication}
+                  relatedReservation={relatedReservation}
+                  relatedLitter={relatedLitter}
+                  relatedLitterGroup={relatedLitterGroup}
+                  relatedAnimal={relatedAnimal}
+                  relatedPayments={relatedPayments}
                 />
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
