@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
+const actionableReservationDocumentTypes = [
+  "commitment_certificate",
+  "reservation_contract",
+  "sale_certificate",
+];
+
 // Utility to validate UUIDs
 function isUuid(value: string) {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -157,10 +163,21 @@ export async function markDocumentAsSent(formData: FormData) {
     redirect("/login");
   }
 
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
   // 1. Relire le document avec id, status, reservation_id, document_type
   const { data: document, error: readError } = await supabase
     .from("documents")
-    .select("id, status, reservation_id, document_type")
+    .select("id, organization_id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -172,8 +189,8 @@ export async function markDocumentAsSent(formData: FormData) {
   // 2. Vérifications de garde
   if (
     document.reservation_id !== reservationId ||
-    (document.document_type !== "commitment_certificate" &&
-      document.document_type !== "reservation_contract") ||
+    document.organization_id !== reservation.organization_id ||
+    !actionableReservationDocumentTypes.includes(document.document_type) ||
     document.status !== "to_generate"
   ) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
@@ -189,8 +206,10 @@ export async function markDocumentAsSent(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", documentId)
+    .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
-    .in("document_type", ["commitment_certificate", "reservation_contract"]);
+    .eq("status", "to_generate")
+    .in("document_type", actionableReservationDocumentTypes);
 
   if (updateError) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
@@ -224,10 +243,21 @@ export async function markDocumentAsSigned(formData: FormData) {
     redirect("/login");
   }
 
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    redirect(`/reservations/${reservationId}?document_action_status=error`);
+  }
+
   // 1. Relire le document avec id, status, reservation_id, document_type
   const { data: document, error: readError } = await supabase
     .from("documents")
-    .select("id, status, reservation_id, document_type")
+    .select("id, organization_id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -239,8 +269,8 @@ export async function markDocumentAsSigned(formData: FormData) {
   // 2. Vérifications de garde
   if (
     document.reservation_id !== reservationId ||
-    (document.document_type !== "commitment_certificate" &&
-      document.document_type !== "reservation_contract") ||
+    document.organization_id !== reservation.organization_id ||
+    !actionableReservationDocumentTypes.includes(document.document_type) ||
     document.status !== "sent"
   ) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
@@ -256,8 +286,10 @@ export async function markDocumentAsSigned(formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", documentId)
+    .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
-    .in("document_type", ["commitment_certificate", "reservation_contract"]);
+    .eq("status", "sent")
+    .in("document_type", actionableReservationDocumentTypes);
 
   if (updateError) {
     redirect(`/reservations/${reservationId}?document_action_status=error`);
