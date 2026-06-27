@@ -3,7 +3,7 @@ const typeLabels: Record<string, string> = {
   plaud_transcript: "Transcription Plaud",
   application_form: "Formulaire de candidature",
   reservation_contract: "Contrat de réservation",
-  commitment_certificate: "Certificat d'engagement",
+  commitment_certificate: "Certificat d’engagement et de connaissance",
   payment_receipt: "Reçu de paiement",
   invoice: "Facture",
   sale_certificate: "Certificat de vente",

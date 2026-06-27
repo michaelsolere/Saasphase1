@@ -134,26 +134,6 @@ type ReservationPreReservationDeadline = {
   deleted_at: string | null;
 };
 
-function getUsefulDocumentDate(document: RelatedDocument) {
-  if (document.signed_at) {
-    return { label: "Signé le", value: document.signed_at };
-  }
-
-  if (document.received_at) {
-    return { label: "Reçu le", value: document.received_at };
-  }
-
-  if (document.sent_at) {
-    return { label: "Envoyé le", value: document.sent_at };
-  }
-
-  if (document.updated_at) {
-    return { label: "Mis à jour le", value: document.updated_at };
-  }
-
-  return { label: "Créé le", value: document.created_at };
-}
-
 function getUsefulPostAdoptionEventDate(event: RelatedPostAdoptionEvent) {
   return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
 }
@@ -1930,7 +1910,6 @@ export default async function ReservationDetailPage({
                   ) : reservationDocuments && reservationDocuments.length > 0 ? (
                     <div className="divide-y divide-border">
                       {reservationDocuments.map((document) => {
-                        const usefulDate = getUsefulDocumentDate(document);
                         const isChecklistDoc =
                           document.document_type === "commitment_certificate" ||
                           document.document_type === "reservation_contract";
@@ -1952,10 +1931,26 @@ export default async function ReservationDetailPage({
                               <p className="text-xs text-muted">
                                 Type : {getDocumentTypeLabel(document.document_type)}
                               </p>
-                              <p className="text-xs text-muted">
-                                {usefulDate.label}{" "}
-                                {formatApplicationDate(usefulDate.value)}
-                              </p>
+                              {document.sent_at ? (
+                                <p className="text-xs text-muted">
+                                  Envoyé le : {formatApplicationDate(document.sent_at)}
+                                </p>
+                              ) : null}
+                              {document.signed_at ? (
+                                <p className="text-xs text-muted">
+                                  Signé le : {formatApplicationDate(document.signed_at)}
+                                </p>
+                              ) : null}
+                              {document.received_at ? (
+                                <p className="text-xs text-muted">
+                                  Reçu le : {formatApplicationDate(document.received_at)}
+                                </p>
+                              ) : null}
+                              {!document.sent_at && !document.signed_at && !document.received_at ? (
+                                <p className="text-xs text-muted">
+                                  Créé le : {formatApplicationDate(document.created_at)}
+                                </p>
+                              ) : null}
                               <p className="text-xs text-muted">
                                 Fichier : {document.file_name || "Non renseigné"}
                               </p>
@@ -1967,42 +1962,51 @@ export default async function ReservationDetailPage({
                               </p>
                             </div>
 
-                            {isChecklistDoc ? (
-                              <div className="flex flex-col gap-2 sm:items-end">
-                                {document.status === "to_generate" ? (
-                                  <form action={markDocumentAsSent}>
-                                    <input type="hidden" name="document_id" value={document.id} />
-                                    <input type="hidden" name="reservation_id" value={id} />
-                                    <button
-                                      type="submit"
-                                      className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                                    >
-                                      Marquer comme envoyé
-                                    </button>
-                                  </form>
-                                ) : null}
+                            <div className="flex flex-col gap-2 sm:items-end">
+                              <Link
+                                href={`/documents/${document.id}`}
+                                className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-medium text-accent transition hover:border-accent/40 hover:bg-accent-soft text-center justify-center min-w-[150px]"
+                              >
+                                Consulter
+                              </Link>
 
-                                {document.status === "sent" ? (
-                                  <form action={markDocumentAsSigned}>
-                                    <input type="hidden" name="document_id" value={document.id} />
-                                    <input type="hidden" name="reservation_id" value={id} />
-                                    <button
-                                      type="submit"
-                                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100/50"
-                                    >
-                                      Marquer comme reçu signé
-                                    </button>
-                                  </form>
-                                ) : null}
-                              </div>
-                            ) : null}
+                              {isChecklistDoc ? (
+                                <>
+                                  {document.status === "to_generate" ? (
+                                    <form action={markDocumentAsSent} className="w-full">
+                                      <input type="hidden" name="document_id" value={document.id} />
+                                      <input type="hidden" name="reservation_id" value={id} />
+                                      <button
+                                        type="submit"
+                                        className="rounded-lg border bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted w-full text-center"
+                                      >
+                                        Marquer comme envoyé
+                                      </button>
+                                    </form>
+                                  ) : null}
+
+                                  {document.status === "sent" ? (
+                                    <form action={markDocumentAsSigned} className="w-full">
+                                      <input type="hidden" name="document_id" value={document.id} />
+                                      <input type="hidden" name="reservation_id" value={id} />
+                                      <button
+                                        type="submit"
+                                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100/50 w-full text-center"
+                                      >
+                                        Marquer comme reçu signé
+                                      </button>
+                                    </form>
+                                  ) : null}
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   ) : (
                     <p className="text-sm text-muted">
-                      Aucun document lié à cette réservation.
+                      Aucun document lié à cette réservation pour l’instant.
                     </p>
                   )}
                 </section>
