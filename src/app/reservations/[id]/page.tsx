@@ -264,6 +264,155 @@ function formatDateInputValue(value: string | null) {
   return value.slice(0, 10);
 }
 
+type ReservationNextAction = {
+  label: string;
+  detail: string;
+  badgeClassName: string;
+};
+
+function getReservationNextAction({
+  reservation,
+  paymentCount,
+  requestedPaymentCount,
+  remainingBalanceCents,
+  isPaidInFull,
+  hasCompleteDeposit,
+  totalDocs,
+  sentDocs,
+  toPrepareDocs,
+  commitmentDocument,
+  reservationContractDocument,
+}: {
+  reservation: ReservationOverview;
+  paymentCount: number;
+  requestedPaymentCount: number;
+  remainingBalanceCents: number | null;
+  isPaidInFull: boolean;
+  hasCompleteDeposit: boolean;
+  totalDocs: number;
+  sentDocs: number;
+  toPrepareDocs: number;
+  commitmentDocument: RelatedDocument | undefined;
+  reservationContractDocument: RelatedDocument | undefined;
+}): ReservationNextAction {
+  const attentionBadge = "text-amber-700 bg-amber-50 border-amber-200";
+  const followUpBadge = "text-accent bg-accent/10 border-accent/20";
+  const advancedBadge = "text-emerald-700 bg-emerald-50 border-emerald-200";
+  const neutralBadge = "text-muted bg-muted-soft border-border";
+  const mainDocumentsSigned =
+    commitmentDocument?.status === "signed" &&
+    reservationContractDocument?.status === "signed";
+  const hasMissingMainDocuments =
+    !commitmentDocument || !reservationContractDocument;
+  const hasPositiveRemainingBalance =
+    remainingBalanceCents !== null && remainingBalanceCents > 0;
+
+  if (reservation.status === "adopted") {
+    return {
+      label: "Adoption finalisée.",
+      detail: "Le dossier est en suivi post-adoption. Les notes et événements restent consultables.",
+      badgeClassName: advancedBadge,
+    };
+  }
+
+  if (isFinalReservationStatus(reservation.status)) {
+    return {
+      label: "Dossier finalisé ou clos.",
+      detail: "Aucune action automatique n’est attendue pour ce statut.",
+      badgeClassName: neutralBadge,
+    };
+  }
+
+  if (!reservation.application_id) {
+    return {
+      label: "Compléter le contexte de candidature.",
+      detail: "La réservation n’est pas reliée à une candidature. Vérifier le rattachement du projet adoptant.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (requestedPaymentCount > 0) {
+    return {
+      label: "Paiement demandé en attente.",
+      detail: "Un paiement existe déjà en statut demandé. Vérifier sa réception avant toute suite manuelle.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (paymentCount === 0) {
+    return {
+      label: "Aucun paiement enregistré.",
+      detail: "Aucun paiement n’est lié à cette réservation pour l’instant. Les parcours directs restent possibles.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (sentDocs > 0) {
+    return {
+      label: "Document envoyé, en attente de retour signé.",
+      detail: "Au moins un document est envoyé mais pas encore reçu signé.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (
+    reservation.animal_id &&
+    (hasMissingMainDocuments || toPrepareDocs > 0 || hasPositiveRemainingBalance)
+  ) {
+    return {
+      label: "Animal attribué, finaliser paiements et documents.",
+      detail: "Un animal est lié au dossier. Vérifier les documents principaux et le solde restant.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (hasMissingMainDocuments || totalDocs === 0 || toPrepareDocs > 0) {
+    return {
+      label: "Documents adoptant à préparer ou vérifier.",
+      detail: "Vérifier le certificat d’engagement, le contrat de réservation et les documents liés au dossier.",
+      badgeClassName: followUpBadge,
+    };
+  }
+
+  if (!reservation.animal_id) {
+    return {
+      label: "Animal non attribué.",
+      detail: "Attribuer un animal lorsque le choix est confirmé. Ce n’est pas bloquant pour tous les parcours.",
+      badgeClassName: followUpBadge,
+    };
+  }
+
+  if (hasPositiveRemainingBalance) {
+    return {
+      label: "Solde restant à suivre.",
+      detail: "Un montant reste à régler ou à vérifier avant la suite du dossier.",
+      badgeClassName: attentionBadge,
+    };
+  }
+
+  if (isPaidInFull && mainDocumentsSigned && reservation.animal_id) {
+    return {
+      label: "Dossier avancé : préparer la cession/adoption.",
+      detail: "Paiements soldés, documents principaux reçus signés et animal attribué.",
+      badgeClassName: advancedBadge,
+    };
+  }
+
+  if (hasCompleteDeposit && reservation.animal_id) {
+    return {
+      label: "Animal attribué, dossier à suivre.",
+      detail: "Les arrhes sont complètes ou suffisantes selon le parcours. Vérifier les derniers éléments avant cession.",
+      badgeClassName: followUpBadge,
+    };
+  }
+
+  return {
+    label: "Dossier à suivre.",
+    detail: "Indication informative uniquement : aucune règle bloquante ni automatisation n’est déclenchée.",
+    badgeClassName: neutralBadge,
+  };
+}
+
 export default async function ReservationDetailPage({
   params,
   searchParams,
@@ -677,66 +826,21 @@ export default async function ReservationDetailPage({
     ? "Projet d’adoption lié au dossier."
     : "Aucune candidature liée à cette réservation.";
 
-  let nextActionText = "";
-
-  if (reservation) {
-    if (reservation.status === "pre_reservation_requested") {
-      if (paidCents === 0) {
-        nextActionText = "Attendre le paiement 1/2 d’arrhes (250 €) ou enregistrer un paiement.";
-      } else {
-        nextActionText = "Premier versement d'arrhes reçu. Confirmer la pré-réservation.";
-      }
-    } else if (reservation.status === "pre_reservation_paid") {
-      if (!hasCompleteDeposit && !isPaidInFull) {
-        if (reservationPayments && reservationPayments.some((p) => p.payment_type === "arrhes" && p.status === "requested")) {
-          nextActionText = "Attendre le paiement du complément des arrhes (250 €) déjà demandé.";
-        } else {
-          nextActionText = "Demander le complément des arrhes (deuxième versement de 250 €).";
-        }
-      } else {
-        if (totalDocs === 0) {
-          nextActionText = "Initialiser la checklist des documents de réservation.";
-        } else if (toPrepareDocs > 0) {
-          nextActionText = "Préparer ou marquer comme envoyés les documents attendus.";
-        } else if (sentDocs > 0) {
-          nextActionText = "Attendre la signature / réception des documents envoyés.";
-        } else {
-          if (!reservation.animal_id) {
-            nextActionText = "Attribuer un animal à cette réservation.";
-          } else {
-            nextActionText = "Dossier financièrement validé, attribution/adoption à traiter séparément.";
-          }
-        }
-      }
-    } else if (
-      reservation.status === "active" ||
-      reservation.status === "confirmed" ||
-      reservation.status === "confirmed_after_birth" ||
-      reservation.status === "animal_assigned" ||
-      reservation.status === "adoption_ready"
-    ) {
-      if (sentDocs > 0) {
-        nextActionText = "Attendre la signature / réception des documents envoyés.";
-      } else if (toPrepareDocs > 0) {
-        nextActionText = "Préparer ou marquer comme envoyés les documents attendus.";
-      } else if (remainingBalanceCents !== null && remainingBalanceCents > 0) {
-        nextActionText = "Suivre le règlement du solde ou des paiements demandés.";
-      } else if (!reservation.animal_id) {
-        nextActionText = "Animal non attribué : attribution à suivre selon le parcours.";
-      } else {
-        nextActionText = "Dossier à suivre jusqu’à la date d’adoption ou de cession.";
-      }
-    } else if (reservation.status === "adopted") {
-      nextActionText = "Adoption finalisée. Suivi post-adoption en cours.";
-    } else if (isFinalReservationStatus(reservation.status)) {
-      nextActionText = "Aucune action requise pour ce statut final.";
-    } else {
-      nextActionText = "Dossier à suivre selon les informations disponibles.";
-    }
-  }
-
-  const nextActionDetail =
-    "Indication informative uniquement : aucune règle bloquante ni automatisation n’est déclenchée.";
+  const nextAction = reservation
+    ? getReservationNextAction({
+        reservation,
+        paymentCount,
+        requestedPaymentCount,
+        remainingBalanceCents,
+        isPaidInFull,
+        hasCompleteDeposit,
+        totalDocs,
+        sentDocs,
+        toPrepareDocs,
+        commitmentDocument,
+        reservationContractDocument,
+      })
+    : null;
 
   const sectionNavItems = [
     { href: "#reservation-details", label: "Réservation" },
@@ -1282,12 +1386,12 @@ export default async function ReservationDetailPage({
                   value={followUpSummaryLabel}
                   detail="Notes et événements restent consultables plus bas dans la fiche."
                 />
-                {nextActionText ? (
+                {nextAction ? (
                   <SummaryItem
                     label="Prochaine action"
-                    value={nextActionText}
-                    detail={nextActionDetail}
-                    badgeClassName="text-accent bg-accent/10 border-accent/20"
+                    value={nextAction.label}
+                    detail={nextAction.detail}
+                    badgeClassName={nextAction.badgeClassName}
                   />
                 ) : null}
               </div>
