@@ -146,6 +146,49 @@ type RelatedEvent = {
   created_at: string;
 };
 
+type SellerOrganization = {
+  id: string;
+  name: string;
+  legal_name: string | null;
+  legal_form: string | null;
+  siret: string | null;
+  email: string | null;
+  phone: string | null;
+  website_url: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
+  affix_name: string | null;
+  dog_affix_name: string | null;
+  cat_affix_name: string | null;
+};
+
+type SellerRepresentative = {
+  display_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  representative_role: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
+type OrganizationDocumentSettings = {
+  mediator_name: string | null;
+  mediator_contact: string | null;
+  mediator_website_url: string | null;
+  deposit_terms: string | null;
+  refund_terms: string | null;
+  postponement_terms: string | null;
+  credit_terms: string | null;
+  withholding_terms: string | null;
+  reservation_contract_terms: string | null;
+  commitment_certificate_text: string | null;
+  legal_mentions: string | null;
+  signature_city_default: string | null;
+};
+
 const contactTypeLabels: Record<string, string> = {
   person: "Personne",
   family: "Famille",
@@ -169,6 +212,14 @@ const originChannelLabels: Record<string, string> = {
   phone: "Téléphone",
   email: "Email",
   other: "Autre",
+};
+
+const legalFormLabels: Record<string, string> = {
+  individual: "EI / entrepreneur individuel",
+  earl: "EARL",
+  company: "Société",
+  association: "Association",
+  other: "Autre structure",
 };
 
 function formatFileSize(value: number | null) {
@@ -221,6 +272,14 @@ function formatCountry(value: string | null) {
   }
 
   return value === "FR" ? "France" : value;
+}
+
+function getLegalFormLabel(value: string | null) {
+  if (!value) {
+    return "Non renseignée";
+  }
+
+  return legalFormLabels[value] ?? value.replaceAll("_", " ");
 }
 
 function getUsefulPaymentDate(payment: RelatedPayment) {
@@ -351,6 +410,27 @@ function DetailItem({
       </dt>
       <dd className="mt-1.5 text-sm leading-6">
         {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+function LongTextItem({
+  label,
+  value,
+  emptyLabel = "À compléter",
+}: {
+  label: string;
+  value: string | null;
+  emptyLabel?: string;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 whitespace-pre-wrap rounded-lg border bg-background/30 p-3 text-sm leading-6 text-muted">
+        {value || emptyLabel}
       </dd>
     </div>
   );
@@ -555,13 +635,58 @@ export default async function DocumentDetailPage({
   const { data: rawDocument, error: readError } = await supabase
     .from("documents")
     .select(
-      "id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_name, file_path, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, deleted_at",
+      "id, organization_id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_name, file_path, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
 
   const document = rawDocument as DBDocument | null;
+
+  // 0. Seller organization and document settings
+  const { data: rawSellerOrganization, error: sellerOrganizationError } =
+    document?.organization_id
+      ? await supabase
+          .from("organizations")
+          .select(
+            "id, name, legal_name, legal_form, siret, email, phone, website_url, address_line1, address_line2, postal_code, city, country, affix_name, dog_affix_name, cat_affix_name",
+          )
+          .eq("id", document.organization_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const sellerOrganization = rawSellerOrganization as SellerOrganization | null;
+
+  const { data: rawSellerRepresentative, error: sellerRepresentativeError } =
+    document?.organization_id
+      ? await supabase
+          .from("organization_representatives")
+          .select("display_name, first_name, last_name, representative_role, email, phone")
+          .eq("organization_id", document.organization_id)
+          .eq("is_default_signatory", true)
+          .eq("is_active", true)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const sellerRepresentative =
+    rawSellerRepresentative as SellerRepresentative | null;
+
+  const { data: rawDocumentSettings, error: documentSettingsError } =
+    document?.organization_id
+      ? await supabase
+          .from("organization_document_settings")
+          .select(
+            "mediator_name, mediator_contact, mediator_website_url, deposit_terms, refund_terms, postponement_terms, credit_terms, withholding_terms, reservation_contract_terms, commitment_certificate_text, legal_mentions, signature_city_default",
+          )
+          .eq("organization_id", document.organization_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const documentSettings =
+    rawDocumentSettings as OrganizationDocumentSettings | null;
 
   // 1. Contact
   const { data: rawContact, error: contactError } = document?.contact_id
@@ -823,6 +948,56 @@ export default async function DocumentDetailPage({
   // Diagnostic des points d'attention / données manquantes
   const pointsOfAttention: string[] = [];
   if (document) {
+    if (!sellerOrganization) {
+      pointsOfAttention.push("Données de l’élevage / vendeur non disponibles");
+    } else {
+      if (!sellerOrganization.legal_form) {
+        pointsOfAttention.push("Forme juridique de l’élevage / vendeur absente");
+      }
+      if (!sellerOrganization.siret) {
+        pointsOfAttention.push("SIRET ou identifiant légal de l’élevage absent");
+      }
+      if (
+        !sellerOrganization.address_line1 &&
+        !sellerOrganization.postal_code &&
+        !sellerOrganization.city
+      ) {
+        pointsOfAttention.push("Adresse de l’élevage / vendeur absente");
+      }
+    }
+    if (!sellerRepresentative) {
+      pointsOfAttention.push("Aucun signataire par défaut renseigné");
+    } else if (!sellerRepresentative.representative_role) {
+      pointsOfAttention.push("Qualité du signataire absente");
+    }
+    if (!documentSettings?.mediator_name) {
+      pointsOfAttention.push("Médiateur de la consommation non renseigné");
+    }
+    if (!documentSettings?.deposit_terms) {
+      pointsOfAttention.push("Conditions d’arrhes absentes");
+    }
+    if (
+      !documentSettings?.refund_terms ||
+      !documentSettings?.postponement_terms ||
+      !documentSettings?.credit_terms
+    ) {
+      pointsOfAttention.push("Conditions de remboursement, report ou avoir à compléter");
+    }
+    if (!documentSettings?.withholding_terms) {
+      pointsOfAttention.push("Conditions de retenue à compléter");
+    }
+    if (
+      document.document_type === "commitment_certificate" &&
+      !documentSettings?.commitment_certificate_text
+    ) {
+      pointsOfAttention.push("Texte du certificat d’engagement à compléter");
+    }
+    if (
+      document.document_type === "reservation_contract" &&
+      !documentSettings?.reservation_contract_terms
+    ) {
+      pointsOfAttention.push("Conditions du contrat de réservation à compléter");
+    }
     if (relatedContact) {
       if (!relatedContact.address_line1 && !relatedContact.postal_code && !relatedContact.city) {
         pointsOfAttention.push("Adresse postale de l’adoptant manquante (requise pour le contrat)");
@@ -969,6 +1144,209 @@ export default async function DocumentDetailPage({
                         </p>
                       )}
                     </div>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <RelatedSectionHeader
+                    title="Élevage / vendeur"
+                    subtitle={sellerOrganization?.name ?? null}
+                    href="/settings/organization"
+                  />
+
+                  {sellerOrganizationError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les données de l’élevage / vendeur.
+                    </p>
+                  ) : !sellerOrganization ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucune donnée d’élevage / vendeur disponible.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem label="Nom commercial" value={sellerOrganization.name} />
+                      <DetailItem label="Raison sociale" value={sellerOrganization.legal_name} />
+                      <DetailItem
+                        label="Forme juridique"
+                        value={getLegalFormLabel(sellerOrganization.legal_form)}
+                      />
+                      <DetailItem label="SIRET / identifiant" value={sellerOrganization.siret} />
+                      <DetailItem label="Email" value={sellerOrganization.email} />
+                      <DetailItem label="Téléphone" value={sellerOrganization.phone} />
+                      <DetailItem
+                        label="Site web"
+                        value={
+                          sellerOrganization.website_url ? (
+                            <a
+                              href={sellerOrganization.website_url}
+                              className="font-medium text-accent hover:underline"
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              {sellerOrganization.website_url}
+                            </a>
+                          ) : null
+                        }
+                      />
+                      <DetailItem label="Affixe" value={sellerOrganization.affix_name} />
+                      <DetailItem label="Affixe chien" value={sellerOrganization.dog_affix_name} />
+                      <DetailItem label="Affixe chat" value={sellerOrganization.cat_affix_name} />
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Adresse
+                        </dt>
+                        <dd className="mt-1.5 text-sm leading-6">
+                          {sellerOrganization.address_line1 ||
+                          sellerOrganization.address_line2 ||
+                          sellerOrganization.postal_code ||
+                          sellerOrganization.city ? (
+                            <div className="rounded-lg border bg-background/40 p-3">
+                              {sellerOrganization.address_line1 ? (
+                                <div>{sellerOrganization.address_line1}</div>
+                              ) : null}
+                              {sellerOrganization.address_line2 ? (
+                                <div>{sellerOrganization.address_line2}</div>
+                              ) : null}
+                              <div>
+                                {sellerOrganization.postal_code || "Non renseigné"}{" "}
+                                {sellerOrganization.city || "Non renseignée"}
+                              </div>
+                              <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                                {formatCountry(sellerOrganization.country)}
+                              </div>
+                            </div>
+                          ) : (
+                            "Non renseignée"
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Représentant / signataire
+                  </h2>
+
+                  {sellerRepresentativeError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger le signataire par défaut.
+                    </p>
+                  ) : !sellerRepresentative ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun signataire par défaut renseigné.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Nom affichable"
+                        value={sellerRepresentative.display_name}
+                      />
+                      <DetailItem label="Prénom" value={sellerRepresentative.first_name} />
+                      <DetailItem label="Nom" value={sellerRepresentative.last_name} />
+                      <DetailItem
+                        label="Qualité / rôle"
+                        value={sellerRepresentative.representative_role}
+                      />
+                      <DetailItem label="Email" value={sellerRepresentative.email} />
+                      <DetailItem label="Téléphone" value={sellerRepresentative.phone} />
+                    </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Paramètres documentaires
+                  </h2>
+
+                  {documentSettingsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les paramètres documentaires.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Médiateur"
+                        value={documentSettings?.mediator_name}
+                      />
+                      <DetailItem
+                        label="Contact médiateur"
+                        value={documentSettings?.mediator_contact}
+                      />
+                      <DetailItem
+                        label="Site médiateur"
+                        value={
+                          documentSettings?.mediator_website_url ? (
+                            <a
+                              href={documentSettings.mediator_website_url}
+                              className="font-medium text-accent hover:underline"
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              {documentSettings.mediator_website_url}
+                            </a>
+                          ) : null
+                        }
+                      />
+                      <DetailItem
+                        label="Ville de signature par défaut"
+                        value={documentSettings?.signature_city_default}
+                      />
+                      <div className="sm:col-span-2">
+                        <LongTextItem
+                          label="Mentions légales"
+                          value={documentSettings?.legal_mentions ?? null}
+                        />
+                      </div>
+                    </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Conditions documentaires
+                  </h2>
+                  <p className="mt-2 text-sm text-muted">
+                    Prévisualisation des paramètres saisis. Ces textes ne
+                    constituent pas une validation juridique.
+                  </p>
+
+                  {documentSettingsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les conditions documentaires.
+                    </p>
+                  ) : (
+                    <dl className="mt-6 grid gap-6">
+                      <LongTextItem
+                        label="Conditions d’arrhes"
+                        value={documentSettings?.deposit_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Conditions de remboursement"
+                        value={documentSettings?.refund_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Conditions de report"
+                        value={documentSettings?.postponement_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Conditions d’avoir"
+                        value={documentSettings?.credit_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Conditions de retenue"
+                        value={documentSettings?.withholding_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Conditions du contrat de réservation"
+                        value={documentSettings?.reservation_contract_terms ?? null}
+                      />
+                      <LongTextItem
+                        label="Texte certificat d’engagement"
+                        value={documentSettings?.commitment_certificate_text ?? null}
+                      />
+                    </dl>
                   )}
                 </section>
 
