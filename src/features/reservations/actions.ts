@@ -30,6 +30,13 @@ function deadlineUrl(
   return `/reservations/${reservationId}?deadline_status=${outcome}`;
 }
 
+function noteUrl(
+  reservationId: string,
+  outcome: "success" | "error",
+) {
+  return `/reservations/${reservationId}?note_status=${outcome}`;
+}
+
 function activationUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
@@ -307,6 +314,63 @@ export async function updateReservationPreReservationDeadline(
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(deadlineUrl(reservationId, "success"));
+}
+
+export async function createReservationNote(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+  const body = formData.get("body");
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof body !== "string" ||
+    !body.trim() ||
+    body.trim().length > 2_000
+  ) {
+    if (typeof reservationId === "string" && isUuid(reservationId)) {
+      redirect(noteUrl(reservationId, "error"));
+    }
+
+    redirect("/reservations?erreur=note");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation || !reservation.organization_id) {
+    redirect(noteUrl(reservationId, "error"));
+  }
+
+  const { error: insertError } = await supabase.from("notes").insert({
+    reservation_id: reservation.id,
+    organization_id: reservation.organization_id,
+    body: body.trim(),
+    note_type: "internal",
+    visibility: "internal",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (insertError) {
+    redirect(noteUrl(reservationId, "error"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  redirect(noteUrl(reservationId, "success"));
 }
 
 export async function activateReservation(formData: FormData) {
