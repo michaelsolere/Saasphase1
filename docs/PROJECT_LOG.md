@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires, et fiche `/reservations/[id]` consolidée comme centre opérationnel du dossier adoptant. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement.
-Dernier commit connu : `f4d36787 Merge pull request #205 from michaelsolere/feature/res-ux-7-reservation-next-action`
-Documentation projet à jour jusqu'à PR205.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires, et fiche `/reservations/[id]` consolidée comme centre opérationnel du dossier adoptant. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement. La fiche Réservation utilise désormais shadcn/ui de façon ciblée pour alléger les formulaires permanents et confirmer les actions sensibles, sans automatisation métier.
+Dernier commit connu : `2335e235 Merge pull request #212 from michaelsolere/feature/res-ux-12-note-dialog`
+Documentation projet à jour jusqu'à PR212.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -161,6 +161,133 @@ La fiche `/reservations/[id]` est désormais le centre opérationnel du dossier 
 * Mise à jour du tableau de bord pour tenir compte des nouveaux états de suivi réservation.
 * Seeds ou fixtures dédiées pour tester les cas réservation sans animal, avec animal, avec documents variés et paiements variés.
 * Plus tard : adoption finale / cession, sans facture tant que le modèle comptable n'est pas validé.
+
+## Mise à jour UI / modales — PR208 à PR212
+
+Cette séquence a commencé à rendre la fiche Réservation plus lisible, plus sûre et moins encombrée, sans modifier la logique métier ni automatiser les workflows.
+
+### PR208 — UI-1 — Initialisation shadcn/ui minimale
+
+Objectif : installer le socle shadcn/ui minimal pour préparer les composants UI futurs.
+
+Contenu principal :
+
+* initialisation shadcn/ui minimale dans le projet existant ;
+* ajout des composants `Button`, `Card`, `Badge`, `Input`, `Textarea`, `Label`, `Alert`, `Separator`, `Dialog` et `AlertDialog` ;
+* conservation des pages métier existantes sans migration UI globale ;
+* aucune logique métier modifiée.
+
+Hors périmètre conservé : aucune refonte graphique, aucune action serveur, aucune mutation métier et aucun workflow modifié.
+
+### PR209 — RES-UX-9 — Nettoyage visuel section Financement
+
+Objectif : alléger visuellement la section Financement de `/reservations/[id]`.
+
+Contenu principal :
+
+* formulaires d'encaissement et de remboursement sortis du flux principal ;
+* deux boutons explicites conservés : `+ Enregistrer un encaissement` et `+ Enregistrer un remboursement` ;
+* formulaires affichés dans des modales shadcn/ui `Dialog` ;
+* actions serveur existantes conservées.
+
+Hors périmètre conservé : aucune création automatique de paiement, aucune demande automatique de complément d'arrhes, aucune facture, aucun reçu et aucun workflow modifié.
+
+### PR210 — RES-UX-10 — Confirmation modale "Marquer payé"
+
+Objectif : protéger l'action sensible `Marquer payé` contre les clics accidentels.
+
+Contenu principal :
+
+* confirmation shadcn/ui `AlertDialog` avant le passage d'un paiement demandé à payé ;
+* annulation possible sans mutation ;
+* confirmation explicite conservant le flux existant `requested` → `paid` ;
+* rappel que le statut de réservation n'est pas modifié automatiquement ;
+* action serveur existante non modifiée.
+
+Hors périmètre conservé : aucune nouvelle action serveur, aucun changement de statut réservation, aucune création de paiement et aucune automatisation.
+
+### PR211 — RES-UX-11 — Confirmations modales actions documents
+
+Objectif : protéger les actions documentaires sensibles depuis la fiche réservation.
+
+Contenu principal :
+
+* confirmation shadcn/ui `AlertDialog` avant `Marquer comme envoyé` ;
+* confirmation shadcn/ui `AlertDialog` avant `Marquer comme reçu signé` ;
+* transitions documentaires toujours portées par les actions serveur existantes : `to_generate` → `sent` et `sent` → `signed` ;
+* textes de confirmation rappelant qu'aucun email, upload, fichier généré ou signature électronique n'est déclenché.
+
+Hors périmètre conservé : aucun document créé, supprimé ou généré ; aucun email réel ; aucun upload ; aucune signature électronique.
+
+### PR212 — RES-UX-12 — Note interne en modale
+
+Objectif : alléger la section Notes internes sans changer la capacité d'ajout de note.
+
+Contenu principal :
+
+* formulaire d'ajout de note interne déplacé dans une modale shadcn/ui `Dialog` ;
+* liste des notes existantes et état vide conservés dans la page ;
+* bouton explicite `+ Ajouter une note interne` ;
+* réutilisation de `ReservationNoteForm` ;
+* action serveur existante non modifiée ;
+* note toujours interne, non envoyée à l'adoptant.
+
+Hors périmètre conservé : aucune nouvelle action serveur, aucune modification automatique de note, aucun email et aucun workflow modifié.
+
+## État actuel de la fiche Réservation après les modales
+
+La fiche `/reservations/[id]` reste le cockpit opérationnel du dossier adoptant, mais elle est désormais moins encombrée par les formulaires permanents.
+
+État disponible :
+
+* résumé haut de fiche conservé ;
+* financement en lecture, avec encaissement et remboursement en modales ;
+* confirmation avant le passage manuel d'un paiement demandé à payé ;
+* documents liés visibles, avec confirmations avant les changements d'état manuels ;
+* notes internes visibles, avec ajout de note en modale ;
+* attribution animal conservée ;
+* prochaine action indicative conservée ;
+* liens métier et retour tableau de bord conservés ;
+* fonctionnement toujours manuel, sans automatisation métier.
+
+## Décisions UX actées
+
+* Les formulaires longs ne doivent pas rester visibles en permanence dans la fiche quand ils ne sont pas nécessaires à la lecture immédiate.
+* Les actions financières doivent rester explicites.
+* `+ Enregistrer un encaissement` et `+ Enregistrer un remboursement` restent deux actions séparées.
+* Les actions sensibles doivent passer par une confirmation.
+* `Dialog` est adapté aux petits formulaires ciblés.
+* `AlertDialog` est adapté aux confirmations d'actions.
+* Les modales ne remplacent pas les pages détaillées pour les décisions complexes.
+* Aucun onglet `Tabs` n'est introduit pour l'instant.
+* Les informations critiques restent visibles : paiements, documents, animal et prochaine action.
+* La fiche Réservation reste le cockpit du dossier, pas un tunnel vertical de formulaires.
+
+## Garde-fous confirmés par la séquence UI
+
+La séquence PR208 à PR212 n'a pas introduit :
+
+* changement de workflow ;
+* automatisation métier ;
+* email réel ;
+* upload ;
+* génération PDF/DOCX/HTML ;
+* signature électronique ;
+* facture ou reçu ;
+* modification Supabase ;
+* modification RLS/RPC/policies ;
+* changement automatique de statut réservation ;
+* création automatique de paiement ou de document.
+
+## Prochaines étapes possibles côté UX Réservation
+
+* QA UI manuel de la fiche réservation après l'introduction des modales.
+* Refactorisation prudente de `/reservations/[id]` si la page reste volumineuse.
+* Confirmation éventuelle sur l'attribution animal si l'action est jugée suffisamment sensible.
+* Alignement du tableau de bord avec les nouveaux états de suivi réservation.
+* Tests seed ciblés pour documents éligibles et paiements demandés.
+* Plus tard seulement : accordéons ou onglets pour des détails secondaires, après stabilisation des écrans métier.
+* Éviter une refonte graphique complète tant que les écrans métier ne sont pas stabilisés.
 
 ## Mise à jour documentaire — PR193 à PR197
 
