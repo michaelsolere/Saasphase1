@@ -2097,6 +2097,170 @@ export type Database = {
           },
         ]
       }
+      organization_document_settings: {
+        Row: {
+          commitment_certificate_text: string | null
+          created_at: string
+          created_by: string | null
+          credit_terms: string | null
+          deleted_at: string | null
+          deposit_terms: string | null
+          id: string
+          legal_mentions: string | null
+          mediator_contact: string | null
+          mediator_name: string | null
+          mediator_website_url: string | null
+          organization_id: string
+          postponement_terms: string | null
+          refund_terms: string | null
+          reservation_contract_terms: string | null
+          signature_city_default: string | null
+          updated_at: string
+          updated_by: string | null
+          withholding_terms: string | null
+        }
+        Insert: {
+          commitment_certificate_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_terms?: string | null
+          deleted_at?: string | null
+          deposit_terms?: string | null
+          id?: string
+          legal_mentions?: string | null
+          mediator_contact?: string | null
+          mediator_name?: string | null
+          mediator_website_url?: string | null
+          organization_id: string
+          postponement_terms?: string | null
+          refund_terms?: string | null
+          reservation_contract_terms?: string | null
+          signature_city_default?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          withholding_terms?: string | null
+        }
+        Update: {
+          commitment_certificate_text?: string | null
+          created_at?: string
+          created_by?: string | null
+          credit_terms?: string | null
+          deleted_at?: string | null
+          deposit_terms?: string | null
+          id?: string
+          legal_mentions?: string | null
+          mediator_contact?: string | null
+          mediator_name?: string | null
+          mediator_website_url?: string | null
+          organization_id?: string
+          postponement_terms?: string | null
+          refund_terms?: string | null
+          reservation_contract_terms?: string | null
+          signature_city_default?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          withholding_terms?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_document_settings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_document_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_document_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      organization_representatives: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          display_name: string
+          email: string | null
+          first_name: string | null
+          id: string
+          is_active: boolean
+          is_default_signatory: boolean
+          last_name: string | null
+          organization_id: string
+          phone: string | null
+          representative_role: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_name: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          is_active?: boolean
+          is_default_signatory?: boolean
+          last_name?: string | null
+          organization_id: string
+          phone?: string | null
+          representative_role?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          display_name?: string
+          email?: string | null
+          first_name?: string | null
+          id?: string
+          is_active?: boolean
+          is_default_signatory?: boolean
+          last_name?: string | null
+          organization_id?: string
+          phone?: string | null
+          representative_role?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_representatives_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_representatives_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_representatives_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_settings: {
         Row: {
           created_at: string
@@ -2210,6 +2374,7 @@ export type Database = {
           dog_affix_name: string | null
           email: string | null
           id: string
+          legal_form: string | null
           legal_name: string | null
           name: string
           phone: string | null
@@ -2231,6 +2396,7 @@ export type Database = {
           dog_affix_name?: string | null
           email?: string | null
           id?: string
+          legal_form?: string | null
           legal_name?: string | null
           name: string
           phone?: string | null
@@ -2252,6 +2418,7 @@ export type Database = {
           dog_affix_name?: string | null
           email?: string | null
           id?: string
+          legal_form?: string | null
           legal_name?: string | null
           name?: string
           phone?: string | null
