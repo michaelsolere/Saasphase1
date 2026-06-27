@@ -53,7 +53,7 @@ export default async function PaymentsPage() {
           href="/"
           className="text-sm font-medium text-accent hover:underline"
         >
-          ← Retour à l’accueil
+          ← Retour au tableau de bord
         </Link>
         <div className="mt-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
