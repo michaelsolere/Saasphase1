@@ -13,12 +13,121 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, de multiples liaisons et raccourcis de navigation interconnectant les objets métier (PR #183), l'affichage des documents liés avec dates d'envoi et de signature sur la fiche réservation (PR #181), l'affichage des parents (mère/père) d'une portée dans l'aperçu du document (PR #180), l'affichage de l'adoptant dans la liste Documents via un mapping serveur PostgREST composite (PR #182), et un tableau de bord "Résumé du dossier adoptant" avec prochaine action suggérée sur `/reservations/[id]` (PR #184).
-Dernier commit connu : `47797630 Merge pull request #184 from michaelsolere/feature/ux-3-reservation-summary-header`
-Documentation projet à jour jusqu'à PR184.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, et page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement.
+Dernier commit connu : `c5ba167a Merge pull request #197 from michaelsolere/feature/doc-5n-document-page-refactor`
+Documentation projet à jour jusqu'à PR197.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
+
+## Mise à jour documentaire — PR193 à PR197
+
+### PR193 — DOC-5J — Audit / cadrage attestation de vente
+
+Objectif : préparer un futur document métier de vente / cession, sans prototype UI ni génération réelle.
+
+Contenu principal :
+
+* audit des données disponibles pour le vendeur, l'adoptant, l'animal, la réservation, les paiements et les documents associés ;
+* identification des manques : document final dédié, numéro éventuel, facture, TVA, données sanitaires structurées, liste des documents remis et texte juridique ;
+* conclusion : l'attestation de vente est un document métier préparable plus tard, distinct d'une facture, et doit rester compatible avec les parcours de réservation directe ou pré-réservation.
+
+Hors périmètre conservé : aucune génération PDF/DOCX/HTML, aucun modèle final, aucune migration, aucun workflow modifié.
+
+### PR194 — DOC-5K — Audit / cadrage facture
+
+Objectif : cadrer les besoins d'une future facture liée à la vente / cession d'un animal.
+
+Contenu principal :
+
+* audit des données exploitables : vendeur, adoptant, animal, réservation, paiements, avoirs et documents ;
+* identification des manques majeurs : modèle facture, numérotation, statut brouillon/émise/annulée, TVA/fiscalité, snapshots vendeur/client et lignes de facture ;
+* conclusion structurante : la facture ne doit pas être traitée comme un simple document `documents`; elle nécessitera un modèle comptable dédié si elle est implémentée.
+
+Hors périmètre conservé : aucune facture réelle, aucun numéro de facture, aucun PDF, aucune migration et aucun choix fiscal définitif.
+
+### PR195 — DOC-5L — Décisions métier facture / attestation
+
+Objectif : transformer les audits attestation/facture en décisions métier à valider avant prototype ou modèle technique.
+
+Contenu principal :
+
+* distinction claire entre attestation de vente et facture ;
+* attestation de vente confirmée comme document métier prototypable en aperçu interne ;
+* facture cadrée comme objet comptable strict à traiter plus tard, avec décisions préalables sur numérotation, statuts, TVA, avoirs, conservation, rôles et snapshots ;
+* maintien explicite de la compatibilité avec les trois parcours financiers : pré-réservation 2 x 250 EUR, arrhes 500 EUR directes, paiement intégral sans arrhes séparées.
+
+Hors périmètre conservé : aucune migration, aucun SQL applicable, aucune facture technique et aucun texte fiscal définitif.
+
+### PR196 — DOC-5M — Prototype interne attestation de vente
+
+Objectif : ajouter dans `/documents/[id]` un aperçu interne conditionnel de l'attestation de vente / cession pour le type `sale_certificate`.
+
+Contenu principal :
+
+* section conditionnelle affichée uniquement pour `sale_certificate` ;
+* blocs vendeur/cédant, adoptant/acquéreur, animal cédé, cession/adoption, documents associés, placeholder de texte et points d'attention ;
+* rappel explicite que la facture est un document distinct et n'est pas générée ici ;
+* aucune génération réelle d'attestation, aucun fichier, aucun PDF, aucun upload et aucune signature.
+
+Limite connue : le seed local ne contient pas encore de document `sale_certificate`, donc le test navigateur complet de cet aperçu nécessite une fixture dédiée dans un lot séparé.
+
+### PR197 — DOC-5N — Refactorisation prudente page détail document
+
+Objectif : réduire la duplication dans `src/app/documents/[id]/page.tsx` après les ajouts successifs DOC-5E, DOC-5G, DOC-5H, DOC-5I et DOC-5M.
+
+Contenu principal :
+
+* refactor local sans nouveau fichier ;
+* extraction de petits blocs internes : adresse, bandeau d'aperçu interne, liste de points d'attention ;
+* maintien des aperçus conditionnels :
+  * `commitment_certificate` uniquement pour le certificat d'engagement ;
+  * `reservation_contract` uniquement pour le contrat de réservation ;
+  * `sale_certificate` uniquement pour l'attestation de vente ;
+* aucun changement fonctionnel attendu.
+
+Validations réalisées : `git diff --check`, `pnpm lint`, `pnpm build`, test navigateur sur un `reservation_contract` seedé et un document `other` seedé.
+
+## État documentaire actuel
+
+La page `/documents/[id]` sert désormais à vérifier les données sources et les aperçus internes avant de futurs lots de génération documentaire.
+
+État disponible :
+
+* aperçu source complet document : document, adoptant, candidature, réservation, paiements, portée, parents, animal et documents liés ;
+* données vendeur / élevage, représentant / signataire et paramètres documentaires ;
+* aperçu interne du certificat d'engagement et de connaissance pour `commitment_certificate` ;
+* aperçu interne du contrat de réservation pour `reservation_contract` ;
+* aperçu interne de l'attestation de vente / cession pour `sale_certificate` ;
+* diagnostics informatifs de données manquantes ;
+* facture cadrée mais non implémentée ;
+* aucune génération PDF/DOCX/HTML ;
+* aucun email réel ;
+* aucun upload ;
+* aucune signature électronique ;
+* aucun template définitif.
+
+## Décisions structurantes actées
+
+* La fiche document est un écran de vérification des données sources et d'aperçus internes.
+* Les aperçus internes ne sont pas des documents exploitables juridiquement.
+* La facture ne sera pas traitée comme un simple type documentaire.
+* La facture nécessitera un modèle dédié si elle est implémentée.
+* L'attestation de vente peut rester dans la logique documentaire métier.
+* Les diagnostics restent informatifs et non bloquants.
+* Les trois parcours financiers restent compatibles :
+  * pré-réservation 2 x 250 EUR ;
+  * réservation directe avec 500 EUR d'arrhes en une fois ;
+  * paiement intégral sans arrhes séparées.
+
+## Prochaines étapes documentaires possibles
+
+* Prototype interne plus avancé de l'attestation de vente, seulement après validation du texte métier.
+* Cadrage technique du modèle facture.
+* Modèle facture brouillon, plus tard et seulement après validation métier/fiscale.
+* Génération PDF, plus tard et dans un lot sensible séparé.
+* Email, upload et signature électronique, plus tard et dans des lots séparés.
+* Seed de documents `commitment_certificate` et/ou `sale_certificate` pour tests navigateur, dans un lot dédié si nécessaire.
 
 Le dépôt contient désormais :
 
@@ -4002,18 +4111,20 @@ git status
 
 ## Prochaine étape logique
 
-Les relations et l'interconnexion visuelle entre les fiches du dossier adoptant sont désormais complètement stabilisées :
-* La **fiche réservation** a été élevée au rang de centre de pilotage opérationnel grâce à l'intégration d'un résumé haut de page ("Résumé du dossier adoptant") et d'un volet d'accès direct aux documents.
-* Une navigation bidirectionnelle fluide a été implémentée sur toutes les fiches clés (réservation, document, portée, animal, contact).
-* La robustesse des requêtes composites complexes sous RLS a été fiabilisée côté serveur dans la liste des documents.
+Les relations et l'interconnexion visuelle entre les fiches du dossier adoptant sont stabilisées, et le chantier documentaire est désormais cadré en deux niveaux :
 
-Les prochains lots envisagés pour consolider la Phase 1 sont :
-1. **Dashboard-1 — Tableau de bord flux simple** : Conception d'un tableau de bord de pilotage orienté flux, faisant remonter les réservations nécessitant une action prioritaire (ex: paiement en attente, document manquant, animal à attribuer).
-2. **Lot 5E — Prévisualisation complète des données sources documentaires** : Intégration de la lecture et de la validation des données d'identité et d'adresses directement dans l'aperçu du document avant envoi.
-3. **Lot Documents-Modèles — Cadrage des futurs modèles** : Définition des structures de templates et du contenu juridique des certificats d'engagement et contrats de réservation.
-4. **Lot Portées/Groupes — Route dédiée aux groupes** : Réflexion sur l'introduction d'une route ou d'une vue de détail dédiée aux groupes de portées afin de pouvoir les associer plus finement et les rendre cliquables.
+* la fiche document `/documents/[id]` sert à vérifier les données sources et les aperçus internes ;
+* les aperçus internes existent pour le certificat d'engagement, le contrat de réservation et l'attestation de vente ;
+* la facture est cadrée, mais volontairement non implémentée techniquement ;
+* aucune génération PDF/DOCX/HTML, aucun upload, aucun email et aucune signature électronique ne sont introduits à ce stade.
 
-La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées et les événements généraux liés à une réservation sont désormais visibles en lecture seule pour tous les statuts. Les événements `post_adoption_follow_up` restent affichés séparément dans le suivi post-adoption des réservations `adopted`, afin d'éviter les doublons avec la section générale. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
+Les prochains lots possibles pour consolider la Phase 1 sont :
+1. **DOC — Attestation de vente** : enrichir le prototype interne seulement après validation du texte métier et des données obligatoires.
+2. **DOC — Facture** : cadrer techniquement le modèle facture avant toute migration, avec décisions préalables sur numérotation, statuts, TVA, avoirs et conservation.
+3. **DOC — Fixtures de tests documentaires** : ajouter si nécessaire des documents `commitment_certificate` et `sale_certificate` seedés pour sécuriser les tests navigateur.
+4. **DOC — Génération documentaire** : PDF, stockage, email ou signature uniquement plus tard, dans des lots sensibles séparés.
+
+La fiche réservation reste le centre opérationnel du dossier adoptant. La fiche document est maintenant un écran de contrôle documentaire en lecture seule : elle affiche les relations métier, les données vendeur/signataire/paramètres documentaires, les points d'attention et les aperçus internes, sans écrire dans la base et sans produire de document exploitable juridiquement.
 
 État fonctionnel :
 * `/` affiche des liens rapides statiques clarifiés vers les modules existants ;
