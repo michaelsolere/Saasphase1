@@ -46,6 +46,7 @@ import {
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
+import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
 import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
 import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
@@ -2301,10 +2302,9 @@ export default async function ReservationDetailPage({
                   )}
 
                   <div className="mt-6 border-t pt-6">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Ajouter une note interne
-                    </h3>
-                    <ReservationNoteForm reservationId={id} />
+                    <ReservationNoteDialog
+                      noteForm={<ReservationNoteForm reservationId={id} />}
+                    />
                   </div>
                 </section>
 
