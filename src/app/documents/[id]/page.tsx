@@ -619,12 +619,21 @@ export default async function DocumentDetailPage({
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
-      <Link
-        href="/documents"
-        className="text-sm font-medium text-accent hover:underline"
-      >
-        ← Retour aux documents
-      </Link>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <Link
+          href="/"
+          className="text-sm font-medium text-accent hover:underline"
+        >
+          Tableau de bord
+        </Link>
+        <span className="text-muted text-sm select-none" aria-hidden="true">|</span>
+        <Link
+          href="/documents"
+          className="text-sm font-medium text-accent hover:underline"
+        >
+          ← Retour aux documents
+        </Link>
+      </div>
 
       <div className="mt-8">
         {readError ? (
