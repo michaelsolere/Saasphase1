@@ -72,6 +72,7 @@ type RelatedReservation = Pick<
   | "price_cents"
   | "paid_cents"
   | "currency"
+  | "animal_id"
   | "animal_display_name"
   | "reserved_sex_preference"
   | "created_at"
@@ -168,7 +169,7 @@ function DetailItem({
   value,
 }: {
   label: string;
-  value: string | null;
+  value: React.ReactNode;
 }) {
   return (
     <div>
@@ -345,8 +346,18 @@ function RelatedReservationsSection({
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="text-sm font-semibold text-foreground">
-                        {reservation.contact_display_name ??
-                          "Contact non renseigné"}
+                        {reservation.contact_id ? (
+                          <Link
+                            href={`/contacts/${reservation.contact_id}`}
+                            className="text-accent hover:underline"
+                          >
+                            {reservation.contact_display_name ??
+                              "Contact non renseigné"}
+                          </Link>
+                        ) : (
+                          reservation.contact_display_name ??
+                            "Contact non renseigné"
+                        )}
                       </span>
                       <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                         {getReservationStatusLabel(reservation.status)}
@@ -360,7 +371,16 @@ function RelatedReservationsSection({
                     </p>
                     <p className="text-xs text-muted">
                       Animal :{" "}
-                      {reservation.animal_display_name ?? "Non attribué"}
+                      {reservation.animal_id ? (
+                        <Link
+                          href={`/animals/${reservation.animal_id}`}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          {reservation.animal_display_name}
+                        </Link>
+                      ) : (
+                        reservation.animal_display_name ?? "Non attribué"
+                      )}
                     </p>
                     <p className="text-xs text-muted">
                       Tarif :{" "}
@@ -637,7 +657,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("reservation_overview")
         .select(
-          "id, contact_id, contact_display_name, status, price_cents, paid_cents, currency, animal_display_name, reserved_sex_preference, created_at",
+          "id, contact_id, contact_display_name, status, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, created_at",
         )
         .eq("litter_id", id)
         .order("created_at", { ascending: false })
@@ -839,11 +859,33 @@ export default async function LitterDetailPage({
                   />
                   <DetailItem
                     label="Mère"
-                    value={summary?.mother_display_name ?? null}
+                    value={
+                      litter.mother_id ? (
+                        <Link
+                          href={`/animals/${litter.mother_id}`}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          {summary?.mother_display_name ?? "Mère"}
+                        </Link>
+                      ) : (
+                        summary?.mother_display_name ?? null
+                      )
+                    }
                   />
                   <DetailItem
                     label="Père"
-                    value={summary?.father_display_name ?? null}
+                    value={
+                      litter.father_id ? (
+                        <Link
+                          href={`/animals/${litter.father_id}`}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          {summary?.father_display_name ?? "Père"}
+                        </Link>
+                      ) : (
+                        summary?.father_display_name ?? null
+                      )
+                    }
                   />
                 </dl>
               </section>

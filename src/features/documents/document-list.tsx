@@ -40,6 +40,12 @@ function RelatedLinks({ document }: { document: DBDocument }) {
     document.payment_id
       ? { href: `/payments/${document.payment_id}`, label: "Paiement" }
       : null,
+    document.litter_id
+      ? { href: `/litters/${document.litter_id}`, label: "Portée" }
+      : null,
+    document.animal_id
+      ? { href: `/animals/${document.animal_id}`, label: "Animal" }
+      : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>;
 
   if (links.length === 0) {

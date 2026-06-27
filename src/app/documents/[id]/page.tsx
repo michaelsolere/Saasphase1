@@ -256,7 +256,7 @@ function DetailItem({
   value,
 }: {
   label: string;
-  value: string | null;
+  value: React.ReactNode;
 }) {
   return (
     <div>
@@ -422,6 +422,12 @@ function RelatedBusinessLinks({ document }: { document: DBDocument }) {
     document.payment_id
       ? { href: `/payments/${document.payment_id}`, label: "Paiement" }
       : null,
+    document.litter_id
+      ? { href: `/litters/${document.litter_id}`, label: "Portée" }
+      : null,
+    document.animal_id
+      ? { href: `/animals/${document.animal_id}`, label: "Animal" }
+      : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>;
 
   if (links.length === 0) {
@@ -463,7 +469,7 @@ export default async function DocumentDetailPage({
   const { data: rawDocument, error: readError } = await supabase
     .from("documents")
     .select(
-      "id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_name, file_path, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, deleted_at",
+      "id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_name, file_path, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -866,15 +872,48 @@ export default async function DocumentDetailPage({
                       />
                       <DetailItem
                         label="Contact"
-                        value={relatedReservation.contact_display_name}
+                        value={
+                          relatedReservation.contact_id ? (
+                            <Link
+                              href={`/contacts/${relatedReservation.contact_id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {relatedReservation.contact_display_name}
+                            </Link>
+                          ) : (
+                            relatedReservation.contact_display_name
+                          )
+                        }
                       />
                       <DetailItem
                         label="Animal"
-                        value={relatedReservation.animal_display_name}
+                        value={
+                          relatedReservation.animal_id ? (
+                            <Link
+                              href={`/animals/${relatedReservation.animal_id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {relatedReservation.animal_display_name}
+                            </Link>
+                          ) : (
+                            relatedReservation.animal_display_name
+                          )
+                        }
                       />
                       <DetailItem
                         label="Portée"
-                        value={relatedReservation.litter_name}
+                        value={
+                          relatedReservation.litter_id ? (
+                            <Link
+                              href={`/litters/${relatedReservation.litter_id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {relatedReservation.litter_name}
+                            </Link>
+                          ) : (
+                            relatedReservation.litter_name
+                          )
+                        }
                       />
                       <DetailItem
                         label="Groupe de portée"
