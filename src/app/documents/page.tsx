@@ -2,8 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { logout } from "@/features/auth/actions";
-import { DocumentList } from "@/features/documents/document-list";
-import type { DBDocument } from "@/features/documents/types";
+import { DocumentList, type DocumentWithContact } from "@/features/documents/document-list";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -34,18 +33,18 @@ export default async function DocumentsPage() {
     redirect("/login");
   }
 
-  let documents = null;
+  let documents: DocumentWithContact[] | null = null;
   let hasLoadingError = Boolean(authError);
 
   const result = await supabase
     .from("documents")
     .select(
-      "id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, expires_at, signature_required, file_name, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id",
+      "id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, expires_at, signature_required, file_name, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, contacts!contact_id(first_name, last_name, display_name, email)",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  documents = result.data as DBDocument[] | null;
+  documents = result.data as DocumentWithContact[] | null;
   hasLoadingError = hasLoadingError || Boolean(result.error);
 
   return (
