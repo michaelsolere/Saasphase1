@@ -13,12 +13,154 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, et page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement.
-Dernier commit connu : `c5ba167a Merge pull request #197 from michaelsolere/feature/doc-5n-document-page-refactor`
-Documentation projet à jour jusqu'à PR197.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires, et fiche `/reservations/[id]` consolidée comme centre opérationnel du dossier adoptant. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement.
+Dernier commit connu : `f4d36787 Merge pull request #205 from michaelsolere/feature/res-ux-7-reservation-next-action`
+Documentation projet à jour jusqu'à PR205.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
+
+## Mise à jour réservation — PR199 à PR205
+
+### PR199 — RES-UX-1 — Audit fiche réservation comme centre du dossier adoptant
+
+Objectif : auditer `/reservations/[id]` comme centre opérationnel du dossier adoptant avant d'ajouter de nouvelles actions.
+
+Contenu principal :
+
+* état actuel de la fiche réservation : résumé, contact, candidature, portée/groupe, animal, paiements, documents, notes, historique, prochaines actions et navigation ;
+* identification des manques, risques et zones sensibles ;
+* découpage prudent des lots RES-UX-2 à RES-UX-7 ;
+* conclusion : améliorer d'abord la lecture et la compréhension du dossier avant d'ajouter ou renforcer des actions métier.
+
+Hors périmètre conservé : aucun code applicatif, aucune mutation, aucune migration et aucun changement de workflow.
+
+### PR200 — RES-UX-2 — Amélioration lecture seule de la fiche réservation
+
+Objectif : rendre `/reservations/[id]` plus lisible en quelques secondes, sans mutation.
+
+Contenu principal :
+
+* résumé haut de fiche enrichi ;
+* organisation en sections plus claires avec ancres internes ;
+* synthèses paiements et documents plus lisibles ;
+* prochaine action initialement clarifiée ;
+* états vides et navigation métier conservés.
+
+Hors périmètre conservé : aucune action rapide nouvelle, aucune modification paiement/document/statut/workflow.
+
+### PR201 — RES-UX-3 — Notes internes réservation
+
+Objectif : ajouter une mémoire interne simple au dossier réservation.
+
+Contenu principal :
+
+* réutilisation de la table `notes` existante ;
+* affichage des notes internes liées à la réservation ;
+* ajout d'une note interne depuis la fiche réservation ;
+* notes strictement internes, non envoyées à l'adoptant ;
+* rattachement à la réservation et à l'organisation selon le modèle existant.
+
+Hors périmètre conservé : aucun impact sur paiements, documents, statuts ou workflow.
+
+### PR202 — RES-UX-4 — Actions documents depuis réservation
+
+Objectif : permettre quelques actions documentaires manuelles directement depuis la fiche réservation.
+
+Contenu principal :
+
+* action manuelle `Marquer envoyé` ;
+* action manuelle `Marquer reçu signé` ;
+* utilisation des statuts existants `to_generate`, `sent` et `signed` ;
+* utilisation des champs existants `sent_at` et `signed_at` ;
+* conservation des liens vers `/documents/[id]`.
+
+Hors périmètre conservé : aucun email, upload, génération PDF/DOCX/HTML, signature électronique, création automatique ou suppression de document.
+
+### PR203 — RES-UX-5 — Actions paiements depuis réservation
+
+Objectif : permettre de marquer manuellement un paiement déjà demandé comme payé depuis la réservation.
+
+Contenu principal :
+
+* action `Marquer payé` visible seulement pour les paiements `requested` ;
+* passage manuel vers le statut existant `paid` ;
+* renseignement du champ existant `paid_at` ;
+* vérification du paiement lié à la réservation et à l'organisation ;
+* conservation des montants, types, contacts et liens existants.
+
+Hors périmètre conservé : aucun paiement créé, aucune demande automatique de complément d'arrhes, aucun changement automatique de statut réservation, aucun reçu ou facture.
+
+### PR204 — RES-UX-6 — Attribution animal depuis réservation
+
+Objectif : permettre l'attribution manuelle d'un animal existant à une réservation.
+
+Contenu principal :
+
+* utilisation du lien existant `reservations.animal_id` ;
+* attribution seulement si aucun animal n'est déjà attribué ;
+* filtrage et vérifications par organisation ;
+* cohérence de portée quand la réservation est liée à une portée précise ;
+* refus des animaux déjà liés à une autre réservation active ;
+* renseignement des champs existants d'attribution et d'audit.
+
+Hors périmètre conservé : aucune création ou suppression d'animal, aucun remplacement complexe, aucun changement automatique de statut réservation ou animal.
+
+### PR205 — RES-UX-7 — Prochaine action améliorée
+
+Objectif : rendre la prochaine action de la fiche réservation plus utile, plus priorisée et toujours indicative.
+
+Contenu principal :
+
+* fonction locale informative `getReservationNextAction` ;
+* règles simples basées sur les données déjà chargées : candidature, paiements, documents, animal, solde et dossier avancé ;
+* libellé et explication secondaire dans le résumé haut de fiche ;
+* fallback `Dossier à suivre` ;
+* aucune mutation et aucun workflow automatique.
+
+Hors périmètre conservé : aucun changement paiement, document, note, animal, statut ou workflow.
+
+## État actuel de la fiche Réservation
+
+La fiche `/reservations/[id]` est désormais le centre opérationnel du dossier adoptant.
+
+État disponible :
+
+* lisibilité améliorée de la fiche ;
+* résumé haut de fiche avec adoptant, candidature, statut, portée/groupe, animal, paiements, documents, suivi et prochaine action ;
+* navigation interne par ancres ;
+* notes internes consultables et ajoutables ;
+* actions documentaires manuelles : marquer envoyé, marquer reçu signé ;
+* action paiement manuelle : marquer un paiement demandé comme payé ;
+* attribution manuelle d'un animal existant ;
+* prochaine action intelligente, informative et non bloquante ;
+* aucun email réel ;
+* aucune génération PDF/DOCX/HTML ;
+* aucun upload ;
+* aucune signature électronique ;
+* aucune facture ou reçu ;
+* workflows encore sous contrôle manuel de l'éleveur.
+
+## Décisions structurantes actées côté Réservation
+
+* La réservation est bien le centre opérationnel du dossier adoptant.
+* Les actions ajoutées restent manuelles.
+* Le statut de réservation n'est pas modifié automatiquement par paiement, document ou attribution animal.
+* Les paiements restent des événements financiers suivis, pas des déclencheurs automatiques de workflow.
+* Les documents restent suivis manuellement, sans génération réelle.
+* L'attribution animal ne déclenche pas l'adoption.
+* La prochaine action reste indicative et non bloquante.
+* L'éleveur garde le contrôle sur les décisions métier sensibles.
+
+## Prochaines étapes possibles côté Réservation
+
+* Refactorisation prudente de `/reservations/[id]` si la page devient trop volumineuse.
+* Création ou amélioration du complément d'arrhes 2/2 comme lot séparé, après cadrage.
+* Amélioration de l'historique ou d'une timeline réservation.
+* Actions de report, désistement, avoir ou retenue seulement après cadrage métier.
+* Mise à jour du tableau de bord pour tenir compte des nouveaux états de suivi réservation.
+* Seeds ou fixtures dédiées pour tester les cas réservation sans animal, avec animal, avec documents variés et paiements variés.
+* Plus tard : adoption finale / cession, sans facture tant que le modèle comptable n'est pas validé.
 
 ## Mise à jour documentaire — PR193 à PR197
 
