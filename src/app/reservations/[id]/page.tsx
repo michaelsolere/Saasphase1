@@ -49,6 +49,7 @@ import {
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
+import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -262,6 +263,78 @@ function formatDateInputValue(value: string | null) {
   }
 
   return value.slice(0, 10);
+}
+
+function FinancialBalanceNotice({
+  priceCents,
+  paidCents,
+  refundedCents,
+  currency,
+}: {
+  priceCents: number | null;
+  paidCents: number;
+  refundedCents: number;
+  currency: string;
+}) {
+  if (priceCents === null) {
+    return (
+      <div className="rounded-xl border border-muted bg-surface px-4 py-3.5 text-sm text-muted">
+        <span className="font-semibold block mb-1 text-foreground text-sm">
+          Solde non déterminé
+        </span>
+        <p className="text-xs leading-5">
+          Le solde ne peut pas être calculé tant qu’aucun tarif convenu n’est renseigné.
+        </p>
+      </div>
+    );
+  }
+
+  const remainingBalanceCents = priceCents - paidCents + refundedCents;
+
+  if (remainingBalanceCents > 0) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3.5 text-sm text-amber-900">
+        <span className="font-semibold block mb-1 text-amber-950 text-sm">
+          Reste à régler : {formatPrice(remainingBalanceCents, currency)}
+        </span>
+        <p className="text-xs leading-5">
+          Solde restant actuel : {formatPrice(remainingBalanceCents, currency)}.
+          Vous pouvez l’utiliser comme montant de solde si le paiement correspond
+          au règlement final.
+        </p>
+      </div>
+    );
+  }
+
+  if (remainingBalanceCents === 0) {
+    return (
+      <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 text-sm text-emerald-900">
+        <span className="font-semibold block mb-1 text-emerald-950 text-sm">
+          Réservation soldée
+        </span>
+        <p className="text-xs leading-5">
+          Cette réservation apparaît soldée. Vous pouvez tout de même enregistrer
+          un paiement si nécessaire, par exemple pour corriger une situation
+          particulière.
+        </p>
+      </div>
+    );
+  }
+
+  const overpaidAmount = Math.abs(remainingBalanceCents);
+
+  return (
+    <div className="rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3.5 text-sm text-rose-900">
+      <span className="font-semibold block mb-1 text-rose-950 text-sm">
+        Trop-perçu : {formatPrice(overpaidAmount, currency)}
+      </span>
+      <p className="text-xs leading-5">
+        Cette réservation présente un trop-perçu de{" "}
+        {formatPrice(overpaidAmount, currency)}. Vérifiez la situation avant
+        d’ajouter un nouveau paiement.
+      </p>
+    </div>
+  );
 }
 
 type ReservationNextAction = {
@@ -2410,91 +2483,40 @@ export default async function ReservationDetailPage({
                     </p>
                   )}
 
-                  <div className="border-t border-border pt-8 mt-8">
-                    <h3 className="text-lg font-semibold mb-2">
-                      Enregistrer un paiement manuel
-                    </h3>
-                    <p className="text-xs text-muted mb-6">
-                      Ce formulaire enregistre un paiement lié à cette réservation. Il ne change pas le statut de la réservation et ne génère aucun document.
-                    </p>
-
-                    {(() => {
-                      const priceCents = reservation?.price_cents ?? null;
-                      const paidCents = reservation?.paid_cents ?? 0;
-                      const refundedCents = reservation?.refunded_cents ?? 0;
-                      const currency = reservation?.currency ?? "EUR";
-
-                      if (priceCents === null) {
-                        return (
-                          <div className="mb-6 rounded-xl border border-muted bg-surface px-4 py-3.5 text-sm text-muted">
-                            <span className="font-semibold block mb-1 text-foreground text-sm">Solde non déterminé</span>
-                            <p className="text-xs leading-5">
-                              Le solde ne peut pas être calculé tant qu’aucun tarif convenu n’est renseigné.
-                            </p>
-                          </div>
-                        );
-                      }
-
-                      const remainingBalanceCents = priceCents - paidCents + refundedCents;
-
-                      if (remainingBalanceCents > 0) {
-                        return (
-                          <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3.5 text-sm text-amber-900">
-                            <span className="font-semibold block mb-1 text-amber-950 text-sm">Reste à régler : {formatPrice(remainingBalanceCents, currency)}</span>
-                            <p className="text-xs leading-5">
-                              Solde restant actuel : {formatPrice(remainingBalanceCents, currency)}. Vous pouvez l’utiliser comme montant de solde si le paiement correspond au règlement final.
-                            </p>
-                          </div>
-                        );
-                      } else if (remainingBalanceCents === 0) {
-                        return (
-                          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 text-sm text-emerald-900">
-                            <span className="font-semibold block mb-1 text-emerald-950 text-sm">Réservation soldée</span>
-                            <p className="text-xs leading-5">
-                              Cette réservation apparaît soldée. Vous pouvez tout de même enregistrer un paiement si nécessaire, par exemple pour corriger une situation particulière.
-                            </p>
-                          </div>
-                        );
-                      } else {
-                        const overpaidAmount = Math.abs(remainingBalanceCents);
-                        return (
-                          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50/60 px-4 py-3.5 text-sm text-rose-900">
-                            <span className="font-semibold block mb-1 text-rose-950 text-sm">Trop-perçu : {formatPrice(overpaidAmount, currency)}</span>
-                            <p className="text-xs leading-5">
-                              Cette réservation présente un trop-perçu de {formatPrice(overpaidAmount, currency)}. Vérifiez la situation avant d’ajouter un nouveau paiement.
-                            </p>
-                          </div>
-                        );
-                      }
-                    })()}
-
-                    <ReservationPaymentForm
-                      reservationId={id}
-                      remainingBalanceCents={
-                        reservation.price_cents !== null
-                          ? reservation.price_cents - (reservation.paid_cents ?? 0) + (reservation.refunded_cents ?? 0)
-                          : 0
-                      }
-                    />
-                  </div>
-
-                  <div className="border-t border-border pt-8 mt-8">
-                    <h3 className="text-lg font-semibold mb-2">
-                      Enregistrer un remboursement
-                    </h3>
-                    <p className="text-xs text-muted mb-6">
-                      Ce formulaire enregistre un remboursement lié à cette réservation sous forme de paiement positif de type remboursement. Il ne modifie pas le paiement d’origine ni le statut de la réservation et ne génère aucun document.
-                    </p>
-
-                    <ReservationRefundForm
-                      reservationId={id}
-                      remainingBalanceCents={
-                        reservation.price_cents !== null
-                          ? reservation.price_cents - (reservation.paid_cents ?? 0) + (reservation.refunded_cents ?? 0)
-                          : 0
-                      }
-                    />
-                  </div>
+                  <ReservationFinanceDialogs
+                    paymentForm={
+                      <div className="space-y-6">
+                        <FinancialBalanceNotice
+                          priceCents={reservation.price_cents}
+                          paidCents={reservation.paid_cents ?? 0}
+                          refundedCents={reservation.refunded_cents ?? 0}
+                          currency={currency}
+                        />
+                        <ReservationPaymentForm
+                          reservationId={id}
+                          remainingBalanceCents={
+                            reservation.price_cents !== null
+                              ? reservation.price_cents -
+                                (reservation.paid_cents ?? 0) +
+                                (reservation.refunded_cents ?? 0)
+                              : 0
+                          }
+                        />
+                      </div>
+                    }
+                    refundForm={
+                      <ReservationRefundForm
+                        reservationId={id}
+                        remainingBalanceCents={
+                          reservation.price_cents !== null
+                            ? reservation.price_cents -
+                              (reservation.paid_cents ?? 0) +
+                              (reservation.refunded_cents ?? 0)
+                            : 0
+                        }
+                      />
+                    }
+                  />
                 </section>
 
                 <section id="documents" className="rounded-2xl border bg-surface p-6 sm:p-8">
