@@ -282,6 +282,40 @@ function getLegalFormLabel(value: string | null) {
   return legalFormLabels[value] ?? value.replaceAll("_", " ");
 }
 
+function getAnimalSexLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  if (value === "M") {
+    return "Mâle";
+  }
+
+  if (value === "F") {
+    return "Femelle";
+  }
+
+  return value;
+}
+
+function getDaysBetweenDates(start: string | null, end: string | null) {
+  if (!start || !end) {
+    return null;
+  }
+
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  const dayInMilliseconds = 24 * 60 * 60 * 1000;
+  return Math.floor(
+    (endDate.getTime() - startDate.getTime()) / dayInMilliseconds,
+  );
+}
+
 function getUsefulPaymentDate(payment: RelatedPayment) {
   if (payment.paid_at) {
     return { label: "Date de paiement", value: payment.paid_at };
@@ -462,6 +496,293 @@ function RelatedSectionHeader({
         </Link>
       ) : null}
     </div>
+  );
+}
+
+function CommitmentCertificatePreview({
+  document,
+  sellerOrganization,
+  sellerRepresentative,
+  documentSettings,
+  relatedContact,
+  relatedApplication,
+  relatedReservation,
+  relatedLitter,
+  relatedLitterGroup,
+  relatedAnimal,
+}: {
+  document: DBDocument;
+  sellerOrganization: SellerOrganization | null;
+  sellerRepresentative: SellerRepresentative | null;
+  documentSettings: OrganizationDocumentSettings | null;
+  relatedContact: RelatedContact | null;
+  relatedApplication: RelatedApplication | null;
+  relatedReservation: ReservationOverview | null;
+  relatedLitter: RelatedLitter | null;
+  relatedLitterGroup: { id: string; name: string } | null;
+  relatedAnimal: RelatedAnimal | null;
+}) {
+  if (document.document_type !== "commitment_certificate") {
+    return null;
+  }
+
+  const adoptionPlannedAt = relatedReservation?.adoption_planned_at ?? null;
+  const daysBeforeAdoption = getDaysBetweenDates(document.signed_at, adoptionPlannedAt);
+  const sellerContactMissing =
+    !sellerOrganization?.email ||
+    !sellerOrganization.phone ||
+    (!sellerOrganization.address_line1 &&
+      !sellerOrganization.postal_code &&
+      !sellerOrganization.city);
+  const adopterContactMissing =
+    !relatedContact?.email ||
+    !relatedContact.phone ||
+    (!relatedContact.address_line1 &&
+      !relatedContact.postal_code &&
+      !relatedContact.city);
+  const certificateAttentionPoints = [
+    !documentSettings?.commitment_certificate_text
+      ? "Texte pédagogique du certificat à compléter dans les paramètres documentaires."
+      : null,
+    !sellerRepresentative ? "Signataire par défaut absent." : null,
+    sellerRepresentative && !sellerRepresentative.representative_role
+      ? "Qualité du signataire absente."
+      : null,
+    sellerContactMissing ? "Coordonnées vendeur incomplètes." : null,
+    adopterContactMissing ? "Coordonnées adoptant incomplètes." : null,
+    !document.signed_at ? "Date de signature absente." : null,
+    !adoptionPlannedAt ? "Date de cession / adoption prévue absente." : null,
+  ].filter(Boolean) as string[];
+
+  const species = relatedLitter?.species || relatedApplication?.species;
+  const breed =
+    relatedAnimal?.breed || relatedLitter?.breed || relatedApplication?.breed;
+  const litterOrGroup =
+    relatedLitter?.name ??
+    relatedReservation?.litter_name ??
+    relatedLitterGroup?.name ??
+    relatedReservation?.litter_group_name ??
+    "Non renseigné";
+
+  return (
+    <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
+      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
+        <p className="text-xs font-semibold uppercase tracking-wide">
+          Aperçu interne non définitif
+        </p>
+        <p className="mt-2 text-sm leading-6">
+          Ce bloc ne génère aucun document. Le texte devra être validé avant
+          toute utilisation réelle.
+        </p>
+      </div>
+
+      <div className="mt-7 border-b pb-5">
+        <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+          Prévisualisation interne
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          Certificat d’engagement et de connaissance
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Structure indicative destinée à vérifier les données disponibles avant
+          un futur prototype documentaire.
+        </p>
+      </div>
+
+      <div className="mt-6 space-y-8">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Vendeur / élevage
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom commercial" value={sellerOrganization?.name} />
+            <DetailItem
+              label="Raison sociale"
+              value={sellerOrganization?.legal_name}
+            />
+            <DetailItem
+              label="Forme juridique"
+              value={getLegalFormLabel(sellerOrganization?.legal_form ?? null)}
+            />
+            <DetailItem
+              label="SIRET / identifiant"
+              value={sellerOrganization?.siret}
+            />
+            <DetailItem label="Email" value={sellerOrganization?.email} />
+            <DetailItem label="Téléphone" value={sellerOrganization?.phone} />
+            <DetailItem
+              label="Signataire"
+              value={sellerRepresentative?.display_name}
+            />
+            <DetailItem
+              label="Qualité du signataire"
+              value={sellerRepresentative?.representative_role}
+            />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse vendeur
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {sellerOrganization?.address_line1 ||
+                sellerOrganization?.address_line2 ||
+                sellerOrganization?.postal_code ||
+                sellerOrganization?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {sellerOrganization.address_line1 ? (
+                      <div>{sellerOrganization.address_line1}</div>
+                    ) : null}
+                    {sellerOrganization.address_line2 ? (
+                      <div>{sellerOrganization.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
+                      {sellerOrganization.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(sellerOrganization.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Adoptant</h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Nom complet" value={relatedContact?.display_name} />
+            <DetailItem label="Email" value={relatedContact?.email} />
+            <DetailItem label="Téléphone" value={relatedContact?.phone} />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Adresse adoptant
+              </dt>
+              <dd className="mt-1.5 text-sm leading-6">
+                {relatedContact?.address_line1 ||
+                relatedContact?.address_line2 ||
+                relatedContact?.postal_code ||
+                relatedContact?.city ? (
+                  <div className="rounded-lg border bg-background/40 p-3">
+                    {relatedContact.address_line1 ? (
+                      <div>{relatedContact.address_line1}</div>
+                    ) : null}
+                    {relatedContact.address_line2 ? (
+                      <div>{relatedContact.address_line2}</div>
+                    ) : null}
+                    <div>
+                      {relatedContact.postal_code || "Non renseigné"}{" "}
+                      {relatedContact.city || "Non renseignée"}
+                    </div>
+                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
+                      {formatCountry(relatedContact.country)}
+                    </div>
+                  </div>
+                ) : (
+                  "Non renseignée"
+                )}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Animal / projet
+          </h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem label="Espèce" value={species} />
+            <DetailItem label="Race" value={breed} />
+            <DetailItem
+              label="Animal attribué"
+              value={
+                relatedAnimal?.display_name ??
+                "Animal non attribué pour l’instant"
+              }
+            />
+            <DetailItem
+              label="Sexe"
+              value={
+                relatedAnimal
+                  ? getAnimalSexLabel(relatedAnimal.sex)
+                  : getSexPreferenceLabel(
+                      relatedReservation?.reserved_sex_preference ??
+                        relatedApplication?.desired_sex_preference ??
+                        null,
+                    )
+              }
+            />
+            <DetailItem
+              label="Date de naissance"
+              value={formatApplicationDate(relatedAnimal?.birth_date ?? null)}
+            />
+            <DetailItem
+              label="Identification"
+              value={relatedAnimal?.identification_number}
+            />
+            <DetailItem label="LOF" value={relatedAnimal?.lof_number} />
+            <DetailItem label="Portée / groupe" value={litterOrGroup} />
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Dates</h3>
+          <dl className="mt-4 grid gap-5 sm:grid-cols-2">
+            <DetailItem
+              label="Création du document"
+              value={formatApplicationDate(document.created_at)}
+            />
+            <DetailItem
+              label="Envoi"
+              value={formatApplicationDate(document.sent_at)}
+            />
+            <DetailItem
+              label="Signature"
+              value={formatApplicationDate(document.signed_at)}
+            />
+            <DetailItem
+              label="Cession / adoption prévue"
+              value={formatApplicationDate(adoptionPlannedAt)}
+            />
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Indication délai 7 jours
+              </dt>
+              <dd className="mt-1.5 rounded-lg border bg-background/30 p-3 text-sm leading-6 text-muted">
+                {daysBeforeAdoption === null
+                  ? "À vérifier lorsque la date de signature et la date de cession / adoption prévue seront renseignées."
+                  : `${daysBeforeAdoption} jour(s) entre la signature renseignée et la date de cession / adoption prévue. Indication informative uniquement.`}
+              </dd>
+            </div>
+          </dl>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            Texte pédagogique / contenu certificat
+          </h3>
+          <p className="mt-3 whitespace-pre-wrap rounded-lg border bg-background/30 p-4 text-sm leading-7 text-muted">
+            {documentSettings?.commitment_certificate_text ||
+              "Texte pédagogique du certificat à compléter dans les paramètres documentaires."}
+          </p>
+        </div>
+
+        {certificateAttentionPoints.length > 0 ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
+            <h3 className="text-sm font-semibold text-amber-950">
+              Points d’attention propres au certificat
+            </h3>
+            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
+              {certificateAttentionPoints.map((point) => (
+                <li key={point}>{point}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -774,7 +1095,7 @@ export default async function DocumentDetailPage({
       ? await supabase
           .from("reservation_overview")
           .select(
-            "id, contact_id, contact_display_name, animal_id, animal_display_name, litter_id, litter_name, litter_group_id, litter_group_name, status, reserved_sex_preference, price_cents, currency, paid_cents, refunded_cents, created_at, updated_at",
+            "id, contact_id, contact_display_name, animal_id, animal_display_name, litter_id, litter_name, litter_group_id, litter_group_name, status, reserved_sex_preference, price_cents, currency, paid_cents, refunded_cents, adoption_planned_at, adoption_completed_at, created_at, updated_at",
           )
           .eq("id", document.reservation_id)
           .maybeSingle()
@@ -1146,6 +1467,19 @@ export default async function DocumentDetailPage({
                     </div>
                   )}
                 </section>
+
+                <CommitmentCertificatePreview
+                  document={document}
+                  sellerOrganization={sellerOrganization}
+                  sellerRepresentative={sellerRepresentative}
+                  documentSettings={documentSettings}
+                  relatedContact={relatedContact}
+                  relatedApplication={relatedApplication}
+                  relatedReservation={relatedReservation}
+                  relatedLitter={relatedLitter}
+                  relatedLitterGroup={relatedLitterGroup}
+                  relatedAnimal={relatedAnimal}
+                />
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <RelatedSectionHeader
