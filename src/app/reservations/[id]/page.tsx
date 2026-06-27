@@ -47,6 +47,7 @@ import {
   FINAL_RESERVATION_STATUSES,
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
+import { ReservationNoteForm } from "@/features/reservations/note-form";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -284,6 +285,7 @@ export default async function ReservationDetailPage({
     animal_unassign_status?: string;
     balance_request_status?: string;
     document_action_status?: string;
+    note_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -468,6 +470,8 @@ export default async function ReservationDetailPage({
           .from("notes")
           .select("id, title, body, note_type, visibility, created_at, created_by, profiles!created_by ( display_name )")
           .eq("reservation_id", reservation.id)
+          .eq("note_type", "internal")
+          .eq("visibility", "internal")
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : { data: null, error: null };
@@ -881,6 +885,24 @@ export default async function ReservationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.
+              </p>
+            ) : null}
+
+            {query.note_status === "success" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                La note interne a bien été ajoutée.
+              </p>
+            ) : null}
+
+            {query.note_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La note interne n’a pas pu être ajoutée. Vérifiez le contenu saisi et réessayez.
               </p>
             ) : null}
 
@@ -2000,13 +2022,24 @@ export default async function ReservationDetailPage({
                 ) : null}
 
                 <section id="notes" className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">
-                    Notes liées à la réservation
-                  </h2>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Notes internes
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                        Mémoire interne du dossier adoptant. Ces notes ne sont
+                        pas envoyées à l’adoptant.
+                      </p>
+                    </div>
+                    <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                      Interne
+                    </span>
+                  </div>
 
                   {reservationNotesError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger les notes liées à la réservation.
+                      Impossible de charger les notes internes liées à la réservation.
                     </p>
                   ) : reservationNotes && reservationNotes.length > 0 ? (
                     <div className="mt-5 divide-y divide-border">
@@ -2033,9 +2066,7 @@ export default async function ReservationDetailPage({
                                   {formatApplicationDate(note.created_at)}
                                 </span>
                                 <span aria-hidden="true">•</span>
-                                <span>Type : {note.note_type}</span>
-                                <span aria-hidden="true">•</span>
-                                <span>Visibilité : {note.visibility}</span>
+                                <span>Note interne</span>
                                 <span aria-hidden="true">•</span>
                                 <span>Par {authorName}</span>
                               </div>
@@ -2046,9 +2077,16 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : (
                     <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
-                      Aucune note liée à cette réservation pour le moment.
+                      Aucune note interne pour cette réservation.
                     </p>
                   )}
+
+                  <div className="mt-6 border-t pt-6">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Ajouter une note interne
+                    </h3>
+                    <ReservationNoteForm reservationId={id} />
+                  </div>
                 </section>
 
                 <section id="history" className="rounded-2xl border bg-surface p-6 sm:p-8">
