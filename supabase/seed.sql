@@ -73,6 +73,7 @@ insert into public.organizations (
   id,
   name,
   legal_name,
+  legal_form,
   slug,
   email,
   country,
@@ -83,6 +84,7 @@ values (
   '20000000-0000-4000-8000-000000000001',
   'Élevage de démonstration',
   'Élevage de démonstration',
+  'other',
   'elevage-demo',
   'contact@saasphase1.invalid',
   'FR',
@@ -126,6 +128,64 @@ values (
   'Golden Retriever',
   'EUR',
   180000,
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001'
+);
+
+insert into public.organization_representatives (
+  id,
+  organization_id,
+  display_name,
+  representative_role,
+  is_default_signatory,
+  is_active,
+  created_by,
+  updated_by
+)
+values (
+  '41000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000001',
+  'Signataire Démo',
+  'Représentant fictif',
+  true,
+  true,
+  '10000000-0000-4000-8000-000000000001',
+  '10000000-0000-4000-8000-000000000001'
+);
+
+insert into public.organization_document_settings (
+  id,
+  organization_id,
+  mediator_name,
+  mediator_contact,
+  mediator_website_url,
+  deposit_terms,
+  refund_terms,
+  postponement_terms,
+  credit_terms,
+  withholding_terms,
+  reservation_contract_terms,
+  commitment_certificate_text,
+  legal_mentions,
+  signature_city_default,
+  created_by,
+  updated_by
+)
+values (
+  '42000000-0000-4000-8000-000000000001',
+  '20000000-0000-4000-8000-000000000001',
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
   '10000000-0000-4000-8000-000000000001',
   '10000000-0000-4000-8000-000000000001'
 );
