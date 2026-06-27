@@ -847,13 +847,13 @@ export async function expireReservation(formData: FormData) {
 export async function assignAnimalToReservation(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
-  if (typeof reservationId !== "string" || !reservationId) {
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
     redirect("/reservations?erreur=assignation");
   }
 
   const animalId = formData.get("animal_id");
 
-  if (typeof animalId !== "string" || !animalId) {
+  if (typeof animalId !== "string" || !isUuid(animalId)) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error`);
   }
 
@@ -869,7 +869,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 1. Relire la réservation
   const { data: reservation, error: readResError } = await supabase
     .from("reservations")
-    .select("id, organization_id, animal_id, status, deleted_at")
+    .select("id, organization_id, animal_id, litter_id, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -891,7 +891,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 4. Relire l'animal
   const { data: animal, error: readAnimalError } = await supabase
     .from("animals")
-    .select("id, organization_id, status, deleted_at")
+    .select("id, organization_id, litter_id, status, deleted_at")
     .eq("id", animalId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -905,13 +905,18 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error`);
   }
 
-  // 6. Vérifier le statut de l'animal
+  // 6. Vérifier la cohérence de portée quand la réservation est liée à une portée précise
+  if (reservation.litter_id && animal.litter_id !== reservation.litter_id) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+  }
+
+  // 7. Vérifier le statut de l'animal
   const allowedAnimalStatuses = ["born", "active", "available"];
   if (!allowedAnimalStatuses.includes(animal.status)) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
   }
 
-  // 7. Vérifier que l'animal n'est pas déjà lié à une autre réservation active
+  // 8. Vérifier que l'animal n'est pas déjà lié à une autre réservation active
   const { data: concurrentRes, error: concurrentResError } = await supabase
     .from("reservations")
     .select("id")
@@ -927,8 +932,8 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
   }
 
-  // 8. Mettre à jour
-  const { error: updateError } = await supabase
+  // 9. Mettre à jour
+  const { data: updatedReservation, error: updateError } = await supabase
     .from("reservations")
     .update({
       animal_id: animalId,
@@ -938,9 +943,12 @@ export async function assignAnimalToReservation(formData: FormData) {
     })
     .eq("id", reservationId)
     .eq("organization_id", reservation.organization_id)
-    .is("deleted_at", null);
+    .is("animal_id", null)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (updateError) {
+  if (updateError || !updatedReservation) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error`);
   }
 
