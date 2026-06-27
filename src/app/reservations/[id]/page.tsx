@@ -501,6 +501,81 @@ export default async function ReservationDetailPage({
             followUpEventCount > 1 ? "s" : ""
           }, ${followUpNoteCount} note${followUpNoteCount > 1 ? "s" : ""}`;
 
+  const totalDocs = reservationDocuments?.length ?? 0;
+  const sentDocs = reservationDocuments?.filter((d) => d.status === "sent").length ?? 0;
+  const signedDocs = reservationDocuments?.filter((d) => d.status === "signed").length ?? 0;
+  const toPrepareDocs = reservationDocuments?.filter((d) => d.status === "to_generate").length ?? 0;
+
+  let docsSummaryText = "";
+  if (totalDocs === 0) {
+    docsSummaryText = "Aucun document lié";
+  } else if (signedDocs === totalDocs) {
+    docsSummaryText = "Tous les documents reçus signés";
+  } else {
+    docsSummaryText = `${signedDocs} signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
+  }
+
+  let paymentsSummaryText = "";
+  let paymentsSummaryColor = "text-muted bg-muted-soft border-border";
+
+  if (priceCents !== null && paidCents - refundedCents >= priceCents) {
+    paymentsSummaryText = "Réservation soldée";
+    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
+  } else if (hasSecondPaid || paidCents >= 50000) {
+    paymentsSummaryText = "Arrhes complètes (500 € payés)";
+    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
+  } else if (hasFirstPaid || paidCents > 0) {
+    paymentsSummaryText = `Arrhes partielles (${formatPrice(paidCents, currency)} payés)`;
+    paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
+  } else {
+    paymentsSummaryText = "En attente de paiement / d'arrhes";
+    paymentsSummaryColor = "text-muted bg-muted-soft border-border";
+  }
+
+  let nextActionText = "";
+
+  if (reservation) {
+    if (reservation.status === "pre_reservation_requested") {
+      if (paidCents === 0) {
+        nextActionText = "Attendre le paiement 1/2 d’arrhes (250 €) ou enregistrer un paiement.";
+      } else {
+        nextActionText = "Premier versement d'arrhes reçu. Confirmer la pré-réservation.";
+      }
+    } else if (reservation.status === "pre_reservation_paid") {
+      if (!hasSecondPaid) {
+        if (reservationPayments && reservationPayments.some((p) => p.payment_type === "arrhes" && p.status === "requested")) {
+          nextActionText = "Attendre le paiement du complément des arrhes (250 €) déjà demandé.";
+        } else {
+          nextActionText = "Demander le complément des arrhes (deuxième versement de 250 €).";
+        }
+      } else {
+        if (totalDocs === 0) {
+          nextActionText = "Initialiser la checklist des documents de réservation.";
+        } else if (toPrepareDocs > 0) {
+          nextActionText = "Générer ou marquer comme envoyés les documents à préparer.";
+        } else if (sentDocs > 0) {
+          nextActionText = "Attendre la signature / réception des documents envoyés.";
+        } else {
+          if (!reservation.animal_id) {
+            nextActionText = "Attribuer un animal à cette réservation.";
+          } else {
+            nextActionText = "Dossier financièrement validé, attribution/adoption à traiter séparément.";
+          }
+        }
+      }
+    } else if (reservation.status === "confirmed") {
+      if (!reservation.animal_id) {
+        nextActionText = "Attribuer un animal à cette réservation confirmée.";
+      } else {
+        nextActionText = "Attendre la date d'adoption pour finaliser le dossier.";
+      }
+    } else if (reservation.status === "adopted") {
+      nextActionText = "Adoption finalisée. Suivi post-adoption en cours.";
+    } else {
+      nextActionText = "Aucune action requise pour ce statut final.";
+    }
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -902,6 +977,107 @@ export default async function ReservationDetailPage({
                 </p>
               </div>
             </header>
+
+            {/* Résumé du dossier */}
+            <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+              <h2 className="text-xl font-semibold text-foreground">Résumé du dossier adoptant</h2>
+              <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Adoptant card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Adoptant</span>
+                  <div className="flex items-center gap-2">
+                    {reservation.contact_id ? (
+                      <Link
+                        href={`/contacts/${reservation.contact_id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {reservation.contact_display_name ?? "Client associé"}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-foreground">{reservation.contact_display_name ?? "Client associé"}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Statut card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Statut</span>
+                  <div>
+                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                      {getReservationStatusLabel(reservation.status)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Portée / Groupe card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Portée / Groupe</span>
+                  <div>
+                    {reservation.litter_id ? (
+                      <Link
+                        href={`/litters/${reservation.litter_id}`}
+                        className="font-medium text-accent hover:underline block"
+                      >
+                        {reservation.litter_name}
+                      </Link>
+                    ) : reservation.litter_group_name ? (
+                      <span className="font-medium text-foreground block">{reservation.litter_group_name}</span>
+                    ) : (
+                      <span className="text-sm text-muted/60 block">Aucune portée précise liée</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Animal card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Animal attribué</span>
+                  <div>
+                    {reservation.animal_id ? (
+                      <Link
+                        href={`/animals/${reservation.animal_id}`}
+                        className="font-medium text-accent hover:underline block"
+                      >
+                        {reservation.animal_display_name}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-muted/60 block">Animal non attribué</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Paiements card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Paiements / Arrhes</span>
+                  <div>
+                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${paymentsSummaryColor}`}>
+                      {paymentsSummaryText}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Documents card */}
+                <div className="space-y-1">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Documents liés</span>
+                  <div className="text-sm text-foreground font-medium">
+                    {docsSummaryText}
+                  </div>
+                </div>
+              </div>
+
+              {/* Next probable action */}
+              {nextActionText ? (
+                <div className="mt-6 border-t pt-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <span className="inline-flex rounded bg-accent/10 px-2 py-1 text-xs font-bold text-accent uppercase tracking-wider w-fit">
+                      Prochaine action suggérée
+                    </span>
+                    <span className="text-sm font-medium text-foreground">
+                      {nextActionText}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </section>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
