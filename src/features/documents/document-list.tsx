@@ -9,6 +9,15 @@ import {
 } from "./formatters";
 import type { DBDocument } from "./types";
 
+export type DocumentWithContact = DBDocument & {
+  contacts?: {
+    first_name: string | null;
+    last_name: string | null;
+    display_name: string | null;
+    email: string | null;
+  } | null;
+};
+
 function DateValue({ value }: { value: string | null }) {
   return (
     <span className="text-muted">
@@ -52,7 +61,7 @@ function RelatedLinks({ document }: { document: DBDocument }) {
   );
 }
 
-export function DocumentList({ documents }: { documents: DBDocument[] }) {
+export function DocumentList({ documents }: { documents: DocumentWithContact[] }) {
   if (documents.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed bg-surface px-6 py-12 text-center">
@@ -67,6 +76,7 @@ export function DocumentList({ documents }: { documents: DBDocument[] }) {
         <thead className="border-b bg-muted-soft text-xs font-semibold uppercase tracking-wider text-muted">
           <tr>
             <th scope="col" className="px-6 py-4">Document</th>
+            <th scope="col" className="px-6 py-4">Adoptant</th>
             <th scope="col" className="px-6 py-4">Statut</th>
             <th scope="col" className="px-6 py-4">Dates</th>
             <th scope="col" className="px-6 py-4">Fichier</th>
@@ -76,46 +86,72 @@ export function DocumentList({ documents }: { documents: DBDocument[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {documents.map((document) => (
-            <tr key={document.id} className="transition-colors hover:bg-muted-soft/40">
-              <td className="min-w-72 px-6 py-4">
-                <p className="font-semibold text-foreground">{document.title}</p>
-                <p className="mt-1 text-xs text-muted">
-                  {getDocumentTypeLabel(document.document_type)}
-                </p>
-              </td>
-              <td className="whitespace-nowrap px-6 py-4">
-                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                  {getDocumentStatusLabel(document.status)}
-                </span>
-              </td>
-              <td className="min-w-64 px-6 py-4 text-xs leading-6">
-                <p>Créé : <DateValue value={document.created_at} /></p>
-                <p>Mis à jour : <DateValue value={document.updated_at} /></p>
-                <p>Envoyé : <DateValue value={document.sent_at} /></p>
-                <p>Signé : <DateValue value={document.signed_at} /></p>
-                <p>Reçu : <DateValue value={document.received_at} /></p>
-                <p>Expire : <DateValue value={document.expires_at} /></p>
-              </td>
-              <td className="whitespace-nowrap px-6 py-4 text-muted">
-                {document.file_name || "Non renseigné"}
-              </td>
-              <td className="whitespace-nowrap px-6 py-4 text-muted">
-                {getSignatureRequiredLabel(document.signature_required)}
-              </td>
-              <td className="min-w-48 px-6 py-4">
-                <RelatedLinks document={document} />
-              </td>
-              <td className="whitespace-nowrap px-6 py-4">
-                <Link
-                  href={`/documents/${document.id}`}
-                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                >
-                  Consulter
-                </Link>
-              </td>
-            </tr>
-          ))}
+          {documents.map((document) => {
+            const contact = document.contacts;
+            const contactName = contact
+              ? contact.display_name || `${contact.first_name || ""} ${contact.last_name || ""}`.trim()
+              : null;
+
+            return (
+              <tr key={document.id} className="transition-colors hover:bg-muted-soft/40">
+                <td className="min-w-72 px-6 py-4">
+                  <p className="font-semibold text-foreground">{document.title}</p>
+                  <p className="mt-1 text-xs text-muted">
+                    {getDocumentTypeLabel(document.document_type)}
+                  </p>
+                </td>
+                <td className="px-6 py-4">
+                  {document.contact_id && contact ? (
+                    <div>
+                      <Link
+                        href={`/contacts/${document.contact_id}`}
+                        className="font-semibold text-accent hover:underline"
+                      >
+                        {contactName || "Contact sans nom"}
+                      </Link>
+                      {contact.email ? (
+                        <p className="mt-1 text-xs text-muted">
+                          {contact.email}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-muted/60">Non lié à un contact</span>
+                  )}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                    {getDocumentStatusLabel(document.status)}
+                  </span>
+                </td>
+                <td className="min-w-64 px-6 py-4 text-xs leading-6">
+                  <p>Créé : <DateValue value={document.created_at} /></p>
+                  <p>Mis à jour : <DateValue value={document.updated_at} /></p>
+                  <p>Envoyé : <DateValue value={document.sent_at} /></p>
+                  <p>Signé : <DateValue value={document.signed_at} /></p>
+                  <p>Reçu : <DateValue value={document.received_at} /></p>
+                  <p>Expire : <DateValue value={document.expires_at} /></p>
+                </td>
+                <td className="whitespace-nowrap px-6 py-4 text-muted">
+                  {document.file_name || "Non renseigné"}
+                </td>
+                <td className="whitespace-nowrap px-6 py-4 text-muted">
+                  {getSignatureRequiredLabel(document.signature_required)}
+                </td>
+                <td className="min-w-48 px-6 py-4">
+                  <RelatedLinks document={document} />
+                </td>
+                <td className="whitespace-nowrap px-6 py-4">
+                  <Link
+                    href={`/documents/${document.id}`}
+                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Consulter
+                  </Link>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
