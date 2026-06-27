@@ -2378,7 +2378,8 @@ export default async function ReservationDetailPage({
                       {reservationDocuments.map((document) => {
                         const isChecklistDoc =
                           document.document_type === "commitment_certificate" ||
-                          document.document_type === "reservation_contract";
+                          document.document_type === "reservation_contract" ||
+                          document.document_type === "sale_certificate";
 
                         return (
                           <div
