@@ -38,14 +38,43 @@ export default async function DocumentsPage() {
 
   const result = await supabase
     .from("documents")
-    .select(
-      "id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, expires_at, signature_required, file_name, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, contacts!contact_id(first_name, last_name, display_name, email)",
-    )
+    .select("*")
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  documents = result.data as DocumentWithContact[] | null;
+  const rawDocuments = result.data || [];
   hasLoadingError = hasLoadingError || Boolean(result.error);
+
+  const contactsMap = new Map<string, { first_name: string | null; last_name: string | null; display_name: string | null; email: string | null }>();
+
+  if (rawDocuments.length > 0) {
+    const contactIds = Array.from(new Set(rawDocuments.map((d) => d.contact_id).filter(Boolean))) as string[];
+    if (contactIds.length > 0) {
+      const { data: contactsData, error: contactsError } = await supabase
+        .from("contacts")
+        .select("id, first_name, last_name, display_name, email")
+        .in("id", contactIds)
+        .is("deleted_at", null);
+
+      if (contactsError) {
+        hasLoadingError = true;
+      } else if (contactsData) {
+        contactsData.forEach((c) => {
+          contactsMap.set(c.id, {
+            first_name: c.first_name,
+            last_name: c.last_name,
+            display_name: c.display_name,
+            email: c.email,
+          });
+        });
+      }
+    }
+  }
+
+  documents = rawDocuments.map((d) => ({
+    ...d,
+    contacts: d.contact_id ? contactsMap.get(d.contact_id) || null : null,
+  }));
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
