@@ -37,7 +37,6 @@ import {
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
-import { markReservationPaymentAsPaid } from "@/features/payments/actions";
 import {
   initializeReservationDocuments,
   markDocumentAsSent,
@@ -50,6 +49,7 @@ import {
 } from "@/features/reservations/statuses";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
+import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -2452,24 +2452,18 @@ export default async function ReservationDetailPage({
                                   Consulter
                                 </Link>
                                 {payment.status === "requested" ? (
-                                  <form action={markReservationPaymentAsPaid}>
-                                    <input
-                                      type="hidden"
-                                      name="payment_id"
-                                      value={payment.id}
-                                    />
-                                    <input
-                                      type="hidden"
-                                      name="reservation_id"
-                                      value={id}
-                                    />
-                                    <button
-                                      type="submit"
-                                      className="inline-flex rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100/60"
-                                    >
-                                      Marquer payé
-                                    </button>
-                                  </form>
+                                  <PaymentConfirmDialog
+                                    paymentId={payment.id}
+                                    reservationId={id}
+                                    amountLabel={formatPrice(
+                                      payment.amount_cents,
+                                      payment.currency,
+                                    )}
+                                    typeLabel={getPaymentTypeLabel(
+                                      payment.payment_type,
+                                    )}
+                                    dueDateLabel={dateDisplay}
+                                  />
                                 ) : null}
                               </div>
                             </div>
