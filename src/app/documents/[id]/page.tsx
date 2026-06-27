@@ -37,6 +37,8 @@ type RelatedContact = {
   contact_type: string;
   primary_status: string;
   origin_channel: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
   postal_code: string | null;
   city: string | null;
   country: string;
@@ -60,6 +62,45 @@ type RelatedApplication = {
   submitted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  internal_comment: string | null;
+  desired_litter_id: string | null;
+  desired_litter_group_id: string | null;
+};
+
+type RelatedLitter = {
+  id: string;
+  name: string;
+  breed: string;
+  species: string;
+  status: string;
+  expected_birth_date: string | null;
+  actual_birth_date: string | null;
+  mother_id: string | null;
+  father_id: string | null;
+  litter_group_id: string | null;
+};
+
+type RelatedAnimal = {
+  id: string;
+  display_name: string;
+  sex: string;
+  birth_date: string | null;
+  identification_number: string | null;
+  lof_number: string | null;
+  collar_color_current: string | null;
+  collar_color_initial: string | null;
+  breed: string;
+  status: string;
+  call_name: string | null;
+  chosen_name_by_adopter: string | null;
+};
+
+type OtherRelatedDocument = {
+  id: string;
+  title: string;
+  document_type: string;
+  status: string;
+  signature_required: boolean;
 };
 
 type RelatedPayment = {
@@ -208,6 +249,51 @@ function getUsefulEventDate(event: RelatedEvent) {
 
 function getEventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getFinancialStatus(priceCents: number | null, paidCents: number | null, refundedCents: number | null) {
+  if (paidCents === null && priceCents === null) return "État non calculable";
+
+  const paid = paidCents ?? 0;
+  const refunded = refundedCents ?? 0;
+  const price = priceCents ?? 0;
+  const netPaid = Math.max(0, paid - refunded);
+
+  if (netPaid === 0) {
+    return "Aucun paiement";
+  }
+
+  if (price > 0 && netPaid >= price) {
+    return "Paiement intégral";
+  }
+
+  // 500 € = 50000 cents
+  if (netPaid >= 50000) {
+    return "Arrhes complètes";
+  }
+
+  if (netPaid > 0 && netPaid < 50000) {
+    return "Arrhes partielles";
+  }
+
+  return "Reste dû";
+}
+
+function getExpectedNextStep(document: { status: string; signature_required: boolean }) {
+  switch (document.status) {
+    case "draft":
+      return "À envoyer à l'adoptant";
+    case "sent":
+      return document.signature_required ? "En attente de signature" : "En attente de réception";
+    case "signed":
+    case "approved":
+    case "completed":
+      return "Document finalisé";
+    case "rejected":
+      return "Document rejeté (à recréer ou corriger)";
+    default:
+      return "Aucune action attendue";
+  }
 }
 
 function NotFoundOrUnauthorized() {
@@ -477,11 +563,12 @@ export default async function DocumentDetailPage({
 
   const document = rawDocument as DBDocument | null;
 
+  // 1. Contact
   const { data: rawContact, error: contactError } = document?.contact_id
     ? await supabase
         .from("contacts")
         .select(
-          "id, display_name, first_name, last_name, email, phone, secondary_phone, contact_type, primary_status, origin_channel, postal_code, city, country, created_at, updated_at, deleted_at",
+          "id, display_name, first_name, last_name, email, phone, secondary_phone, contact_type, primary_status, origin_channel, address_line1, address_line2, postal_code, city, country, created_at, updated_at, deleted_at",
         )
         .eq("id", document.contact_id)
         .is("deleted_at", null)
@@ -490,6 +577,7 @@ export default async function DocumentDetailPage({
 
   const relatedContact = rawContact as RelatedContact | null;
 
+  // 2. Application overview
   const { data: rawApplication, error: applicationError } =
     document?.application_id
       ? await supabase
@@ -501,8 +589,61 @@ export default async function DocumentDetailPage({
           .maybeSingle()
       : { data: null, error: null };
 
-  const relatedApplication = rawApplication as RelatedApplication | null;
+  let relatedApplication = rawApplication as RelatedApplication | null;
 
+  // applications fields (internal_comment, desired_litter_id, desired_litter_group_id)
+  let appLitterName: string | null = null;
+  let appLitterGroupName: string | null = null;
+  if (document?.application_id) {
+    const { data: appFields } = await supabase
+      .from("applications")
+      .select("internal_comment, desired_litter_id, desired_litter_group_id")
+      .eq("id", document.application_id)
+      .maybeSingle();
+
+    if (appFields) {
+      relatedApplication = {
+        ...relatedApplication,
+        id: document.application_id,
+        contact_id: relatedApplication?.contact_id ?? null,
+        contact_display_name: relatedApplication?.contact_display_name ?? null,
+        contact_email: relatedApplication?.contact_email ?? null,
+        contact_phone: relatedApplication?.contact_phone ?? null,
+        species: relatedApplication?.species ?? null,
+        breed: relatedApplication?.breed ?? null,
+        desired_sex_preference: relatedApplication?.desired_sex_preference ?? null,
+        project_description: relatedApplication?.project_description ?? null,
+        status: relatedApplication?.status ?? null,
+        public_form_name: relatedApplication?.public_form_name ?? null,
+        public_form_slug: relatedApplication?.public_form_slug ?? null,
+        submitted_at: relatedApplication?.submitted_at ?? null,
+        created_at: relatedApplication?.created_at ?? null,
+        updated_at: relatedApplication?.updated_at ?? null,
+        internal_comment: appFields.internal_comment,
+        desired_litter_id: appFields.desired_litter_id,
+        desired_litter_group_id: appFields.desired_litter_group_id,
+      };
+
+      if (appFields.desired_litter_id) {
+        const { data: l } = await supabase
+          .from("litters")
+          .select("name")
+          .eq("id", appFields.desired_litter_id)
+          .maybeSingle();
+        if (l) appLitterName = l.name;
+      }
+      if (appFields.desired_litter_group_id) {
+        const { data: g } = await supabase
+          .from("litter_groups")
+          .select("name")
+          .eq("id", appFields.desired_litter_group_id)
+          .maybeSingle();
+        if (g) appLitterGroupName = g.name;
+      }
+    }
+  }
+
+  // 3. Reservation overview
   const { data: rawReservation, error: reservationError } =
     document?.reservation_id
       ? await supabase
@@ -516,7 +657,31 @@ export default async function DocumentDetailPage({
 
   const relatedReservation = rawReservation as ReservationOverview | null;
 
-  // Parents of the litter associated with the reservation
+  // 4. Litter
+  const targetLitterId = document?.litter_id || relatedReservation?.litter_id;
+  const { data: rawLitter, error: litterError } = targetLitterId
+    ? await supabase
+        .from("litters")
+        .select("id, name, breed, species, status, expected_birth_date, actual_birth_date, mother_id, father_id, litter_group_id")
+        .eq("id", targetLitterId)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const relatedLitter = rawLitter as RelatedLitter | null;
+
+  // 5. Litter Group
+  const targetLitterGroupId = document?.litter_id ? relatedLitter?.litter_group_id : (relatedReservation?.litter_group_id || relatedLitter?.litter_group_id);
+  const { data: rawLitterGroup } = targetLitterGroupId
+    ? await supabase
+        .from("litter_groups")
+        .select("id, name")
+        .eq("id", targetLitterGroupId)
+        .maybeSingle()
+    : { data: null };
+
+  const relatedLitterGroup = rawLitterGroup as { id: string; name: string } | null;
+
+  // 6. Parents
   let litterParentsError = false;
   let mother: {
     id: string;
@@ -531,67 +696,105 @@ export default async function DocumentDetailPage({
     lof_number: string | null;
   } | null = null;
 
-  if (relatedReservation?.litter_id) {
-    const { data: litter, error: litterError } = await supabase
-      .from("litters")
-      .select("mother_id, father_id")
-      .eq("id", relatedReservation.litter_id)
-      .maybeSingle();
+  if (relatedLitter) {
+    const parentIds = [relatedLitter.mother_id, relatedLitter.father_id].filter(Boolean) as string[];
 
-    if (litterError) {
-      litterParentsError = true;
-    } else if (litter) {
-      const parentIds = [litter.mother_id, litter.father_id].filter(Boolean) as string[];
+    if (parentIds.length > 0) {
+      const { data: parents, error: parentsError } = await supabase
+        .from("animals")
+        .select("id, display_name, identification_number, lof_number")
+        .in("id", parentIds);
 
-      if (parentIds.length > 0) {
-        const { data: parents, error: parentsError } = await supabase
-          .from("animals")
-          .select("id, display_name, identification_number, lof_number")
-          .in("id", parentIds);
+      if (parentsError) {
+        litterParentsError = true;
+      } else if (parents) {
+        const motherData = parents.find((a) => a.id === relatedLitter.mother_id);
+        const fatherData = parents.find((a) => a.id === relatedLitter.father_id);
 
-        if (parentsError) {
-          litterParentsError = true;
-        } else if (parents) {
-          const motherData = parents.find((a) => a.id === litter.mother_id);
-          const fatherData = parents.find((a) => a.id === litter.father_id);
+        if (relatedLitter.mother_id) {
+          mother = {
+            id: relatedLitter.mother_id,
+            display_name: motherData?.display_name ?? null,
+            identification_number: motherData?.identification_number ?? null,
+            lof_number: motherData?.lof_number ?? null,
+          };
+        }
 
-          if (litter.mother_id) {
-            mother = {
-              id: litter.mother_id,
-              display_name: motherData?.display_name ?? null,
-              identification_number: motherData?.identification_number ?? null,
-              lof_number: motherData?.lof_number ?? null,
-            };
-          }
-
-          if (litter.father_id) {
-            father = {
-              id: litter.father_id,
-              display_name: fatherData?.display_name ?? null,
-              identification_number: fatherData?.identification_number ?? null,
-              lof_number: fatherData?.lof_number ?? null,
-            };
-          }
+        if (relatedLitter.father_id) {
+          father = {
+            id: relatedLitter.father_id,
+            display_name: fatherData?.display_name ?? null,
+            identification_number: fatherData?.identification_number ?? null,
+            lof_number: fatherData?.lof_number ?? null,
+          };
         }
       }
     }
   }
 
-  const { data: rawPayment, error: paymentError } = document?.payment_id
+  // 7. Animal
+  const targetAnimalId = document?.animal_id || relatedReservation?.animal_id;
+  const { data: rawAnimal, error: animalError } = targetAnimalId
     ? await supabase
-        .from("payments")
-        .select(
-          "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, contact_id, reservation_id, created_at, updated_at, deleted_at",
-        )
-        .eq("id", document.payment_id)
-        .is("deleted_at", null)
+        .from("animals")
+        .select("id, display_name, sex, birth_date, identification_number, lof_number, collar_color_current, collar_color_initial, breed, status, call_name, chosen_name_by_adopter")
+        .eq("id", targetAnimalId)
         .maybeSingle()
     : { data: null, error: null };
 
-  const relatedPayment = rawPayment as RelatedPayment | null;
-  const usefulPaymentDate = relatedPayment
-    ? getUsefulPaymentDate(relatedPayment)
-    : null;
+  const relatedAnimal = rawAnimal as RelatedAnimal | null;
+
+  // 8. Payments
+  let relatedPayments: RelatedPayment[] = [];
+  let paymentsError = false;
+
+  if (document?.reservation_id) {
+    const { data: resPayments, error: resPaymentsErr } = await supabase
+      .from("payments")
+      .select(
+        "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, contact_id, reservation_id, created_at, updated_at, deleted_at",
+      )
+      .eq("reservation_id", document.reservation_id)
+      .is("deleted_at", null);
+
+    if (resPaymentsErr) {
+      paymentsError = true;
+    } else if (resPayments) {
+      relatedPayments = resPayments as RelatedPayment[];
+    }
+  }
+
+  // Si document.payment_id est renseigné et pas déjà dans relatedPayments
+  if (document?.payment_id && !relatedPayments.some((p) => p.id === document.payment_id)) {
+    const { data: docPayment, error: docPaymentErr } = await supabase
+      .from("payments")
+      .select(
+        "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, contact_id, reservation_id, created_at, updated_at, deleted_at",
+      )
+      .eq("id", document.payment_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (docPaymentErr) {
+      paymentsError = true;
+    } else if (docPayment) {
+      relatedPayments.push(docPayment as RelatedPayment);
+    }
+  }
+
+  // 9. Other documents
+  let otherRelatedDocuments: OtherRelatedDocument[] = [];
+  if (document?.reservation_id) {
+    const { data: otherDocs } = await supabase
+      .from("documents")
+      .select("id, title, document_type, status, signature_required")
+      .eq("reservation_id", document.reservation_id)
+      .is("deleted_at", null);
+
+    if (otherDocs) {
+      otherRelatedDocuments = (otherDocs as OtherRelatedDocument[]).filter((d) => d.id !== document.id);
+    }
+  }
 
   const { data: rawNotes, error: notesError } = document?.id
     ? await supabase
@@ -616,6 +819,42 @@ export default async function DocumentDetailPage({
     : { data: null, error: null };
 
   const documentEvents = rawEvents as RelatedEvent[] | null;
+
+  // Diagnostic des points d'attention / données manquantes
+  const pointsOfAttention: string[] = [];
+  if (document) {
+    if (relatedContact) {
+      if (!relatedContact.address_line1 && !relatedContact.postal_code && !relatedContact.city) {
+        pointsOfAttention.push("Adresse postale de l’adoptant manquante (requise pour le contrat)");
+      }
+      if (!relatedContact.phone) {
+        pointsOfAttention.push("Numéro de téléphone de l’adoptant manquant");
+      }
+    }
+    if (!document.application_id) {
+      pointsOfAttention.push("Aucune candidature liée à ce document");
+    }
+    if (!document.reservation_id) {
+      pointsOfAttention.push("Aucune réservation liée à ce document");
+    } else if (relatedReservation && !relatedReservation.litter_id) {
+      pointsOfAttention.push("Aucune portée précise liée à la réservation");
+    }
+    if (mother && !mother.lof_number) {
+      pointsOfAttention.push(`Numéro LOF de la mère (${mother.display_name || "Non renseignée"}) manquant`);
+    }
+    if (father && !father.lof_number) {
+      pointsOfAttention.push(`Numéro LOF du père (${father.display_name || "Non renseigné"}) manquant`);
+    }
+    if (!targetAnimalId) {
+      pointsOfAttention.push("Aucun animal attribué à ce dossier");
+    }
+    if (!document.sent_at) {
+      pointsOfAttention.push("Document non marqué comme envoyé");
+    }
+    if (document.signature_required && !document.signed_at) {
+      pointsOfAttention.push("Document en attente de signature adoptant");
+    }
+  }
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -659,6 +898,19 @@ export default async function DocumentDetailPage({
               </span>
             </header>
 
+            {pointsOfAttention.length > 0 && (
+              <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-6">
+                <h2 className="text-sm font-semibold text-amber-900 flex items-center gap-2">
+                  <span className="text-base">⚠️</span> Données manquantes ou à compléter
+                </h2>
+                <ul className="mt-3 list-disc list-inside space-y-1.5 text-sm text-amber-800">
+                  {pointsOfAttention.map((point, index) => (
+                    <li key={index}>{point}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -682,10 +934,42 @@ export default async function DocumentDetailPage({
                       )}
                     />
                     <DetailItem
+                      label="Prochaine étape attendue"
+                      value={getExpectedNextStep(document)}
+                    />
+                    <DetailItem
                       label="Généré depuis modèle"
                       value={booleanLabel(document.generated_from_template)}
                     />
+                    <DetailItem
+                      label="Date d'envoi"
+                      value={formatApplicationDate(document.sent_at)}
+                    />
+                    <DetailItem
+                      label="Date de signature"
+                      value={formatApplicationDate(document.signed_at)}
+                    />
                   </dl>
+
+                  {document.document_type === "commitment_certificate" && (
+                    <div className="mt-6 rounded-xl bg-accent-soft p-4 border border-accent/10">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                        Information juridique · Certificat d’engagement
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-muted">
+                        Le certificat d’engagement et de connaissance doit être signé par l’adoptant au moins 7 jours avant la cession effective de l’animal.
+                      </p>
+                      {document.signed_at ? (
+                        <p className="mt-2 text-xs font-semibold text-emerald-700">
+                          ✅ Signé le {formatApplicationDate(document.signed_at)}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-xs font-semibold text-amber-700">
+                          ⚠️ Certificat non signé / date de signature non renseignée.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -741,15 +1025,27 @@ export default async function DocumentDetailPage({
                           relatedContact.origin_channel,
                         )}
                       />
-                      <DetailItem label="Ville" value={relatedContact.city} />
-                      <DetailItem
-                        label="Code postal"
-                        value={relatedContact.postal_code}
-                      />
-                      <DetailItem
-                        label="Pays"
-                        value={formatCountry(relatedContact.country)}
-                      />
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Adresse postale complète
+                        </dt>
+                        <dd className="mt-1.5 text-sm leading-6">
+                          {relatedContact.address_line1 || relatedContact.address_line2 || relatedContact.postal_code || relatedContact.city ? (
+                            <div className="bg-background/40 p-3 rounded-lg border">
+                              {relatedContact.address_line1 && <div>{relatedContact.address_line1}</div>}
+                              {relatedContact.address_line2 && <div>{relatedContact.address_line2}</div>}
+                              <div>
+                                {relatedContact.postal_code || "Non renseigné"} {relatedContact.city || "Non renseignée"}
+                              </div>
+                              <div className="text-xs text-muted mt-1 uppercase font-semibold">
+                                {formatCountry(relatedContact.country)}
+                              </div>
+                            </div>
+                          ) : (
+                            "Non renseignée"
+                          )}
+                        </dd>
+                      </div>
                     </dl>
                   )}
                 </section>
@@ -834,13 +1130,29 @@ export default async function DocumentDetailPage({
                           relatedApplication.updated_at,
                         )}
                       />
+                      <DetailItem
+                        label="Portée souhaitée"
+                        value={appLitterName || "Aucune portée spécifique"}
+                      />
+                      <DetailItem
+                        label="Groupe de portées souhaité"
+                        value={appLitterGroupName || "Aucun groupe spécifique"}
+                      />
                       <div className="sm:col-span-2">
                         <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
                           Projet
                         </dt>
-                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
+                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6 bg-background/20 p-3 rounded-lg border">
                           {relatedApplication.project_description ||
                             "Non renseigné"}
+                        </dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Remarques / Commentaire interne
+                        </dt>
+                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6 bg-background/20 p-3 rounded-lg border text-muted">
+                          {relatedApplication.internal_comment || "Aucune remarque interne."}
                         </dd>
                       </div>
                     </dl>
@@ -935,7 +1247,7 @@ export default async function DocumentDetailPage({
                         )}
                       />
                       <DetailItem
-                        label="Prix"
+                        label="Prix convenu"
                         value={formatPrice(
                           relatedReservation.price_cents,
                           relatedReservation.currency,
@@ -960,6 +1272,30 @@ export default async function DocumentDetailPage({
                         />
                       ) : null}
                       <DetailItem
+                        label="Reste dû"
+                        value={formatPrice(
+                          Math.max(
+                            0,
+                            (relatedReservation.price_cents ?? 0) -
+                              (relatedReservation.paid_cents ?? 0) +
+                              (relatedReservation.refunded_cents ?? 0),
+                          ),
+                          relatedReservation.currency,
+                        )}
+                      />
+                      <DetailItem
+                        label="État financier du dossier"
+                        value={
+                          <span className="font-semibold text-accent">
+                            {getFinancialStatus(
+                              relatedReservation.price_cents,
+                              relatedReservation.paid_cents,
+                              relatedReservation.refunded_cents,
+                            )}
+                          </span>
+                        }
+                      />
+                      <DetailItem
                         label="Création"
                         value={formatApplicationDate(
                           relatedReservation.created_at,
@@ -976,18 +1312,18 @@ export default async function DocumentDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">Parents de la portée</h2>
+                  <h2 className="text-xl font-semibold">Portée & Parents de la portée</h2>
 
-                  {litterParentsError ? (
+                  {litterParentsError || litterError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger les parents de la portée.
+                      Impossible de charger les détails ou les parents de la portée.
                     </p>
-                  ) : !relatedReservation || !relatedReservation.litter_id ? (
+                  ) : !relatedLitter ? (
                     <div className="mt-5 space-y-4">
-                      {relatedReservation?.litter_group_name ? (
+                      {relatedLitterGroup ? (
                         <>
                           <p className="text-sm font-semibold text-foreground">
-                            Groupe de portées : {relatedReservation.litter_group_name}
+                            Groupe de portées : {relatedLitterGroup.name}
                           </p>
                           <p className="text-sm text-muted">
                             Aucune portée précise n’est encore liée à cette réservation.
@@ -995,33 +1331,83 @@ export default async function DocumentDetailPage({
                         </>
                       ) : (
                         <p className="text-sm text-muted">
-                          Aucune portée précise n’est liée à cette réservation pour l’instant.
+                          Aucune portée précise liée pour l’instant.
                         </p>
                       )}
                     </div>
                   ) : (
-                    <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                    <div className="mt-6 space-y-6">
+                      {/* Détails de la Portée */}
                       <div>
-                        <h3 className="text-sm font-semibold text-foreground border-b pb-2">Mère</h3>
-                        <dl className="mt-3 space-y-3">
-                          <DetailItem label="Nom" value={mother?.display_name ?? null} />
+                        <div className="flex justify-between items-start border-b pb-2">
+                          <h3 className="text-sm font-semibold text-foreground">Détails de la portée</h3>
+                          <Link
+                            href={`/litters/${relatedLitter.id}`}
+                            className="text-xs font-semibold text-accent hover:underline"
+                          >
+                            Consulter la fiche portée
+                          </Link>
+                        </div>
+                        <dl className="mt-3 grid gap-4 sm:grid-cols-2">
+                          <DetailItem label="Nom" value={relatedLitter.name} />
+                          <DetailItem label="Race" value={relatedLitter.breed} />
+                          <DetailItem label="Espèce" value={relatedLitter.species} />
+                          <DetailItem label="Statut de la portée" value={relatedLitter.status} />
                           <DetailItem
-                            label="Numéro d’identification"
-                            value={mother?.identification_number ?? null}
+                            label="Naissance prévue"
+                            value={formatApplicationDate(relatedLitter.expected_birth_date)}
                           />
-                          <DetailItem label="Numéro LOF" value={mother?.lof_number ?? null} />
+                          <DetailItem
+                            label="Naissance réelle"
+                            value={formatApplicationDate(relatedLitter.actual_birth_date)}
+                          />
                         </dl>
                       </div>
-                      <div>
-                        <h3 className="text-sm font-semibold text-foreground border-b pb-2">Père</h3>
-                        <dl className="mt-3 space-y-3">
-                          <DetailItem label="Nom" value={father?.display_name ?? null} />
-                          <DetailItem
-                            label="Numéro d’identification"
-                            value={father?.identification_number ?? null}
-                          />
-                          <DetailItem label="Numéro LOF" value={father?.lof_number ?? null} />
-                        </dl>
+
+                      {/* Parents de la Portée */}
+                      <div className="grid gap-6 sm:grid-cols-2 pt-4 border-t">
+                        <div>
+                          <div className="flex justify-between items-center border-b pb-2">
+                            <h3 className="text-sm font-semibold text-foreground">Mère</h3>
+                            {mother?.id && (
+                              <Link
+                                href={`/animals/${mother.id}`}
+                                className="text-xs font-medium text-accent hover:underline"
+                              >
+                                Fiche animal
+                              </Link>
+                            )}
+                          </div>
+                          <dl className="mt-3 space-y-3">
+                            <DetailItem label="Nom" value={mother?.display_name ?? null} />
+                            <DetailItem
+                              label="Numéro d’identification"
+                              value={mother?.identification_number ?? null}
+                            />
+                            <DetailItem label="Numéro LOF" value={mother?.lof_number ?? null} />
+                          </dl>
+                        </div>
+                        <div>
+                          <div className="flex justify-between items-center border-b pb-2">
+                            <h3 className="text-sm font-semibold text-foreground">Père</h3>
+                            {father?.id && (
+                              <Link
+                                href={`/animals/${father.id}`}
+                                className="text-xs font-medium text-accent hover:underline"
+                              >
+                                Fiche animal
+                              </Link>
+                            )}
+                          </div>
+                          <dl className="mt-3 space-y-3">
+                            <DetailItem label="Nom" value={father?.display_name ?? null} />
+                            <DetailItem
+                              label="Numéro d’identification"
+                              value={father?.identification_number ?? null}
+                            />
+                            <DetailItem label="Numéro LOF" value={father?.lof_number ?? null} />
+                          </dl>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -1029,78 +1415,133 @@ export default async function DocumentDetailPage({
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <RelatedSectionHeader
-                    title="Paiement lié"
-                    subtitle={
-                      relatedPayment
-                        ? formatPrice(
-                            relatedPayment.amount_cents,
-                            relatedPayment.currency,
-                          )
-                        : null
-                    }
-                    href={
-                      relatedPayment?.id ? `/payments/${relatedPayment.id}` : null
-                    }
+                    title="Animal attribué"
+                    subtitle={relatedAnimal?.display_name ?? null}
+                    href={relatedAnimal?.id ? `/animals/${relatedAnimal.id}` : null}
                   />
 
-                  {paymentError ? (
+                  {animalError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger le paiement lié.
+                      Impossible de charger les détails de l’animal attribué.
                     </p>
-                  ) : !relatedPayment ? (
+                  ) : !relatedAnimal ? (
                     <p className="mt-5 text-sm text-muted">
-                      Aucun paiement lié à ce document.
+                      Aucun animal attribué pour l’instant.
                     </p>
                   ) : (
                     <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <DetailItem label="Nom" value={relatedAnimal.display_name} />
                       <DetailItem
-                        label="Statut"
-                        value={getPaymentStatusLabel(relatedPayment.status)}
+                        label="Sexe"
+                        value={relatedAnimal.sex === "M" ? "Mâle" : relatedAnimal.sex === "F" ? "Femelle" : relatedAnimal.sex}
                       />
                       <DetailItem
-                        label="Type"
-                        value={getPaymentTypeLabel(relatedPayment.payment_type)}
+                        label="Date de naissance"
+                        value={formatApplicationDate(relatedAnimal.birth_date)}
                       />
                       <DetailItem
-                        label="Montant"
-                        value={formatPrice(
-                          relatedPayment.amount_cents,
-                          relatedPayment.currency,
-                        )}
+                        label="Collier / Couleur"
+                        value={relatedAnimal.collar_color_current || relatedAnimal.collar_color_initial || "Non renseigné"}
                       />
                       <DetailItem
-                        label="Devise"
-                        value={relatedPayment.currency}
+                        label="Numéro d'identification"
+                        value={relatedAnimal.identification_number}
                       />
                       <DetailItem
-                        label="Méthode"
-                        value={getPaymentMethodLabel(
-                          relatedPayment.payment_method,
-                        )}
+                        label="Numéro LOF"
+                        value={relatedAnimal.lof_number}
                       />
-                      <DetailItem
-                        label={usefulPaymentDate?.label ?? "Date utile"}
-                        value={formatApplicationDate(
-                          usefulPaymentDate?.value ?? null,
-                        )}
-                      />
-                      <DetailItem
-                        label="Référence externe"
-                        value={relatedPayment.external_reference}
-                      />
-                      <DetailItem
-                        label="Date de remboursement"
-                        value={formatApplicationDate(relatedPayment.refunded_at)}
-                      />
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                          Note
-                        </dt>
-                        <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
-                          {relatedPayment.notes || "Non renseigné"}
-                        </dd>
-                      </div>
+                      <DetailItem label="Race" value={relatedAnimal.breed} />
+                      <DetailItem label="Statut" value={relatedAnimal.status} />
                     </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Paiements liés</h2>
+
+                  {paymentsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les paiements liés.
+                    </p>
+                  ) : !relatedPayments || relatedPayments.length === 0 ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun paiement lié trouvé.
+                    </p>
+                  ) : (
+                    <div className="mt-6 space-y-4">
+                      {relatedPayments.map((payment) => {
+                        const usefulDate = getUsefulPaymentDate(payment);
+                        return (
+                          <div key={payment.id} className="p-4 rounded-xl border bg-background/40 flex flex-col justify-between sm:flex-row sm:items-center gap-4 hover:border-accent/20 transition">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm">
+                                  {formatPrice(payment.amount_cents, payment.currency)}
+                                </span>
+                                <span className="text-xs text-muted font-medium">
+                                  ({getPaymentTypeLabel(payment.payment_type)} · {getPaymentMethodLabel(payment.payment_method)})
+                                </span>
+                              </div>
+                              <div className="text-xs text-muted mt-1">
+                                {usefulDate.label} : {formatApplicationDate(usefulDate.value)}
+                              </div>
+                              {payment.notes && (
+                                <p className="text-xs text-muted italic mt-1.5 line-clamp-1">
+                                  Note: {payment.notes}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border bg-surface text-muted">
+                                {getPaymentStatusLabel(payment.status)}
+                              </span>
+                              <Link
+                                href={`/payments/${payment.id}`}
+                                className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                              >
+                                Consulter
+                              </Link>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Autres documents du dossier</h2>
+                  {!otherRelatedDocuments || otherRelatedDocuments.length === 0 ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun autre document lié à cette réservation.
+                    </p>
+                  ) : (
+                    <div className="mt-6 space-y-4">
+                      {otherRelatedDocuments.map((doc) => (
+                        <div key={doc.id} className="p-4 rounded-xl border bg-background/40 flex flex-col justify-between sm:flex-row sm:items-center gap-4 hover:border-accent/20 transition">
+                          <div>
+                            <span className="font-semibold text-sm block">
+                              {doc.title}
+                            </span>
+                            <span className="text-xs text-muted">
+                              Type : {getDocumentTypeLabel(doc.document_type)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border bg-surface text-muted">
+                              {getDocumentStatusLabel(doc.status)}
+                            </span>
+                            <Link
+                              href={`/documents/${doc.id}`}
+                              className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                            >
+                              Visualiser
+                            </Link>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </section>
 
