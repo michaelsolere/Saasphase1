@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, ajout manuel de rôle depuis la fiche contact, création manuelle de candidature depuis un contact existant avec enrichissement automatique du rôle `candidate` et désactivation du rôle transitoire `prospect`, parcours manuel contact → candidature → qualification → réservation brouillon validé en navigateur, création de réservation brouillon enrichissant le rôle `pre_reservation_holder`, activation de réservation enrichissant le rôle `reservation_holder` et désactivant le rôle transitoire `pre_reservation_holder`, finalisation d'adoption enrichissant le rôle `adopter`, désactivant les rôles transitoires `reservation_holder` et `candidate` après ajout réel de `adopter` et mettant à jour l'animal lié en `adopted` / `adopted_out` si présent, affichage croisé adoption entre réservation, animal et contact via les relations de réservation existantes, test groupé complet candidature → adoption ayant révélé puis corrigé la persistance active de `candidate` après adoption, test groupé manuel des rôles contact validé après PR145, sorties finales principales de réservation couvertes côté application, accueil clarifié côté liens rapides statiques, fiches contact et candidature enrichies avec événements liés en lecture seule, fiche réservation clarifiée côté actions finales, notes liées et événements généraux liés aux réservations généralisés en lecture seule, fiches portée et animal enrichies en lecture seule avec documents, réservations, notes, événements liés et information d'adoption via réservation, fiches paiement et document enrichies avec notes et événements liés en lecture seule, suivi post-adoption en lecture seule enrichi, synthèse d'adoption read-only, le calcul et l'affichage en lecture seule du solde restant d'une réservation sur sa fiche détail et la liste des réservations, l'aide visuelle et contextuelle autour du formulaire d'enregistrement de paiement, l'amélioration de la lisibilité des paiements liés en lecture seule (dates explicites, notes de paiement) sur la fiche de réservation, la correction de la visibilité réelle du solde et la clarification des libellés de dates pour les paiements liés suite aux retours du test groupé, l'ajout d'une aide client de saisie au formulaire de paiement de réservation pour préremplir le montant depuis le solde restant, l'enregistrement manuel d'un remboursement simple depuis la fiche réservation, l'association ou modification d'une portée/groupe souhaité depuis la fiche candidature, et le lancement de la campagne de pré-réservation (Lot 1) depuis la fiche portée.
-Dernier commit connu : `bcc6ed66 Merge pull request #174 from michaelsolere/fix/litter-qualified-applications-undefined-uuid`
-Documentation projet à jour jusqu'à PR174.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, protégée par Playwright, avec des écritures métier contrôlées, création manuelle de contact ajoutée côté espace privé avec validation serveur contre les formulaires vides et rôle initial optionnel, de multiples liaisons et raccourcis de navigation interconnectant les objets métier (PR #183), l'affichage des documents liés avec dates d'envoi et de signature sur la fiche réservation (PR #181), l'affichage des parents (mère/père) d'une portée dans l'aperçu du document (PR #180), l'affichage de l'adoptant dans la liste Documents via un mapping serveur PostgREST composite (PR #182), et un tableau de bord "Résumé du dossier adoptant" avec prochaine action suggérée sur `/reservations/[id]` (PR #184).
+Dernier commit connu : `47797630 Merge pull request #184 from michaelsolere/feature/ux-3-reservation-summary-header`
+Documentation projet à jour jusqu'à PR184.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -3799,6 +3799,94 @@ Règles métier & Technique :
 Fichiers modifiés / créés :
 * [src/app/litters/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/litters/%5Bid%5D/page.tsx) [MODIFY] (sélection de `organization_id`, requêtes séparées applications/contacts et gardes robustes anti-undefined)
 
+## PR180 — Lot 5B — Parents de portée visibles dans la prévisualisation documentaire
+
+Objectif : Afficher les parents de la portée (mère et père) dans la page de prévisualisation documentaire `/documents/[id]` si la réservation liée est associée à une portée.
+
+Changements UI :
+* Ajout d'une section "Parents de la portée" dans `/documents/[id]`.
+* Récupération automatique de la portée liée à la réservation (`litter_id`).
+* Chargement et affichage du nom, numéro d'identification et numéro LOF de la mère et du père (`mother_id`, `father_id` de la table `animals`).
+* Gestion des fallbacks "Non renseigné" pour les champs vides.
+* Message neutre si aucune portée n'est rattachée.
+
+Non-effets de bord :
+* Aucun changement de schéma ou de base de données.
+* Aucune génération physique de fichier documentaire (PDF/DOCX/HTML).
+* Aucun service d'envoi d'e-mail ou de signature.
+
+Fichiers modifiés :
+* [src/app/documents/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/documents/%5Bid%5D/page.tsx) [MODIFY]
+
+## PR181 — Lot 5C — Documents visibles et accessibles depuis la fiche réservation
+
+Objectif : Rendre les documents associés visibles et gérables directement depuis la fiche de détail `/reservations/[id]`.
+
+Changements UI :
+* Intégration d'une section dédiée listant tous les documents de la réservation.
+* Affichage des dates d'envoi, de signature et de réception.
+* Ajout d'un bouton d'action rapide "Consulter" redirigeant vers `/documents/[id]`.
+
+Non-effets de bord :
+* Aucun upload réel ou intégration de Supabase Storage.
+* Aucun e-mail d'envoi ou signature électronique active.
+
+Fichiers modifiés :
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx) [MODIFY]
+* [src/features/documents/formatters.ts](file:///Users/mika/Documents/Saas%20phase%201/src/features/documents/formatters.ts) [MODIFY]
+
+## PR182 — Lot 5D — Contact/adoptant visible dans la liste Documents
+
+Objectif : Afficher le nom et l'email de l'adoptant associé à chaque document directement dans la liste `/documents`.
+
+Choix techniques :
+* Pour contourner les limitations de résolution des clés de relation composites (`["organization_id", "contact_id"]`) sous RLS de PostgREST, implémentation d'une double requête séparée : récupération des documents, puis des contacts correspondants en mémoire serveur via un mapping.
+* Affichage du nom complet cliquable (vers `/contacts/[id]`) et de l'email dans la table.
+
+Non-effets de bord :
+* Aucune modification RLS, RPC, politique de sécurité ou modèle de données.
+* Aucun impact sur les performances grâce au mapping en mémoire serveur.
+
+Fichiers modifiés :
+* [src/app/documents/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/documents/page.tsx) [MODIFY]
+* [src/features/documents/document-list.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/features/documents/document-list.tsx) [MODIFY]
+
+## PR183 — Lot UX-2 — Cliquabilité et liens de retour entre objets métier
+
+Objectif : Interconnecter tous les objets métier connexes par des liens hypertexte afin de fluidifier la navigation opérationnelle.
+
+Changements UI :
+* **Fiche Réservation** : Portée et animal attribué rendus cliquables. Nom du contact cliquable en haut de la barre latérale.
+* **Fiche Document** : Liens rapides vers la portée et l'animal dans le menu latéral. Éléments Contact, Animal et Portée rendus cliquables dans le panneau "Réservation liée".
+* **Liste Documents** : Rapprochement visuel avec des badges cliquables de portée et animal dans la colonne "Liens".
+* **Fiche Portée** : Mère et père cliquables dans le bloc principal. Contact et animal attribué cliquables dans la liste des réservations.
+* Remplacement des types de valeurs textuelles de `DetailItem` par `React.ReactNode` pour accepter les composants `<Link>`.
+
+Non-effets de bord :
+* Aucun crash ou erreur TypeScript en cas d'identifiants nuls ou absents (fallbacks neutres conservés).
+
+Fichiers modifiés :
+* [src/app/documents/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/documents/%5Bid%5D/page.tsx) [MODIFY]
+* [src/app/litters/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/litters/%5Bid%5D/page.tsx) [MODIFY]
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx) [MODIFY]
+* [src/features/documents/document-list.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/features/documents/document-list.tsx) [MODIFY]
+
+## PR184 — Lot UX-3 — Résumé haut de fiche Réservation
+
+Objectif : Ajouter une vue de synthèse claire et compacte en haut de la fiche réservation pour évaluer l'état complet du dossier en un clin d'œil.
+
+Changements UI :
+* Ajout d'un tableau de bord de synthèse "Résumé du dossier adoptant" sous le titre de `/reservations/[id]`.
+* Affichage de l'adoptant (cliquable), du statut de réservation, de la portée ou groupe, de l'animal attribué, de l'état des paiements (badge coloré) et du statut de complétion des documents.
+* Calcul côté UI d'une phrase de "Prochaine action suggérée" (ex: *demander les arrhes*, *envoyer les documents*, etc.).
+
+Non-effets de bord :
+* Aucune mutation ou action automatique déclenchée.
+* Aucune logique financière ou de statut modifiée.
+
+Fichiers modifiés :
+* [src/app/reservations/[id]/page.tsx](file:///Users/mika/Documents/Saas%20phase%201/src/app/reservations/%5Bid%5D/page.tsx) [MODIFY]
+
 ## Jalon validé : Campagne de pré-réservation — Lot 1
 
 Le Lot 1 de la campagne de pré-réservation est validé et fonctionnel en navigateur :
@@ -3868,6 +3956,18 @@ Ne pas introduire en Phase 1 :
 * journal de mise-bas offline-first ;
 * application mobile native.
 
+### Principes de pilotage UX (Dossier adoptant)
+
+1. **La Réservation comme centre opérationnel** : La fiche Réservation centralise l'état global du dossier de l'adoptant (identité, statut, portée, animal, paiements, documents et prochaines étapes). Elle permet de piloter l'ensemble du workflow de manière autonome.
+2. **Le Contact comme mémoire relationnelle** : La fiche Contact conserve l'historique et la mémoire globale du client (toutes ses candidatures, réservations, paiements, documents et notes associés).
+3. **La Candidature comme projet d’adoption** : Elle représente l'expression du projet d'adoption initial et sert à qualifier le besoin.
+4. **Accessibilité unifiée** : Toutes les entités liées à un dossier adoptant (documents, paiements, portée, animal) doivent être facilement consultables et navigables depuis la fiche de réservation correspondante.
+5. **Rôle des listes globales** : Les listes d'exploration globales (candidatures, documents, paiements) restent des outils de recherche et d'exploration indispensables, mais ne doivent pas remplacer la fiche Réservation pour l'action opérationnelle.
+6. **Interconnexion des objets métier** : Tous les objets métier nommés doivent disposer de liens cliquables pour naviguer facilement d'un contexte à l'autre dès qu'une route de détail existe.
+7. **Orientation flux du tableau de bord** : Le futur tableau de bord devra être orienté flux afin de mettre en avant de façon proactive les dossiers adoptant nécessitant une action prioritaire de l'éleveur.
+8. **Usage des modales** : Les modales d'action rapide devront être privilégiées ultérieurement pour les modifications directes simples, tout en conservant les pages dédiées pour les décisions et saisies complexes.
+9. **Limites fonctionnelles conservées** : Aucun service tiers de génération documentaire automatique, de signature électronique, d'upload de fichiers ou d'envoi d'e-mails réels n'est introduit à ce stade.
+
 ## Commandes de validation habituelles
 
 Pour une PR applicative :
@@ -3902,9 +4002,16 @@ git status
 
 ## Prochaine étape logique
 
-Le bloc Portées / Animaux / Paiements / Documents dispose désormais d'un socle privé complet en lecture seule jusqu'aux fiches détail, avec une liaison bidirectionnelle consultative entre portées et animaux, l'affichage des documents liés sur les fiches portée et animal, l'affichage des réservations liées sur la fiche portée, l'affichage des notes et événements liés sur les fiches portée, animal, paiement et document, une liaison consultative Réservation ↔ Animal, des sections enrichies `Contact lié`, `Candidature liée`, `Réservation liée` et `Paiement lié` sur la fiche document, une fiche document complète et harmonisée côté lecture seule, et des fixtures locales permettant de tester ce parcours. L'accueil reste statique mais ses liens rapides décrivent plus clairement les modules existants.
+Les relations et l'interconnexion visuelle entre les fiches du dossier adoptant sont désormais complètement stabilisées :
+* La **fiche réservation** a été élevée au rang de centre de pilotage opérationnel grâce à l'intégration d'un résumé haut de page ("Résumé du dossier adoptant") et d'un volet d'accès direct aux documents.
+* Une navigation bidirectionnelle fluide a été implémentée sur toutes les fiches clés (réservation, document, portée, animal, contact).
+* La robustesse des requêtes composites complexes sous RLS a été fiabilisée côté serveur dans la liste des documents.
 
-Le projet a aussi validé plusieurs écritures métier contrôlées. L'espace privé permet désormais de créer manuellement un contact depuis `/contacts/new`, avec rattachement serveur à l'organisation de l'utilisateur connecté, refus serveur des formulaires vides ou remplis seulement par des valeurs par défaut, et choix optionnel d'un rôle initial. Un rôle peut aussi être ajouté manuellement depuis `/contacts/[id]`, sans créer de doublon actif. Une candidature peut être créée manuellement depuis `/contacts/[id]/applications/new`, avec relecture serveur du contact, dérivation de `organization_id` depuis le contact relu, statut initial `new`, redirection vers `/candidatures/[id]`, enrichissement automatique du rôle `candidate` si absent et désactivation du rôle transitoire `prospect` après ajout réel de `candidate`. Le parcours manuel complet contact → candidature → qualification → réservation brouillon a été validé en navigateur, avec retour sur la fiche contact montrant la candidature et la réservation dans les sections liées. Une candidature qualifiée peut créer une réservation brouillon depuis `/candidatures/[id]`, avec enrichissement automatique du rôle `pre_reservation_holder` si absent. Une réservation existante peut ensuite recevoir une complétion limitée de son tarif convenu (`price_cents`), de son commentaire interne (`internal_comment`), de son échéance de pré-réservation (`pre_reservation_deadline`), l'attribution contrôlée d'un animal disponible depuis `/reservations/[id]`, le retrait contrôlé de cette attribution, la création manuelle d'un paiement lié depuis `/reservations/[id]`, le passage contrôlé d'une demande de paiement à payé depuis `/payments/[id]`, la confirmation manuelle `draft` → `active` avec enrichissement automatique du rôle `reservation_holder` si absent et désactivation du rôle transitoire `pre_reservation_holder` après ajout réel de `reservation_holder`, ainsi que les sorties manuelles `active` → `adopted`, `active` → `cancelled`, `active` → `withdrawn` et `active` → `expired` depuis `/reservations/[id]`. La finalisation `active` → `adopted` enrichit désormais aussi le contact avec le rôle `adopter` si absent, désactive `reservation_holder` et `candidate` après ajout réel de `adopter`, et marque l'animal lié comme `adopted` / `adopted_out` si `animal_id` est présent, sans exiger d'animal attribué. Le parcours candidature → adoption est ainsi cohérent côté rôles actifs. Les fiches réservation, animal et contact exposent ensuite cette adoption via les relations existantes : réservation → animal, animal → réservation → contact, contact → réservation → animal. Ces écritures restent volontairement courtes et prudentes : données relues côté serveur, identifiants sensibles non fournis par le client, aucun paiement en ligne, aucun remboursement ou avoir automatique, aucun reçu/document généré et aucune note créée automatiquement. Les enrichissements et désactivations de rôle sont des écritures serveur contrôlées non transactionnelles : l'objet métier principal reste créé, activé ou adopté si l'écriture de rôle échoue, et les erreurs visibles utilisent des messages neutres. Les rôles désactivés sont conservés historiquement dans `contact_roles` avec `is_active = false`, `ended_at` renseigné et `deleted_at` conservé à `null`. Si la mise à jour de l'animal échoue après adoption, la réservation reste `adopted` et les rôles déjà mis à jour sont conservés avec retour neutre `animal_status=error`. Les statuts finaux de réservation sont centralisés côté code et `completed` n'est pas utilisé comme statut de réservation.
+Les prochains lots envisagés pour consolider la Phase 1 sont :
+1. **Dashboard-1 — Tableau de bord flux simple** : Conception d'un tableau de bord de pilotage orienté flux, faisant remonter les réservations nécessitant une action prioritaire (ex: paiement en attente, document manquant, animal à attribuer).
+2. **Lot 5E — Prévisualisation complète des données sources documentaires** : Intégration de la lecture et de la validation des données d'identité et d'adresses directement dans l'aperçu du document avant envoi.
+3. **Lot Documents-Modèles — Cadrage des futurs modèles** : Définition des structures de templates et du contenu juridique des certificats d'engagement et contrats de réservation.
+4. **Lot Portées/Groupes — Route dédiée aux groupes** : Réflexion sur l'introduction d'une route ou d'une vue de détail dédiée aux groupes de portées afin de pouvoir les associer plus finement et les rendre cliquables.
 
 La fiche réservation a été clarifiée côté UX pour les actions finales : les actions de statut sont regroupées, les sorties finales sont mieux distinguées, et un bloc `Statut final` explique l'absence d'actions lorsqu'une réservation est finalisée. Les notes liées et les événements généraux liés à une réservation sont désormais visibles en lecture seule pour tous les statuts. Les événements `post_adoption_follow_up` restent affichés séparément dans le suivi post-adoption des réservations `adopted`, afin d'éviter les doublons avec la section générale. Les réservations adoptées disposent aussi d'une synthèse d'adoption read-only construite avec les données déjà chargées.
 
