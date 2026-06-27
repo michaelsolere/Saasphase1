@@ -204,6 +204,48 @@ function DetailItem({
   );
 }
 
+function SummaryItem({
+  label,
+  value,
+  detail,
+  href,
+  badgeClassName,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  href?: string;
+  badgeClassName?: string;
+}) {
+  const content = href ? (
+    <Link href={href} className="font-semibold text-accent hover:underline">
+      {value}
+    </Link>
+  ) : (
+    <span className="font-semibold text-foreground">{value}</span>
+  );
+
+  return (
+    <div className="rounded-xl border bg-background px-4 py-3.5">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </p>
+      <div className="mt-2 text-sm leading-6">
+        {badgeClassName ? (
+          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassName}`}>
+            {content}
+          </span>
+        ) : (
+          content
+        )}
+      </div>
+      {detail ? (
+        <p className="mt-2 text-xs leading-5 text-muted">{detail}</p>
+      ) : null}
+    </div>
+  );
+}
+
 function formatPriceInputValue(priceCents: number | null) {
   if (priceCents === null || priceCents === undefined) {
     return "";
@@ -458,6 +500,12 @@ export default async function ReservationDetailPage({
   const paidCents = reservation?.paid_cents ?? 0;
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
+  const netPaidCents = paidCents - refundedCents;
+  const remainingBalanceCents =
+    priceCents === null ? null : priceCents - netPaidCents;
+  const hasCompleteDeposit = hasSecondPaid || paidCents >= 50000;
+  const isPaidInFull =
+    priceCents !== null && netPaidCents >= priceCents;
 
   let balanceLabel = "Solde restant";
   let balanceValue: React.ReactNode = "";
@@ -465,15 +513,16 @@ export default async function ReservationDetailPage({
     balanceLabel = "Solde restant";
     balanceValue = <span className="text-muted-foreground">Solde non déterminé</span>;
   } else {
-    const remainingBalanceCents = priceCents - paidCents + refundedCents;
-    if (remainingBalanceCents > 0) {
+    const balanceRemainingCents = priceCents - netPaidCents;
+
+    if (balanceRemainingCents > 0) {
       balanceLabel = "Reste à régler";
       balanceValue = (
         <span className="font-semibold text-amber-700">
-          {formatPrice(remainingBalanceCents, currency)}
+          {formatPrice(balanceRemainingCents, currency)}
         </span>
       );
-    } else if (remainingBalanceCents === 0) {
+    } else if (balanceRemainingCents === 0) {
       balanceLabel = "Réservation soldée";
       balanceValue = (
         <span className="font-semibold text-emerald-700">
@@ -484,12 +533,17 @@ export default async function ReservationDetailPage({
       balanceLabel = "Trop-perçu";
       balanceValue = (
         <span className="font-semibold text-rose-700">
-          {formatPrice(Math.abs(remainingBalanceCents), currency)}
+          {formatPrice(Math.abs(balanceRemainingCents), currency)}
         </span>
       );
     }
   }
   const documentCount = reservationDocuments?.length ?? 0;
+  const paymentCount = reservationPayments?.length ?? 0;
+  const paidPaymentCount =
+    reservationPayments?.filter((p) => p.status === "paid").length ?? 0;
+  const requestedPaymentCount =
+    reservationPayments?.filter((p) => p.status === "requested").length ?? 0;
   const followUpEventCount = postAdoptionEvents?.length ?? 0;
   const followUpNoteCount = reservationNotes?.length ?? 0;
   const followUpSummaryLabel =
@@ -505,6 +559,19 @@ export default async function ReservationDetailPage({
   const sentDocs = reservationDocuments?.filter((d) => d.status === "sent").length ?? 0;
   const signedDocs = reservationDocuments?.filter((d) => d.status === "signed").length ?? 0;
   const toPrepareDocs = reservationDocuments?.filter((d) => d.status === "to_generate").length ?? 0;
+  const commitmentDocument = reservationDocuments?.find(
+    (d) => d.document_type === "commitment_certificate",
+  );
+  const reservationContractDocument = reservationDocuments?.find(
+    (d) => d.document_type === "reservation_contract",
+  );
+  const saleCertificateDocument = reservationDocuments?.find(
+    (d) => d.document_type === "sale_certificate",
+  );
+  const missingReservationDocumentLabels = [
+    commitmentDocument ? null : "certificat d’engagement",
+    reservationContractDocument ? null : "contrat de réservation",
+  ].filter(Boolean);
 
   let docsSummaryText = "";
   if (totalDocs === 0) {
@@ -518,10 +585,10 @@ export default async function ReservationDetailPage({
   let paymentsSummaryText = "";
   let paymentsSummaryColor = "text-muted bg-muted-soft border-border";
 
-  if (priceCents !== null && paidCents - refundedCents >= priceCents) {
-    paymentsSummaryText = "Réservation soldée";
+  if (isPaidInFull) {
+    paymentsSummaryText = "Paiement intégral / dossier soldé";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-  } else if (hasSecondPaid || paidCents >= 50000) {
+  } else if (hasCompleteDeposit) {
     paymentsSummaryText = "Arrhes complètes (500 € payés)";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasFirstPaid || paidCents > 0) {
@@ -531,6 +598,71 @@ export default async function ReservationDetailPage({
     paymentsSummaryText = "En attente de paiement / d'arrhes";
     paymentsSummaryColor = "text-muted bg-muted-soft border-border";
   }
+
+  const financialSummaryDetail = paymentsError
+    ? "Paiements partiellement indisponibles."
+    : paymentCount === 0
+      ? priceCents === null
+        ? "Aucun paiement enregistré, tarif convenu non renseigné."
+        : `Aucun paiement enregistré. Tarif convenu : ${formatPrice(priceCents, currency)}.`
+      : [
+          `${paymentCount} paiement${paymentCount > 1 ? "s" : ""} lié${paymentCount > 1 ? "s" : ""}`,
+          `${formatPrice(paidCents, currency)} payé${paidCents > 0 ? "s" : ""}`,
+          refundedCents > 0
+            ? `${formatPrice(refundedCents, currency)} remboursé`
+            : null,
+          remainingBalanceCents === null
+            ? "solde non déterminé"
+            : remainingBalanceCents > 0
+              ? `${formatPrice(remainingBalanceCents, currency)} restant`
+              : remainingBalanceCents === 0
+                ? "solde à zéro"
+                : `${formatPrice(Math.abs(remainingBalanceCents), currency)} de trop-perçu`,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  const documentSummaryDetail = documentsError
+    ? "Documents partiellement indisponibles."
+    : totalDocs === 0
+      ? "Aucun document lié à cette réservation."
+      : [
+          commitmentDocument
+            ? `Certificat : ${getDocumentStatusLabel(commitmentDocument.status, commitmentDocument.document_type)}`
+            : null,
+          reservationContractDocument
+            ? `Contrat : ${getDocumentStatusLabel(reservationContractDocument.status, reservationContractDocument.document_type)}`
+            : null,
+          saleCertificateDocument
+            ? `Attestation : ${getDocumentStatusLabel(saleCertificateDocument.status, saleCertificateDocument.document_type)}`
+            : null,
+          missingReservationDocumentLabels.length > 0
+            ? `À vérifier : ${missingReservationDocumentLabels.join(", ")}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+  const scopeSummaryValue = reservation?.litter_name ??
+    reservation?.litter_group_name ??
+    "Portée ou groupe non renseigné";
+  const scopeSummaryDetail = reservation?.litter_id
+    ? "Portée précise liée au dossier."
+    : reservation?.litter_group_name
+      ? "Groupe de portée lié, portée précise à confirmer plus tard."
+      : "Aucune portée précise ni groupe renseigné.";
+  const animalSummaryDetail = relatedAnimal
+    ? [
+        getAnimalSexLabel(relatedAnimal.sex),
+        formatAnimalDate(relatedAnimal.birth_date),
+        formatAnimalCoat(relatedAnimal),
+      ]
+        .filter((value) => value && value !== "Non renseigné")
+        .join(" · ") || "Animal attribué, détails complémentaires à vérifier."
+    : "Animal non attribué pour l’instant. Ce n’est pas bloquant pour tous les parcours.";
+  const applicationSummaryDetail = reservation?.application_id
+    ? "Projet d’adoption lié au dossier."
+    : "Aucune candidature liée à cette réservation.";
 
   let nextActionText = "";
 
@@ -542,7 +674,7 @@ export default async function ReservationDetailPage({
         nextActionText = "Premier versement d'arrhes reçu. Confirmer la pré-réservation.";
       }
     } else if (reservation.status === "pre_reservation_paid") {
-      if (!hasSecondPaid) {
+      if (!hasCompleteDeposit && !isPaidInFull) {
         if (reservationPayments && reservationPayments.some((p) => p.payment_type === "arrhes" && p.status === "requested")) {
           nextActionText = "Attendre le paiement du complément des arrhes (250 €) déjà demandé.";
         } else {
@@ -552,7 +684,7 @@ export default async function ReservationDetailPage({
         if (totalDocs === 0) {
           nextActionText = "Initialiser la checklist des documents de réservation.";
         } else if (toPrepareDocs > 0) {
-          nextActionText = "Générer ou marquer comme envoyés les documents à préparer.";
+          nextActionText = "Préparer ou marquer comme envoyés les documents attendus.";
         } else if (sentDocs > 0) {
           nextActionText = "Attendre la signature / réception des documents envoyés.";
         } else {
@@ -563,18 +695,44 @@ export default async function ReservationDetailPage({
           }
         }
       }
-    } else if (reservation.status === "confirmed") {
-      if (!reservation.animal_id) {
-        nextActionText = "Attribuer un animal à cette réservation confirmée.";
+    } else if (
+      reservation.status === "active" ||
+      reservation.status === "confirmed" ||
+      reservation.status === "confirmed_after_birth" ||
+      reservation.status === "animal_assigned" ||
+      reservation.status === "adoption_ready"
+    ) {
+      if (sentDocs > 0) {
+        nextActionText = "Attendre la signature / réception des documents envoyés.";
+      } else if (toPrepareDocs > 0) {
+        nextActionText = "Préparer ou marquer comme envoyés les documents attendus.";
+      } else if (remainingBalanceCents !== null && remainingBalanceCents > 0) {
+        nextActionText = "Suivre le règlement du solde ou des paiements demandés.";
+      } else if (!reservation.animal_id) {
+        nextActionText = "Animal non attribué : attribution à suivre selon le parcours.";
       } else {
-        nextActionText = "Attendre la date d'adoption pour finaliser le dossier.";
+        nextActionText = "Dossier à suivre jusqu’à la date d’adoption ou de cession.";
       }
     } else if (reservation.status === "adopted") {
       nextActionText = "Adoption finalisée. Suivi post-adoption en cours.";
-    } else {
+    } else if (isFinalReservationStatus(reservation.status)) {
       nextActionText = "Aucune action requise pour ce statut final.";
+    } else {
+      nextActionText = "Dossier à suivre selon les informations disponibles.";
     }
   }
+
+  const nextActionDetail =
+    "Indication informative uniquement : aucune règle bloquante ni automatisation n’est déclenchée.";
+
+  const sectionNavItems = [
+    { href: "#reservation-details", label: "Réservation" },
+    { href: "#scope-and-animal", label: "Portée / animal" },
+    { href: "#payments", label: "Paiements" },
+    { href: "#documents", label: "Documents" },
+    { href: "#notes", label: "Notes" },
+    { href: "#history", label: "Historique" },
+  ];
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -986,109 +1144,115 @@ export default async function ReservationDetailPage({
             </header>
 
             {/* Résumé du dossier */}
-            <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
-              <h2 className="text-xl font-semibold text-foreground">Résumé du dossier adoptant</h2>
-              <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {/* Adoptant card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Adoptant</span>
-                  <div className="flex items-center gap-2">
-                    {reservation.contact_id ? (
-                      <Link
-                        href={`/contacts/${reservation.contact_id}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        {reservation.contact_display_name ?? "Client associé"}
-                      </Link>
-                    ) : (
-                      <span className="font-medium text-foreground">{reservation.contact_display_name ?? "Client associé"}</span>
-                    )}
-                  </div>
+            <section id="dossier-summary" className="mt-8 rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    Résumé du dossier adoptant
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                    Lecture rapide du dossier : personnes liées, portée ou
+                    animal, état financier, documents et prochaine étape
+                    indicative.
+                  </p>
                 </div>
-
-                {/* Statut card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Statut</span>
-                  <div>
-                    <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                      {getReservationStatusLabel(reservation.status)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Portée / Groupe card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Portée / Groupe</span>
-                  <div>
-                    {reservation.litter_id ? (
-                      <Link
-                        href={`/litters/${reservation.litter_id}`}
-                        className="font-medium text-accent hover:underline block"
-                      >
-                        {reservation.litter_name}
-                      </Link>
-                    ) : reservation.litter_group_name ? (
-                      <span className="font-medium text-foreground block">{reservation.litter_group_name}</span>
-                    ) : (
-                      <span className="text-sm text-muted/60 block">Aucune portée précise liée</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Animal card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Animal attribué</span>
-                  <div>
-                    {reservation.animal_id ? (
-                      <Link
-                        href={`/animals/${reservation.animal_id}`}
-                        className="font-medium text-accent hover:underline block"
-                      >
-                        {reservation.animal_display_name}
-                      </Link>
-                    ) : (
-                      <span className="text-sm text-muted/60 block">Animal non attribué</span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Paiements card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Paiements / Arrhes</span>
-                  <div>
-                    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${paymentsSummaryColor}`}>
-                      {paymentsSummaryText}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Documents card */}
-                <div className="space-y-1">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted">Documents liés</span>
-                  <div className="text-sm text-foreground font-medium">
-                    {docsSummaryText}
-                  </div>
-                </div>
+                <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                  Lecture seule
+                </span>
               </div>
 
-              {/* Next probable action */}
-              {nextActionText ? (
-                <div className="mt-6 border-t pt-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <span className="inline-flex rounded bg-accent/10 px-2 py-1 text-xs font-bold text-accent uppercase tracking-wider w-fit">
-                      Prochaine action suggérée
-                    </span>
-                    <span className="text-sm font-medium text-foreground">
-                      {nextActionText}
-                    </span>
-                  </div>
-                </div>
-              ) : null}
+              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <SummaryItem
+                  label="Adoptant"
+                  value={reservation.contact_display_name ?? "Client associé"}
+                  detail="Mémoire relationnelle du dossier."
+                  href={
+                    reservation.contact_id
+                      ? `/contacts/${reservation.contact_id}`
+                      : undefined
+                  }
+                />
+                <SummaryItem
+                  label="Candidature"
+                  value={reservation.application_id ? "Candidature liée" : "Non renseignée"}
+                  detail={applicationSummaryDetail}
+                  href={
+                    reservation.application_id
+                      ? `/candidatures/${reservation.application_id}`
+                      : undefined
+                  }
+                />
+                <SummaryItem
+                  label="Statut"
+                  value={getReservationStatusLabel(reservation.status)}
+                  detail={`Créée le ${formatApplicationDate(reservation.created_at)}`}
+                  badgeClassName="text-muted bg-muted-soft border-border"
+                />
+                <SummaryItem
+                  label="Portée / groupe"
+                  value={scopeSummaryValue}
+                  detail={scopeSummaryDetail}
+                  href={
+                    reservation.litter_id
+                      ? `/litters/${reservation.litter_id}`
+                      : undefined
+                  }
+                />
+                <SummaryItem
+                  label="Animal"
+                  value={animalSummaryLabel}
+                  detail={animalSummaryDetail}
+                  href={
+                    reservation.animal_id
+                      ? `/animals/${reservation.animal_id}`
+                      : undefined
+                  }
+                />
+                <SummaryItem
+                  label="Paiements"
+                  value={paymentsSummaryText}
+                  detail={financialSummaryDetail}
+                  badgeClassName={paymentsSummaryColor}
+                />
+                <SummaryItem
+                  label="Documents"
+                  value={docsSummaryText}
+                  detail={documentSummaryDetail}
+                />
+                <SummaryItem
+                  label="Suivi"
+                  value={followUpSummaryLabel}
+                  detail="Notes et événements restent consultables plus bas dans la fiche."
+                />
+                {nextActionText ? (
+                  <SummaryItem
+                    label="Prochaine action"
+                    value={nextActionText}
+                    detail={nextActionDetail}
+                    badgeClassName="text-accent bg-accent/10 border-accent/20"
+                  />
+                ) : null}
+              </div>
+
+              <nav
+                aria-label="Sections de la réservation"
+                className="mt-6 flex flex-wrap gap-2 border-t pt-4"
+              >
+                {sectionNavItems.map((item) => (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
             </section>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="reservation-details" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Informations de la réservation
                   </h2>
@@ -1515,7 +1679,7 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="scope-and-animal" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">Attribution et portée</h2>
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem
@@ -1548,7 +1712,7 @@ export default async function ReservationDetailPage({
                             {reservation.animal_display_name}
                           </Link>
                         ) : (
-                          reservation.animal_display_name
+                          "Animal non attribué pour l’instant"
                         )
                       }
                     />
@@ -1835,7 +1999,7 @@ export default async function ReservationDetailPage({
                   </section>
                 ) : null}
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="notes" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Notes liées à la réservation
                   </h2>
@@ -1887,7 +2051,7 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="history" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Événements liés
                   </h2>
@@ -1946,10 +2110,33 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="payments" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
                     Paiements liés
                   </h2>
+
+                  <div className="mb-6 grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <DetailItem
+                      label="Tarif convenu"
+                      value={formatPrice(reservation.price_cents, reservation.currency)}
+                    />
+                    <DetailItem
+                      label="Montant payé"
+                      value={formatPrice(paidCents, currency)}
+                    />
+                    <DetailItem
+                      label={balanceLabel}
+                      value={balanceValue}
+                    />
+                    <DetailItem
+                      label="Paiements"
+                      value={`${paymentCount} lié${paymentCount > 1 ? "s" : ""} · ${paidPaymentCount} payé${paidPaymentCount > 1 ? "s" : ""}${
+                        requestedPaymentCount > 0
+                          ? ` · ${requestedPaymentCount} demandé${requestedPaymentCount > 1 ? "s" : ""}`
+                          : ""
+                      }`}
+                    />
+                  </div>
 
                   {paymentsError ? (
                     <p role="alert" className="text-sm text-amber-800">
@@ -2103,10 +2290,46 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="documents" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
                     Documents liés
                   </h2>
+
+                  <div className="mb-6 grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-3">
+                    <DetailItem
+                      label="Certificat d'engagement"
+                      value={
+                        commitmentDocument
+                          ? getDocumentStatusLabel(
+                              commitmentDocument.status,
+                              commitmentDocument.document_type,
+                            )
+                          : "Non lié"
+                      }
+                    />
+                    <DetailItem
+                      label="Contrat de réservation"
+                      value={
+                        reservationContractDocument
+                          ? getDocumentStatusLabel(
+                              reservationContractDocument.status,
+                              reservationContractDocument.document_type,
+                            )
+                          : "Non lié"
+                      }
+                    />
+                    <DetailItem
+                      label="Attestation de vente"
+                      value={
+                        saleCertificateDocument
+                          ? getDocumentStatusLabel(
+                              saleCertificateDocument.status,
+                              saleCertificateDocument.document_type,
+                            )
+                          : "Non liée"
+                      }
+                    />
+                  </div>
 
                   {documentsError ? (
                     <p role="alert" className="text-sm text-amber-800">
@@ -2219,6 +2442,13 @@ export default async function ReservationDetailPage({
 
               <aside className="h-fit rounded-2xl border bg-surface p-6 space-y-6">
                 <div>
+                  <h2 className="text-lg font-semibold">Liens utiles</h2>
+                  <p className="mt-2 text-xs leading-5 text-muted">
+                    Accès rapides aux objets métier liés au dossier.
+                  </p>
+                </div>
+
+                <div>
                   <h2 className="text-lg font-semibold">Client associé</h2>
                   <div className="mt-4">
                     {reservation.contact_id ? (
@@ -2242,19 +2472,38 @@ export default async function ReservationDetailPage({
                   </div>
                 </div>
 
-                {reservation.application_id ? (
-                  <div className="border-t pt-6">
-                    <h2 className="text-lg font-semibold">Candidature liée</h2>
-                    <div className="mt-4">
+                <div className="border-t pt-6">
+                  <h2 className="text-lg font-semibold">Candidature liée</h2>
+                  <div className="mt-4">
+                    {reservation.application_id ? (
                       <Link
                         href={`/candidatures/${reservation.application_id}`}
                         className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
                       >
                         Consulter la candidature
                       </Link>
-                    </div>
+                    ) : (
+                      <p className="rounded-xl border border-dashed bg-background px-4 py-3 text-sm text-muted">
+                        Aucune candidature liée à cette réservation.
+                      </p>
+                    )}
                   </div>
-                ) : null}
+                </div>
+
+                <div className="border-t pt-6">
+                  <h2 className="text-lg font-semibold">Sections</h2>
+                  <div className="mt-4 grid gap-2">
+                    {sectionNavItems.map((item) => (
+                      <a
+                        key={item.href}
+                        href={item.href}
+                        className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        {item.label}
+                      </a>
+                    ))}
+                  </div>
+                </div>
               </aside>
             </div>
           </>
