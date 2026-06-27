@@ -935,40 +935,45 @@ export default async function DocumentDetailPage({
                       Impossible de charger les parents de la portée.
                     </p>
                   ) : !relatedReservation || !relatedReservation.litter_id ? (
-                    <p className="mt-5 text-sm text-muted">
-                      Aucune portée attribuée à cette réservation pour l’instant
-                    </p>
+                    <div className="mt-5 space-y-4">
+                      {relatedReservation?.litter_group_name ? (
+                        <>
+                          <p className="text-sm font-semibold text-foreground">
+                            Groupe de portées : {relatedReservation.litter_group_name}
+                          </p>
+                          <p className="text-sm text-muted">
+                            Aucune portée précise n’est encore liée à cette réservation.
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-muted">
+                          Aucune portée précise n’est liée à cette réservation pour l’instant.
+                        </p>
+                      )}
+                    </div>
                   ) : (
                     <div className="mt-6 grid gap-6 sm:grid-cols-2">
                       <div>
                         <h3 className="text-sm font-semibold text-foreground border-b pb-2">Mère</h3>
-                        {mother ? (
-                          <dl className="mt-3 space-y-3">
-                            <DetailItem label="Nom" value={mother.display_name} />
-                            <DetailItem
-                              label="Numéro d’identification"
-                              value={mother.identification_number}
-                            />
-                            <DetailItem label="Numéro LOF" value={mother.lof_number} />
-                          </dl>
-                        ) : (
-                          <p className="mt-3 text-sm text-muted">Non renseigné</p>
-                        )}
+                        <dl className="mt-3 space-y-3">
+                          <DetailItem label="Nom" value={mother?.display_name ?? null} />
+                          <DetailItem
+                            label="Numéro d’identification"
+                            value={mother?.identification_number ?? null}
+                          />
+                          <DetailItem label="Numéro LOF" value={mother?.lof_number ?? null} />
+                        </dl>
                       </div>
                       <div>
                         <h3 className="text-sm font-semibold text-foreground border-b pb-2">Père</h3>
-                        {father ? (
-                          <dl className="mt-3 space-y-3">
-                            <DetailItem label="Nom" value={father.display_name} />
-                            <DetailItem
-                              label="Numéro d’identification"
-                              value={father.identification_number}
-                            />
-                            <DetailItem label="Numéro LOF" value={father.lof_number} />
-                          </dl>
-                        ) : (
-                          <p className="mt-3 text-sm text-muted">Non renseigné</p>
-                        )}
+                        <dl className="mt-3 space-y-3">
+                          <DetailItem label="Nom" value={father?.display_name ?? null} />
+                          <DetailItem
+                            label="Numéro d’identification"
+                            value={father?.identification_number ?? null}
+                          />
+                          <DetailItem label="Numéro LOF" value={father?.lof_number ?? null} />
+                        </dl>
                       </div>
                     </div>
                   )}
