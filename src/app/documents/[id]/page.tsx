@@ -510,6 +510,67 @@ export default async function DocumentDetailPage({
 
   const relatedReservation = rawReservation as ReservationOverview | null;
 
+  // Parents of the litter associated with the reservation
+  let litterParentsError = false;
+  let mother: {
+    id: string;
+    display_name: string | null;
+    identification_number: string | null;
+    lof_number: string | null;
+  } | null = null;
+  let father: {
+    id: string;
+    display_name: string | null;
+    identification_number: string | null;
+    lof_number: string | null;
+  } | null = null;
+
+  if (relatedReservation?.litter_id) {
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("mother_id, father_id")
+      .eq("id", relatedReservation.litter_id)
+      .maybeSingle();
+
+    if (litterError) {
+      litterParentsError = true;
+    } else if (litter) {
+      const parentIds = [litter.mother_id, litter.father_id].filter(Boolean) as string[];
+
+      if (parentIds.length > 0) {
+        const { data: parents, error: parentsError } = await supabase
+          .from("animals")
+          .select("id, display_name, identification_number, lof_number")
+          .in("id", parentIds);
+
+        if (parentsError) {
+          litterParentsError = true;
+        } else if (parents) {
+          const motherData = parents.find((a) => a.id === litter.mother_id);
+          const fatherData = parents.find((a) => a.id === litter.father_id);
+
+          if (litter.mother_id) {
+            mother = {
+              id: litter.mother_id,
+              display_name: motherData?.display_name ?? null,
+              identification_number: motherData?.identification_number ?? null,
+              lof_number: motherData?.lof_number ?? null,
+            };
+          }
+
+          if (litter.father_id) {
+            father = {
+              id: litter.father_id,
+              display_name: fatherData?.display_name ?? null,
+              identification_number: fatherData?.identification_number ?? null,
+              lof_number: fatherData?.lof_number ?? null,
+            };
+          }
+        }
+      }
+    }
+  }
+
   const { data: rawPayment, error: paymentError } = document?.payment_id
     ? await supabase
         .from("payments")
@@ -863,6 +924,53 @@ export default async function DocumentDetailPage({
                         )}
                       />
                     </dl>
+                  )}
+                </section>
+
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Parents de la portée</h2>
+
+                  {litterParentsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les parents de la portée.
+                    </p>
+                  ) : !relatedReservation || !relatedReservation.litter_id ? (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucune portée attribuée à cette réservation pour l’instant
+                    </p>
+                  ) : (
+                    <div className="mt-6 grid gap-6 sm:grid-cols-2">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground border-b pb-2">Mère</h3>
+                        {mother ? (
+                          <dl className="mt-3 space-y-3">
+                            <DetailItem label="Nom" value={mother.display_name} />
+                            <DetailItem
+                              label="Numéro d’identification"
+                              value={mother.identification_number}
+                            />
+                            <DetailItem label="Numéro LOF" value={mother.lof_number} />
+                          </dl>
+                        ) : (
+                          <p className="mt-3 text-sm text-muted">Non renseigné</p>
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground border-b pb-2">Père</h3>
+                        {father ? (
+                          <dl className="mt-3 space-y-3">
+                            <DetailItem label="Nom" value={father.display_name} />
+                            <DetailItem
+                              label="Numéro d’identification"
+                              value={father.identification_number}
+                            />
+                            <DetailItem label="Numéro LOF" value={father.lof_number} />
+                          </dl>
+                        ) : (
+                          <p className="mt-3 text-sm text-muted">Non renseigné</p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </section>
 
