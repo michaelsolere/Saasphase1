@@ -477,6 +477,96 @@ function LongTextItem({
   );
 }
 
+type AddressFields = {
+  address_line1: string | null;
+  address_line2: string | null;
+  postal_code: string | null;
+  city: string | null;
+  country: string | null;
+};
+
+function hasAddress(address: AddressFields | null | undefined) {
+  return Boolean(
+    address?.address_line1 ||
+      address?.address_line2 ||
+      address?.postal_code ||
+      address?.city,
+  );
+}
+
+function AddressDetailItem({
+  label,
+  address,
+  emptyLabel = "Non renseignée",
+}: {
+  label: string;
+  address: AddressFields | null | undefined;
+  emptyLabel?: string;
+}) {
+  return (
+    <div className="sm:col-span-2">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm leading-6">
+        {hasAddress(address) ? (
+          <div className="rounded-lg border bg-background/40 p-3">
+            {address?.address_line1 ? <div>{address.address_line1}</div> : null}
+            {address?.address_line2 ? <div>{address.address_line2}</div> : null}
+            <div>
+              {address?.postal_code || "Non renseigné"}{" "}
+              {address?.city || "Non renseignée"}
+            </div>
+            <div className="mt-1 text-xs font-semibold uppercase text-muted">
+              {formatCountry(address?.country ?? null)}
+            </div>
+          </div>
+        ) : (
+          emptyLabel
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function InternalPreviewWarning({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
+      <p className="text-xs font-semibold uppercase tracking-wide">
+        Aperçu interne non définitif
+      </p>
+      <p className="mt-2 text-sm leading-6">{children}</p>
+    </div>
+  );
+}
+
+function AttentionPointsBox({
+  title,
+  points,
+}: {
+  title: string;
+  points: string[];
+}) {
+  if (points.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
+      <h3 className="text-sm font-semibold text-amber-950">{title}</h3>
+      <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
+        {points.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function RelatedSectionHeader({
   title,
   subtitle,
@@ -573,15 +663,10 @@ function CommitmentCertificatePreview({
 
   return (
     <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
-      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
-        <p className="text-xs font-semibold uppercase tracking-wide">
-          Aperçu interne non définitif
-        </p>
-        <p className="mt-2 text-sm leading-6">
-          Ce bloc ne génère aucun document. Le texte devra être validé avant
-          toute utilisation réelle.
-        </p>
-      </div>
+      <InternalPreviewWarning>
+        Ce bloc ne génère aucun document. Le texte devra être validé avant
+        toute utilisation réelle.
+      </InternalPreviewWarning>
 
       <div className="mt-7 border-b pb-5">
         <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -625,35 +710,10 @@ function CommitmentCertificatePreview({
               label="Qualité du signataire"
               value={sellerRepresentative?.representative_role}
             />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse vendeur
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {sellerOrganization?.address_line1 ||
-                sellerOrganization?.address_line2 ||
-                sellerOrganization?.postal_code ||
-                sellerOrganization?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {sellerOrganization.address_line1 ? (
-                      <div>{sellerOrganization.address_line1}</div>
-                    ) : null}
-                    {sellerOrganization.address_line2 ? (
-                      <div>{sellerOrganization.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
-                      {sellerOrganization.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(sellerOrganization.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse vendeur"
+              address={sellerOrganization}
+            />
           </dl>
         </div>
 
@@ -663,35 +723,10 @@ function CommitmentCertificatePreview({
             <DetailItem label="Nom complet" value={relatedContact?.display_name} />
             <DetailItem label="Email" value={relatedContact?.email} />
             <DetailItem label="Téléphone" value={relatedContact?.phone} />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse adoptant
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {relatedContact?.address_line1 ||
-                relatedContact?.address_line2 ||
-                relatedContact?.postal_code ||
-                relatedContact?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {relatedContact.address_line1 ? (
-                      <div>{relatedContact.address_line1}</div>
-                    ) : null}
-                    {relatedContact.address_line2 ? (
-                      <div>{relatedContact.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {relatedContact.postal_code || "Non renseigné"}{" "}
-                      {relatedContact.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(relatedContact.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse adoptant"
+              address={relatedContact}
+            />
           </dl>
         </div>
 
@@ -776,18 +811,10 @@ function CommitmentCertificatePreview({
           </p>
         </div>
 
-        {certificateAttentionPoints.length > 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
-            <h3 className="text-sm font-semibold text-amber-950">
-              Points d’attention propres au certificat
-            </h3>
-            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
-              {certificateAttentionPoints.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <AttentionPointsBox
+          title="Points d’attention propres au certificat"
+          points={certificateAttentionPoints}
+        />
       </div>
     </section>
   );
@@ -870,15 +897,10 @@ function ReservationContractPreview({
 
   return (
     <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
-      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
-        <p className="text-xs font-semibold uppercase tracking-wide">
-          Aperçu interne non définitif
-        </p>
-        <p className="mt-2 text-sm leading-6">
-          Ce bloc ne génère aucun contrat. Le texte devra être validé avant
-          toute utilisation réelle.
-        </p>
-      </div>
+      <InternalPreviewWarning>
+        Ce bloc ne génère aucun contrat. Le texte devra être validé avant
+        toute utilisation réelle.
+      </InternalPreviewWarning>
 
       <div className="mt-7 border-b pb-5">
         <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -922,35 +944,10 @@ function ReservationContractPreview({
               label="Qualité du signataire"
               value={sellerRepresentative?.representative_role}
             />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse vendeur
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {sellerOrganization?.address_line1 ||
-                sellerOrganization?.address_line2 ||
-                sellerOrganization?.postal_code ||
-                sellerOrganization?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {sellerOrganization.address_line1 ? (
-                      <div>{sellerOrganization.address_line1}</div>
-                    ) : null}
-                    {sellerOrganization.address_line2 ? (
-                      <div>{sellerOrganization.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
-                      {sellerOrganization.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(sellerOrganization.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse vendeur"
+              address={sellerOrganization}
+            />
           </dl>
         </div>
 
@@ -960,35 +957,10 @@ function ReservationContractPreview({
             <DetailItem label="Nom complet" value={relatedContact?.display_name} />
             <DetailItem label="Email" value={relatedContact?.email} />
             <DetailItem label="Téléphone" value={relatedContact?.phone} />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse adoptant
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {relatedContact?.address_line1 ||
-                relatedContact?.address_line2 ||
-                relatedContact?.postal_code ||
-                relatedContact?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {relatedContact.address_line1 ? (
-                      <div>{relatedContact.address_line1}</div>
-                    ) : null}
-                    {relatedContact.address_line2 ? (
-                      <div>{relatedContact.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {relatedContact.postal_code || "Non renseigné"}{" "}
-                      {relatedContact.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(relatedContact.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse adoptant"
+              address={relatedContact}
+            />
           </dl>
         </div>
 
@@ -1190,18 +1162,10 @@ function ReservationContractPreview({
           </dl>
         </div>
 
-        {contractAttentionPoints.length > 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
-            <h3 className="text-sm font-semibold text-amber-950">
-              Points d’attention propres au contrat de réservation
-            </h3>
-            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
-              {contractAttentionPoints.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <AttentionPointsBox
+          title="Points d’attention propres au contrat de réservation"
+          points={contractAttentionPoints}
+        />
       </div>
     </section>
   );
@@ -1315,16 +1279,11 @@ function SaleCertificatePreview({
 
   return (
     <section className="rounded-2xl border border-accent/20 bg-surface p-6 sm:p-8">
-      <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 text-amber-950">
-        <p className="text-xs font-semibold uppercase tracking-wide">
-          Aperçu interne non définitif
-        </p>
-        <p className="mt-2 text-sm leading-6">
-          Ce bloc ne génère aucune attestation. Le texte devra être validé avant
-          toute utilisation réelle. La facture est un document distinct et n’est
-          pas générée ici.
-        </p>
-      </div>
+      <InternalPreviewWarning>
+        Ce bloc ne génère aucune attestation. Le texte devra être validé avant
+        toute utilisation réelle. La facture est un document distinct et n’est
+        pas générée ici.
+      </InternalPreviewWarning>
 
       <div className="mt-7 border-b pb-5">
         <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -1368,35 +1327,10 @@ function SaleCertificatePreview({
               label="Qualité du signataire"
               value={sellerRepresentative?.representative_role}
             />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse vendeur
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {sellerOrganization?.address_line1 ||
-                sellerOrganization?.address_line2 ||
-                sellerOrganization?.postal_code ||
-                sellerOrganization?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {sellerOrganization.address_line1 ? (
-                      <div>{sellerOrganization.address_line1}</div>
-                    ) : null}
-                    {sellerOrganization.address_line2 ? (
-                      <div>{sellerOrganization.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {sellerOrganization.postal_code || "Non renseigné"}{" "}
-                      {sellerOrganization.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(sellerOrganization.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse vendeur"
+              address={sellerOrganization}
+            />
           </dl>
         </div>
 
@@ -1408,35 +1342,10 @@ function SaleCertificatePreview({
             <DetailItem label="Nom complet" value={relatedContact?.display_name} />
             <DetailItem label="Email" value={relatedContact?.email} />
             <DetailItem label="Téléphone" value={relatedContact?.phone} />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Adresse adoptant
-              </dt>
-              <dd className="mt-1.5 text-sm leading-6">
-                {relatedContact?.address_line1 ||
-                relatedContact?.address_line2 ||
-                relatedContact?.postal_code ||
-                relatedContact?.city ? (
-                  <div className="rounded-lg border bg-background/40 p-3">
-                    {relatedContact.address_line1 ? (
-                      <div>{relatedContact.address_line1}</div>
-                    ) : null}
-                    {relatedContact.address_line2 ? (
-                      <div>{relatedContact.address_line2}</div>
-                    ) : null}
-                    <div>
-                      {relatedContact.postal_code || "Non renseigné"}{" "}
-                      {relatedContact.city || "Non renseignée"}
-                    </div>
-                    <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                      {formatCountry(relatedContact.country)}
-                    </div>
-                  </div>
-                ) : (
-                  "Non renseignée"
-                )}
-              </dd>
-            </div>
+            <AddressDetailItem
+              label="Adresse adoptant"
+              address={relatedContact}
+            />
           </dl>
         </div>
 
@@ -1614,18 +1523,10 @@ function SaleCertificatePreview({
           ) : null}
         </div>
 
-        {saleCertificateAttentionPoints.length > 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-5">
-            <h3 className="text-sm font-semibold text-amber-950">
-              Points d’attention propres à l’attestation de vente
-            </h3>
-            <ul className="mt-3 list-inside list-disc space-y-1.5 text-sm text-amber-900">
-              {saleCertificateAttentionPoints.map((point) => (
-                <li key={point}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+        <AttentionPointsBox
+          title="Points d’attention propres à l’attestation de vente"
+          points={saleCertificateAttentionPoints}
+        />
       </div>
     </section>
   );
@@ -2439,35 +2340,7 @@ export default async function DocumentDetailPage({
                       <DetailItem label="Affixe" value={sellerOrganization.affix_name} />
                       <DetailItem label="Affixe chien" value={sellerOrganization.dog_affix_name} />
                       <DetailItem label="Affixe chat" value={sellerOrganization.cat_affix_name} />
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                          Adresse
-                        </dt>
-                        <dd className="mt-1.5 text-sm leading-6">
-                          {sellerOrganization.address_line1 ||
-                          sellerOrganization.address_line2 ||
-                          sellerOrganization.postal_code ||
-                          sellerOrganization.city ? (
-                            <div className="rounded-lg border bg-background/40 p-3">
-                              {sellerOrganization.address_line1 ? (
-                                <div>{sellerOrganization.address_line1}</div>
-                              ) : null}
-                              {sellerOrganization.address_line2 ? (
-                                <div>{sellerOrganization.address_line2}</div>
-                              ) : null}
-                              <div>
-                                {sellerOrganization.postal_code || "Non renseigné"}{" "}
-                                {sellerOrganization.city || "Non renseignée"}
-                              </div>
-                              <div className="mt-1 text-xs font-semibold uppercase text-muted">
-                                {formatCountry(sellerOrganization.country)}
-                              </div>
-                            </div>
-                          ) : (
-                            "Non renseignée"
-                          )}
-                        </dd>
-                      </div>
+                      <AddressDetailItem label="Adresse" address={sellerOrganization} />
                     </dl>
                   )}
                 </section>
@@ -2651,27 +2524,10 @@ export default async function DocumentDetailPage({
                           relatedContact.origin_channel,
                         )}
                       />
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                          Adresse postale complète
-                        </dt>
-                        <dd className="mt-1.5 text-sm leading-6">
-                          {relatedContact.address_line1 || relatedContact.address_line2 || relatedContact.postal_code || relatedContact.city ? (
-                            <div className="bg-background/40 p-3 rounded-lg border">
-                              {relatedContact.address_line1 && <div>{relatedContact.address_line1}</div>}
-                              {relatedContact.address_line2 && <div>{relatedContact.address_line2}</div>}
-                              <div>
-                                {relatedContact.postal_code || "Non renseigné"} {relatedContact.city || "Non renseignée"}
-                              </div>
-                              <div className="text-xs text-muted mt-1 uppercase font-semibold">
-                                {formatCountry(relatedContact.country)}
-                              </div>
-                            </div>
-                          ) : (
-                            "Non renseignée"
-                          )}
-                        </dd>
-                      </div>
+                      <AddressDetailItem
+                        label="Adresse postale complète"
+                        address={relatedContact}
+                      />
                     </dl>
                   )}
                 </section>
