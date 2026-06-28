@@ -14,7 +14,14 @@ import {
   getDocumentTypeLabel,
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
-import { updateLitterGroupAssignment } from "@/features/litters/actions";
+import {
+  updateLitterDetails,
+  updateLitterGroupAssignment,
+} from "@/features/litters/actions";
+import {
+  LitterFields,
+  type LitterAnimalOption,
+} from "@/features/litters/litter-fields";
 import {
   formatLitterCount,
   formatLitterDate,
@@ -608,11 +615,16 @@ export default async function LitterDetailPage({
     campaign_status?: string;
     campaign_count?: string;
     group_assignment_status?: string;
+    detail_status?: string;
   }>;
 }) {
   const { id } = await params;
-  const { campaign_status, campaign_count, group_assignment_status } =
-    await searchParams;
+  const {
+    campaign_status,
+    campaign_count,
+    group_assignment_status,
+    detail_status,
+  } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -660,6 +672,34 @@ export default async function LitterDetailPage({
     id: string;
     name: string | null;
   }[];
+
+  // Animaux de l'organisation pour les selects mère/père du formulaire d'édition.
+  const { data: rawAnimalOptions } =
+    litter && litter.organization_id
+      ? await supabase
+          .from("animals")
+          .select("id, display_name, sex, species, breed, status")
+          .eq("organization_id", litter.organization_id)
+          .is("deleted_at", null)
+          .order("display_name", { ascending: true })
+      : { data: null };
+
+  const animalOptions = (rawAnimalOptions ?? []) as LitterAnimalOption[];
+
+  const detailEditErrorMessages: Record<string, string> = {
+    name_required: "Le nom de la portée est obligatoire.",
+    invalid_species: "L’espèce sélectionnée est invalide.",
+    invalid_status: "Le statut sélectionné est invalide.",
+    same_parents: "La mère et le père doivent être différents.",
+    invalid_mother: "La mère sélectionnée est invalide.",
+    invalid_father: "Le père sélectionné est invalide.",
+    error: "Impossible de modifier la portée pour le moment.",
+  };
+
+  const detailEditError =
+    detail_status && detail_status !== "success"
+      ? (detailEditErrorMessages[detail_status] ?? detailEditErrorMessages.error)
+      : undefined;
 
   const { data: rawAnimals, error: animalsError } = litter
     ? await supabase
@@ -996,6 +1036,68 @@ export default async function LitterDetailPage({
                   >
                     Enregistrer le groupe
                   </button>
+                </form>
+              </section>
+
+              <section
+                id="modifier-portee"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <h2 className="text-xl font-semibold">Modifier la portée</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Mettez à jour les informations principales de la portée. Le
+                  rattachement à un groupe se gère dans la section dédiée
+                  ci-dessus. Aucun animal, réservation ou document n’est créé ou
+                  modifié par cette action.
+                </p>
+
+                {detail_status === "success" ? (
+                  <p
+                    role="status"
+                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                  >
+                    Les informations de la portée ont été mises à jour.
+                  </p>
+                ) : null}
+
+                {detailEditError ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    {detailEditError}
+                  </p>
+                ) : null}
+
+                <form action={updateLitterDetails} className="mt-6">
+                  <input type="hidden" name="litter_id" value={litter.id} />
+                  <LitterFields
+                    idPrefix="litter-edit"
+                    defaults={{
+                      name: litter.name,
+                      species: litter.species,
+                      breed: litter.breed,
+                      status: litter.status,
+                      motherId: litter.mother_id,
+                      fatherId: litter.father_id,
+                      matingDate: litter.mating_date,
+                      matingDate2: litter.mating_date_2,
+                      estimatedOvulationDate: litter.estimated_ovulation_date,
+                      expectedBirthDate: litter.expected_birth_date,
+                      actualBirthDate: litter.actual_birth_date,
+                      notes: litter.notes,
+                    }}
+                    animals={animalOptions}
+                  />
+
+                  <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      Enregistrer la portée
+                    </button>
+                  </div>
                 </form>
               </section>
 
