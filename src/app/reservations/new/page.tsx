@@ -13,7 +13,12 @@ export const dynamic = "force-dynamic";
 export default async function NewReservationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{
+    status?: string;
+    contact_id?: string;
+    contact_created?: string;
+    quick_contact_status?: string;
+  }>;
 }) {
   const query = await searchParams;
   const supabase = await createClient();
@@ -45,6 +50,15 @@ export default async function NewReservationPage({
   const contacts = (contactsResult.data ?? []) as NewReservationContact[];
   const applications = (applicationsResult.data ??
     []) as NewReservationApplication[];
+
+  const requestedContactId = query.contact_id ?? null;
+  const initialSelectedContactId =
+    requestedContactId &&
+    contacts.some((contact) => contact.id === requestedContactId)
+      ? requestedContactId
+      : null;
+  const contactJustCreated =
+    query.contact_created === "1" && Boolean(initialSelectedContactId);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -101,6 +115,27 @@ export default async function NewReservationPage({
         </section>
       ) : null}
 
+      {query.quick_contact_status === "error" ? (
+        <section
+          role="alert"
+          className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-950"
+        >
+          Impossible de créer le contact pour le moment. Vérifiez les
+          informations saisies et réessayez. Aucune autre donnée n’a été
+          modifiée.
+        </section>
+      ) : null}
+
+      {contactJustCreated ? (
+        <section
+          role="status"
+          className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950"
+        >
+          Le contact rapide a été créé et sélectionné. Complétez la réservation
+          ci-dessous.
+        </section>
+      ) : null}
+
       {hasLoadingError ? (
         <section
           role="alert"
@@ -111,22 +146,12 @@ export default async function NewReservationPage({
             Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
           </p>
         </section>
-      ) : contacts.length === 0 ? (
-        <section className="mt-8 rounded-2xl border border-dashed bg-surface px-6 py-12 text-center">
-          <p className="text-lg font-semibold">Aucun contact disponible</p>
-          <p className="mt-2 text-sm text-muted">
-            Créez d’abord un contact depuis le module Contacts avant de créer une
-            réservation.
-          </p>
-          <Link
-            href="/contacts/new"
-            className="mt-5 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-          >
-            Créer un contact
-          </Link>
-        </section>
       ) : (
-        <NewReservationForm contacts={contacts} applications={applications} />
+        <NewReservationForm
+          contacts={contacts}
+          applications={applications}
+          initialSelectedContactId={initialSelectedContactId}
+        />
       )}
     </main>
   );

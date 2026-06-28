@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
   formatApplicationDate,
   getApplicationStatusLabel,
 } from "@/features/applications/formatters";
+import { createContactQuickForReservation } from "@/features/contacts/actions";
 import { createReservationDirect } from "@/features/reservations/actions";
 
 export type NewReservationContact = {
@@ -70,17 +71,20 @@ function dayStringDaysAgo(days: number) {
 export function NewReservationForm({
   contacts,
   applications,
+  initialSelectedContactId = null,
 }: {
   contacts: NewReservationContact[];
   applications: NewReservationApplication[];
+  initialSelectedContactId?: string | null;
 }) {
   const [search, setSearch] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [selectedContactId, setSelectedContactId] = useState<string | null>(
-    null,
+    initialSelectedContactId,
   );
   const [selectedApplicationId, setSelectedApplicationId] = useState<string>("");
+  const [isQuickCreate, setIsQuickCreate] = useState(false);
 
   const trimmedSearch = search.trim();
   const hasActiveFilter = Boolean(
@@ -173,6 +177,23 @@ export function NewReservationForm({
     setSelectedApplicationId("");
   }
 
+  function handleUseExistingContact(contactId: string) {
+    handleSelectContact(contactId);
+    setIsQuickCreate(false);
+  }
+
+  if (isQuickCreate && !selectedContact) {
+    return (
+      <div className="mt-8">
+        <QuickContactForm
+          contacts={contacts}
+          onCancel={() => setIsQuickCreate(false)}
+          onUseExisting={handleUseExistingContact}
+        />
+      </div>
+    );
+  }
+
   return (
     <form
       action={createReservationDirect}
@@ -230,12 +251,21 @@ export function NewReservationForm({
         ) : (
           <>
             <div className="mt-5">
-              <label
-                htmlFor="contact-search"
-                className="text-xs font-semibold uppercase tracking-wide text-muted"
-              >
-                Rechercher un contact
-              </label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label
+                  htmlFor="contact-search"
+                  className="text-xs font-semibold uppercase tracking-wide text-muted"
+                >
+                  Rechercher un contact
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCreate(true)}
+                  className="text-xs font-semibold text-accent hover:underline"
+                >
+                  + Nouveau contact rapide
+                </button>
+              </div>
               <input
                 id="contact-search"
                 type="text"
@@ -321,12 +351,13 @@ export function NewReservationForm({
                 <p className="mt-1">
                   Aucun contact ne correspond à ces critères.
                 </p>
-                <Link
-                  href="/contacts/new"
+                <button
+                  type="button"
+                  onClick={() => setIsQuickCreate(true)}
                   className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
                 >
-                  Créer un contact
-                </Link>
+                  Créer un contact rapide
+                </button>
               </div>
             ) : (
               <>
@@ -530,6 +561,335 @@ export function NewReservationForm({
         </Link>
         <SubmitButton disabled={!selectedContactId} />
       </div>
+    </form>
+  );
+}
+
+const QUICK_CONTACT_USEFUL_FIELDS = [
+  "display_name",
+  "first_name",
+  "last_name",
+  "email",
+  "phone",
+  "secondary_phone",
+  "address_line1",
+  "postal_code",
+  "city",
+] as const;
+
+function normalizePhone(value: string) {
+  return value.replace(/[\s.\-/()]/g, "");
+}
+
+function QuickContactField({
+  id,
+  label,
+  name,
+  type = "text",
+  defaultValue,
+  autoComplete,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  type?: string;
+  defaultValue?: string;
+  autoComplete?: string;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="text-xs font-semibold uppercase tracking-wide text-muted"
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        name={name}
+        type={type}
+        defaultValue={defaultValue}
+        autoComplete={autoComplete}
+        className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+      />
+    </div>
+  );
+}
+
+function QuickFormButtons({
+  hasDuplicates,
+  onCancel,
+  onPrimaryClick,
+  onCreateAnywayClick,
+}: {
+  hasDuplicates: boolean;
+  onCancel: () => void;
+  onPrimaryClick: () => void;
+  onCreateAnywayClick: () => void;
+}) {
+  const { pending } = useFormStatus();
+
+  return (
+    <div className="mt-6 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={pending}
+        className="text-sm font-semibold text-muted hover:text-foreground hover:underline disabled:opacity-60"
+      >
+        Annuler
+      </button>
+      {hasDuplicates ? (
+        <button
+          type="submit"
+          onClick={onCreateAnywayClick}
+          disabled={pending}
+          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-60"
+        >
+          Créer quand même
+        </button>
+      ) : null}
+      <button
+        type="submit"
+        onClick={onPrimaryClick}
+        disabled={pending}
+        className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {pending ? "Création…" : "Créer le contact"}
+      </button>
+    </div>
+  );
+}
+
+function QuickContactForm({
+  contacts,
+  onCancel,
+  onUseExisting,
+}: {
+  contacts: NewReservationContact[];
+  onCancel: () => void;
+  onUseExisting: (contactId: string) => void;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const bypassDuplicatesRef = useRef(false);
+  const [duplicates, setDuplicates] = useState<NewReservationContact[]>([]);
+  const [showEmptyError, setShowEmptyError] = useState(false);
+
+  function findDuplicates(formData: FormData): NewReservationContact[] {
+    const email = ((formData.get("email") as string) ?? "")
+      .trim()
+      .toLowerCase();
+    const phone = normalizePhone(((formData.get("phone") as string) ?? "").trim());
+    const firstName = ((formData.get("first_name") as string) ?? "")
+      .trim()
+      .toLowerCase();
+    const lastName = ((formData.get("last_name") as string) ?? "")
+      .trim()
+      .toLowerCase();
+
+    return contacts.filter((contact) => {
+      if (email && contact.email && contact.email.trim().toLowerCase() === email) {
+        return true;
+      }
+      if (
+        phone &&
+        contact.phone &&
+        normalizePhone(contact.phone) === phone
+      ) {
+        return true;
+      }
+      if (
+        firstName &&
+        lastName &&
+        contact.first_name &&
+        contact.last_name &&
+        contact.first_name.trim().toLowerCase() === firstName &&
+        contact.last_name.trim().toLowerCase() === lastName
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
+
+    const hasUsefulInformation = QUICK_CONTACT_USEFUL_FIELDS.some((field) =>
+      ((formData.get(field) as string) ?? "").trim(),
+    );
+
+    if (!hasUsefulInformation) {
+      event.preventDefault();
+      setShowEmptyError(true);
+      setDuplicates([]);
+      return;
+    }
+
+    setShowEmptyError(false);
+
+    if (!bypassDuplicatesRef.current) {
+      const probableDuplicates = findDuplicates(formData);
+      if (probableDuplicates.length > 0) {
+        event.preventDefault();
+        setDuplicates(probableDuplicates);
+        return;
+      }
+    }
+    // Aucune anomalie : on laisse l'action serveur s'exécuter.
+  }
+
+  return (
+    <form
+      ref={formRef}
+      action={createContactQuickForReservation}
+      onSubmit={handleSubmit}
+      className="rounded-2xl border bg-surface p-6 sm:p-8"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Créer un contact rapide</h2>
+          <p className="mt-1 text-sm text-muted">
+            Renseignez au moins une information. Le contact sera créé puis
+            sélectionné pour cette réservation. Aucune candidature ni réservation
+            n’est créée automatiquement.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-sm font-semibold text-accent hover:underline"
+        >
+          ← Revenir à la recherche
+        </button>
+      </div>
+
+      {showEmptyError ? (
+        <p
+          role="alert"
+          className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          Renseignez au moins une information pour créer le contact.
+        </p>
+      ) : null}
+
+      {duplicates.length > 0 ? (
+        <div
+          role="alert"
+          className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-950"
+        >
+          <p className="font-semibold">
+            Un contact existant ressemble à celui-ci.
+          </p>
+          <p className="mt-1">
+            Vous pouvez utiliser l’un de ces contacts, ou créer quand même un
+            nouveau contact.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {duplicates.map((contact) => (
+              <li
+                key={contact.id}
+                className="flex flex-col gap-2 rounded-lg border bg-background px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span className="text-sm">
+                  <span className="font-medium text-foreground">
+                    {contact.display_name ?? "Contact sans nom"}
+                  </span>
+                  <span className="ml-2 text-xs text-muted">
+                    {[contact.email, contact.phone]
+                      .filter(Boolean)
+                      .join(" · ") || "Coordonnées non renseignées"}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onUseExisting(contact.id)}
+                  className="shrink-0 rounded-lg border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:bg-background"
+                >
+                  Utiliser ce contact
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <QuickContactField
+          id="quick-first-name"
+          label="Prénom"
+          name="first_name"
+          autoComplete="given-name"
+        />
+        <QuickContactField
+          id="quick-last-name"
+          label="Nom"
+          name="last_name"
+          autoComplete="family-name"
+        />
+        <QuickContactField
+          id="quick-email"
+          label="Email"
+          name="email"
+          type="email"
+          autoComplete="email"
+        />
+        <QuickContactField
+          id="quick-phone"
+          label="Téléphone"
+          name="phone"
+          type="tel"
+          autoComplete="tel"
+        />
+        <QuickContactField
+          id="quick-secondary-phone"
+          label="Téléphone secondaire"
+          name="secondary_phone"
+          type="tel"
+        />
+        <QuickContactField
+          id="quick-address-line1"
+          label="Adresse ligne 1"
+          name="address_line1"
+          autoComplete="address-line1"
+        />
+        <QuickContactField
+          id="quick-address-line2"
+          label="Adresse ligne 2"
+          name="address_line2"
+          autoComplete="address-line2"
+        />
+        <QuickContactField
+          id="quick-postal-code"
+          label="Code postal"
+          name="postal_code"
+          autoComplete="postal-code"
+        />
+        <QuickContactField
+          id="quick-city"
+          label="Ville"
+          name="city"
+          autoComplete="address-level2"
+        />
+        <QuickContactField
+          id="quick-country"
+          label="Pays"
+          name="country"
+          defaultValue="FR"
+          autoComplete="country"
+        />
+      </div>
+
+      <QuickFormButtons
+        hasDuplicates={duplicates.length > 0}
+        onCancel={onCancel}
+        onPrimaryClick={() => {
+          bypassDuplicatesRef.current = false;
+        }}
+        onCreateAnywayClick={() => {
+          bypassDuplicatesRef.current = true;
+        }}
+      />
     </form>
   );
 }
