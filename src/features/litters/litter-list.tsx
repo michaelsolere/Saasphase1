@@ -79,7 +79,17 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
                   {getLitterDisplayName(litter.name, litter.id)}
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Groupe : {litter.litter_group_name || "Non renseigné"}
+                  Groupe :{" "}
+                  {litter.litter_group_id ? (
+                    <Link
+                      href={`/litter-groups/${litter.litter_group_id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {litter.litter_group_name || "Groupe de portées"}
+                    </Link>
+                  ) : (
+                    litter.litter_group_name || "Non renseigné"
+                  )}
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   {getSpeciesLabel(litter.species)} · {litter.breed || "Race non renseignée"}

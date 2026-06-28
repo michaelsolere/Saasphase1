@@ -23,6 +23,10 @@ import {
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
 import {
+  LinkedApplicationsSection,
+  type LinkedApplication,
+} from "@/features/litters/linked-records";
+import {
   formatLitterCount,
   formatLitterDate,
   getLitterDisplayName,
@@ -833,6 +837,65 @@ export default async function LitterDetailPage({
     qualifiedApplications = [];
   }
 
+  // Candidatures liées à cette portée (tous statuts, lecture seule).
+  const { data: rawLinkedApplications, error: linkedAppsError } = shouldLoadApps
+    ? await supabase
+        .from("applications")
+        .select(
+          "id, contact_id, species, breed, desired_sex_preference, status, created_at",
+        )
+        .eq("organization_id", litter.organization_id)
+        .eq("desired_litter_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null };
+
+  let linkedApplications: LinkedApplication[] | null = null;
+
+  if (
+    rawLinkedApplications &&
+    rawLinkedApplications.length > 0 &&
+    litter &&
+    litter.organization_id
+  ) {
+    const linkedContactIds = Array.from(
+      new Set(
+        rawLinkedApplications
+          .map((app) => app.contact_id)
+          .filter((cid): cid is string => Boolean(cid)),
+      ),
+    );
+
+    const contactNameMap = new Map<string, string | null>();
+
+    if (linkedContactIds.length > 0) {
+      const { data: linkedContacts } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("organization_id", litter.organization_id)
+        .in("id", linkedContactIds);
+
+      linkedContacts?.forEach((contact) => {
+        contactNameMap.set(contact.id, contact.display_name);
+      });
+    }
+
+    linkedApplications = rawLinkedApplications.map((app) => ({
+      id: app.id,
+      contact_id: app.contact_id,
+      contact_display_name: app.contact_id
+        ? (contactNameMap.get(app.contact_id) ?? null)
+        : null,
+      species: app.species,
+      breed: app.breed,
+      desired_sex_preference: app.desired_sex_preference,
+      status: app.status,
+      created_at: app.created_at,
+    }));
+  } else if (rawLinkedApplications) {
+    linkedApplications = [];
+  }
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -917,7 +980,18 @@ export default async function LitterDetailPage({
                   />
                   <DetailItem
                     label="Groupe de portée"
-                    value={summary?.litter_group_name ?? null}
+                    value={
+                      litter.litter_group_id ? (
+                        <Link
+                          href={`/litter-groups/${litter.litter_group_id}`}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          {summary?.litter_group_name ?? "Groupe de portées"}
+                        </Link>
+                      ) : (
+                        summary?.litter_group_name ?? null
+                      )
+                    }
                   />
                   <DetailItem
                     label="Espèce"
@@ -1001,7 +1075,17 @@ export default async function LitterDetailPage({
                 ) : null}
 
                 <p className="mt-4 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
-                  Groupe actuel : {summary?.litter_group_name ?? "Aucun groupe"}
+                  Groupe actuel :{" "}
+                  {litter.litter_group_id ? (
+                    <Link
+                      href={`/litter-groups/${litter.litter_group_id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {summary?.litter_group_name ?? "Groupe de portées"}
+                    </Link>
+                  ) : (
+                    "Aucun groupe"
+                  )}
                 </p>
 
                 <form
@@ -1167,6 +1251,13 @@ export default async function LitterDetailPage({
               <RelatedAnimalsSection
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
+              />
+
+              <LinkedApplicationsSection
+                title="Candidatures liées à cette portée"
+                emptyLabel="Aucune candidature ne souhaite cette portée."
+                applications={linkedApplications}
+                hasError={Boolean(linkedAppsError)}
               />
 
               {/* ---- Campagne de pré-réservation ---- */}

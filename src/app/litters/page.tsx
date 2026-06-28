@@ -45,7 +45,7 @@ export default async function LittersPage({
   const result = await supabase
     .from("litter_overview")
     .select(
-      "id, name, litter_group_name, species, breed, status, expected_birth_date, actual_birth_date, mother_display_name, father_display_name, animal_count, reservation_count, created_at",
+      "id, name, litter_group_id, litter_group_name, species, breed, status, expected_birth_date, actual_birth_date, mother_display_name, father_display_name, animal_count, reservation_count, created_at",
     )
     .order("expected_birth_date", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
