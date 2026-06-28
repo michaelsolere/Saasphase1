@@ -322,3 +322,121 @@ export async function createContactNote(formData: FormData) {
   revalidatePath(`/contacts/${contactId}`);
   redirect(`/contacts/${contactId}?note_status=success`);
 }
+
+// ---------------------------------------------------------------------------
+// Création rapide de contact depuis le flux /reservations/new
+// ---------------------------------------------------------------------------
+
+const quickContactErrorUrl = "/reservations/new?quick_contact_status=error";
+
+/**
+ * Crée un contact rapide directement depuis `/reservations/new`, puis renvoie
+ * sur la même page avec le nouveau contact pré-sélectionné.
+ *
+ * Réutilise la même logique de validation que `createContact` :
+ *   - au moins une information utile est requise ;
+ *   - `organization_id` résolu via la membership active (jamais depuis le client) ;
+ *   - `origin_channel = "manual"`.
+ *
+ * Volontairement plus léger que `createContact` :
+ *   - pas de rôle initial (aucune sélection de rôle dans le formulaire rapide) ;
+ *   - aucune candidature, réservation, note, paiement ou document automatique ;
+ *   - aucun contact existant n'est modifié ; aucune fusion.
+ */
+export async function createContactQuickForReservation(formData: FormData) {
+  const firstName = normalizeOptionalText(formData.get("first_name"));
+  const lastName = normalizeOptionalText(formData.get("last_name"));
+  const requestedDisplayName = normalizeOptionalText(
+    formData.get("display_name"),
+  );
+  const email =
+    normalizeOptionalText(formData.get("email"))?.toLowerCase() ?? null;
+  const phone = normalizeOptionalText(formData.get("phone"));
+  const secondaryPhone = normalizeOptionalText(formData.get("secondary_phone"));
+  const addressLine1 = normalizeOptionalText(formData.get("address_line1"));
+  const addressLine2 = normalizeOptionalText(formData.get("address_line2"));
+  const postalCode = normalizeOptionalText(formData.get("postal_code"));
+  const city = normalizeOptionalText(formData.get("city"));
+  const country = normalizeOptionalText(formData.get("country"), 2) ?? "FR";
+
+  const hasUsefulContactInformation = Boolean(
+    requestedDisplayName ||
+      firstName ||
+      lastName ||
+      email ||
+      phone ||
+      secondaryPhone ||
+      addressLine1 ||
+      postalCode ||
+      city,
+  );
+
+  if (!hasUsefulContactInformation) {
+    redirect(quickContactErrorUrl);
+  }
+
+  const displayName = buildDisplayName({
+    requestedDisplayName,
+    firstName,
+    lastName,
+    email,
+    phone,
+    secondaryPhone,
+    addressLine1,
+    postalCode,
+    city,
+  });
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(quickContactErrorUrl);
+  }
+
+  const { data: contact, error: insertError } = await supabase
+    .from("contacts")
+    .insert({
+      organization_id: membership.organization_id,
+      display_name: displayName,
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      phone,
+      secondary_phone: secondaryPhone,
+      address_line1: addressLine1,
+      address_line2: addressLine2,
+      postal_code: postalCode,
+      city,
+      country,
+      origin_channel: "manual",
+      created_by: user.id,
+      updated_by: user.id,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (insertError || !contact?.id) {
+    redirect(quickContactErrorUrl);
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath("/reservations/new");
+  redirect(`/reservations/new?contact_id=${contact.id}&contact_created=1`);
+}
