@@ -666,3 +666,127 @@ export async function updateLitterGroupAssignment(formData: FormData) {
   revalidatePath(`/litters/${litterId}`);
   redirect(litterGroupAssignmentUrl(litterId, "success"));
 }
+
+function litterGroupDetailEditUrl(
+  groupId: string,
+  code:
+    | "success"
+    | "name_required"
+    | "invalid_species"
+    | "invalid_status"
+    | "invalid_dates"
+    | "error",
+) {
+  return `/litter-groups/${groupId}?group_detail_status=${code}#modifier-groupe`;
+}
+
+/**
+ * Met à jour les informations principales d'un groupe de portées depuis sa
+ * fiche, en cohérence avec le formulaire de création /litter-groups/new.
+ *
+ * Décisions :
+ *   - `name` obligatoire ; `species` validé (dog/cat) ; `status` validé parmi
+ *     les statuts de groupes ; période optionnelle (fin ≥ début si les deux).
+ *   - `organization_id` jamais accepté du client : déduit du groupe en base.
+ *   - Met à jour uniquement name, species, status, expected_period_start,
+ *     expected_period_end, description + `updated_at`/`updated_by`.
+ *   - Aucun objet lié (portées, candidatures, réservations, animaux, documents,
+ *     paiements, événements) modifié ; aucune propagation de statut.
+ */
+export async function updateLitterGroupDetails(formData: FormData) {
+  const rawGroupId = formData.get("group_id");
+
+  if (typeof rawGroupId !== "string" || !isUuid(rawGroupId.trim())) {
+    redirect("/litter-groups");
+  }
+
+  const groupId = (rawGroupId as string).trim();
+
+  const name = normalizeOptionalText(formData.get("name"), 255);
+
+  if (!name) {
+    redirect(litterGroupDetailEditUrl(groupId, "name_required"));
+  }
+
+  const rawSpecies = formData.get("species");
+  const species = typeof rawSpecies === "string" ? rawSpecies.trim() : "";
+
+  if (!allowedSpecies.has(species)) {
+    redirect(litterGroupDetailEditUrl(groupId, "invalid_species"));
+  }
+
+  const rawStatus = formData.get("status");
+  const status =
+    typeof rawStatus === "string" && rawStatus.trim()
+      ? rawStatus.trim()
+      : "planned";
+
+  if (!allowedLitterGroupStatuses.has(status)) {
+    redirect(litterGroupDetailEditUrl(groupId, "invalid_status"));
+  }
+
+  const expectedPeriodStart = normalizeOptionalDate(
+    formData.get("expected_period_start"),
+  );
+  const expectedPeriodEnd = normalizeOptionalDate(
+    formData.get("expected_period_end"),
+  );
+
+  if (
+    expectedPeriodStart &&
+    expectedPeriodEnd &&
+    expectedPeriodEnd < expectedPeriodStart
+  ) {
+    redirect(litterGroupDetailEditUrl(groupId, "invalid_dates"));
+  }
+
+  const description = normalizeOptionalText(formData.get("description"));
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Le groupe doit exister, ne pas être supprimé ; son organisation fait foi.
+  const { data: group, error: groupError } = await supabase
+    .from("litter_groups")
+    .select("id, organization_id")
+    .eq("id", groupId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (groupError || !group?.organization_id) {
+    redirect(litterGroupDetailEditUrl(groupId, "error"));
+  }
+
+  const organizationId = group.organization_id;
+
+  const { error: updateError } = await supabase
+    .from("litter_groups")
+    .update({
+      name,
+      species,
+      status,
+      expected_period_start: expectedPeriodStart,
+      expected_period_end: expectedPeriodEnd,
+      description,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", groupId)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(litterGroupDetailEditUrl(groupId, "error"));
+  }
+
+  revalidatePath("/litters");
+  revalidatePath("/litter-groups");
+  revalidatePath(`/litter-groups/${groupId}`);
+  redirect(litterGroupDetailEditUrl(groupId, "success"));
+}
