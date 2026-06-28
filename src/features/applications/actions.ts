@@ -459,7 +459,7 @@ function desiredLitterUrl(
   applicationId: string,
   outcome: "success" | "error",
 ) {
-  return `/candidatures/${applicationId}?litter_status=${outcome}`;
+  return `/candidatures/${applicationId}?litter_status=${outcome}#portee-souhaitee`;
 }
 
 /**
@@ -501,6 +501,8 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
   // Valider desired_litter_id (peut être vide)
   const rawLitterId = formData.get("desired_litter_id");
   let desiredLitterId: string | null = null;
+  // Groupe auquel appartient la portée choisie (source de vérité métier).
+  let litterGroupOfLitter: string | null = null;
 
   if (typeof rawLitterId === "string" && rawLitterId.trim()) {
     const trimmed = rawLitterId.trim();
@@ -510,7 +512,7 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
     // Vérifier que la portée appartient à la même organisation
     const { data: litter, error: litterError } = await supabase
       .from("litters")
-      .select("id")
+      .select("id, litter_group_id")
       .eq("id", trimmed)
       .eq("organization_id", application.organization_id)
       .is("deleted_at", null)
@@ -520,6 +522,7 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
       redirect(desiredLitterUrl(applicationId, "error"));
     }
     desiredLitterId = trimmed;
+    litterGroupOfLitter = litter.litter_group_id ?? null;
   }
 
   // Valider desired_litter_group_id (peut être vide)
@@ -544,6 +547,25 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
       redirect(desiredLitterUrl(applicationId, "error"));
     }
     desiredLitterGroupId = trimmed;
+  }
+
+  // Règle métier : une portée appartient nécessairement à un groupe de portées.
+  // - Si une portée est choisie, le groupe enregistré est celui de la portée
+  //   (source de vérité), pas un groupe arbitraire envoyé par le client.
+  // - Si un groupe est aussi fourni, il doit correspondre à celui de la portée.
+  if (desiredLitterId) {
+    if (
+      desiredLitterGroupId &&
+      litterGroupOfLitter &&
+      desiredLitterGroupId !== litterGroupOfLitter
+    ) {
+      // Incohérence : la portée appartient à un autre groupe.
+      redirect(desiredLitterUrl(applicationId, "error"));
+    }
+
+    // Le groupe de la portée fait foi (peut être null si la portée n'a pas
+    // encore de groupe : on enregistre alors la portée seule, sans inventer).
+    desiredLitterGroupId = litterGroupOfLitter;
   }
 
   // Mettre à jour la candidature

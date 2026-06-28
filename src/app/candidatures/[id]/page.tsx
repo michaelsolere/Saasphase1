@@ -6,7 +6,12 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
-import { createReservationFromApplication, updateApplicationDesiredLitter } from "@/features/applications/actions";
+import { createReservationFromApplication } from "@/features/applications/actions";
+import {
+  ApplicationLitterScopeForm,
+  type ApplicationLitter,
+  type ApplicationLitterGroup,
+} from "@/features/applications/litter-scope-form";
 import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
@@ -232,14 +237,15 @@ export default async function ApplicationDetailPage({
   const currentLitterId = rawAppFields?.desired_litter_id ?? null;
   const currentGroupId = rawAppFields?.desired_litter_group_id ?? null;
 
-  // Portées disponibles (même organisation, non supprimées)
+  // Portées disponibles (même organisation, non supprimées) — vue enrichie
   const { data: availableLitters } =
     application?.organization_id
       ? await supabase
-          .from("litters")
-          .select("id, name")
+          .from("litter_overview")
+          .select(
+            "id, name, litter_group_id, litter_group_name, status, mother_display_name, father_display_name, expected_birth_date, actual_birth_date, created_at",
+          )
           .eq("organization_id", application.organization_id)
-          .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : { data: null };
 
@@ -248,11 +254,18 @@ export default async function ApplicationDetailPage({
     application?.organization_id
       ? await supabase
           .from("litter_groups")
-          .select("id, name")
+          .select(
+            "id, name, status, expected_period_start, expected_period_end, created_at",
+          )
           .eq("organization_id", application.organization_id)
           .is("deleted_at", null)
           .order("created_at", { ascending: false })
       : { data: null };
+
+  const desiredScopeLitters = (availableLitters ??
+    []) as ApplicationLitter[];
+  const desiredScopeGroups = (availableGroups ??
+    []) as ApplicationLitterGroup[];
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -428,76 +441,23 @@ export default async function ApplicationDetailPage({
               </section>
             ) : null}
 
-            {/* ---- Portée ou groupe souhaité ---- */}
+            {/* ---- Portée ou période souhaitée ---- */}
             {application.id && application.organization_id ? (
-              <section className="border-b py-6">
-                <h2 className="font-semibold">Portée ou groupe souhaité</h2>
+              <section id="portee-souhaitee" className="border-b py-6">
+                <h2 className="font-semibold">Portée ou période souhaitée</h2>
                 <p className="mt-1 text-sm text-muted">
-                  Rattachez cette candidature à une portée précise pour la
-                  retrouver lors d&apos;une campagne de pré-réservation.
+                  Rattachez cette candidature à une portée précise ou à un
+                  groupe de portées (période) pour la retrouver lors d&apos;une
+                  campagne de pré-réservation. Le rattachement reste optionnel.
                 </p>
 
-                <form
-                  action={updateApplicationDesiredLitter}
-                  className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end"
-                >
-                  <input
-                    type="hidden"
-                    name="application_id"
-                    value={application.id}
-                  />
-
-                  <div className="flex-1">
-                    <label
-                      htmlFor="desired_litter_id"
-                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted"
-                    >
-                      Portée souhaitée
-                    </label>
-                    <select
-                      id="desired_litter_id"
-                      name="desired_litter_id"
-                      defaultValue={currentLitterId ?? ""}
-                      className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-                    >
-                      <option value="">Aucune portée précise</option>
-                      {availableLitters?.map((litter) => (
-                        <option key={litter.id} value={litter.id}>
-                          {litter.name ?? `Portée ${litter.id.slice(0, 8)}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex-1">
-                    <label
-                      htmlFor="desired_litter_group_id"
-                      className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted"
-                    >
-                      Groupe de portées
-                    </label>
-                    <select
-                      id="desired_litter_group_id"
-                      name="desired_litter_group_id"
-                      defaultValue={currentGroupId ?? ""}
-                      className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
-                    >
-                      <option value="">Aucun groupe précis</option>
-                      {availableGroups?.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
-                  >
-                    Enregistrer
-                  </button>
-                </form>
+                <ApplicationLitterScopeForm
+                  applicationId={application.id}
+                  litters={desiredScopeLitters}
+                  litterGroups={desiredScopeGroups}
+                  currentLitterId={currentLitterId}
+                  currentGroupId={currentGroupId}
+                />
               </section>
             ) : null}
 
