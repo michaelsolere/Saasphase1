@@ -1409,6 +1409,7 @@ export default async function LitterDetailPage({
 
               <LinkedApplicationsSection
                 title="Candidatures liées à cette portée"
+                description="Vue de suivi : candidatures actuellement rattachées à cette portée, quel que soit leur statut. Le rattachement modifie la portée souhaitée de la candidature ; il ne crée pas de réservation."
                 emptyLabel="Aucune candidature ne souhaite cette portée."
                 applications={linkedApplications}
                 hasError={Boolean(linkedAppsError)}
@@ -1432,10 +1433,16 @@ export default async function LitterDetailPage({
               {/* ---- Campagne de pré-réservation ---- */}
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Campagne de pré-réservation</h2>
+                <p className="mt-1 text-sm font-medium text-foreground">
+                  Action métier : sélectionner des candidatures qualifiées pour
+                  préparer une campagne de pré-réservation.
+                </p>
                 <p className="mt-2 text-sm text-muted">
-                  Sélectionnez les candidatures qualifiées pour lesquelles vous souhaitez lancer
-                  une demande d&apos;avance sur arrhes (250 €, échéance J+15).
-                  Une pré-réservation et une demande de paiement seront créées pour chacune.
+                  À la différence de la section « Candidatures liées » ci-dessus
+                  (vue de suivi), cette section agit : pour chaque candidature
+                  qualifiée sélectionnée, une demande d&apos;avance sur arrhes
+                  (250 €, échéance J+15) est lancée et une pré-réservation ainsi
+                  qu&apos;une demande de paiement sont créées.
                 </p>
 
                 {qualifiedAppsError ? (
