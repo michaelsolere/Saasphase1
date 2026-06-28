@@ -17,6 +17,7 @@ import {
   getSpeciesLabel,
 } from "@/features/litters/formatters";
 import { getReservationStatusLabel } from "@/features/reservations/formatters";
+import { updateLitterGroupDetails } from "@/features/litters/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -131,6 +132,31 @@ function formatPeriod(start: string | null, end: string | null) {
   return "Non renseignée";
 }
 
+const groupStatusEditValues = [
+  "planned",
+  "open_for_applications",
+  "pregnancy_pending",
+  "births_in_progress",
+  "born",
+  "closed",
+  "cancelled",
+  "archived",
+] as const;
+
+const groupSpeciesEditOptions = [
+  ["dog", "Chien"],
+  ["cat", "Chat"],
+] as const;
+
+const groupDetailEditErrors: Record<string, string> = {
+  name_required: "Le nom du groupe est obligatoire.",
+  invalid_species: "L’espèce sélectionnée est invalide.",
+  invalid_status: "Le statut sélectionné est invalide.",
+  invalid_dates:
+    "La date de fin ne peut pas être antérieure à la date de début.",
+  error: "Impossible de modifier le groupe pour le moment.",
+};
+
 export default async function LitterGroupDetailPage({
   params,
   searchParams,
@@ -139,10 +165,12 @@ export default async function LitterGroupDetailPage({
   searchParams: Promise<{
     attach_status?: string;
     reservation_attach_status?: string;
+    group_detail_status?: string;
   }>;
 }) {
   const { id } = await params;
-  const { attach_status, reservation_attach_status } = await searchParams;
+  const { attach_status, reservation_attach_status, group_detail_status } =
+    await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -468,6 +496,169 @@ export default async function LitterGroupDetailPage({
                     </dd>
                   </div>
                 </dl>
+              </section>
+
+              <section
+                id="modifier-groupe"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <h2 className="text-xl font-semibold">
+                  Modifier les informations du groupe
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  Mettez à jour le nom, l’espèce, le statut, la période prévue et
+                  la description. Aucune portée, candidature ou réservation liée
+                  n’est modifiée par cette action.
+                </p>
+
+                {group_detail_status === "success" ? (
+                  <p
+                    role="status"
+                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                  >
+                    Les informations du groupe ont été mises à jour.
+                  </p>
+                ) : null}
+
+                {group_detail_status &&
+                group_detail_status !== "success" ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    {groupDetailEditErrors[group_detail_status] ??
+                      groupDetailEditErrors.error}
+                  </p>
+                ) : null}
+
+                <details className="mt-5 rounded-xl border bg-background px-4 py-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-accent">
+                    Modifier les informations du groupe
+                  </summary>
+
+                  <form
+                    action={updateLitterGroupDetails}
+                    className="mt-4 grid gap-5 sm:grid-cols-2"
+                  >
+                    <input type="hidden" name="group_id" value={group.id} />
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="group-edit-name"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Nom du groupe <span className="text-accent">*</span>
+                      </label>
+                      <input
+                        id="group-edit-name"
+                        name="name"
+                        type="text"
+                        required
+                        defaultValue={group.name ?? ""}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="group-edit-status"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Statut
+                      </label>
+                      <select
+                        id="group-edit-status"
+                        name="status"
+                        defaultValue={group.status ?? "planned"}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      >
+                        {groupStatusEditValues.map((value) => (
+                          <option key={value} value={value}>
+                            {getLitterGroupStatusLabel(value)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="group-edit-species"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Espèce
+                      </label>
+                      <select
+                        id="group-edit-species"
+                        name="species"
+                        defaultValue={group.species ?? "dog"}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      >
+                        {groupSpeciesEditOptions.map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="group-edit-period-start"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Période prévue — début
+                      </label>
+                      <input
+                        id="group-edit-period-start"
+                        name="expected_period_start"
+                        type="date"
+                        defaultValue={group.expected_period_start ?? ""}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="group-edit-period-end"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Période prévue — fin
+                      </label>
+                      <input
+                        id="group-edit-period-end"
+                        name="expected_period_end"
+                        type="date"
+                        defaultValue={group.expected_period_end ?? ""}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label
+                        htmlFor="group-edit-description"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Description
+                      </label>
+                      <textarea
+                        id="group-edit-description"
+                        name="description"
+                        rows={4}
+                        defaultValue={group.description ?? ""}
+                        className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2 flex justify-end border-t pt-5">
+                      <button
+                        type="submit"
+                        className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      >
+                        Enregistrer les informations
+                      </button>
+                    </div>
+                  </form>
+                </details>
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
