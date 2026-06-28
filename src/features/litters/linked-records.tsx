@@ -41,6 +41,7 @@ export type AttachableReservation = {
 
 export function LinkedApplicationsSection({
   title,
+  description,
   emptyLabel,
   applications,
   hasError,
@@ -49,6 +50,7 @@ export function LinkedApplicationsSection({
   footer,
 }: {
   title: string;
+  description?: ReactNode;
   emptyLabel: string;
   applications: LinkedApplication[] | null;
   hasError: boolean;
@@ -59,6 +61,10 @@ export function LinkedApplicationsSection({
   return (
     <section id={sectionId} className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">{title}</h2>
+
+      {description ? (
+        <p className="mt-1 text-sm text-muted">{description}</p>
+      ) : null}
 
       {banner}
 
