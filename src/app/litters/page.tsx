@@ -22,7 +22,12 @@ function ErrorMessage() {
   );
 }
 
-export default async function LittersPage() {
+export default async function LittersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ group_status?: string }>;
+}) {
+  const query = await searchParams;
   const supabase = await createClient();
 
   const {
@@ -71,6 +76,12 @@ export default async function LittersPage() {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link
+              href="/litter-groups/new"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Nouveau groupe de portées
+            </Link>
+            <Link
               href="/candidatures"
               className="text-sm font-semibold text-accent hover:underline"
             >
@@ -114,6 +125,15 @@ export default async function LittersPage() {
           </div>
         </div>
       </header>
+
+      {query.group_status === "created" ? (
+        <p
+          role="status"
+          className="mt-8 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-4 text-sm text-emerald-950"
+        >
+          Le groupe de portées a été créé.
+        </p>
+      ) : null}
 
       <section className="py-8">
         {hasLoadingError || !litters ? (
