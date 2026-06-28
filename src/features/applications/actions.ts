@@ -459,7 +459,7 @@ function desiredLitterUrl(
   applicationId: string,
   outcome: "success" | "error",
 ) {
-  return `/candidatures/${applicationId}?litter_status=${outcome}`;
+  return `/candidatures/${applicationId}?litter_status=${outcome}#portee-souhaitee`;
 }
 
 /**
@@ -544,6 +544,11 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
       redirect(desiredLitterUrl(applicationId, "error"));
     }
     desiredLitterGroupId = trimmed;
+  }
+
+  // Choix exclusif : jamais une portée ET un groupe simultanément.
+  if (desiredLitterId && desiredLitterGroupId) {
+    redirect(desiredLitterUrl(applicationId, "error"));
   }
 
   // Mettre à jour la candidature
