@@ -598,8 +598,8 @@ export function NewReservationForm({
         <h2 className="text-lg font-semibold">3. Portée ou période (optionnel)</h2>
         <p className="mt-1 text-sm text-muted">
           Rattachez la réservation à une portée précise, à un groupe de portées,
-          ou laissez ce choix vide. Une réservation ne peut pas être liée à la
-          fois à une portée et à un groupe.
+          ou laissez ce choix vide. Choisir une portée conserve aussi son groupe
+          associé.
         </p>
 
         {selectedApplication &&
@@ -663,6 +663,20 @@ export function NewReservationForm({
 
         {scopeMode === "litter" ? (
           <div className="mt-5 space-y-3">
+            {/* Une portée appartient à un groupe : on transmet aussi le groupe
+                associé à la portée sélectionnée, s'il existe. */}
+            {(() => {
+              const selectedLitter = selectedLitterId
+                ? litters.find((litter) => litter.id === selectedLitterId)
+                : null;
+              return selectedLitter?.litter_group_id ? (
+                <input
+                  type="hidden"
+                  name="litter_group_id"
+                  value={selectedLitter.litter_group_id}
+                />
+              ) : null;
+            })()}
             {litters.map((litter) => {
               const isSelected = selectedLitterId === litter.id;
               const birthLabel = litter.actual_birth_date
@@ -698,11 +712,10 @@ export function NewReservationForm({
                       Mère : {litter.mother_display_name ?? "Non renseignée"} ·
                       Père : {litter.father_display_name ?? "Non renseigné"}
                     </span>
-                    {litter.litter_group_name ? (
-                      <span className="block text-xs text-muted">
-                        Groupe : {litter.litter_group_name}
-                      </span>
-                    ) : null}
+                    <span className="block text-xs text-muted">
+                      Groupe associé :{" "}
+                      {litter.litter_group_name ?? "Aucun groupe"}
+                    </span>
                   </span>
                 </label>
               );

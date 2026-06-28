@@ -1355,7 +1355,9 @@ export async function createReservationDirect(formData: FormData) {
     applicationId = trimmed;
   }
 
-  // Portée / groupe de portées : choix explicite et exclusif côté formulaire.
+  // Portée / groupe de portées : choix explicite côté formulaire.
+  // Règle métier : une portée appartient à un groupe ; sélectionner une portée
+  // conserve donc aussi son groupe associé (les deux colonnes peuvent coexister).
   const rawLitterId = formData.get("litter_id");
   let requestedLitterId: string | null = null;
 
@@ -1376,11 +1378,6 @@ export async function createReservationDirect(formData: FormData) {
       redirect(NEW_RESERVATION_ERROR_URL);
     }
     requestedLitterGroupId = trimmed;
-  }
-
-  // Choix exclusif : jamais une portée ET un groupe simultanément.
-  if (requestedLitterId && requestedLitterGroupId) {
-    redirect(NEW_RESERVATION_ERROR_URL);
   }
 
   const rawSexPreference = formData.get("reserved_sex_preference");
@@ -1494,11 +1491,12 @@ export async function createReservationDirect(formData: FormData) {
       application.desired_sex_preference ?? reservedSexFromForm;
   }
 
-  // La portée éventuelle doit appartenir à la même organisation.
   if (requestedLitterId) {
+    // La portée doit appartenir à la même organisation ; on récupère aussi son
+    // groupe, qui fait foi (source de vérité métier).
     const { data: litter, error: litterError } = await supabase
       .from("litters")
-      .select("id")
+      .select("id, litter_group_id")
       .eq("id", requestedLitterId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
@@ -1508,11 +1506,24 @@ export async function createReservationDirect(formData: FormData) {
       redirect(NEW_RESERVATION_ERROR_URL);
     }
 
-    litterId = requestedLitterId;
-  }
+    const litterGroupOfLitter = litter.litter_group_id ?? null;
 
-  // Le groupe de portées éventuel doit appartenir à la même organisation.
-  if (requestedLitterGroupId) {
+    // Si un groupe client est aussi fourni, il doit correspondre à celui de la
+    // portée (sinon incohérence métier refusée).
+    if (
+      requestedLitterGroupId &&
+      litterGroupOfLitter &&
+      requestedLitterGroupId !== litterGroupOfLitter
+    ) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+
+    litterId = requestedLitterId;
+    // Le groupe de la portée fait foi (peut être null : portée sans groupe,
+    // enregistrée seule sans inventer de groupe).
+    litterGroupId = litterGroupOfLitter;
+  } else if (requestedLitterGroupId) {
+    // Groupe seul : il doit appartenir à la même organisation.
     const { data: group, error: groupError } = await supabase
       .from("litter_groups")
       .select("id")
