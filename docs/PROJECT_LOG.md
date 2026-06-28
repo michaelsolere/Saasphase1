@@ -4471,8 +4471,6 @@ La fiche réservation reste le centre opérationnel du dossier adoptant. La fich
 * la majorité des pages restent strictement consultatives, à l'exception de la création contrôlée d'un contact manuel depuis `/contacts/new`, de la création contrôlée d'une réservation brouillon depuis une candidature qualifiée, de l'édition contrôlée du tarif convenu, de l'édition contrôlée du commentaire interne, de l'édition contrôlée de l'échéance de pré-réservation, de l'attribution contrôlée d'un animal disponible, du retrait contrôlé d'attribution animal/réservation, de l'enregistrement contrôlé de paiement manuel d'une réservation existante, de l'enregistrement contrôlé d'un remboursement manuel d'une réservation existante, du passage contrôlé d'une demande de paiement à payé, de la confirmation manuelle `draft` → `active`, de la finalisation manuelle `active` → `adopted`, de l'annulation manuelle `active` → `cancelled`, du désistement manuel `active` → `withdrawn`, et de l'expiration manuelle `active` → `expired`.
 
 Limites conservées explicitement :
-* aucune création de portée ;
-* aucune édition de portée ;
 * aucune suppression de portée ;
 * aucune création, édition ou suppression de note liée depuis la fiche portée ;
 * aucune création, édition ou suppression d'événement lié depuis la fiche portée ;
@@ -4615,3 +4613,18 @@ Pistes possibles :
 * concevoir plus tard les workflows applicatifs de création, édition, attribution ou réservation cohérents avec le MVP ;
 * garder toute nouvelle écriture métier dans une PR courte, prudente, relue côté serveur et validée localement ;
 * conserver toute modification Supabase, migration ou RLS dans une PR séparée et justifiée.
+
+## Mise à jour — flux Contact → Candidature → Réservation → Portée (lots récents)
+
+Synthèse des évolutions applicatives livrées par lots courts (aucune migration, RLS, RPC, vue, policy ni modèle de données touchés) :
+
+* la fiche Réservation a été enrichie comme cockpit central de suivi ;
+* `/reservations/new` permet de créer une réservation `draft` depuis un contact existant ou un contact créé rapidement en ligne ;
+* la sélection du contact dans `/reservations/new` a été améliorée (recherche texte, filtres de date, 20 contacts récents par défaut) ;
+* une candidature peut porter une portée ou une période souhaitée ;
+* la réservation peut reprendre manuellement le rattachement portée/groupe de la candidature liée, sans automatisation implicite ;
+* les groupes de portées peuvent être créés depuis l'interface (`/litter-groups/new`) ;
+* les portées peuvent être créées depuis l'interface (`/litters/new`) ;
+* une portée peut être rattachée ou détachée d'un groupe depuis sa fiche ;
+* les informations principales d'une portée peuvent être éditées depuis sa fiche ;
+* le module Portées n'est donc plus strictement en lecture seule ; seule la suppression de portée reste hors périmètre.

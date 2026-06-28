@@ -71,7 +71,8 @@ export default async function LittersPage({
               Portées
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez les portées existantes, leurs parents et leurs principaux compteurs sans modifier les données.
+              Suivez les portées, leurs groupes, leurs dates, leurs parents,
+              leurs réservations et leurs animaux liés.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -117,9 +118,6 @@ export default async function LittersPage({
             >
               Documents
             </Link>
-            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-              Lecture seule
-            </span>
             <form action={logout}>
               <button
                 type="submit"
