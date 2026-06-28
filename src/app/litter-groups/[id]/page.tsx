@@ -2,7 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  AttachApplicationForm,
   LinkedApplicationsSection,
+  type AttachableApplication,
   type LinkedApplication,
 } from "@/features/litters/linked-records";
 import {
@@ -129,10 +131,13 @@ function formatPeriod(start: string | null, end: string | null) {
 
 export default async function LitterGroupDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ attach_status?: string }>;
 }) {
   const { id } = await params;
+  const { attach_status } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -239,6 +244,88 @@ export default async function LitterGroupDetailPage({
   } else if (rawLinkedApplications) {
     linkedApplications = [];
   }
+
+  // Candidatures rattachables à ce groupe (hors archivées, hors déjà liées
+  // à ce groupe), pour l'action manuelle de rattachement.
+  const { data: rawAttachableApplications } =
+    group && group.organization_id
+      ? await supabase
+          .from("applications")
+          .select(
+            "id, contact_id, status, created_at, desired_litter_id, desired_litter_group_id",
+          )
+          .eq("organization_id", group.organization_id)
+          .neq("status", "archived")
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: null };
+
+  let attachableApplications: AttachableApplication[] = [];
+
+  if (
+    rawAttachableApplications &&
+    rawAttachableApplications.length > 0 &&
+    group &&
+    group.organization_id
+  ) {
+    const candidates = rawAttachableApplications.filter(
+      (app) => app.desired_litter_group_id !== id,
+    );
+
+    const attachableContactIds = Array.from(
+      new Set(
+        candidates
+          .map((app) => app.contact_id)
+          .filter((cid): cid is string => Boolean(cid)),
+      ),
+    );
+
+    const attachableContactMap = new Map<string, string | null>();
+
+    if (attachableContactIds.length > 0) {
+      const { data: attachableContacts } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("organization_id", group.organization_id)
+        .in("id", attachableContactIds);
+
+      attachableContacts?.forEach((contact) => {
+        attachableContactMap.set(contact.id, contact.display_name);
+      });
+    }
+
+    attachableApplications = candidates.map((app) => ({
+      id: app.id,
+      contact_display_name: app.contact_id
+        ? (attachableContactMap.get(app.contact_id) ?? null)
+        : null,
+      status: app.status,
+      created_at: app.created_at,
+      already_attached_elsewhere: Boolean(
+        app.desired_litter_id || app.desired_litter_group_id,
+      ),
+    }));
+  }
+
+  const attachBanner =
+    attach_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        La candidature a été rattachée à ce groupe. Son statut n’a pas été
+        modifié et aucune réservation n’a été créée.
+      </p>
+    ) : attach_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de rattacher la candidature. Aucune modification n’a été
+        appliquée.
+      </p>
+    ) : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -386,6 +473,21 @@ export default async function LitterGroupDetailPage({
                 emptyLabel="Aucune candidature ne souhaite ce groupe."
                 applications={linkedApplications}
                 hasError={Boolean(linkedAppsError)}
+                sectionId="candidatures-liees"
+                banner={attachBanner}
+                footer={
+                  <AttachApplicationForm
+                    scope={{
+                      kind: "group",
+                      groupId: group.id,
+                      label:
+                        "Rattacher une candidature existante à ce groupe",
+                      warning:
+                        "Cette action modifiera la période souhaitée de la candidature (groupe), sans portée précise.",
+                    }}
+                    applications={attachableApplications}
+                  />
+                }
               />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">

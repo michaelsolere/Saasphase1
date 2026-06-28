@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
+
 import Link from "next/link";
 
+import { attachApplicationToScope } from "@/features/applications/actions";
 import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
@@ -17,20 +20,36 @@ export type LinkedApplication = {
   created_at: string | null;
 };
 
+export type AttachableApplication = {
+  id: string;
+  contact_display_name: string | null;
+  status: string | null;
+  created_at: string | null;
+  already_attached_elsewhere: boolean;
+};
+
 export function LinkedApplicationsSection({
   title,
   emptyLabel,
   applications,
   hasError,
+  sectionId,
+  banner,
+  footer,
 }: {
   title: string;
   emptyLabel: string;
   applications: LinkedApplication[] | null;
   hasError: boolean;
+  sectionId?: string;
+  banner?: ReactNode;
+  footer?: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+    <section id={sectionId} className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">{title}</h2>
+
+      {banner}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -86,6 +105,97 @@ export function LinkedApplicationsSection({
           ))}
         </div>
       )}
+
+      {footer}
     </section>
+  );
+}
+
+function attachOptionLabel(application: AttachableApplication) {
+  const contact = application.contact_display_name ?? "Contact non renseigné";
+  const status = getApplicationStatusLabel(application.status);
+  const created = formatLitterDate(application.created_at);
+  const elsewhere = application.already_attached_elsewhere
+    ? " · déjà rattachée ailleurs"
+    : "";
+
+  return `${contact} · ${status} · créée le ${created}${elsewhere}`;
+}
+
+export function AttachApplicationForm({
+  scope,
+  applications,
+}: {
+  scope:
+    | { kind: "litter"; litterId: string; label: string; warning: string }
+    | { kind: "group"; groupId: string; label: string; warning: string };
+  applications: AttachableApplication[];
+}) {
+  return (
+    <details className="mt-6 rounded-xl border bg-background px-4 py-3">
+      <summary className="cursor-pointer text-sm font-semibold text-accent">
+        {scope.label}
+      </summary>
+
+      {applications.length === 0 ? (
+        <p className="mt-4 text-sm text-muted">
+          Aucune candidature disponible à rattacher pour le moment.
+        </p>
+      ) : (
+        <form action={attachApplicationToScope} className="mt-4 space-y-4">
+          {scope.kind === "litter" ? (
+            <input type="hidden" name="litter_id" value={scope.litterId} />
+          ) : (
+            <input
+              type="hidden"
+              name="litter_group_id"
+              value={scope.groupId}
+            />
+          )}
+
+          <div>
+            <label
+              htmlFor={`attach-application-${
+                scope.kind === "litter" ? scope.litterId : scope.groupId
+              }`}
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Candidature à rattacher
+            </label>
+            <select
+              id={`attach-application-${
+                scope.kind === "litter" ? scope.litterId : scope.groupId
+              }`}
+              name="application_id"
+              required
+              defaultValue=""
+              className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="" disabled>
+                Choisir une candidature…
+              </option>
+              {applications.map((application) => (
+                <option key={application.id} value={application.id}>
+                  {attachOptionLabel(application)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            {scope.warning} Si cette candidature avait déjà une portée ou
+            période souhaitée, elle sera remplacée. Cette action ne crée pas de
+            réservation et ne change pas son statut.
+          </p>
+
+          <button
+            type="submit"
+            className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Rattacher la candidature
+          </button>
+        </form>
+      )}
+    </details>
   );
 }

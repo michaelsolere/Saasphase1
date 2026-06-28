@@ -595,3 +595,154 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
 
   redirect(desiredLitterUrl(applicationId, "success"));
 }
+
+function litterAttachUrl(litterId: string, outcome: "success" | "error") {
+  return `/litters/${litterId}?attach_status=${outcome}#candidatures-liees`;
+}
+
+function groupAttachUrl(groupId: string, outcome: "success" | "error") {
+  return `/litter-groups/${groupId}?attach_status=${outcome}#candidatures-liees`;
+}
+
+/**
+ * Rattache une candidature existante à une portée OU à un groupe de portées,
+ * depuis la fiche Portée ou la fiche Groupe.
+ *
+ * - Le contexte (portée ou groupe) est déterminé par le champ présent
+ *   (`litter_id` pour une portée, `litter_group_id` pour un groupe).
+ * - Rattachement à une portée : desired_litter_id = litter.id,
+ *   desired_litter_group_id = litter.litter_group_id (groupe réel de la portée,
+ *   source de vérité — aucune valeur de groupe n'est acceptée depuis le client).
+ * - Rattachement à un groupe : desired_litter_id = null,
+ *   desired_litter_group_id = group.id.
+ * - Ne touche pas au statut, ni aux réservations, paiements, animaux, documents.
+ */
+export async function attachApplicationToScope(formData: FormData) {
+  const applicationIdRaw = formData.get("application_id");
+  const litterIdRaw = formData.get("litter_id");
+  const groupIdRaw = formData.get("litter_group_id");
+
+  const litterId =
+    typeof litterIdRaw === "string" &&
+    litterIdRaw.trim() &&
+    isUuid(litterIdRaw.trim())
+      ? litterIdRaw.trim()
+      : null;
+  const groupId =
+    typeof groupIdRaw === "string" &&
+    groupIdRaw.trim() &&
+    isUuid(groupIdRaw.trim())
+      ? groupIdRaw.trim()
+      : null;
+
+  // URL de retour selon le contexte d'origine.
+  const backUrl = (outcome: "success" | "error") => {
+    if (litterId) {
+      return litterAttachUrl(litterId, outcome);
+    }
+    if (groupId) {
+      return groupAttachUrl(groupId, outcome);
+    }
+    return "/litters";
+  };
+
+  // Exactement une cible attendue (jamais les deux, jamais aucune).
+  if ((litterId && groupId) || (!litterId && !groupId)) {
+    redirect(backUrl("error"));
+  }
+
+  if (
+    typeof applicationIdRaw !== "string" ||
+    !applicationIdRaw.trim() ||
+    !isUuid(applicationIdRaw.trim())
+  ) {
+    redirect(backUrl("error"));
+  }
+
+  const applicationId = (applicationIdRaw as string).trim();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Relire la candidature (organisation, non supprimée).
+  const { data: application, error: readError } = await supabase
+    .from("applications")
+    .select("id, organization_id")
+    .eq("id", applicationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !application) {
+    redirect(backUrl("error"));
+  }
+
+  let desiredLitterId: string | null = null;
+  let desiredLitterGroupId: string | null = null;
+
+  if (litterId) {
+    // Relire la portée (même organisation, non supprimée) ; son groupe fait foi.
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("id, litter_group_id")
+      .eq("id", litterId)
+      .eq("organization_id", application.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (litterError || !litter) {
+      redirect(backUrl("error"));
+    }
+
+    desiredLitterId = litter.id;
+    desiredLitterGroupId = litter.litter_group_id ?? null;
+  } else if (groupId) {
+    // Relire le groupe (même organisation, non supprimé).
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", groupId)
+      .eq("organization_id", application.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(backUrl("error"));
+    }
+
+    desiredLitterId = null;
+    desiredLitterGroupId = group.id;
+  }
+
+  const { error: updateError } = await supabase
+    .from("applications")
+    .update({
+      desired_litter_id: desiredLitterId,
+      desired_litter_group_id: desiredLitterGroupId,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", applicationId)
+    .eq("organization_id", application.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(backUrl("error"));
+  }
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+  if (litterId) {
+    revalidatePath(`/litters/${litterId}`);
+  }
+  if (groupId) {
+    revalidatePath(`/litter-groups/${groupId}`);
+  }
+
+  redirect(backUrl("success"));
+}
