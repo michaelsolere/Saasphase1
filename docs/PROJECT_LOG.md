@@ -4628,3 +4628,94 @@ Synthèse des évolutions applicatives livrées par lots courts (aucune migratio
 * une portée peut être rattachée ou détachée d'un groupe depuis sa fiche ;
 * les informations principales d'une portée peuvent être éditées depuis sa fiche ;
 * le module Portées n'est donc plus strictement en lecture seule ; seule la suppression de portée reste hors périmètre.
+
+## État actuel — Portées / Groupes de portées (après PR #226 à #231)
+
+Le module Portées / Groupes de portées a été fortement complété et stabilisé par plusieurs lots courts :
+
+* PR #226 — visibilité croisée portées / groupes / candidatures / réservations ;
+* PR #227 — rattachement d'une candidature existante depuis une fiche Portée ou Groupe ;
+* PR #228 — rattachement d'une réservation existante depuis une fiche Portée ou Groupe, avec garde-fou animal attribué ;
+* PR #229 — clarification UX de la fiche Portée entre « vue de suivi » et « campagne de pré-réservation » ;
+* PR #230 — page liste `/litter-groups` ;
+* PR #231 — édition simple d'un groupe de portées.
+
+Aucune migration, RLS, RPC, vue, policy ni modèle de données n'a été touché par ces lots.
+
+### A. Portées
+
+Le module permet désormais :
+
+* de lister les portées (`/litters`) ;
+* de créer une portée (`/litters/new`) ;
+* de consulter une fiche portée (`/litters/[id]`) ;
+* d'éditer les informations principales d'une portée depuis sa fiche ;
+* de rattacher ou détacher une portée d'un groupe ;
+* d'afficher une colonne `Groupe` dans `/litters` ;
+* d'accéder à la fiche groupe depuis une portée ;
+* de voir les candidatures liées à une portée ;
+* de voir les réservations liées à une portée ;
+* de rattacher une candidature existante depuis une fiche portée ;
+* de rattacher une réservation existante depuis une fiche portée ;
+* de distinguer la section « Candidatures liées » (vue de suivi) de la section « Campagne de pré-réservation » (action métier).
+
+### B. Groupes de portées
+
+Le module permet désormais :
+
+* de créer un groupe de portées (`/litter-groups/new`) ;
+* de lister tous les groupes (`/litter-groups`) ;
+* de consulter une fiche groupe (`/litter-groups/[id]`) ;
+* d'éditer les informations principales d'un groupe depuis sa fiche ;
+* de voir les portées rattachées au groupe ;
+* de voir les candidatures liées au groupe ;
+* de voir les réservations liées au groupe ;
+* de rattacher une candidature existante depuis une fiche groupe ;
+* de rattacher une réservation existante depuis une fiche groupe ;
+* de retrouver les groupes sans portée rattachée via la liste `/litter-groups`.
+
+### C. Règle portée / groupe
+
+* une portée peut être sans groupe ;
+* une portée peut appartenir à un groupe ;
+* quand une candidature ou une réservation est rattachée à une portée, le groupe réel de la portée est conservé comme source de vérité ;
+* quand une candidature ou une réservation est rattachée directement à un groupe, aucune portée précise n'est imposée ;
+* la donnée n'est pas dupliquée : toutes les pages lisent les mêmes champs métier.
+
+### D. Champs métiers utilisés
+
+* candidatures :
+  * `applications.desired_litter_id`
+  * `applications.desired_litter_group_id`
+* réservations :
+  * `reservations.litter_id`
+  * `reservations.litter_group_id`
+* portées :
+  * `litters.litter_group_id`
+
+### E. Garde-fous
+
+* aucune automatisation cachée ;
+* aucun statut de candidature ou de réservation modifié automatiquement ;
+* rattacher une candidature ne crée pas de réservation ;
+* rattacher une réservation ne modifie pas la candidature liée ;
+* rattacher une réservation ne modifie pas les paiements, documents, notes, animaux ou événements ;
+* une réservation avec animal attribué ne peut pas être déplacée depuis une page Portée/Groupe ;
+* aucune propagation automatique depuis une candidature vers une réservation, sauf l'action manuelle explicite déjà existante sur la fiche réservation.
+
+### F. Pré-réservation
+
+* la section « Candidatures liées » d'une fiche portée est une vue de suivi ;
+* la section « Campagne de pré-réservation » est une action métier spécifique ;
+* la campagne peut créer des pré-réservations et des demandes de paiement selon le flux existant ;
+* cette action reste manuelle.
+
+### G. Limites actuelles
+
+* pas de suppression de portée ni de groupe dans ce bloc ;
+* pas d'archivage rapide dédié ;
+* pas de pagination ni de recherche serveur sur les listes de rattachement ;
+* pas encore de récapitulatif détaillé « ancien → nouveau » avant confirmation ;
+* pas de propagation automatique aux objets liés ;
+* pas de refactor complet de `reservations/[id]/page.tsx` ;
+* pas de nouvelle migration SQL.
