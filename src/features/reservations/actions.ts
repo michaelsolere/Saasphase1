@@ -1308,6 +1308,149 @@ export async function requestPreReservationBalance(formData: FormData) {
 }
 
 // ---------------------------------------------------------------------------
+// Synchronisation manuelle du rattachement portée/groupe depuis la candidature
+// ---------------------------------------------------------------------------
+
+function scopeSyncUrl(
+  reservationId: string,
+  outcome: "success" | "no_application" | "no_scope" | "error",
+) {
+  return `/reservations/${reservationId}?scope_sync_status=${outcome}#scope-and-animal`;
+}
+
+/**
+ * Reprend manuellement, sur une réservation existante, le rattachement
+ * portée/groupe de la candidature liée. Action explicite déclenchée par
+ * l'éleveur depuis la fiche Réservation (jamais automatique).
+ *
+ * Décisions :
+ *   - `organization_id` jamais accepté du client : déduit de la réservation.
+ *   - La candidature liée doit appartenir à la même organisation ET au même
+ *     contact que la réservation.
+ *   - Règle de synchronisation :
+ *       * portée souhaitée → litter_id = portée, litter_group_id = groupe de la
+ *         portée (source de vérité, peut être null) ;
+ *       * groupe souhaité seul → litter_id = null, litter_group_id = groupe ;
+ *       * aucun rattachement souhaité → rien à reprendre (message clair).
+ *   - Met à jour uniquement `litter_id`, `litter_group_id`, `updated_at`,
+ *     `updated_by`. Ne touche pas au statut, à la candidature, ni à aucun objet
+ *     lié (paiement, document, note, animal, événement).
+ */
+export async function syncReservationScopeFromApplication(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=sync_portee");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Relecture serveur de la réservation : son organisation fait foi.
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select(
+      "id, organization_id, contact_id, application_id, litter_id, litter_group_id, deleted_at",
+    )
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation || !reservation.organization_id) {
+    redirect(scopeSyncUrl(reservationId, "error"));
+  }
+
+  const organizationId = reservation.organization_id;
+
+  // Une candidature liée est obligatoire pour cette action.
+  if (!reservation.application_id) {
+    redirect(scopeSyncUrl(reservationId, "no_application"));
+  }
+
+  // Relire la candidature liée : même organisation ET même contact.
+  const { data: application, error: applicationError } = await supabase
+    .from("applications")
+    .select(
+      "id, organization_id, contact_id, desired_litter_id, desired_litter_group_id, deleted_at",
+    )
+    .eq("id", reservation.application_id)
+    .eq("organization_id", organizationId)
+    .eq("contact_id", reservation.contact_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (applicationError || !application) {
+    redirect(scopeSyncUrl(reservationId, "error"));
+  }
+
+  let targetLitterId: string | null = null;
+  let targetGroupId: string | null = null;
+
+  if (application.desired_litter_id) {
+    // Portée souhaitée : vérifier l'organisation ; le groupe de la portée fait
+    // foi (peut être null si la portée n'appartient à aucun groupe).
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("id, litter_group_id")
+      .eq("id", application.desired_litter_id)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (litterError || !litter) {
+      redirect(scopeSyncUrl(reservationId, "error"));
+    }
+
+    targetLitterId = litter.id;
+    targetGroupId = litter.litter_group_id ?? null;
+  } else if (application.desired_litter_group_id) {
+    // Groupe souhaité seul : vérifier l'organisation.
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", application.desired_litter_group_id)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(scopeSyncUrl(reservationId, "error"));
+    }
+
+    targetGroupId = group.id;
+  } else {
+    // La candidature n'a aucun rattachement portée/groupe à reprendre.
+    redirect(scopeSyncUrl(reservationId, "no_scope"));
+  }
+
+  const { error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      litter_id: targetLitterId,
+      litter_group_id: targetGroupId,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", reservation.id)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(scopeSyncUrl(reservationId, "error"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  redirect(scopeSyncUrl(reservationId, "success"));
+}
+
+// ---------------------------------------------------------------------------
 // Création directe d'une réservation brouillon depuis le module Réservations
 // ---------------------------------------------------------------------------
 
