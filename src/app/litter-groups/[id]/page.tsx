@@ -399,10 +399,19 @@ export default async function LitterGroupDetailPage({
           |
         </span>
         <Link
+          href="/litter-groups"
+          className="text-sm font-medium text-accent hover:underline"
+        >
+          ← Retour aux groupes
+        </Link>
+        <span className="text-muted text-sm select-none" aria-hidden="true">
+          |
+        </span>
+        <Link
           href="/litters"
           className="text-sm font-medium text-accent hover:underline"
         >
-          ← Retour aux portées
+          Portées
         </Link>
       </div>
 

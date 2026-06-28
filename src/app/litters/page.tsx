@@ -89,6 +89,12 @@ export default async function LittersPage({
               Nouveau groupe de portées
             </Link>
             <Link
+              href="/litter-groups"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Groupes de portées
+            </Link>
+            <Link
               href="/candidatures"
               className="text-sm font-semibold text-accent hover:underline"
             >
