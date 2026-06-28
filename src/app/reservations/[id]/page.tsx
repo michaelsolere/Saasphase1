@@ -34,6 +34,7 @@ import {
   unassignAnimalFromReservation,
   withdrawReservation,
   requestPreReservationBalance,
+  syncReservationScopeFromApplication,
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
@@ -511,6 +512,7 @@ export default async function ReservationDetailPage({
     balance_request_status?: string;
     document_action_status?: string;
     note_status?: string;
+    scope_sync_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -737,12 +739,62 @@ export default async function ReservationDetailPage({
   const { data: applicationDetails, error: applicationDetailsError } = reservation?.application_id && reservation?.organization_id
     ? await supabase
         .from("applications")
-        .select("id, species, breed, desired_sex_preference, project_description, status, internal_comment")
+        .select("id, species, breed, desired_sex_preference, project_description, status, internal_comment, desired_litter_id, desired_litter_group_id")
         .eq("id", reservation.application_id)
         .eq("organization_id", reservation.organization_id)
         .is("deleted_at", null)
         .maybeSingle()
     : { data: null, error: null };
+
+  // Rattachement portée/groupe souhaité de la candidature liée (lecture seule).
+  // Sert à comparer le projet (candidature) et l'engagement (réservation) sans
+  // aucune propagation automatique.
+  const applicationDesiredLitterId = applicationDetails?.desired_litter_id ?? null;
+  const applicationDesiredGroupId =
+    applicationDetails?.desired_litter_group_id ?? null;
+
+  const { data: desiredLitterRow } =
+    applicationDesiredLitterId && reservation?.organization_id
+      ? await supabase
+          .from("litters")
+          .select("id, name")
+          .eq("id", applicationDesiredLitterId)
+          .eq("organization_id", reservation.organization_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null };
+
+  const { data: desiredGroupRow } =
+    applicationDesiredGroupId && reservation?.organization_id
+      ? await supabase
+          .from("litter_groups")
+          .select("id, name")
+          .eq("id", applicationDesiredGroupId)
+          .eq("organization_id", reservation.organization_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null };
+
+  const applicationDesiredLitterName = desiredLitterRow?.name ?? null;
+  const applicationDesiredGroupName = desiredGroupRow?.name ?? null;
+
+  const applicationHasScope = Boolean(
+    applicationDesiredLitterId || applicationDesiredGroupId,
+  );
+
+  // Écart entre le rattachement de la candidature et celui de la réservation.
+  const scopeDiffersFromApplication =
+    applicationHasScope &&
+    ((applicationDesiredLitterId ?? null) !== (reservation?.litter_id ?? null) ||
+      (applicationDesiredGroupId ?? null) !==
+        (reservation?.litter_group_id ?? null));
+
+  // L'action de reprise n'est utile que si une candidature est liée, qu'elle
+  // possède un rattachement, et que celui-ci diffère de la réservation.
+  const canSyncScopeFromApplication =
+    Boolean(reservation?.application_id) &&
+    applicationHasScope &&
+    scopeDiffersFromApplication;
 
   const animalSummaryLabel =
     reservation?.animal_display_name ??
@@ -2407,6 +2459,146 @@ export default async function ReservationDetailPage({
                       value={formatApplicationDate(reservation.adoption_completed_at)}
                     />
                   </dl>
+
+                  {/* Rattachement portée/groupe : candidature (projet) vs réservation (engagement) */}
+                  <div className="mt-8 border-t pt-6">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Rattachement de la candidature liée
+                    </h3>
+                    <p className="mt-1 text-sm text-muted">
+                      La candidature représente le projet d’adoption. Modifier la
+                      candidature ne change jamais automatiquement la réservation.
+                    </p>
+
+                    {query.scope_sync_status === "success" ? (
+                      <p
+                        role="status"
+                        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                      >
+                        Le rattachement de la réservation a été mis à jour depuis
+                        la candidature.
+                      </p>
+                    ) : null}
+
+                    {query.scope_sync_status === "no_scope" ? (
+                      <p
+                        role="alert"
+                        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                      >
+                        La candidature liée n’a aucune portée ni groupe à
+                        reprendre. Aucune modification n’a été appliquée.
+                      </p>
+                    ) : null}
+
+                    {query.scope_sync_status === "no_application" ? (
+                      <p
+                        role="alert"
+                        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                      >
+                        Aucune candidature n’est liée à cette réservation. Aucune
+                        modification n’a été appliquée.
+                      </p>
+                    ) : null}
+
+                    {query.scope_sync_status === "error" ? (
+                      <p
+                        role="alert"
+                        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                      >
+                        Impossible de reprendre le rattachement pour le moment.
+                        Aucune modification n’a été appliquée.
+                      </p>
+                    ) : null}
+
+                    {applicationDetailsError ? (
+                      <p role="alert" className="mt-4 text-sm text-amber-800">
+                        Impossible de charger le rattachement de la candidature.
+                      </p>
+                    ) : !reservation.application_id ? (
+                      <p className="mt-4 text-sm text-muted">
+                        Aucune candidature liée à cette réservation.
+                      </p>
+                    ) : (
+                      <>
+                        <dl className="mt-5 grid gap-6 sm:grid-cols-2">
+                          <DetailItem
+                            label="Portée souhaitée (candidature)"
+                            value={
+                              applicationDesiredLitterId ? (
+                                <Link
+                                  href={`/litters/${applicationDesiredLitterId}`}
+                                  className="font-medium text-accent hover:underline"
+                                >
+                                  {applicationDesiredLitterName ??
+                                    "Portée souhaitée"}
+                                </Link>
+                              ) : (
+                                "Aucune portée souhaitée"
+                              )
+                            }
+                          />
+                          <DetailItem
+                            label="Groupe souhaité (candidature)"
+                            value={
+                              applicationDesiredGroupId
+                                ? (applicationDesiredGroupName ??
+                                  "Groupe souhaité")
+                                : "Aucun groupe souhaité"
+                            }
+                          />
+                        </dl>
+
+                        {scopeDiffersFromApplication ? (
+                          <p
+                            role="alert"
+                            className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                          >
+                            Le rattachement de la candidature diffère de celui de
+                            la réservation.
+                          </p>
+                        ) : applicationHasScope ? (
+                          <p className="mt-5 text-sm text-muted">
+                            Le rattachement de la réservation correspond déjà à
+                            celui de la candidature.
+                          </p>
+                        ) : (
+                          <p className="mt-5 text-sm text-muted">
+                            La candidature liée n’indique aucune portée ni
+                            groupe. Information non bloquante.
+                          </p>
+                        )}
+
+                        {canSyncScopeFromApplication ? (
+                          <details className="mt-5 rounded-xl border bg-background px-4 py-3">
+                            <summary className="cursor-pointer text-sm font-semibold text-accent">
+                              Reprendre le rattachement de la candidature
+                            </summary>
+                            <div className="mt-3 space-y-3">
+                              <p className="text-xs leading-5 text-muted">
+                                Cette action remplace la portée et le groupe de la
+                                réservation par ceux de la candidature liée. Le
+                                statut de la réservation et la candidature ne sont
+                                pas modifiés.
+                              </p>
+                              <form action={syncReservationScopeFromApplication}>
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <button
+                                  type="submit"
+                                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                                >
+                                  Confirmer la reprise
+                                </button>
+                              </form>
+                            </div>
+                          </details>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
