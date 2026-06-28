@@ -8,6 +8,8 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import { formatLitterDate, getSpeciesLabel } from "@/features/litters/formatters";
+import { attachReservationToScope } from "@/features/reservations/actions";
+import { getReservationStatusLabel } from "@/features/reservations/formatters";
 
 export type LinkedApplication = {
   id: string;
@@ -26,6 +28,15 @@ export type AttachableApplication = {
   status: string | null;
   created_at: string | null;
   already_attached_elsewhere: boolean;
+};
+
+export type AttachableReservation = {
+  id: string;
+  contact_display_name: string | null;
+  status: string | null;
+  litter_name: string | null;
+  litter_group_name: string | null;
+  has_animal: boolean;
 };
 
 export function LinkedApplicationsSection({
@@ -193,6 +204,114 @@ export function AttachApplicationForm({
             className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
           >
             Rattacher la candidature
+          </button>
+        </form>
+      )}
+    </details>
+  );
+}
+
+function reservationScopeLabel(reservation: AttachableReservation) {
+  if (reservation.litter_name) {
+    return `Portée : ${reservation.litter_name}`;
+  }
+  if (reservation.litter_group_name) {
+    return `Groupe : ${reservation.litter_group_name}`;
+  }
+  return "Sans rattachement";
+}
+
+function attachReservationOptionLabel(reservation: AttachableReservation) {
+  const contact = reservation.contact_display_name ?? "Contact non renseigné";
+  const status = getReservationStatusLabel(reservation.status);
+  const scope = reservationScopeLabel(reservation);
+  const blocked = reservation.has_animal
+    ? " · animal attribué (non rattachable)"
+    : "";
+
+  return `${contact} · ${status} · ${scope}${blocked}`;
+}
+
+export function AttachReservationForm({
+  scope,
+  reservations,
+}: {
+  scope:
+    | { kind: "litter"; litterId: string; label: string; warning: string }
+    | { kind: "group"; groupId: string; label: string; warning: string };
+  reservations: AttachableReservation[];
+}) {
+  return (
+    <details className="mt-6 rounded-xl border bg-background px-4 py-3">
+      <summary className="cursor-pointer text-sm font-semibold text-accent">
+        {scope.label}
+      </summary>
+
+      {reservations.length === 0 ? (
+        <p className="mt-4 text-sm text-muted">
+          Aucune réservation disponible à rattacher pour le moment.
+        </p>
+      ) : (
+        <form action={attachReservationToScope} className="mt-4 space-y-4">
+          {scope.kind === "litter" ? (
+            <input type="hidden" name="litter_id" value={scope.litterId} />
+          ) : (
+            <input
+              type="hidden"
+              name="litter_group_id"
+              value={scope.groupId}
+            />
+          )}
+
+          <div>
+            <label
+              htmlFor={`attach-reservation-${
+                scope.kind === "litter" ? scope.litterId : scope.groupId
+              }`}
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Réservation à rattacher
+            </label>
+            <select
+              id={`attach-reservation-${
+                scope.kind === "litter" ? scope.litterId : scope.groupId
+              }`}
+              name="reservation_id"
+              required
+              defaultValue=""
+              className="mt-2 w-full rounded-xl border bg-surface px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              <option value="" disabled>
+                Choisir une réservation…
+              </option>
+              {reservations.map((reservation) => (
+                <option
+                  key={reservation.id}
+                  value={reservation.id}
+                  disabled={reservation.has_animal}
+                >
+                  {attachReservationOptionLabel(reservation)}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-muted">
+              Les réservations ayant déjà un animal attribué sont désactivées :
+              un animal appartient à une portée précise.
+            </p>
+          </div>
+
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            {scope.warning} Si cette réservation avait déjà une portée ou un
+            groupe, ce rattachement sera remplacé. Cette action ne change pas
+            son statut, ni les paiements, les documents, les notes ou l’animal
+            attribué.
+          </p>
+
+          <button
+            type="submit"
+            className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Rattacher la réservation
           </button>
         </form>
       )}

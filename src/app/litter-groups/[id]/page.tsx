@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 
 import {
   AttachApplicationForm,
+  AttachReservationForm,
   LinkedApplicationsSection,
   type AttachableApplication,
+  type AttachableReservation,
   type LinkedApplication,
 } from "@/features/litters/linked-records";
 import {
@@ -134,10 +136,13 @@ export default async function LitterGroupDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ attach_status?: string }>;
+  searchParams: Promise<{
+    attach_status?: string;
+    reservation_attach_status?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { attach_status } = await searchParams;
+  const { attach_status, reservation_attach_status } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -327,6 +332,60 @@ export default async function LitterGroupDetailPage({
       </p>
     ) : null;
 
+  // Réservations rattachables à ce groupe (même organisation, hors déjà liées
+  // à ce groupe). Celles avec animal attribué restent visibles mais désactivées.
+  const { data: rawAttachableReservations } =
+    group && group.organization_id
+      ? await supabase
+          .from("reservation_overview")
+          .select(
+            "id, contact_display_name, status, litter_id, litter_name, litter_group_id, litter_group_name, animal_id",
+          )
+          .eq("organization_id", group.organization_id)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: null };
+
+  const attachableReservations: AttachableReservation[] = (
+    rawAttachableReservations ?? []
+  )
+    .filter((reservation) => reservation.litter_group_id !== id)
+    .map((reservation) => ({
+      id: reservation.id as string,
+      contact_display_name: reservation.contact_display_name,
+      status: reservation.status,
+      litter_name: reservation.litter_name,
+      litter_group_name: reservation.litter_group_name,
+      has_animal: Boolean(reservation.animal_id),
+    }));
+
+  const reservationAttachBanner =
+    reservation_attach_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        La réservation a été rattachée à ce groupe. Son statut, ses paiements,
+        documents et son animal éventuel n’ont pas été modifiés.
+      </p>
+    ) : reservation_attach_status === "animal_attributed" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Cette réservation a déjà un animal attribué. Retirez ou traitez d’abord
+        cette attribution avant de changer la portée ou le groupe.
+      </p>
+    ) : reservation_attach_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de rattacher la réservation. Aucune modification n’a été
+        appliquée.
+      </p>
+    ) : null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -490,10 +549,15 @@ export default async function LitterGroupDetailPage({
                 }
               />
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+              <section
+                id="reservations-liees"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
                 <h2 className="text-xl font-semibold">
                   Réservations liées à ce groupe
                 </h2>
+
+                {reservationAttachBanner}
 
                 {reservationsError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -572,6 +636,17 @@ export default async function LitterGroupDetailPage({
                     ))}
                   </div>
                 )}
+
+                <AttachReservationForm
+                  scope={{
+                    kind: "group",
+                    groupId: group.id,
+                    label: "Rattacher une réservation existante à ce groupe",
+                    warning:
+                      "Cette action modifiera le rattachement portée/groupe de la réservation (groupe, sans portée précise).",
+                  }}
+                  reservations={attachableReservations}
+                />
               </section>
             </div>
           </>

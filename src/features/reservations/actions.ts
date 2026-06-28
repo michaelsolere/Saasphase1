@@ -1451,6 +1451,177 @@ export async function syncReservationScopeFromApplication(formData: FormData) {
 }
 
 // ---------------------------------------------------------------------------
+// Rattachement d'une réservation existante depuis une fiche Portée / Groupe
+// ---------------------------------------------------------------------------
+
+function litterReservationAttachUrl(
+  litterId: string,
+  outcome: "success" | "error" | "animal_attributed",
+) {
+  return `/litters/${litterId}?reservation_attach_status=${outcome}#reservations-liees`;
+}
+
+function groupReservationAttachUrl(
+  groupId: string,
+  outcome: "success" | "error" | "animal_attributed",
+) {
+  return `/litter-groups/${groupId}?reservation_attach_status=${outcome}#reservations-liees`;
+}
+
+/**
+ * Rattache une réservation existante à une portée OU à un groupe de portées,
+ * depuis la fiche Portée ou la fiche Groupe.
+ *
+ * - Le contexte (portée ou groupe) est déterminé par le champ présent
+ *   (`litter_id` pour une portée, `litter_group_id` pour un groupe).
+ * - Garde-fou : si la réservation a déjà un animal attribué, l'action est
+ *   bloquée (un animal appartient à une portée précise).
+ * - Rattachement à une portée : litter_id = litter.id,
+ *   litter_group_id = litter.litter_group_id (groupe réel de la portée, source
+ *   de vérité — aucune valeur de groupe acceptée depuis le client).
+ * - Rattachement à un groupe : litter_id = null, litter_group_id = group.id.
+ * - Ne touche pas au statut, à la candidature liée, ni à aucun objet lié
+ *   (paiement, document, note, animal, événement).
+ */
+export async function attachReservationToScope(formData: FormData) {
+  const reservationIdRaw = formData.get("reservation_id");
+  const litterIdRaw = formData.get("litter_id");
+  const groupIdRaw = formData.get("litter_group_id");
+
+  const litterId =
+    typeof litterIdRaw === "string" &&
+    litterIdRaw.trim() &&
+    isUuid(litterIdRaw.trim())
+      ? litterIdRaw.trim()
+      : null;
+  const groupId =
+    typeof groupIdRaw === "string" &&
+    groupIdRaw.trim() &&
+    isUuid(groupIdRaw.trim())
+      ? groupIdRaw.trim()
+      : null;
+
+  // URL de retour selon le contexte d'origine.
+  const backUrl = (outcome: "success" | "error" | "animal_attributed") => {
+    if (litterId) {
+      return litterReservationAttachUrl(litterId, outcome);
+    }
+    if (groupId) {
+      return groupReservationAttachUrl(groupId, outcome);
+    }
+    return "/litters";
+  };
+
+  // Exactement une cible attendue (jamais les deux, jamais aucune).
+  if ((litterId && groupId) || (!litterId && !groupId)) {
+    redirect(backUrl("error"));
+  }
+
+  if (
+    typeof reservationIdRaw !== "string" ||
+    !reservationIdRaw.trim() ||
+    !isUuid(reservationIdRaw.trim())
+  ) {
+    redirect(backUrl("error"));
+  }
+
+  const reservationId = (reservationIdRaw as string).trim();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Relire la réservation (organisation, non supprimée). Son organisation fait foi.
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, animal_id")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation || !reservation.organization_id) {
+    redirect(backUrl("error"));
+  }
+
+  // Garde-fou métier : une réservation avec animal attribué ne peut pas être
+  // déplacée dans ce lot (cohérence portée/animal).
+  if (reservation.animal_id) {
+    redirect(backUrl("animal_attributed"));
+  }
+
+  const organizationId = reservation.organization_id;
+
+  let litterTarget: string | null = null;
+  let groupTarget: string | null = null;
+
+  if (litterId) {
+    // Relire la portée (même organisation, non supprimée) ; son groupe fait foi.
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("id, litter_group_id")
+      .eq("id", litterId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (litterError || !litter) {
+      redirect(backUrl("error"));
+    }
+
+    litterTarget = litter.id;
+    groupTarget = litter.litter_group_id ?? null;
+  } else if (groupId) {
+    // Relire le groupe (même organisation, non supprimé).
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", groupId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(backUrl("error"));
+    }
+
+    litterTarget = null;
+    groupTarget = group.id;
+  }
+
+  const { error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      litter_id: litterTarget,
+      litter_group_id: groupTarget,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", reservationId)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(backUrl("error"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  if (litterId) {
+    revalidatePath(`/litters/${litterId}`);
+  }
+  if (groupId) {
+    revalidatePath(`/litter-groups/${groupId}`);
+  }
+
+  redirect(backUrl("success"));
+}
+
+// ---------------------------------------------------------------------------
 // Création directe d'une réservation brouillon depuis le module Réservations
 // ---------------------------------------------------------------------------
 

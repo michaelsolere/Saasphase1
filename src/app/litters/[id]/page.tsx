@@ -24,8 +24,10 @@ import {
 } from "@/features/litters/litter-fields";
 import {
   AttachApplicationForm,
+  AttachReservationForm,
   LinkedApplicationsSection,
   type AttachableApplication,
+  type AttachableReservation,
   type LinkedApplication,
 } from "@/features/litters/linked-records";
 import {
@@ -330,13 +332,21 @@ function RelatedAnimalsSection({
 function RelatedReservationsSection({
   reservations,
   hasError,
+  sectionId,
+  banner,
+  footer,
 }: {
   reservations: RelatedReservation[] | null;
   hasError: boolean;
+  sectionId?: string;
+  banner?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+    <section id={sectionId} className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Réservations liées</h2>
+
+      {banner}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -431,6 +441,8 @@ function RelatedReservationsSection({
           })}
         </div>
       )}
+
+      {footer}
     </section>
   );
 }
@@ -623,6 +635,7 @@ export default async function LitterDetailPage({
     group_assignment_status?: string;
     detail_status?: string;
     attach_status?: string;
+    reservation_attach_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -632,6 +645,7 @@ export default async function LitterDetailPage({
     group_assignment_status,
     detail_status,
     attach_status,
+    reservation_attach_status,
   } = await searchParams;
   const supabase = await createClient();
   const {
@@ -977,6 +991,61 @@ export default async function LitterDetailPage({
         className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
       >
         Impossible de rattacher la candidature. Aucune modification n’a été
+        appliquée.
+      </p>
+    ) : null;
+
+  // Réservations rattachables à cette portée (même organisation, hors déjà
+  // liées à cette portée). Celles avec animal attribué restent visibles mais
+  // désactivées dans le sélecteur.
+  const { data: rawAttachableReservations } =
+    litter && litter.organization_id
+      ? await supabase
+          .from("reservation_overview")
+          .select(
+            "id, contact_display_name, status, litter_id, litter_name, litter_group_id, litter_group_name, animal_id",
+          )
+          .eq("organization_id", litter.organization_id)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: null };
+
+  const attachableReservations: AttachableReservation[] = (
+    rawAttachableReservations ?? []
+  )
+    .filter((reservation) => reservation.litter_id !== id)
+    .map((reservation) => ({
+      id: reservation.id as string,
+      contact_display_name: reservation.contact_display_name,
+      status: reservation.status,
+      litter_name: reservation.litter_name,
+      litter_group_name: reservation.litter_group_name,
+      has_animal: Boolean(reservation.animal_id),
+    }));
+
+  const reservationAttachBanner =
+    reservation_attach_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        La réservation a été rattachée à cette portée. Son statut, ses
+        paiements, documents et son animal éventuel n’ont pas été modifiés.
+      </p>
+    ) : reservation_attach_status === "animal_attributed" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Cette réservation a déjà un animal attribué. Retirez ou traitez d’abord
+        cette attribution avant de changer la portée ou le groupe.
+      </p>
+    ) : reservation_attach_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de rattacher la réservation. Aucune modification n’a été
         appliquée.
       </p>
     ) : null;
@@ -1439,6 +1508,21 @@ export default async function LitterDetailPage({
               <RelatedReservationsSection
                 reservations={litterReservations}
                 hasError={Boolean(reservationsError)}
+                sectionId="reservations-liees"
+                banner={reservationAttachBanner}
+                footer={
+                  <AttachReservationForm
+                    scope={{
+                      kind: "litter",
+                      litterId: litter.id,
+                      label:
+                        "Rattacher une réservation existante à cette portée",
+                      warning:
+                        "Cette action modifiera le rattachement portée/groupe de la réservation.",
+                    }}
+                    reservations={attachableReservations}
+                  />
+                }
               />
 
               <RelatedDocumentsSection
