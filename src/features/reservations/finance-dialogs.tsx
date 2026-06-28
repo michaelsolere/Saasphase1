@@ -15,16 +15,22 @@ import {
 export function ReservationFinanceDialogs({
   paymentForm,
   refundForm,
+  className,
+  containerClassName,
+  buttonClassName,
 }: {
   paymentForm: ReactNode;
   refundForm: ReactNode;
+  className?: string;
+  containerClassName?: string;
+  buttonClassName?: string;
 }) {
   return (
-    <div className="mt-8 border-t border-border pt-6">
-      <div className="flex flex-col gap-3 sm:flex-row">
+    <div className={containerClassName ?? "mt-8 border-t border-border pt-6"}>
+      <div className={className ?? "flex flex-col gap-3 sm:flex-row"}>
         <Dialog>
           <DialogTrigger asChild>
-            <Button type="button" className="w-full sm:w-auto">
+            <Button type="button" className={buttonClassName ?? "w-full sm:w-auto"}>
               + Enregistrer un encaissement
             </Button>
           </DialogTrigger>
@@ -42,7 +48,7 @@ export function ReservationFinanceDialogs({
 
         <Dialog>
           <DialogTrigger asChild>
-            <Button type="button" variant="outline" className="w-full sm:w-auto">
+            <Button type="button" variant="outline" className={buttonClassName ?? "w-full sm:w-auto"}>
               + Enregistrer un remboursement
             </Button>
           </DialogTrigger>

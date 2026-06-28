@@ -1633,6 +1633,9 @@ export default async function ReservationDetailPage({
                       <div className="space-y-3 pt-2">
                         <div className="flex flex-col gap-2">
                           <ReservationFinanceDialogs
+                            containerClassName="mt-0 pt-0 border-t-0"
+                            className="flex flex-col gap-2 w-full"
+                            buttonClassName="w-full"
                             paymentForm={
                               <div className="space-y-6">
                                 <FinancialBalanceNotice
