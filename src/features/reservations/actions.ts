@@ -13,75 +13,75 @@ function priceUrl(
   reservationId: string,
   outcome: "success" | "error",
 ) {
-  return `/reservations/${reservationId}?price_status=${outcome}`;
+  return `/reservations/${reservationId}?price_status=${outcome}#reservation-details`;
 }
 
 function commentUrl(
   reservationId: string,
   outcome: "success" | "error",
 ) {
-  return `/reservations/${reservationId}?comment_status=${outcome}`;
+  return `/reservations/${reservationId}?comment_status=${outcome}#reservation-details`;
 }
 
 function deadlineUrl(
   reservationId: string,
   outcome: "success" | "error",
 ) {
-  return `/reservations/${reservationId}?deadline_status=${outcome}`;
+  return `/reservations/${reservationId}?deadline_status=${outcome}#reservation-details`;
 }
 
 function noteUrl(
   reservationId: string,
   outcome: "success" | "error",
 ) {
-  return `/reservations/${reservationId}?note_status=${outcome}`;
+  return `/reservations/${reservationId}?note_status=${outcome}#notes`;
 }
 
 function activationUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
 ) {
-  return `/reservations/${reservationId}?activation_status=${outcome}`;
+  return `/reservations/${reservationId}?activation_status=${outcome}#reservation-details`;
 }
 
 function activationRoleUrl(reservationId: string) {
-  return `/reservations/${reservationId}?activation_status=success&role_status=error`;
+  return `/reservations/${reservationId}?activation_status=success&role_status=error#reservation-details`;
 }
 
 function adoptionUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
 ) {
-  return `/reservations/${reservationId}?adoption_status=${outcome}`;
+  return `/reservations/${reservationId}?adoption_status=${outcome}#reservation-details`;
 }
 
 function adoptionRoleUrl(reservationId: string) {
-  return `/reservations/${reservationId}?adoption_status=success&role_status=error`;
+  return `/reservations/${reservationId}?adoption_status=success&role_status=error#reservation-details`;
 }
 
 function adoptionAnimalUrl(reservationId: string) {
-  return `/reservations/${reservationId}?adoption_status=success&animal_status=error`;
+  return `/reservations/${reservationId}?adoption_status=success&animal_status=error#reservation-details`;
 }
 
 function cancellationUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
 ) {
-  return `/reservations/${reservationId}?cancellation_status=${outcome}`;
+  return `/reservations/${reservationId}?cancellation_status=${outcome}#reservation-details`;
 }
 
 function withdrawalUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
 ) {
-  return `/reservations/${reservationId}?withdrawal_status=${outcome}`;
+  return `/reservations/${reservationId}?withdrawal_status=${outcome}#reservation-details`;
 }
 
 function expirationUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
 ) {
-  return `/reservations/${reservationId}?expiration_status=${outcome}`;
+  return `/reservations/${reservationId}?expiration_status=${outcome}#reservation-details`;
 }
 
 function isUuid(value: string) {
@@ -854,7 +854,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   const animalId = formData.get("animal_id");
 
   if (typeof animalId !== "string" || !isUuid(animalId)) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   const supabase = await createClient();
@@ -875,17 +875,17 @@ export async function assignAnimalToReservation(formData: FormData) {
     .maybeSingle();
 
   if (readResError || !reservation) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   // 2. Vérifier si un animal est déjà attribué
   if (reservation.animal_id) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=already_assigned`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=already_assigned#scope-and-animal`);
   }
 
   // 3. Vérifier que la réservation n'est pas finale
   if (isFinalReservationStatus(reservation.status)) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   // 4. Relire l'animal
@@ -897,23 +897,23 @@ export async function assignAnimalToReservation(formData: FormData) {
     .maybeSingle();
 
   if (readAnimalError || !animal) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
   // 5. Vérifier la cohérence d'organisation
   if (animal.organization_id !== reservation.organization_id) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   // 6. Vérifier la cohérence de portée quand la réservation est liée à une portée précise
   if (reservation.litter_id && animal.litter_id !== reservation.litter_id) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
   // 7. Vérifier le statut de l'animal
   const allowedAnimalStatuses = ["born", "active", "available"];
   if (!allowedAnimalStatuses.includes(animal.status)) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
   // 8. Vérifier que l'animal n'est pas déjà lié à une autre réservation active
@@ -925,11 +925,11 @@ export async function assignAnimalToReservation(formData: FormData) {
     .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`);
 
   if (concurrentResError) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   if (concurrentRes && concurrentRes.length > 0) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
   // 9. Mettre à jour
@@ -949,7 +949,7 @@ export async function assignAnimalToReservation(formData: FormData) {
     .maybeSingle();
 
   if (updateError || !updatedReservation) {
-    redirect(`/reservations/${reservationId}?animal_assign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   revalidatePath("/reservations");
@@ -957,7 +957,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   revalidatePath("/animals");
   revalidatePath(`/animals/${animalId}`);
 
-  redirect(`/reservations/${reservationId}?animal_assign_status=success`);
+  redirect(`/reservations/${reservationId}?animal_assign_status=success#scope-and-animal`);
 }
 
 export async function unassignAnimalFromReservation(formData: FormData) {
@@ -985,18 +985,18 @@ export async function unassignAnimalFromReservation(formData: FormData) {
     .maybeSingle();
 
   if (readResError || !reservation) {
-    redirect(`/reservations/${reservationId}?animal_unassign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_unassign_status=error#scope-and-animal`);
   }
 
   // 2. Vérifier si un animal est actuellement attribué
   const animalId = reservation.animal_id;
   if (!animalId) {
-    redirect(`/reservations/${reservationId}?animal_unassign_status=no_animal`);
+    redirect(`/reservations/${reservationId}?animal_unassign_status=no_animal#scope-and-animal`);
   }
 
   // 3. Vérifier que la réservation n'est pas finale
   if (isFinalReservationStatus(reservation.status)) {
-    redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state`);
+    redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state#scope-and-animal`);
   }
 
   // 4. Mettre à jour la réservation
@@ -1013,7 +1013,7 @@ export async function unassignAnimalFromReservation(formData: FormData) {
     .is("deleted_at", null);
 
   if (updateError) {
-    redirect(`/reservations/${reservationId}?animal_unassign_status=error`);
+    redirect(`/reservations/${reservationId}?animal_unassign_status=error#scope-and-animal`);
   }
 
   // 5. Revalidations
@@ -1022,7 +1022,7 @@ export async function unassignAnimalFromReservation(formData: FormData) {
   revalidatePath("/animals");
   revalidatePath(`/animals/${animalId}`);
 
-  redirect(`/reservations/${reservationId}?animal_unassign_status=success`);
+  redirect(`/reservations/${reservationId}?animal_unassign_status=success#scope-and-animal`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1241,12 +1241,12 @@ export async function requestPreReservationBalance(formData: FormData) {
     .maybeSingle();
 
   if (readError || !reservation) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   // 2. Valider le statut : doit être pre_reservation_paid
   if (reservation.status !== "pre_reservation_paid") {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   // 3. Récupérer les paiements actifs de type arrhes et montant 25000
@@ -1259,19 +1259,19 @@ export async function requestPreReservationBalance(formData: FormData) {
     .is("deleted_at", null);
 
   if (paymentsError || !payments) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   const paidPayments = payments.filter((p) => p.status === "paid");
 
   // Si on a déjà 2 demandes ou plus, on renvoie une erreur contrôlée (doublon)
   if (payments.length >= 2) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   // Il doit y avoir exactement une demande active de 250 € d'arrhes qui est payée
   if (payments.length !== 1 || paidPayments.length !== 1) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   // 4. Calcul de l'échéance J+15
@@ -1297,12 +1297,12 @@ export async function requestPreReservationBalance(formData: FormData) {
   });
 
   if (insertError) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error`);
+    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");
   revalidatePath("/payments");
 
-  redirect(`/reservations/${reservationId}?balance_request_status=success`);
+  redirect(`/reservations/${reservationId}?balance_request_status=success#payments`);
 }

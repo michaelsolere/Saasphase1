@@ -41,12 +41,12 @@ export async function initializeReservationDocuments(formData: FormData) {
     .maybeSingle();
 
   if (readError || !reservation) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 2. Validate status: must be pre_reservation_paid
   if (reservation.status !== "pre_reservation_paid") {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 3. Server-side validation of completed deposit (arrhes)
@@ -59,12 +59,12 @@ export async function initializeReservationDocuments(formData: FormData) {
     .is("deleted_at", null);
 
   if (paymentsError || !payments) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   const paidPayments = payments.filter((p) => p.status === "paid");
   if (paidPayments.length < 1) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 4. Fetch existing expected documents for this reservation
@@ -76,7 +76,7 @@ export async function initializeReservationDocuments(formData: FormData) {
     .is("deleted_at", null);
 
   if (docsError || !existingDocs) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   const hasCommitment = existingDocs.some(
@@ -106,7 +106,7 @@ export async function initializeReservationDocuments(formData: FormData) {
 
     if (insErr) {
       console.error("Failed to create commitment_certificate:", insErr);
-      redirect(`/reservations/${reservationId}?document_action_status=error`);
+      redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
     }
     createdCount++;
   }
@@ -128,7 +128,7 @@ export async function initializeReservationDocuments(formData: FormData) {
 
     if (insErr) {
       console.error("Failed to create reservation_contract:", insErr);
-      redirect(`/reservations/${reservationId}?document_action_status=error`);
+      redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
     }
     createdCount++;
   }
@@ -138,7 +138,7 @@ export async function initializeReservationDocuments(formData: FormData) {
     revalidatePath("/reservations");
   }
 
-  redirect(`/reservations/${reservationId}?document_action_status=success`);
+  redirect(`/reservations/${reservationId}?document_action_status=success#documents`);
 }
 
 export async function markDocumentAsSent(formData: FormData) {
@@ -171,7 +171,7 @@ export async function markDocumentAsSent(formData: FormData) {
     .maybeSingle();
 
   if (reservationError || !reservation) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 1. Relire le document avec id, status, reservation_id, document_type
@@ -183,7 +183,7 @@ export async function markDocumentAsSent(formData: FormData) {
     .maybeSingle();
 
   if (readError || !document) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 2. Vérifications de garde
@@ -193,7 +193,7 @@ export async function markDocumentAsSent(formData: FormData) {
     !actionableReservationDocumentTypes.includes(document.document_type) ||
     document.status !== "to_generate"
   ) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 3. Update status to sent avec clauses renforcées
@@ -212,13 +212,13 @@ export async function markDocumentAsSent(formData: FormData) {
     .in("document_type", actionableReservationDocumentTypes);
 
   if (updateError) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");
 
-  redirect(`/reservations/${reservationId}?document_action_status=success`);
+  redirect(`/reservations/${reservationId}?document_action_status=success#documents`);
 }
 
 export async function markDocumentAsSigned(formData: FormData) {
@@ -251,7 +251,7 @@ export async function markDocumentAsSigned(formData: FormData) {
     .maybeSingle();
 
   if (reservationError || !reservation) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 1. Relire le document avec id, status, reservation_id, document_type
@@ -263,7 +263,7 @@ export async function markDocumentAsSigned(formData: FormData) {
     .maybeSingle();
 
   if (readError || !document) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 2. Vérifications de garde
@@ -273,7 +273,7 @@ export async function markDocumentAsSigned(formData: FormData) {
     !actionableReservationDocumentTypes.includes(document.document_type) ||
     document.status !== "sent"
   ) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   // 3. Update status to signed avec clauses renforcées
@@ -292,11 +292,11 @@ export async function markDocumentAsSigned(formData: FormData) {
     .in("document_type", actionableReservationDocumentTypes);
 
   if (updateError) {
-    redirect(`/reservations/${reservationId}?document_action_status=error`);
+    redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");
 
-  redirect(`/reservations/${reservationId}?document_action_status=success`);
+  redirect(`/reservations/${reservationId}?document_action_status=success#documents`);
 }

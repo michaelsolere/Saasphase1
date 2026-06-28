@@ -52,6 +52,7 @@ import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-di
 import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
+import { getContactRoleLabel } from "@/features/contacts/formatters";
 
 export const dynamic = "force-dynamic";
 
@@ -710,6 +711,39 @@ export default async function ReservationDetailPage({
   const reservationNotes =
     rawReservationNotes as RelatedReservationNote[] | null;
 
+  // Fetch contact details scoping by organization_id
+  const { data: contactDetails, error: contactDetailsError } = reservation?.contact_id && reservation?.organization_id
+    ? await supabase
+        .from("contacts")
+        .select("id, first_name, last_name, display_name, email, phone, secondary_phone, address_line1, address_line2, postal_code, city, country")
+        .eq("id", reservation.contact_id)
+        .eq("organization_id", reservation.organization_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  // Fetch active contact roles scoping by organization_id
+  const { data: contactRoles } = reservation?.contact_id && reservation?.organization_id
+    ? await supabase
+        .from("contact_roles")
+        .select("role")
+        .eq("contact_id", reservation.contact_id)
+        .eq("organization_id", reservation.organization_id)
+        .eq("is_active", true)
+        .is("deleted_at", null)
+    : { data: null };
+
+  // Fetch application details scoping by organization_id
+  const { data: applicationDetails, error: applicationDetailsError } = reservation?.application_id && reservation?.organization_id
+    ? await supabase
+        .from("applications")
+        .select("id, species, breed, desired_sex_preference, project_description, status, internal_comment")
+        .eq("id", reservation.application_id)
+        .eq("organization_id", reservation.organization_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
   const animalSummaryLabel =
     reservation?.animal_display_name ??
     (relatedAnimal ? getAnimalDisplayName(relatedAnimal) : null) ??
@@ -895,9 +929,6 @@ export default async function ReservationDetailPage({
         .filter((value) => value && value !== "Non renseigné")
         .join(" · ") || "Animal attribué, détails complémentaires à vérifier."
     : "Animal non attribué pour l’instant. Ce n’est pas bloquant pour tous les parcours.";
-  const applicationSummaryDetail = reservation?.application_id
-    ? "Projet d’adoption lié au dossier."
-    : "Aucune candidature liée à cette réservation.";
 
   const nextAction = reservation
     ? getReservationNextAction({
@@ -916,6 +947,9 @@ export default async function ReservationDetailPage({
     : null;
 
   const sectionNavItems = [
+    { href: "#quick-actions", label: "Actions rapides" },
+    { href: "#contact-details", label: "Dossier adoptant" },
+    { href: "#application-details", label: "Candidature / projet" },
     { href: "#reservation-details", label: "Réservation" },
     { href: "#scope-and-animal", label: "Portée / animal" },
     { href: "#payments", label: "Paiements" },
@@ -1400,7 +1434,11 @@ export default async function ReservationDetailPage({
                 <SummaryItem
                   label="Adoptant"
                   value={reservation.contact_display_name ?? "Client associé"}
-                  detail="Mémoire relationnelle du dossier."
+                  detail={
+                    contactDetails
+                      ? `${contactDetails.email || ""} ${contactDetails.phone || ""}`.trim() || "Aucune coordonnée enregistrée."
+                      : "Mémoire relationnelle du dossier."
+                  }
                   href={
                     reservation.contact_id
                       ? `/contacts/${reservation.contact_id}`
@@ -1409,8 +1447,18 @@ export default async function ReservationDetailPage({
                 />
                 <SummaryItem
                   label="Candidature"
-                  value={reservation.application_id ? "Candidature liée" : "Non renseignée"}
-                  detail={applicationSummaryDetail}
+                  value={
+                    applicationDetails
+                      ? `${applicationDetails.breed} (${applicationDetails.species === "dog" ? "Chien" : "Chat"})`
+                      : reservation.application_id
+                        ? "Candidature liée"
+                        : "Non renseignée"
+                  }
+                  detail={
+                    applicationDetails
+                      ? `Qualification : ${applicationDetails.status === "qualified" ? "Qualifié" : applicationDetails.status}`
+                      : "Aucune candidature liée à cette réservation."
+                  }
                   href={
                     reservation.application_id
                       ? `/candidatures/${reservation.application_id}`
@@ -1421,12 +1469,24 @@ export default async function ReservationDetailPage({
                   label="Statut"
                   value={getReservationStatusLabel(reservation.status)}
                   detail={`Créée le ${formatApplicationDate(reservation.created_at)}`}
-                  badgeClassName="text-muted bg-muted-soft border-border"
+                  badgeClassName={
+                    reservation.status === "adopted" || reservation.status === "pre_reservation_paid"
+                      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                      : reservation.status === "pre_reservation_requested" || reservation.status === "active"
+                        ? "text-amber-700 bg-amber-50 border-amber-200"
+                        : reservation.status === "cancelled" || reservation.status === "withdrawn" || reservation.status === "expired"
+                          ? "text-rose-700 bg-rose-50 border-rose-200"
+                          : "text-muted bg-muted-soft border-border"
+                  }
                 />
                 <SummaryItem
                   label="Portée / groupe"
                   value={scopeSummaryValue}
-                  detail={scopeSummaryDetail}
+                  detail={
+                    reservation.rank_active
+                      ? `${scopeSummaryDetail} (Rang : ${reservation.rank_active})`
+                      : scopeSummaryDetail
+                  }
                   href={
                     reservation.litter_id
                       ? `/litters/${reservation.litter_id}`
@@ -1487,6 +1547,390 @@ export default async function ReservationDetailPage({
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
+                {/* 1. Actions rapides cockpit */}
+                <section id="quick-actions" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">Actions rapides</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Cockpit d&apos;actions classées par familles opérationnelles.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {/* Famille Dossier / Notes */}
+                    <div className="rounded-xl border bg-background p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground border-b pb-2 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                          Dossier &amp; Notes
+                        </h3>
+                        <p className="text-xs text-muted mt-2 leading-relaxed">
+                          Ajouter des notes internes ou mettre à jour le statut du dossier d&apos;adoption.
+                        </p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        <div className="flex flex-wrap gap-2">
+                          <ReservationNoteDialog
+                            noteForm={<ReservationNoteForm reservationId={id} />}
+                          />
+                        </div>
+
+                        {/* Actions de statut */}
+                        {reservation.status === "draft" && (
+                          <form action={activateReservation} className="pt-1">
+                            <input type="hidden" name="reservation_id" value={id} />
+                            <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm">
+                              Activer la réservation
+                            </button>
+                          </form>
+                        )}
+                        {reservation.status === "active" && (
+                          <div className="pt-1 space-y-2">
+                            <form action={adoptReservation}>
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <button type="submit" className="w-full text-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm">
+                                Finaliser l&apos;adoption
+                              </button>
+                            </form>
+                            <div className="flex gap-2">
+                              <form action={cancelReservation} className="flex-1">
+                                <input type="hidden" name="reservation_id" value={id} />
+                                <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
+                                  Annuler
+                                </button>
+                              </form>
+                              <form action={withdrawReservation} className="flex-1">
+                                <input type="hidden" name="reservation_id" value={id} />
+                                <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
+                                  Désistement
+                                </button>
+                              </form>
+                              <form action={expireReservation} className="flex-1">
+                                <input type="hidden" name="reservation_id" value={id} />
+                                <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
+                                  Expirer
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Famille Finances */}
+                    <div className="rounded-xl border bg-background p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground border-b pb-2 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                          Finances
+                        </h3>
+                        <p className="text-xs text-muted mt-2 leading-relaxed">
+                          Enregistrer les encaissements ou les remboursements, ou demander le complément d&apos;arrhes.
+                        </p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        <div className="flex flex-col gap-2">
+                          <ReservationFinanceDialogs
+                            paymentForm={
+                              <div className="space-y-6">
+                                <FinancialBalanceNotice
+                                  priceCents={reservation.price_cents}
+                                  paidCents={reservation.paid_cents ?? 0}
+                                  refundedCents={reservation.refunded_cents ?? 0}
+                                  currency={currency}
+                                />
+                                <ReservationPaymentForm
+                                  reservationId={id}
+                                  remainingBalanceCents={
+                                    reservation.price_cents !== null
+                                      ? reservation.price_cents -
+                                        (reservation.paid_cents ?? 0) +
+                                        (reservation.refunded_cents ?? 0)
+                                      : 0
+                                  }
+                                />
+                              </div>
+                            }
+                            refundForm={
+                              <ReservationRefundForm
+                                reservationId={id}
+                                remainingBalanceCents={
+                                  reservation.price_cents !== null
+                                    ? reservation.price_cents -
+                                      (reservation.paid_cents ?? 0) +
+                                      (reservation.refunded_cents ?? 0)
+                                    : 0
+                                }
+                              />
+                            }
+                          />
+                        </div>
+
+                        {reservation.status === "pre_reservation_paid" && !hasSecondPayment && (
+                          <form action={requestPreReservationBalance} className="pt-1">
+                            <input type="hidden" name="reservation_id" value={id} />
+                            <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm">
+                              Demander le complément d&apos;arrhes (250 €)
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Famille Documents */}
+                    <div className="rounded-xl border bg-background p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground border-b pb-2 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                          Documents
+                        </h3>
+                        <p className="text-xs text-muted mt-2 leading-relaxed">
+                          Initialiser les documents officiels obligatoires et suivre les signatures.
+                        </p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        {hasFirstPaid && needsDocInitialization ? (
+                          <form action={initializeReservationDocuments}>
+                            <input type="hidden" name="reservation_id" value={id} />
+                            <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm">
+                              Initialiser les documents
+                            </button>
+                          </form>
+                        ) : (
+                          <p className="text-xs text-muted/80 leading-relaxed italic">
+                            {reservationDocuments && reservationDocuments.length > 0
+                              ? "Documents initialisés. Suivi disponible dans la section Documents liés."
+                              : "Les documents pourront être initialisés après la validation du premier paiement."}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Famille Animal */}
+                    <div className="rounded-xl border bg-background p-5 space-y-4 shadow-sm flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-semibold text-sm text-foreground border-b pb-2 flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                          Animal
+                        </h3>
+                        <p className="text-xs text-muted mt-2 leading-relaxed">
+                          Attribuer un chiot disponible de la portée ou retirer l&apos;attribution actuelle.
+                        </p>
+                      </div>
+                      <div className="space-y-3 pt-2">
+                        {reservation.animal_id ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-muted">
+                              Animal attribué : <span className="font-semibold text-foreground">{reservation.animal_display_name}</span>
+                            </p>
+                            {!isFinalReservationStatus(reservation.status) && (
+                              <form action={unassignAnimalFromReservation}>
+                                <input type="hidden" name="reservation_id" value={id} />
+                                <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
+                                  Retirer l&apos;attribution
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {!isFinalReservationStatus(reservation.status) && availableAnimals.length > 0 ? (
+                              <form action={assignAnimalToReservation} className="space-y-2">
+                                <input type="hidden" name="reservation_id" value={id} />
+                                <select name="animal_id" className="w-full rounded-lg border bg-background px-2.5 py-2 text-xs outline-none transition focus:border-accent" required>
+                                  <option value="">Sélectionner un animal...</option>
+                                  {availableAnimals.map((animal) => (
+                                    <option key={animal.id} value={animal.id}>
+                                      {animal.display_name} ({animal.sex === "male" ? "Mâle" : "Femelle"})
+                                    </option>
+                                  ))}
+                                </select>
+                                <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition">
+                                  Attribuer cet animal
+                                </button>
+                              </form>
+                            ) : !isFinalReservationStatus(reservation.status) ? (
+                              <p className="text-xs italic text-muted">Aucun animal disponible pour attribution.</p>
+                            ) : (
+                              <p className="text-xs text-muted">La réservation est finalisée.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                {/* 2. Section Dossier Adoptant */}
+                <section id="contact-details" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">Dossier adoptant</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Coordonnées et informations du contact associé.
+                      </p>
+                    </div>
+                    {reservation.contact_id && (
+                      <Link
+                        href={`/contacts/${reservation.contact_id}`}
+                        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter la fiche contact
+                      </Link>
+                    )}
+                  </div>
+
+                  {contactDetailsError ? (
+                    <p role="alert" className="text-sm text-amber-850">
+                      Impossible de charger les détails du contact.
+                    </p>
+                  ) : contactDetails ? (
+                    <div className="grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Nom complet"
+                        value={`${contactDetails.first_name || ""} ${contactDetails.last_name || ""}`.trim() || contactDetails.display_name || "Non renseigné"}
+                      />
+                      <DetailItem
+                        label="E-mail"
+                        value={
+                          contactDetails.email ? (
+                            <a href={`mailto:${contactDetails.email}`} className="text-accent hover:underline">
+                              {contactDetails.email}
+                            </a>
+                          ) : (
+                            <span className="text-muted/60 italic">Non renseigné</span>
+                          )
+                        }
+                      />
+                      <DetailItem
+                        label="Téléphone principal"
+                        value={contactDetails.phone || <span className="text-muted/60 italic">Non renseigné</span>}
+                      />
+                      <DetailItem
+                        label="Téléphone secondaire"
+                        value={contactDetails.secondary_phone || <span className="text-muted/60 italic">Non renseigné</span>}
+                      />
+                      <div className="sm:col-span-2">
+                        <DetailItem
+                          label="Adresse postale"
+                          value={
+                            [
+                              contactDetails.address_line1,
+                              contactDetails.address_line2,
+                              [contactDetails.postal_code, contactDetails.city].filter(Boolean).join(" "),
+                              contactDetails.country,
+                            ]
+                              .filter(Boolean)
+                              .join(", ") || <span className="text-muted/60 italic">Aucune adresse renseignée</span>
+                          }
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                          Rôles associés
+                        </dt>
+                        <dd className="mt-2 flex flex-wrap gap-2">
+                          {contactRoles && contactRoles.length > 0 ? (
+                            contactRoles.map((cr) => (
+                              <span
+                                key={cr.role}
+                                className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 text-xs font-semibold text-foreground"
+                              >
+                                {getContactRoleLabel(cr.role)}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted/60 italic">Aucun rôle spécifique</span>
+                          )}
+                        </dd>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucun contact lié ou coordonnées indisponibles.
+                    </p>
+                  )}
+                </section>
+
+                {/* 3. Section Candidature / Projet */}
+                <section id="application-details" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">Candidature / Projet</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Projet d&apos;adoption et qualification de la candidature.
+                      </p>
+                    </div>
+                    {reservation.application_id && (
+                      <Link
+                        href={`/candidatures/${reservation.application_id}`}
+                        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter la candidature
+                      </Link>
+                    )}
+                  </div>
+
+                  {applicationDetailsError ? (
+                    <p role="alert" className="text-sm text-amber-850">
+                      Impossible de charger les détails de la candidature.
+                    </p>
+                  ) : applicationDetails ? (
+                    <div className="grid gap-6 sm:grid-cols-2">
+                      <DetailItem
+                        label="Espèce souhaitée"
+                        value={applicationDetails.species === "dog" ? "Chien" : applicationDetails.species === "cat" ? "Chat" : applicationDetails.species || "Non renseignée"}
+                      />
+                      <DetailItem
+                        label="Race souhaitée"
+                        value={applicationDetails.breed || "Golden Retriever"}
+                      />
+                      <DetailItem
+                        label="Préférence de sexe (candidature)"
+                        value={getSexPreferenceLabel(applicationDetails.desired_sex_preference)}
+                      />
+                      <DetailItem
+                        label="Statut de qualification"
+                        value={
+                          <span className="inline-flex rounded-full border bg-background px-2.5 py-1 text-xs font-semibold">
+                            {applicationDetails.status === "qualified" ? "Qualifié" : applicationDetails.status}
+                          </span>
+                        }
+                      />
+                      <div className="sm:col-span-2">
+                        <DetailItem
+                          label="Description du projet d&apos;adoption"
+                          value={
+                            <div className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                              {applicationDetails.project_description || (
+                                <span className="text-muted/60 italic">Aucune description de projet renseignée</span>
+                              )}
+                            </div>
+                          }
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <DetailItem
+                          label="Commentaire de qualification (Interne)"
+                          value={
+                            <div className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                              {applicationDetails.internal_comment || (
+                                <span className="text-muted/60 italic">Aucun commentaire de qualification</span>
+                              )}
+                            </div>
+                          }
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted">
+                      Aucune candidature liée à cette réservation.
+                    </p>
+                  )}
+                </section>
+
                 <section id="reservation-details" className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Informations de la réservation

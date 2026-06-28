@@ -9,14 +9,14 @@ function paymentRedirectUrl(
   reservationId: string,
   outcome: "success" | "error",
 ) {
-  return `/reservations/${reservationId}?payment_create_status=${outcome}`;
+  return `/reservations/${reservationId}?payment_create_status=${outcome}#payments`;
 }
 
 function reservationPaymentMarkUrl(
   reservationId: string,
   outcome: "success" | "error" | "invalid_state",
 ) {
-  return `/reservations/${reservationId}?payment_mark_status=${outcome}`;
+  return `/reservations/${reservationId}?payment_mark_status=${outcome}#payments`;
 }
 
 function isUuid(value: string) {
@@ -421,23 +421,23 @@ export async function createReservationRefund(formData: FormData) {
     .maybeSingle();
 
   if (readError || !reservation) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   // 3. Récupération et validation du montant
   const rawAmount = formData.get("amount");
   if (typeof rawAmount !== "string" || !rawAmount) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const normalizedAmount = rawAmount.trim().replace(",", ".");
   if (!/^\d+(?:\.\d{1,2})?$/.test(normalizedAmount)) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const amountNum = Number(normalizedAmount);
   if (!Number.isFinite(amountNum) || amountNum <= 0 || amountNum > 1000000) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const amountCents = Math.round(amountNum * 100);
@@ -449,18 +449,18 @@ export async function createReservationRefund(formData: FormData) {
     typeof paymentMethod !== "string" ||
     !allowedMethods.includes(paymentMethod)
   ) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   // 5. Validation de la date de remboursement
   const paymentDate = formData.get("payment_date");
   if (typeof paymentDate !== "string" || !paymentDate) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paymentDate.trim());
   if (!dateMatch) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const year = Number(dateMatch[1]);
@@ -473,7 +473,7 @@ export async function createReservationRefund(formData: FormData) {
     dateVal.getUTCMonth() !== month - 1 ||
     dateVal.getUTCDate() !== day
   ) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   const paidAt = dateVal.toISOString();
@@ -484,7 +484,7 @@ export async function createReservationRefund(formData: FormData) {
   if (typeof rawNotes === "string") {
     const trimmedNotes = rawNotes.trim();
     if (trimmedNotes.length > 2000) {
-      redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+      redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
     }
     notes = trimmedNotes || null;
   }
@@ -511,7 +511,7 @@ export async function createReservationRefund(formData: FormData) {
     });
 
   if (insertError) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error`);
+    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
   }
 
   revalidatePath(`/reservations/${reservationId}`);
@@ -519,5 +519,5 @@ export async function createReservationRefund(formData: FormData) {
   revalidatePath("/payments");
   revalidatePath(`/contacts/${reservation.contact_id}`);
 
-  redirect(`/reservations/${reservationId}?payment_refund_status=success`);
+  redirect(`/reservations/${reservationId}?payment_refund_status=success#payments`);
 }
