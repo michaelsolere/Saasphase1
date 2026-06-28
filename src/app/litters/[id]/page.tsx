@@ -14,6 +14,7 @@ import {
   getDocumentTypeLabel,
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
+import { updateLitterGroupAssignment } from "@/features/litters/actions";
 import {
   formatLitterCount,
   formatLitterDate,
@@ -603,10 +604,15 @@ export default async function LitterDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ campaign_status?: string; campaign_count?: string }>;
+  searchParams: Promise<{
+    campaign_status?: string;
+    campaign_count?: string;
+    group_assignment_status?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { campaign_status, campaign_count } = await searchParams;
+  const { campaign_status, campaign_count, group_assignment_status } =
+    await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -638,6 +644,22 @@ export default async function LitterDetailPage({
     : { data: null, error: null };
 
   const summary = rawSummary as LitterSummary | null;
+
+  // Groupes de portées disponibles pour le rattachement (même organisation).
+  const { data: rawGroupOptions } =
+    litter && litter.organization_id
+      ? await supabase
+          .from("litter_groups")
+          .select("id, name")
+          .eq("organization_id", litter.organization_id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+      : { data: null };
+
+  const groupOptions = (rawGroupOptions ?? []) as {
+    id: string;
+    name: string | null;
+  }[];
 
   const { data: rawAnimals, error: animalsError } = litter
     ? await supabase
@@ -897,6 +919,84 @@ export default async function LitterDetailPage({
                     }
                   />
                 </dl>
+              </section>
+
+              <section
+                id="groupe-portees"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <h2 className="text-xl font-semibold">Groupe de portées</h2>
+                <p className="mt-1 text-sm text-muted">
+                  Rattachez cette portée à un groupe de portées (période),
+                  changez de groupe, ou détachez-la. Le statut de la portée
+                  n’est pas modifié.
+                </p>
+
+                {group_assignment_status === "success" ? (
+                  <p
+                    role="status"
+                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                  >
+                    Le groupe de portées a été mis à jour.
+                  </p>
+                ) : null}
+
+                {group_assignment_status === "invalid_group" ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    Le groupe de portées sélectionné est invalide. Aucune
+                    modification n’a été appliquée.
+                  </p>
+                ) : null}
+
+                {group_assignment_status === "error" ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    Impossible de mettre à jour le groupe pour le moment.
+                  </p>
+                ) : null}
+
+                <p className="mt-4 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
+                  Groupe actuel : {summary?.litter_group_name ?? "Aucun groupe"}
+                </p>
+
+                <form
+                  action={updateLitterGroupAssignment}
+                  className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end"
+                >
+                  <input type="hidden" name="litter_id" value={litter.id} />
+                  <div className="flex-1">
+                    <label
+                      htmlFor="litter-group-assignment"
+                      className="text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Groupe de portées
+                    </label>
+                    <select
+                      id="litter-group-assignment"
+                      name="litter_group_id"
+                      defaultValue={litter.litter_group_id ?? ""}
+                      className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                    >
+                      <option value="">Aucun groupe</option>
+                      {groupOptions.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    Enregistrer le groupe
+                  </button>
+                </form>
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
