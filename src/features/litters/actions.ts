@@ -382,3 +382,98 @@ export async function createLitter(formData: FormData) {
 
   redirect("/litters?litter_status=created");
 }
+
+function litterGroupAssignmentUrl(
+  litterId: string,
+  outcome: "success" | "error" | "invalid_group",
+) {
+  return `/litters/${litterId}?group_assignment_status=${outcome}#groupe-portees`;
+}
+
+/**
+ * Rattache, change ou détache le groupe de portées d'une portée existante.
+ *
+ * Décisions :
+ *   - Valeur de groupe vide => détachement (`litter_group_id = null`).
+ *   - `organization_id` jamais accepté du client : déduit de la portée en base.
+ *   - Met à jour uniquement `litter_group_id`, `updated_at`, `updated_by`.
+ *   - Ne touche ni au statut de la portée, ni aux candidatures/réservations,
+ *     ni aux événements.
+ */
+export async function updateLitterGroupAssignment(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+    redirect("/litters");
+  }
+
+  const litterId = (rawLitterId as string).trim();
+
+  const rawGroupId = formData.get("litter_group_id");
+  let requestedGroupId: string | null = null;
+
+  if (typeof rawGroupId === "string" && rawGroupId.trim()) {
+    const trimmed = rawGroupId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(litterGroupAssignmentUrl(litterId, "invalid_group"));
+    }
+    requestedGroupId = trimmed;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La portée doit exister, ne pas être supprimée ; son organisation fait foi.
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter?.organization_id) {
+    redirect(litterGroupAssignmentUrl(litterId, "error"));
+  }
+
+  const organizationId = litter.organization_id;
+
+  // Le groupe éventuel doit appartenir à la même organisation.
+  if (requestedGroupId) {
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", requestedGroupId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(litterGroupAssignmentUrl(litterId, "invalid_group"));
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from("litters")
+    .update({
+      litter_group_id: requestedGroupId,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", litterId)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(litterGroupAssignmentUrl(litterId, "error"));
+  }
+
+  revalidatePath("/litters");
+  revalidatePath(`/litters/${litterId}`);
+  redirect(litterGroupAssignmentUrl(litterId, "success"));
+}
