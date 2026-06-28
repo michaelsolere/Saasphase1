@@ -56,8 +56,8 @@ function applicationRoleUrl(applicationId: string) {
   return `/candidatures/${applicationId}?role_status=error`;
 }
 
-function reservationRoleUrl(applicationId: string) {
-  return `/candidatures/${applicationId}?reservation_status=created&role_status=error`;
+function reservationRoleUrl(reservationId: string) {
+  return `/reservations/${reservationId}?role_status=error`;
 }
 
 export async function createApplicationForContact(formData: FormData) {
@@ -322,23 +322,29 @@ export async function createReservationFromApplication(formData: FormData) {
     redirect(reservationUrl(applicationId, "already_exists"));
   }
 
-  const { error: insertError } = await supabase.from("reservations").insert({
-    organization_id: application.organization_id,
-    contact_id: application.contact_id,
-    application_id: application.id,
-    species: application.species,
-    breed: application.breed,
-    litter_group_id: application.desired_litter_group_id,
-    litter_id: application.desired_litter_id,
-    reserved_sex_preference: application.desired_sex_preference,
-    status: "draft",
-    created_by: user.id,
-    updated_by: user.id,
-  });
+  const { data: createdReservation, error: insertError } = await supabase
+    .from("reservations")
+    .insert({
+      organization_id: application.organization_id,
+      contact_id: application.contact_id,
+      application_id: application.id,
+      species: application.species,
+      breed: application.breed,
+      litter_group_id: application.desired_litter_group_id,
+      litter_id: application.desired_litter_id,
+      reserved_sex_preference: application.desired_sex_preference,
+      status: "draft",
+      created_by: user.id,
+      updated_by: user.id,
+    })
+    .select("id")
+    .maybeSingle();
 
-  if (insertError) {
+  if (insertError || !createdReservation?.id) {
     redirect(reservationUrl(applicationId, "error"));
   }
+
+  const createdReservationId = createdReservation.id;
 
   const { data: existingPreReservationRole, error: existingRoleError } =
     await supabase
@@ -357,7 +363,7 @@ export async function createReservationFromApplication(formData: FormData) {
     revalidatePath("/candidatures");
     revalidatePath(`/candidatures/${applicationId}`);
     revalidatePath("/reservations");
-    redirect(reservationRoleUrl(applicationId));
+    redirect(reservationRoleUrl(createdReservationId));
   }
 
   if (!existingPreReservationRole) {
@@ -380,7 +386,7 @@ export async function createReservationFromApplication(formData: FormData) {
       revalidatePath("/candidatures");
       revalidatePath(`/candidatures/${applicationId}`);
       revalidatePath("/reservations");
-      redirect(reservationRoleUrl(applicationId));
+      redirect(reservationRoleUrl(createdReservationId));
     }
   }
 
@@ -389,7 +395,7 @@ export async function createReservationFromApplication(formData: FormData) {
   revalidatePath("/candidatures");
   revalidatePath(`/candidatures/${applicationId}`);
   revalidatePath("/reservations");
-  redirect(reservationUrl(applicationId, "created"));
+  redirect(`/reservations/${createdReservationId}`);
 }
 
 export async function createApplicationNote(formData: FormData) {

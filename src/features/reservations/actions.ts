@@ -1306,3 +1306,193 @@ export async function requestPreReservationBalance(formData: FormData) {
 
   redirect(`/reservations/${reservationId}?balance_request_status=success#payments`);
 }
+
+// ---------------------------------------------------------------------------
+// Création directe d'une réservation brouillon depuis le module Réservations
+// ---------------------------------------------------------------------------
+
+const RESERVED_SEX_PREFERENCES = new Set([
+  "male_only",
+  "female_only",
+  "male_preferred_female_possible",
+  "female_preferred_male_possible",
+  "no_preference",
+  "unknown",
+]);
+
+const NEW_RESERVATION_ERROR_URL = "/reservations/new?status=error";
+
+/**
+ * Crée une réservation brouillon directement depuis `/reservations/new`.
+ *
+ * Décisions Phase 1 (Lot 1) :
+ *   - `contact_id` obligatoire, `application_id` optionnel.
+ *   - Statut forcé à `draft` (jamais `active`, payée ou pré-réservée).
+ *   - Aucun contact ni candidature créés ici, aucun dédoublonnage de contact.
+ *   - Aucun paiement, document, note ou attribution automatique.
+ *   - `organization_id` résolu via les memberships de l'utilisateur connecté,
+ *     jamais accepté depuis le client.
+ *   - Si une candidature est fournie, elle doit appartenir à la même
+ *     organisation et au même contact, et ne pas avoir déjà de réservation.
+ */
+export async function createReservationDirect(formData: FormData) {
+  const contactIdValue = formData.get("contact_id");
+
+  if (typeof contactIdValue !== "string" || !isUuid(contactIdValue)) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
+  const contactId = contactIdValue;
+
+  const rawApplicationId = formData.get("application_id");
+  let applicationId: string | null = null;
+
+  if (typeof rawApplicationId === "string" && rawApplicationId.trim()) {
+    const trimmed = rawApplicationId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+    applicationId = trimmed;
+  }
+
+  const rawSexPreference = formData.get("reserved_sex_preference");
+  const reservedSexFromForm =
+    typeof rawSexPreference === "string" &&
+    RESERVED_SEX_PREFERENCES.has(rawSexPreference)
+      ? rawSexPreference
+      : "unknown";
+
+  const parsedPrice = parsePriceCents(formData.get("price"));
+
+  if (!parsedPrice.ok) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
+  const commentValue = formData.get("internal_comment");
+  let internalComment: string | null = null;
+
+  if (typeof commentValue === "string") {
+    const trimmedComment = commentValue.trim();
+    if (trimmedComment.length > 2_000) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+    internalComment = trimmedComment || null;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Résolution de l'organisation via les memberships de l'utilisateur connecté.
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
+  const organizationId = membership.organization_id;
+
+  // Le contact doit appartenir à la même organisation.
+  const { data: contact, error: contactError } = await supabase
+    .from("contacts")
+    .select("id, organization_id")
+    .eq("id", contactId)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (contactError || !contact) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
+  let species = "dog";
+  let breed = "Golden Retriever";
+  let litterGroupId: string | null = null;
+  let litterId: string | null = null;
+  let reservedSexPreference = reservedSexFromForm;
+
+  if (applicationId) {
+    // La candidature doit appartenir à la même organisation ET au même contact.
+    const { data: application, error: applicationError } = await supabase
+      .from("applications")
+      .select(
+        "id, organization_id, contact_id, species, breed, desired_litter_group_id, desired_litter_id, desired_sex_preference",
+      )
+      .eq("id", applicationId)
+      .eq("organization_id", organizationId)
+      .eq("contact_id", contactId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (applicationError || !application) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+
+    // Anti-doublon : pas de réservation déjà liée à cette candidature.
+    const { data: existingReservation, error: existingReservationError } =
+      await supabase
+        .from("reservations")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .eq("application_id", applicationId)
+        .is("deleted_at", null)
+        .limit(1)
+        .maybeSingle();
+
+    if (existingReservationError) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+
+    if (existingReservation) {
+      redirect("/reservations/new?status=duplicate");
+    }
+
+    species = application.species ?? "dog";
+    breed = application.breed ?? "Golden Retriever";
+    litterGroupId = application.desired_litter_group_id ?? null;
+    litterId = application.desired_litter_id ?? null;
+    reservedSexPreference =
+      application.desired_sex_preference ?? reservedSexFromForm;
+  }
+
+  const { data: createdReservation, error: insertError } = await supabase
+    .from("reservations")
+    .insert({
+      organization_id: organizationId,
+      contact_id: contactId,
+      application_id: applicationId,
+      litter_group_id: litterGroupId,
+      litter_id: litterId,
+      species,
+      breed,
+      reserved_sex_preference: reservedSexPreference,
+      price_cents: parsedPrice.priceCents,
+      internal_comment: internalComment,
+      status: "draft",
+      created_by: user.id,
+      updated_by: user.id,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (insertError || !createdReservation?.id) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${createdReservation.id}`);
+  redirect(`/reservations/${createdReservation.id}`);
+}
