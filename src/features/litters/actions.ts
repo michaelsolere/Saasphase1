@@ -383,6 +383,195 @@ export async function createLitter(formData: FormData) {
   redirect("/litters?litter_status=created");
 }
 
+function litterDetailEditUrl(
+  litterId: string,
+  code:
+    | "success"
+    | "name_required"
+    | "invalid_species"
+    | "invalid_status"
+    | "same_parents"
+    | "invalid_mother"
+    | "invalid_father"
+    | "error",
+) {
+  return `/litters/${litterId}?detail_status=${code}#modifier-portee`;
+}
+
+/**
+ * Met à jour les informations principales d'une portée existante depuis sa
+ * fiche, en cohérence avec le formulaire de création /litters/new.
+ *
+ * Décisions (Lot 4) :
+ *   - `name` obligatoire ; `species` validé (dog/cat) ; `breed` défaut
+ *     Golden Retriever si vide ; `status` validé.
+ *   - `mother_id`/`father_id` optionnels, vérifiés dans la même organisation,
+ *     et obligatoirement distincts.
+ *   - Le `litter_group_id` n'est PAS géré ici : le rattachement au groupe reste
+ *     piloté par la section dédiée (updateLitterGroupAssignment).
+ *   - `organization_id` jamais accepté du client : déduit de la portée en base.
+ *   - Met à jour uniquement les champs du périmètre + `updated_at`/`updated_by`.
+ *   - Aucun objet lié (candidatures, réservations, animaux, documents…) modifié.
+ */
+export async function updateLitterDetails(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+    redirect("/litters");
+  }
+
+  const litterId = (rawLitterId as string).trim();
+
+  const name = normalizeOptionalText(formData.get("name"), 255);
+
+  if (!name) {
+    redirect(litterDetailEditUrl(litterId, "name_required"));
+  }
+
+  const rawSpecies = formData.get("species");
+  const species = typeof rawSpecies === "string" ? rawSpecies.trim() : "";
+
+  if (!allowedSpecies.has(species)) {
+    redirect(litterDetailEditUrl(litterId, "invalid_species"));
+  }
+
+  // Race : texte simple, défaut Golden Retriever si vide (cohérent createLitter).
+  const breed =
+    normalizeOptionalText(formData.get("breed"), 255) ?? "Golden Retriever";
+
+  const rawStatus = formData.get("status");
+  const status =
+    typeof rawStatus === "string" && rawStatus.trim()
+      ? rawStatus.trim()
+      : "planned";
+
+  if (!allowedLitterStatuses.has(status)) {
+    redirect(litterDetailEditUrl(litterId, "invalid_status"));
+  }
+
+  function parseOptionalUuid(value: FormDataEntryValue | null) {
+    if (typeof value !== "string" || !value.trim()) {
+      return null;
+    }
+    const trimmed = value.trim();
+    if (!isUuid(trimmed)) {
+      return "invalid";
+    }
+    return trimmed;
+  }
+
+  const motherId = parseOptionalUuid(formData.get("mother_id"));
+  if (motherId === "invalid") {
+    redirect(litterDetailEditUrl(litterId, "invalid_mother"));
+  }
+
+  const fatherId = parseOptionalUuid(formData.get("father_id"));
+  if (fatherId === "invalid") {
+    redirect(litterDetailEditUrl(litterId, "invalid_father"));
+  }
+
+  if (motherId && fatherId && motherId === fatherId) {
+    redirect(litterDetailEditUrl(litterId, "same_parents"));
+  }
+
+  const matingDate = normalizeOptionalDate(formData.get("mating_date"));
+  const matingDate2 = normalizeOptionalDate(formData.get("mating_date_2"));
+  const estimatedOvulationDate = normalizeOptionalDate(
+    formData.get("estimated_ovulation_date"),
+  );
+  const expectedBirthDate = normalizeOptionalDate(
+    formData.get("expected_birth_date"),
+  );
+  const actualBirthDate = normalizeOptionalDate(
+    formData.get("actual_birth_date"),
+  );
+
+  const notes = normalizeOptionalText(formData.get("notes"));
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  // La portée doit exister, ne pas être supprimée ; son organisation fait foi.
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter?.organization_id) {
+    redirect(litterDetailEditUrl(litterId, "error"));
+  }
+
+  const organizationId = litter.organization_id;
+
+  // La mère éventuelle doit appartenir à la même organisation.
+  if (motherId) {
+    const { data: mother, error: motherError } = await supabase
+      .from("animals")
+      .select("id")
+      .eq("id", motherId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (motherError || !mother) {
+      redirect(litterDetailEditUrl(litterId, "invalid_mother"));
+    }
+  }
+
+  // Le père éventuel doit appartenir à la même organisation.
+  if (fatherId) {
+    const { data: father, error: fatherError } = await supabase
+      .from("animals")
+      .select("id")
+      .eq("id", fatherId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (fatherError || !father) {
+      redirect(litterDetailEditUrl(litterId, "invalid_father"));
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from("litters")
+    .update({
+      name,
+      species,
+      breed,
+      status,
+      mother_id: motherId,
+      father_id: fatherId,
+      mating_date: matingDate,
+      mating_date_2: matingDate2,
+      estimated_ovulation_date: estimatedOvulationDate,
+      expected_birth_date: expectedBirthDate,
+      actual_birth_date: actualBirthDate,
+      notes,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", litterId)
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(litterDetailEditUrl(litterId, "error"));
+  }
+
+  revalidatePath("/litters");
+  revalidatePath(`/litters/${litterId}`);
+  redirect(litterDetailEditUrl(litterId, "success"));
+}
+
 function litterGroupAssignmentUrl(
   litterId: string,
   outcome: "success" | "error" | "invalid_group",
