@@ -46,6 +46,9 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
               Portée
             </th>
             <th scope="col" className="px-6 py-4">
+              Groupe
+            </th>
+            <th scope="col" className="px-6 py-4">
               Statut
             </th>
             <th scope="col" className="px-6 py-4">
@@ -79,11 +82,20 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
                   {getLitterDisplayName(litter.name, litter.id)}
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  Groupe : {litter.litter_group_name || "Non renseigné"}
-                </p>
-                <p className="mt-1 text-xs text-muted">
                   {getSpeciesLabel(litter.species)} · {litter.breed || "Race non renseignée"}
                 </p>
+              </td>
+              <td className="min-w-48 px-6 py-4 text-sm">
+                {litter.litter_group_id ? (
+                  <Link
+                    href={`/litter-groups/${litter.litter_group_id}`}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    {litter.litter_group_name || "Groupe de portées"}
+                  </Link>
+                ) : (
+                  <span className="text-muted">Aucun groupe</span>
+                )}
               </td>
               <td className="whitespace-nowrap px-6 py-4">
                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
