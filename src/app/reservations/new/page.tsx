@@ -28,7 +28,7 @@ export default async function NewReservationPage({
   const [contactsResult, applicationsResult] = await Promise.all([
     supabase
       .from("contacts")
-      .select("id, display_name, email, phone")
+      .select("id, display_name, first_name, last_name, email, phone, created_at")
       .is("deleted_at", null)
       .order("display_name", { ascending: true }),
     supabase
