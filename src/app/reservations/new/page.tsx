@@ -5,6 +5,8 @@ import {
   NewReservationForm,
   type NewReservationApplication,
   type NewReservationContact,
+  type NewReservationLitter,
+  type NewReservationLitterGroup,
 } from "@/features/reservations/new-reservation-form";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,18 +32,36 @@ export default async function NewReservationPage({
     redirect("/login");
   }
 
-  const [contactsResult, applicationsResult] = await Promise.all([
-    supabase
-      .from("contacts")
-      .select("id, display_name, first_name, last_name, email, phone, created_at")
-      .is("deleted_at", null)
-      .order("display_name", { ascending: true }),
-    supabase
-      .from("applications")
-      .select("id, contact_id, status, species, breed, created_at")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
-  ]);
+  const [contactsResult, applicationsResult, littersResult, groupsResult] =
+    await Promise.all([
+      supabase
+        .from("contacts")
+        .select(
+          "id, display_name, first_name, last_name, email, phone, created_at",
+        )
+        .is("deleted_at", null)
+        .order("display_name", { ascending: true }),
+      supabase
+        .from("applications")
+        .select(
+          "id, contact_id, status, species, breed, desired_litter_id, desired_litter_group_id, created_at",
+        )
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("litter_overview")
+        .select(
+          "id, name, litter_group_id, litter_group_name, status, mother_display_name, father_display_name, expected_birth_date, actual_birth_date, created_at",
+        )
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("litter_groups")
+        .select(
+          "id, name, status, expected_period_start, expected_period_end, created_at",
+        )
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+    ]);
 
   const hasLoadingError = Boolean(
     contactsResult.error || applicationsResult.error,
@@ -50,6 +70,8 @@ export default async function NewReservationPage({
   const contacts = (contactsResult.data ?? []) as NewReservationContact[];
   const applications = (applicationsResult.data ??
     []) as NewReservationApplication[];
+  const litters = (littersResult.data ?? []) as NewReservationLitter[];
+  const litterGroups = (groupsResult.data ?? []) as NewReservationLitterGroup[];
 
   const requestedContactId = query.contact_id ?? null;
   const initialSelectedContactId =
@@ -150,6 +172,8 @@ export default async function NewReservationPage({
         <NewReservationForm
           contacts={contacts}
           applications={applications}
+          litters={litters}
+          litterGroups={litterGroups}
           initialSelectedContactId={initialSelectedContactId}
         />
       )}

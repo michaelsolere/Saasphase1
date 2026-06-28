@@ -1355,6 +1355,34 @@ export async function createReservationDirect(formData: FormData) {
     applicationId = trimmed;
   }
 
+  // Portée / groupe de portées : choix explicite et exclusif côté formulaire.
+  const rawLitterId = formData.get("litter_id");
+  let requestedLitterId: string | null = null;
+
+  if (typeof rawLitterId === "string" && rawLitterId.trim()) {
+    const trimmed = rawLitterId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+    requestedLitterId = trimmed;
+  }
+
+  const rawLitterGroupId = formData.get("litter_group_id");
+  let requestedLitterGroupId: string | null = null;
+
+  if (typeof rawLitterGroupId === "string" && rawLitterGroupId.trim()) {
+    const trimmed = rawLitterGroupId.trim();
+    if (!isUuid(trimmed)) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+    requestedLitterGroupId = trimmed;
+  }
+
+  // Choix exclusif : jamais une portée ET un groupe simultanément.
+  if (requestedLitterId && requestedLitterGroupId) {
+    redirect(NEW_RESERVATION_ERROR_URL);
+  }
+
   const rawSexPreference = formData.get("reserved_sex_preference");
   const reservedSexFromForm =
     typeof rawSexPreference === "string" &&
@@ -1462,10 +1490,42 @@ export async function createReservationDirect(formData: FormData) {
 
     species = application.species ?? "dog";
     breed = application.breed ?? "Golden Retriever";
-    litterGroupId = application.desired_litter_group_id ?? null;
-    litterId = application.desired_litter_id ?? null;
     reservedSexPreference =
       application.desired_sex_preference ?? reservedSexFromForm;
+  }
+
+  // La portée éventuelle doit appartenir à la même organisation.
+  if (requestedLitterId) {
+    const { data: litter, error: litterError } = await supabase
+      .from("litters")
+      .select("id")
+      .eq("id", requestedLitterId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (litterError || !litter) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+
+    litterId = requestedLitterId;
+  }
+
+  // Le groupe de portées éventuel doit appartenir à la même organisation.
+  if (requestedLitterGroupId) {
+    const { data: group, error: groupError } = await supabase
+      .from("litter_groups")
+      .select("id")
+      .eq("id", requestedLitterGroupId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (groupError || !group) {
+      redirect(NEW_RESERVATION_ERROR_URL);
+    }
+
+    litterGroupId = requestedLitterGroupId;
   }
 
   const { data: createdReservation, error: insertError } = await supabase

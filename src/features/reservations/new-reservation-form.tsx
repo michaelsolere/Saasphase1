@@ -8,6 +8,11 @@ import {
   formatApplicationDate,
   getApplicationStatusLabel,
 } from "@/features/applications/formatters";
+import {
+  formatLitterDate,
+  getLitterDisplayName,
+  getLitterStatusLabel,
+} from "@/features/litters/formatters";
 import { createContactQuickForReservation } from "@/features/contacts/actions";
 import { createReservationDirect } from "@/features/reservations/actions";
 
@@ -27,8 +32,32 @@ export type NewReservationApplication = {
   status: string | null;
   species: string | null;
   breed: string | null;
+  desired_litter_id: string | null;
+  desired_litter_group_id: string | null;
   created_at: string | null;
 };
+
+export type NewReservationLitter = {
+  id: string;
+  name: string | null;
+  litter_group_id: string | null;
+  litter_group_name: string | null;
+  status: string | null;
+  mother_display_name: string | null;
+  father_display_name: string | null;
+  expected_birth_date: string | null;
+  actual_birth_date: string | null;
+};
+
+export type NewReservationLitterGroup = {
+  id: string;
+  name: string | null;
+  status: string | null;
+  expected_period_start: string | null;
+  expected_period_end: string | null;
+};
+
+type ScopeMode = "none" | "litter" | "group";
 
 const sexPreferenceOptions = [
   ["unknown", "Non précisé"],
@@ -71,10 +100,14 @@ function dayStringDaysAgo(days: number) {
 export function NewReservationForm({
   contacts,
   applications,
+  litters,
+  litterGroups,
   initialSelectedContactId = null,
 }: {
   contacts: NewReservationContact[];
   applications: NewReservationApplication[];
+  litters: NewReservationLitter[];
+  litterGroups: NewReservationLitterGroup[];
   initialSelectedContactId?: string | null;
 }) {
   const [search, setSearch] = useState("");
@@ -85,6 +118,9 @@ export function NewReservationForm({
   );
   const [selectedApplicationId, setSelectedApplicationId] = useState<string>("");
   const [isQuickCreate, setIsQuickCreate] = useState(false);
+  const [scopeMode, setScopeMode] = useState<ScopeMode>("none");
+  const [selectedLitterId, setSelectedLitterId] = useState<string>("");
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("");
 
   const trimmedSearch = search.trim();
   const hasActiveFilter = Boolean(
@@ -161,9 +197,84 @@ export function NewReservationForm({
     );
   }, [applications, selectedContactId]);
 
+  const selectedApplication = useMemo(
+    () =>
+      selectedApplicationId
+        ? applications.find(
+            (application) => application.id === selectedApplicationId,
+          ) ?? null
+        : null,
+    [applications, selectedApplicationId],
+  );
+
+  const desiredLitterUnavailable = Boolean(
+    selectedApplication?.desired_litter_id &&
+      !litters.some(
+        (litter) => litter.id === selectedApplication.desired_litter_id,
+      ),
+  );
+  const desiredGroupUnavailable = Boolean(
+    selectedApplication?.desired_litter_group_id &&
+      !litterGroups.some(
+        (group) => group.id === selectedApplication.desired_litter_group_id,
+      ),
+  );
+
   function handleSelectContact(contactId: string) {
     setSelectedContactId(contactId);
     setSelectedApplicationId("");
+    setScopeMode("none");
+    setSelectedLitterId("");
+    setSelectedGroupId("");
+  }
+
+  function handleSelectApplication(applicationId: string) {
+    setSelectedApplicationId(applicationId);
+
+    if (!applicationId) {
+      return;
+    }
+
+    const application = applications.find(
+      (candidate) => candidate.id === applicationId,
+    );
+
+    if (!application) {
+      return;
+    }
+
+    // Préremplissage exclusif depuis la candidature, uniquement si l'option
+    // existe dans les données chargées. L'éleveur reste libre de modifier.
+    if (
+      application.desired_litter_id &&
+      litters.some((litter) => litter.id === application.desired_litter_id)
+    ) {
+      setScopeMode("litter");
+      setSelectedLitterId(application.desired_litter_id);
+      setSelectedGroupId("");
+      return;
+    }
+
+    if (
+      application.desired_litter_group_id &&
+      litterGroups.some(
+        (group) => group.id === application.desired_litter_group_id,
+      )
+    ) {
+      setScopeMode("group");
+      setSelectedGroupId(application.desired_litter_group_id);
+      setSelectedLitterId("");
+    }
+  }
+
+  function handleScopeModeChange(mode: ScopeMode) {
+    setScopeMode(mode);
+    if (mode !== "litter") {
+      setSelectedLitterId("");
+    }
+    if (mode !== "group") {
+      setSelectedGroupId("");
+    }
   }
 
   function handleResetFilters() {
@@ -432,7 +543,7 @@ export function NewReservationForm({
                 name="application_id"
                 value=""
                 checked={selectedApplicationId === ""}
-                onChange={() => setSelectedApplicationId("")}
+                onChange={() => handleSelectApplication("")}
                 className="mt-1"
               />
               <span className="font-medium text-foreground">
@@ -461,7 +572,7 @@ export function NewReservationForm({
                       name="application_id"
                       value={application.id}
                       checked={isSelected}
-                      onChange={() => setSelectedApplicationId(application.id)}
+                      onChange={() => handleSelectApplication(application.id)}
                       className="mt-1"
                     />
                     <span>
@@ -484,8 +595,179 @@ export function NewReservationForm({
       </section>
 
       <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+        <h2 className="text-lg font-semibold">3. Portée ou période (optionnel)</h2>
+        <p className="mt-1 text-sm text-muted">
+          Rattachez la réservation à une portée précise, à un groupe de portées,
+          ou laissez ce choix vide. Une réservation ne peut pas être liée à la
+          fois à une portée et à un groupe.
+        </p>
+
+        {selectedApplication &&
+        (selectedApplication.desired_litter_id ||
+          selectedApplication.desired_litter_group_id) ? (
+          <p className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-950">
+            Prérempli depuis la candidature sélectionnée. Vous pouvez modifier ce
+            choix avant de créer la réservation.
+          </p>
+        ) : null}
+
+        {desiredLitterUnavailable ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+            La portée souhaitée dans la candidature n’est pas disponible dans la
+            liste. Vous pouvez en choisir une autre ou laisser ce choix vide.
+          </p>
+        ) : null}
+
+        {desiredGroupUnavailable ? (
+          <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950">
+            Le groupe de portées souhaité dans la candidature n’est pas
+            disponible dans la liste. Vous pouvez en choisir un autre ou laisser
+            ce choix vide.
+          </p>
+        ) : null}
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          {(
+            [
+              ["none", "Aucune portée ou période"],
+              ["litter", "Choisir une portée précise"],
+              ["group", "Choisir un groupe de portées"],
+            ] as const
+          ).map(([mode, label]) => {
+            const isDisabled =
+              (mode === "litter" && litters.length === 0) ||
+              (mode === "group" && litterGroups.length === 0);
+            return (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => handleScopeModeChange(mode)}
+                disabled={isDisabled}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  scopeMode === mode
+                    ? "border-accent bg-accent text-white"
+                    : "text-muted hover:bg-background"
+                }`}
+              >
+                {label}
+                {mode === "litter" && litters.length === 0
+                  ? " (aucune)"
+                  : ""}
+                {mode === "group" && litterGroups.length === 0
+                  ? " (aucun)"
+                  : ""}
+              </button>
+            );
+          })}
+        </div>
+
+        {scopeMode === "litter" ? (
+          <div className="mt-5 space-y-3">
+            {litters.map((litter) => {
+              const isSelected = selectedLitterId === litter.id;
+              const birthLabel = litter.actual_birth_date
+                ? `Née le ${formatLitterDate(litter.actual_birth_date)}`
+                : litter.expected_birth_date
+                  ? `Naissance prévue le ${formatLitterDate(litter.expected_birth_date)}`
+                  : "Date de mise-bas non renseignée";
+              return (
+                <label
+                  key={litter.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 text-sm transition ${
+                    isSelected
+                      ? "border-accent bg-accent-soft"
+                      : "bg-background hover:bg-surface"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="litter_id"
+                    value={litter.id}
+                    checked={isSelected}
+                    onChange={() => setSelectedLitterId(litter.id)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium text-foreground">
+                      {getLitterDisplayName(litter.name, litter.id)}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {getLitterStatusLabel(litter.status)} · {birthLabel}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      Mère : {litter.mother_display_name ?? "Non renseignée"} ·
+                      Père : {litter.father_display_name ?? "Non renseigné"}
+                    </span>
+                    {litter.litter_group_name ? (
+                      <span className="block text-xs text-muted">
+                        Groupe : {litter.litter_group_name}
+                      </span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {scopeMode === "group" ? (
+          <div className="mt-5 space-y-3">
+            {litterGroups.map((group) => {
+              const isSelected = selectedGroupId === group.id;
+              const linkedLitters = litters.filter(
+                (litter) => litter.litter_group_id === group.id,
+              ).length;
+              const periodLabel =
+                group.expected_period_start || group.expected_period_end
+                  ? `${
+                      group.expected_period_start
+                        ? formatLitterDate(group.expected_period_start)
+                        : "?"
+                    } – ${
+                      group.expected_period_end
+                        ? formatLitterDate(group.expected_period_end)
+                        : "?"
+                    }`
+                  : "Période non renseignée";
+              return (
+                <label
+                  key={group.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 text-sm transition ${
+                    isSelected
+                      ? "border-accent bg-accent-soft"
+                      : "bg-background hover:bg-surface"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="litter_group_id"
+                    value={group.id}
+                    checked={isSelected}
+                    onChange={() => setSelectedGroupId(group.id)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium text-foreground">
+                      {group.name ?? "Groupe sans nom"}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {getLitterStatusLabel(group.status)} · {periodLabel}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {linkedLitters} portée{linkedLitters > 1 ? "s" : ""} liée
+                      {linkedLitters > 1 ? "s" : ""}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="rounded-2xl border bg-surface p-6 sm:p-8">
         <h2 className="text-lg font-semibold">
-          3. Informations minimales de réservation
+          4. Informations minimales de réservation
         </h2>
         <p className="mt-1 text-sm text-muted">
           La réservation est créée en statut brouillon. Vous pourrez tout
