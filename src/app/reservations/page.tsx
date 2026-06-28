@@ -70,6 +70,12 @@ export default async function ReservationsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link
+              href="/reservations/new"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Nouvelle réservation
+            </Link>
+            <Link
               href="/candidatures"
               className="text-sm font-semibold text-accent hover:underline"
             >
