@@ -11,6 +11,7 @@ import {
 import {
   formatLitterDate,
   getLitterDisplayName,
+  getLitterGroupStatusLabel,
   getLitterStatusLabel,
 } from "@/features/litters/formatters";
 import { createContactQuickForReservation } from "@/features/contacts/actions";
@@ -764,7 +765,7 @@ export function NewReservationForm({
                       {group.name ?? "Groupe sans nom"}
                     </span>
                     <span className="block text-xs text-muted">
-                      {getLitterStatusLabel(group.status)} · {periodLabel}
+                      {getLitterGroupStatusLabel(group.status)} · {periodLabel}
                     </span>
                     <span className="block text-xs text-muted">
                       {linkedLitters} portée{linkedLitters > 1 ? "s" : ""} liée

@@ -7,6 +7,7 @@ import { updateApplicationDesiredLitter } from "@/features/applications/actions"
 import {
   formatLitterDate,
   getLitterDisplayName,
+  getLitterGroupStatusLabel,
   getLitterStatusLabel,
 } from "@/features/litters/formatters";
 
@@ -259,7 +260,7 @@ export function ApplicationLitterScopeForm({
                     {group.name ?? "Groupe sans nom"}
                   </span>
                   <span className="block text-xs text-muted">
-                    {getLitterStatusLabel(group.status)} ·{" "}
+                    {getLitterGroupStatusLabel(group.status)} ·{" "}
                     {groupPeriodLabel(group)}
                   </span>
                   <span className="block text-xs text-muted">

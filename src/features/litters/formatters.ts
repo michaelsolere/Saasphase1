@@ -16,6 +16,17 @@ const litterStatusLabels: Record<string, string> = {
   archived: "Archivée",
 };
 
+const litterGroupStatusLabels: Record<string, string> = {
+  planned: "Planifié",
+  open_for_applications: "Ouvert aux candidatures",
+  pregnancy_pending: "Gestation en attente",
+  births_in_progress: "Naissances en cours",
+  born: "Nés",
+  closed: "Clôturé",
+  cancelled: "Annulé",
+  archived: "Archivé",
+};
+
 const speciesLabels: Record<string, string> = {
   dog: "Chien",
   cat: "Chat",
@@ -27,6 +38,14 @@ export function getLitterStatusLabel(value: string | null) {
   }
 
   return litterStatusLabels[value] ?? value.replaceAll("_", " ");
+}
+
+export function getLitterGroupStatusLabel(value: string | null) {
+  if (!value) {
+    return "Statut inconnu";
+  }
+
+  return litterGroupStatusLabels[value] ?? value.replaceAll("_", " ");
 }
 
 export function getSpeciesLabel(value: string | null) {
