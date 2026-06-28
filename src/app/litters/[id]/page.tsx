@@ -23,7 +23,9 @@ import {
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
 import {
+  AttachApplicationForm,
   LinkedApplicationsSection,
+  type AttachableApplication,
   type LinkedApplication,
 } from "@/features/litters/linked-records";
 import {
@@ -620,6 +622,7 @@ export default async function LitterDetailPage({
     campaign_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
+    attach_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -628,6 +631,7 @@ export default async function LitterDetailPage({
     campaign_count,
     group_assignment_status,
     detail_status,
+    attach_status,
   } = await searchParams;
   const supabase = await createClient();
   const {
@@ -895,6 +899,87 @@ export default async function LitterDetailPage({
   } else if (rawLinkedApplications) {
     linkedApplications = [];
   }
+
+  // Candidatures rattachables à cette portée (hors archivées, hors déjà liées
+  // à cette portée), pour l'action manuelle de rattachement.
+  const { data: rawAttachableApplications } = shouldLoadApps
+    ? await supabase
+        .from("applications")
+        .select(
+          "id, contact_id, status, created_at, desired_litter_id, desired_litter_group_id",
+        )
+        .eq("organization_id", litter.organization_id)
+        .neq("status", "archived")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: null };
+
+  let attachableApplications: AttachableApplication[] = [];
+
+  if (
+    rawAttachableApplications &&
+    rawAttachableApplications.length > 0 &&
+    litter &&
+    litter.organization_id
+  ) {
+    const candidates = rawAttachableApplications.filter(
+      (app) => app.desired_litter_id !== id,
+    );
+
+    const attachableContactIds = Array.from(
+      new Set(
+        candidates
+          .map((app) => app.contact_id)
+          .filter((cid): cid is string => Boolean(cid)),
+      ),
+    );
+
+    const attachableContactMap = new Map<string, string | null>();
+
+    if (attachableContactIds.length > 0) {
+      const { data: attachableContacts } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("organization_id", litter.organization_id)
+        .in("id", attachableContactIds);
+
+      attachableContacts?.forEach((contact) => {
+        attachableContactMap.set(contact.id, contact.display_name);
+      });
+    }
+
+    attachableApplications = candidates.map((app) => ({
+      id: app.id,
+      contact_display_name: app.contact_id
+        ? (attachableContactMap.get(app.contact_id) ?? null)
+        : null,
+      status: app.status,
+      created_at: app.created_at,
+      already_attached_elsewhere: Boolean(
+        app.desired_litter_id || app.desired_litter_group_id,
+      ),
+    }));
+  }
+
+  const attachBanner =
+    attach_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        La candidature a été rattachée à cette portée. Son statut n’a pas été
+        modifié et aucune réservation n’a été créée.
+      </p>
+    ) : attach_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de rattacher la candidature. Aucune modification n’a été
+        appliquée.
+      </p>
+    ) : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -1258,6 +1343,21 @@ export default async function LitterDetailPage({
                 emptyLabel="Aucune candidature ne souhaite cette portée."
                 applications={linkedApplications}
                 hasError={Boolean(linkedAppsError)}
+                sectionId="candidatures-liees"
+                banner={attachBanner}
+                footer={
+                  <AttachApplicationForm
+                    scope={{
+                      kind: "litter",
+                      litterId: litter.id,
+                      label:
+                        "Rattacher une candidature existante à cette portée",
+                      warning:
+                        "Cette action modifiera la portée souhaitée de la candidature.",
+                    }}
+                    applications={attachableApplications}
+                  />
+                }
               />
 
               {/* ---- Campagne de pré-réservation ---- */}
