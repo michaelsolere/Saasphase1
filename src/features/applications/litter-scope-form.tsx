@@ -81,10 +81,12 @@ export function ApplicationLitterScopeForm({
   currentLitterId: string | null;
   currentGroupId: string | null;
 }) {
-  const initialMode: ScopeMode = currentGroupId
-    ? "group"
-    : currentLitterId
-      ? "litter"
+  // Une portée appartient à un groupe : la portée prime sur le groupe pour
+  // déterminer le mode initial (les deux peuvent être renseignés ensemble).
+  const initialMode: ScopeMode = currentLitterId
+    ? "litter"
+    : currentGroupId
+      ? "group"
       : "none";
 
   const [scopeMode, setScopeMode] = useState<ScopeMode>(initialMode);
@@ -112,11 +114,21 @@ export function ApplicationLitterScopeForm({
     }
   }
 
+  const selectedLitter = selectedLitterId
+    ? litters.find((litter) => litter.id === selectedLitterId) ?? null
+    : null;
+
   let currentSummary: string;
   if (currentLitterId) {
-    currentSummary = currentLitter
-      ? `Portée souhaitée : ${getLitterDisplayName(currentLitter.name, currentLitter.id)}`
-      : "Une portée est souhaitée, mais elle n’est plus disponible dans la liste.";
+    if (currentLitter) {
+      const groupSuffix = currentLitter.litter_group_name
+        ? ` · Groupe associé : ${currentLitter.litter_group_name}`
+        : " · Aucun groupe associé";
+      currentSummary = `Portée souhaitée : ${getLitterDisplayName(currentLitter.name, currentLitter.id)}${groupSuffix}`;
+    } else {
+      currentSummary =
+        "Une portée est souhaitée, mais elle n’est plus disponible dans la liste.";
+    }
   } else if (currentGroupId) {
     currentSummary = currentGroup
       ? `Groupe de portées souhaité : ${currentGroup.name ?? "Groupe sans nom"}`
@@ -167,6 +179,15 @@ export function ApplicationLitterScopeForm({
 
       {scopeMode === "litter" ? (
         <div className="mt-5 space-y-3">
+          {/* Une portée appartient à un groupe : on transmet aussi le groupe
+              associé à la portée sélectionnée, s'il existe. */}
+          {selectedLitter?.litter_group_id ? (
+            <input
+              type="hidden"
+              name="desired_litter_group_id"
+              value={selectedLitter.litter_group_id}
+            />
+          ) : null}
           {litters.map((litter) => {
             const isSelected = selectedLitterId === litter.id;
             return (
@@ -198,11 +219,10 @@ export function ApplicationLitterScopeForm({
                     Mère : {litter.mother_display_name ?? "Non renseignée"} ·
                     Père : {litter.father_display_name ?? "Non renseigné"}
                   </span>
-                  {litter.litter_group_name ? (
-                    <span className="block text-xs text-muted">
-                      Groupe : {litter.litter_group_name}
-                    </span>
-                  ) : null}
+                  <span className="block text-xs text-muted">
+                    Groupe associé :{" "}
+                    {litter.litter_group_name ?? "Aucun groupe"}
+                  </span>
                 </span>
               </label>
             );
