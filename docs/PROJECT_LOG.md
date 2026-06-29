@@ -20,6 +20,24 @@ Documentation projet à jour jusqu'à PR212.
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
 
+## Jalon Animaux
+
+Objectif : consolider le module Animaux autour des animaux produits, des reproducteurs et de l'attribution à une réservation, sans créer de modèle séparé pour les chiots ou chatons.
+
+État documenté :
+
+* cohérence renforcée entre attribution animal et réservation ;
+* animal attribué compris comme réservation `animal_assigned` et animal `reserved` quand le contexte le justifie ;
+* garde-fou `animal_assignment_locked` conservé pour éviter les modifications sensibles après verrouillage ;
+* création de chiots ou chatons depuis une portée dans `animals` ;
+* chiots identifiés par `litter_id`, sans table séparée ;
+* statut initial `born` et `ownership_status` initial `produced` ;
+* affichage clarifié des chiots nés d'une portée ;
+* filtres métier Animaux : reproducteurs maison/extérieurs, nés, disponibles, réservés, gardés, adoptés, retraités, sexe, origine et portée ;
+* photos et médias non implémentés à ce stade, avec futur lien `media.animal_id` préservé.
+
+Hors périmètre conservé : aucun code applicatif, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
+
 ## Jalon pré-réservation 1/2 — 250 €
 
 Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 € avant la suite du parcours réservation.
