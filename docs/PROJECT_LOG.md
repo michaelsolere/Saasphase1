@@ -27,9 +27,14 @@ Objectif : consolider le module Animaux autour des animaux produits, des reprodu
 État documenté :
 
 * cohérence renforcée entre attribution animal et réservation ;
+* création manuelle d'un animal depuis `/animals/new` pour les cas reproductrice maison, mâle maison, étalon extérieur, femelle extérieure, retraité et historique ;
+* redirection vers la fiche de l'animal créé après validation ;
 * animal attribué compris comme réservation `animal_assigned` et animal `reserved` quand le contexte le justifie ;
 * garde-fou `animal_assignment_locked` conservé pour éviter les modifications sensibles après verrouillage ;
+* garde-fou : aucun chiot ou chaton de portée ne doit être créé via `/animals/new` ;
+* garde-fou : `ownership_status` `produced` interdit sans `litter_id` ;
 * création de chiots ou chatons depuis une portée dans `animals` ;
+* chiots et chatons de portée créés uniquement depuis la fiche Portée ;
 * chiots identifiés par `litter_id`, sans table séparée ;
 * statut initial `born` et `ownership_status` initial `produced` ;
 * affichage clarifié des chiots nés d'une portée ;
