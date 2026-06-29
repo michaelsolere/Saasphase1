@@ -1298,6 +1298,7 @@ export async function requestPreReservationBalance(formData: FormData) {
     .eq("reservation_id", reservationId)
     .eq("payment_type", "arrhes")
     .eq("amount_cents", 25000)
+    .in("status", ["requested", "paid"])
     .is("deleted_at", null);
 
   if (paymentsError || !payments) {

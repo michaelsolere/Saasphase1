@@ -280,10 +280,12 @@ async function createPreReservationBalanceFixture(
     reservationStatus,
     firstPaymentStatus,
     withSecondRequest = false,
+    withCancelledSecondRequest = false,
   }: {
     reservationStatus: "pre_reservation_requested" | "pre_reservation_paid";
     firstPaymentStatus: "requested" | "paid";
     withSecondRequest?: boolean;
+    withCancelledSecondRequest?: boolean;
   },
 ) {
   const {
@@ -300,6 +302,9 @@ async function createPreReservationBalanceFixture(
   const reservationId = randomUUID();
   const firstPaymentId = randomUUID();
   const secondPaymentId = withSecondRequest ? randomUUID() : null;
+  const cancelledSecondPaymentId = withCancelledSecondRequest
+    ? randomUUID()
+    : null;
   const suffix = reservationId.slice(0, 8);
   const displayName = `Balance Request ${suffix}`;
 
@@ -402,6 +407,26 @@ async function createPreReservationBalanceFixture(
     });
   }
 
+  if (cancelledSecondPaymentId) {
+    paymentsToInsert.push({
+      id: cancelledSecondPaymentId,
+      organization_id: organizationId,
+      contact_id: contactId,
+      reservation_id: reservationId,
+      amount_cents: 25000,
+      currency: "EUR",
+      payment_type: "arrhes",
+      status: "cancelled",
+      payment_method: "bank_transfer",
+      requested_at: "2026-04-04T10:00:00+00:00",
+      due_date: "2026-04-19",
+      paid_at: null,
+      notes: "Ancienne demande 2/2 annulée.",
+      created_by: user.id,
+      updated_by: user.id,
+    });
+  }
+
   const { error: paymentError } = await supabase
     .from("payments")
     .insert(paymentsToInsert);
@@ -410,7 +435,12 @@ async function createPreReservationBalanceFixture(
     throw new Error(`create balance payments: ${paymentError.message}`);
   }
 
-  return { reservationId, firstPaymentId, secondPaymentId };
+  return {
+    reservationId,
+    firstPaymentId,
+    secondPaymentId,
+    cancelledSecondPaymentId,
+  };
 }
 
 test("confirms a draft reservation manually without side effects", async ({
@@ -636,6 +666,50 @@ test("does not show the second deposit action when the request already exists", 
         (payment.status === "requested" || payment.status === "paid"),
     ),
   ).toHaveLength(2);
+});
+
+test("can request the second deposit when only an old second request was cancelled", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
+    reservationStatus: "pre_reservation_paid",
+    firstPaymentStatus: "paid",
+    withCancelledSecondRequest: true,
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await page
+    .locator("#reservation-details")
+    .getByRole("button", { name: "Demander le complément des arrhes" })
+    .click();
+  await page.getByRole("button", { name: "Confirmer la demande" }).click();
+  await expect(page).toHaveURL(/balance_request_status=success/);
+
+  const payments = await readReservationPayments(supabase, reservationId);
+  expect(payments).toHaveLength(3);
+  expect(
+    payments.filter(
+      (payment) =>
+        payment.payment_type === "arrhes" &&
+        payment.amount_cents === 25000 &&
+        (payment.status === "requested" || payment.status === "paid"),
+    ),
+  ).toHaveLength(2);
+  expect(
+    payments.filter(
+      (payment) =>
+        payment.payment_type === "arrhes" &&
+        payment.amount_cents === 25000 &&
+        payment.status === "cancelled",
+    ),
+  ).toHaveLength(1);
 });
 
 test("does not show the second deposit action when the first deposit is not paid", async ({
