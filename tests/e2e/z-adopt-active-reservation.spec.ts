@@ -266,7 +266,14 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   ).toBeVisible();
   const adoptionPreparation = page.locator("#adoption-preparation");
   await expect(adoptionPreparation.getByText("Animal attribué")).toBeVisible();
+  await expect(
+    adoptionPreparation.getByText("Arrhes 1/2 — 250 €"),
+  ).toBeVisible();
+  await expect(
+    adoptionPreparation.getByText("Complément 2/2 — 250 €"),
+  ).toBeVisible();
   await expect(adoptionPreparation.getByText("Documents clés")).toBeVisible();
+  await expect(adoptionPreparation.getByText("Certificat de vente")).toBeVisible();
   await expect(adoptionPreparation.getByText("Points à vérifier manuellement")).toBeVisible();
   await expect(page.getByRole("button", { name: "Finaliser l’adoption" }).first()).toBeVisible();
   await expect(
