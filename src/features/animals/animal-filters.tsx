@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import type { FormEvent } from "react";
 
 export type AnimalQuickFilter =
   | "born"
@@ -26,10 +29,10 @@ export type AnimalLitterFilterOption = {
 };
 
 const quickFilters: Array<{ value: AnimalQuickFilter; label: string }> = [
-  { value: "born", label: "Nés" },
+  { value: "born", label: "Nés d’une portée" },
   { value: "available", label: "Disponibles" },
-  { value: "reserved", label: "Réservés" },
-  { value: "kept", label: "Gardés" },
+  { value: "reserved", label: "Réservés / attribués" },
+  { value: "kept", label: "Gardés à l’élevage" },
   { value: "adopted", label: "Adoptés" },
   { value: "home_breeders", label: "Reproducteurs maison" },
   { value: "external_breeders", label: "Reproducteurs extérieurs" },
@@ -61,6 +64,14 @@ function selectValue(value: string | null) {
   return value ?? "";
 }
 
+function cleanEmptyFilterFields(event: FormEvent<HTMLFormElement>) {
+  const controls = event.currentTarget.querySelectorAll("select");
+
+  controls.forEach((control) => {
+    control.disabled = !control.value;
+  });
+}
+
 export function AnimalFilters({
   filters,
   litterOptions,
@@ -73,12 +84,9 @@ export function AnimalFilters({
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href="/animals"
+            href={animalsHref({ ...filters, filter: null })}
             className={`rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
-              filters.filter ||
-              filters.sex ||
-              filters.origin ||
-              filters.litter_id
+              filters.filter
                 ? "text-muted hover:border-accent/40 hover:bg-accent-soft hover:text-accent"
                 : "border-accent/50 bg-accent-soft text-accent"
             }`}
@@ -104,7 +112,11 @@ export function AnimalFilters({
           })}
         </div>
 
-        <form className="grid gap-4 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]" method="get">
+        <form
+          className="grid gap-4 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]"
+          method="get"
+          onSubmit={cleanEmptyFilterFields}
+        >
           {filters.filter ? (
             <input type="hidden" name="filter" value={filters.filter} />
           ) : null}
@@ -115,7 +127,7 @@ export function AnimalFilters({
               defaultValue={selectValue(filters.sex)}
               className="rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent"
             >
-              <option value="">Tous</option>
+              <option value="">Tous les sexes</option>
               <option value="female">Femelle</option>
               <option value="male">Mâle</option>
               <option value="unknown">Non renseigné</option>
@@ -129,9 +141,9 @@ export function AnimalFilters({
               defaultValue={selectValue(filters.origin)}
               className="rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent"
             >
-              <option value="">Toutes</option>
-              <option value="produced">Produit à l’élevage</option>
-              <option value="external">Extérieur</option>
+              <option value="">Toutes les origines</option>
+              <option value="produced">Nés à l’élevage</option>
+              <option value="external">Extérieurs</option>
               <option value="home">Maison</option>
             </select>
           </label>
@@ -143,7 +155,7 @@ export function AnimalFilters({
               defaultValue={selectValue(filters.litter_id)}
               className="rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent"
             >
-              <option value="">Toutes</option>
+              <option value="">Toutes les portées</option>
               {litterOptions.map((litter) => (
                 <option key={litter.id} value={litter.id}>
                   {litter.label}

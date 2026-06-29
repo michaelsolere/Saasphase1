@@ -106,7 +106,11 @@ function isHomeAnimal(animal: Pick<AnimalListItem, "is_external" | "ownership_st
 function matchesQuickFilter(animal: AnimalListItem, filter: AnimalQuickFilter) {
   switch (filter) {
     case "born":
-      return animal.status === "born" && Boolean(animal.litter_id);
+      return (
+        animal.status === "born" &&
+        animal.ownership_status === "produced" &&
+        Boolean(animal.litter_id)
+      );
     case "available":
       return animal.status === "available";
     case "reserved":
