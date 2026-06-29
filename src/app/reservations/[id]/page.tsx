@@ -849,6 +849,7 @@ export default async function ReservationDetailPage({
   const paidCents = reservation?.paid_cents ?? 0;
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
+  const reservationIsFinal = isFinalReservationStatus(reservation?.status);
   const netPaidCents = paidCents - refundedCents;
   const remainingBalanceCents =
     priceCents === null ? null : priceCents - netPaidCents;
@@ -941,7 +942,7 @@ export default async function ReservationDetailPage({
       ? `Prévue : ${formatApplicationDate(reservation.adoption_planned_at)}`
       : "Non renseignée";
   const canFinalizeAdoptionManually =
-    reservation?.status === "active" || reservation?.status === "animal_assigned";
+    reservation?.status === "animal_assigned" && Boolean(reservation.animal_id);
   const adoptionPreparationWarnings = [
     !reservation?.animal_id ? "Aucun animal n’est attribué à cette réservation." : null,
     remainingBalanceCents !== null && remainingBalanceCents > 0
@@ -1720,30 +1721,35 @@ export default async function ReservationDetailPage({
                               compactLabel
                               buttonClassName="w-full text-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
                             />
-                            {reservation.status === "active" ? (
-                              <div className="flex gap-2">
-                                <form action={cancelReservation} className="flex-1">
-                                  <input type="hidden" name="reservation_id" value={id} />
-                                  <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
-                                    Annuler
-                                  </button>
-                                </form>
-                                <form action={withdrawReservation} className="flex-1">
-                                  <input type="hidden" name="reservation_id" value={id} />
-                                  <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
-                                    Désistement
-                                  </button>
-                                </form>
-                                <form action={expireReservation} className="flex-1">
-                                  <input type="hidden" name="reservation_id" value={id} />
-                                  <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
-                                    Expirer
-                                  </button>
-                                </form>
-                              </div>
-                            ) : null}
                           </div>
                         )}
+                        {reservation.status === "active" ? (
+                          <div className="flex gap-2">
+                            <form action={cancelReservation} className="flex-1">
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
+                                Annuler
+                              </button>
+                            </form>
+                            <form action={withdrawReservation} className="flex-1">
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
+                                Désistement
+                              </button>
+                            </form>
+                            <form action={expireReservation} className="flex-1">
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
+                                Expirer
+                              </button>
+                            </form>
+                          </div>
+                        ) : null}
+                        {!canFinalizeAdoptionManually && reservation.status === "active" ? (
+                          <p className="text-xs text-muted">
+                            La finalisation sera disponible après attribution d’un animal.
+                          </p>
+                        ) : null}
                       </div>
                     </div>
 
@@ -1759,20 +1765,34 @@ export default async function ReservationDetailPage({
                         </p>
                       </div>
                       <div className="space-y-3 pt-2">
-                        <div className="flex flex-col gap-2">
-                          <ReservationFinanceDialogs
-                            containerClassName="mt-0 pt-0 border-t-0"
-                            className="flex flex-col gap-2 w-full"
-                            buttonClassName="w-full"
-                            paymentForm={
-                              <div className="space-y-6">
-                                <FinancialBalanceNotice
-                                  priceCents={reservation.price_cents}
-                                  paidCents={reservation.paid_cents ?? 0}
-                                  refundedCents={reservation.refunded_cents ?? 0}
-                                  currency={currency}
-                                />
-                                <ReservationPaymentForm
+                        {!reservationIsFinal ? (
+                          <div className="flex flex-col gap-2">
+                            <ReservationFinanceDialogs
+                              containerClassName="mt-0 pt-0 border-t-0"
+                              className="flex flex-col gap-2 w-full"
+                              buttonClassName="w-full"
+                              paymentForm={
+                                <div className="space-y-6">
+                                  <FinancialBalanceNotice
+                                    priceCents={reservation.price_cents}
+                                    paidCents={reservation.paid_cents ?? 0}
+                                    refundedCents={reservation.refunded_cents ?? 0}
+                                    currency={currency}
+                                  />
+                                  <ReservationPaymentForm
+                                    reservationId={id}
+                                    remainingBalanceCents={
+                                      reservation.price_cents !== null
+                                        ? reservation.price_cents -
+                                          (reservation.paid_cents ?? 0) +
+                                          (reservation.refunded_cents ?? 0)
+                                        : 0
+                                    }
+                                  />
+                                </div>
+                              }
+                              refundForm={
+                                <ReservationRefundForm
                                   reservationId={id}
                                   remainingBalanceCents={
                                     reservation.price_cents !== null
@@ -1782,24 +1802,16 @@ export default async function ReservationDetailPage({
                                       : 0
                                   }
                                 />
-                              </div>
-                            }
-                            refundForm={
-                              <ReservationRefundForm
-                                reservationId={id}
-                                remainingBalanceCents={
-                                  reservation.price_cents !== null
-                                    ? reservation.price_cents -
-                                      (reservation.paid_cents ?? 0) +
-                                      (reservation.refunded_cents ?? 0)
-                                    : 0
-                                }
-                              />
-                            }
-                          />
-                        </div>
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted/80 leading-relaxed italic">
+                            Réservation finalisée : les actions financières sont masquées.
+                          </p>
+                        )}
 
-                        {canRequestPreReservationBalance ? (
+                        {!reservationIsFinal && canRequestPreReservationBalance ? (
                           <div className="pt-1">
                             <PreReservationBalanceConfirmDialog
                               reservationId={id}
@@ -1823,7 +1835,7 @@ export default async function ReservationDetailPage({
                         </p>
                       </div>
                       <div className="space-y-3 pt-2">
-                        {hasFirstPaid && needsDocInitialization ? (
+                        {!reservationIsFinal && hasFirstPaid && needsDocInitialization ? (
                           <form action={initializeReservationDocuments}>
                             <input type="hidden" name="reservation_id" value={id} />
                             <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm">
@@ -1832,7 +1844,9 @@ export default async function ReservationDetailPage({
                           </form>
                         ) : (
                           <p className="text-xs text-muted/80 leading-relaxed italic">
-                            {reservationDocuments && reservationDocuments.length > 0
+                            {reservationIsFinal
+                              ? "Réservation finalisée : les actions documentaires sont masquées."
+                              : reservationDocuments && reservationDocuments.length > 0
                               ? "Documents initialisés. Suivi disponible dans la section Documents liés."
                               : "Les documents pourront être initialisés après la validation du premier paiement."}
                           </p>
@@ -2322,24 +2336,6 @@ export default async function ReservationDetailPage({
                         <div className="mt-5 space-y-6">
                           <div>
                             <h4 className="text-sm font-semibold">
-                              Finaliser positivement
-                            </h4>
-                            <div className="mt-3">
-                              <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Cette action finalise l’adoption : la réservation
-                                passera en adoptée, la date d’adoption sera renseignée,
-                                le contact sera marqué comme adoptant et, si un animal
-                                est lié, son statut sera mis à jour comme adopté.
-                              </p>
-                              <AdoptionConfirmDialog
-                                reservationId={id}
-                                buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="border-t pt-5">
-                            <h4 className="text-sm font-semibold">
                               Sorties finales
                             </h4>
                             <div className="mt-4 space-y-5">
@@ -2471,47 +2467,49 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : null}
 
-                  <form
-                    action={updateReservationPrice}
-                    className="mt-8 border-t pt-6"
-                  >
-                    <input
-                      type="hidden"
-                      name="reservation_id"
-                      value={id}
-                    />
-                    <label
-                      htmlFor="price"
-                      className="text-xs font-semibold uppercase tracking-wide text-muted"
+                  {!reservationIsFinal ? (
+                    <form
+                      action={updateReservationPrice}
+                      className="mt-8 border-t pt-6"
                     >
-                      Tarif convenu
-                    </label>
-                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="max-w-xs flex-1">
-                        <input
-                          id="price"
-                          name="price"
-                          type="text"
-                          inputMode="decimal"
-                          defaultValue={formatPriceInputValue(
-                            reservation.price_cents,
-                          )}
-                          placeholder="Ex. 1600,00"
-                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                        />
-                        <p className="mt-2 text-xs leading-5 text-muted">
-                          Saisir un montant en euros. Laisser vide pour retirer
-                          le tarif.
-                        </p>
-                      </div>
-                      <button
-                        type="submit"
-                        className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      <input
+                        type="hidden"
+                        name="reservation_id"
+                        value={id}
+                      />
+                      <label
+                        htmlFor="price"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
                       >
-                        Enregistrer le tarif
-                      </button>
-                    </div>
-                  </form>
+                        Tarif convenu
+                      </label>
+                      <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <div className="max-w-xs flex-1">
+                          <input
+                            id="price"
+                            name="price"
+                            type="text"
+                            inputMode="decimal"
+                            defaultValue={formatPriceInputValue(
+                              reservation.price_cents,
+                            )}
+                            placeholder="Ex. 1600,00"
+                            className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                          />
+                          <p className="mt-2 text-xs leading-5 text-muted">
+                            Saisir un montant en euros. Laisser vide pour retirer
+                            le tarif.
+                          </p>
+                        </div>
+                        <button
+                          type="submit"
+                          className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                        >
+                          Enregistrer le tarif
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
 
                   <div className="mt-8 border-t pt-6">
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -2522,7 +2520,7 @@ export default async function ReservationDetailPage({
                         Le commentaire interne n’est pas disponible pour le
                         moment.
                       </p>
-                    ) : (
+                    ) : !reservationIsFinal ? (
                       <form
                         action={updateReservationInternalComment}
                         className="mt-3"
@@ -2553,6 +2551,10 @@ export default async function ReservationDetailPage({
                           Enregistrer le commentaire
                         </button>
                       </form>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted">
+                        Les modifications du commentaire sont masquées car le statut est final.
+                      </p>
                     )}
                   </div>
                 </section>
@@ -2914,7 +2916,7 @@ export default async function ReservationDetailPage({
                         L’échéance de pré-réservation n’est pas disponible pour
                         le moment.
                       </p>
-                    ) : (
+                    ) : !reservationIsFinal ? (
                       <form
                         action={updateReservationPreReservationDeadline}
                         className="mt-3"
@@ -2949,6 +2951,10 @@ export default async function ReservationDetailPage({
                           </button>
                         </div>
                       </form>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted">
+                        L’échéance reste consultable, mais sa modification est masquée car le statut est final.
+                      </p>
                     )}
                   </div>
                 </section>
@@ -3247,7 +3253,7 @@ export default async function ReservationDetailPage({
                                 >
                                   Consulter
                                 </Link>
-                                {payment.status === "requested" ? (
+                                {!reservationIsFinal && payment.status === "requested" ? (
                                   <PaymentConfirmDialog
                                     paymentId={payment.id}
                                     reservationId={id}
@@ -3273,16 +3279,30 @@ export default async function ReservationDetailPage({
                     </p>
                   )}
 
-                  <ReservationFinanceDialogs
-                    paymentForm={
-                      <div className="space-y-6">
-                        <FinancialBalanceNotice
-                          priceCents={reservation.price_cents}
-                          paidCents={reservation.paid_cents ?? 0}
-                          refundedCents={reservation.refunded_cents ?? 0}
-                          currency={currency}
-                        />
-                        <ReservationPaymentForm
+                  {!reservationIsFinal ? (
+                    <ReservationFinanceDialogs
+                      paymentForm={
+                        <div className="space-y-6">
+                          <FinancialBalanceNotice
+                            priceCents={reservation.price_cents}
+                            paidCents={reservation.paid_cents ?? 0}
+                            refundedCents={reservation.refunded_cents ?? 0}
+                            currency={currency}
+                          />
+                          <ReservationPaymentForm
+                            reservationId={id}
+                            remainingBalanceCents={
+                              reservation.price_cents !== null
+                                ? reservation.price_cents -
+                                  (reservation.paid_cents ?? 0) +
+                                  (reservation.refunded_cents ?? 0)
+                                : 0
+                            }
+                          />
+                        </div>
+                      }
+                      refundForm={
+                        <ReservationRefundForm
                           reservationId={id}
                           remainingBalanceCents={
                             reservation.price_cents !== null
@@ -3292,21 +3312,9 @@ export default async function ReservationDetailPage({
                               : 0
                           }
                         />
-                      </div>
-                    }
-                    refundForm={
-                      <ReservationRefundForm
-                        reservationId={id}
-                        remainingBalanceCents={
-                          reservation.price_cents !== null
-                            ? reservation.price_cents -
-                              (reservation.paid_cents ?? 0) +
-                              (reservation.refunded_cents ?? 0)
-                            : 0
-                        }
-                      />
-                    }
-                  />
+                      }
+                    />
+                  ) : null}
                 </section>
 
                 <section id="documents" className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -3418,7 +3426,7 @@ export default async function ReservationDetailPage({
                                 Consulter
                               </Link>
 
-                              {isChecklistDoc ? (
+                              {!reservationIsFinal && isChecklistDoc ? (
                                 <>
                                   {document.status === "to_generate" ? (
                                     <DocumentConfirmDialog

@@ -528,8 +528,11 @@ export async function adoptReservation(formData: FormData) {
     redirect(adoptionUrl(reservationId, "error"));
   }
 
-  const adoptionAllowedStatuses = ["active", "animal_assigned"];
-  if (!adoptionAllowedStatuses.includes(reservation.status)) {
+  const adoptionAllowedStatuses = ["animal_assigned"];
+  if (
+    !adoptionAllowedStatuses.includes(reservation.status) ||
+    !reservation.animal_id
+  ) {
     redirect(adoptionUrl(reservationId, "invalid_state"));
   }
 

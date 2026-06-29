@@ -226,6 +226,14 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   await page.getByRole("button", { name: "Confirmer la réservation" }).click();
   await expect(page).toHaveURL(/activation_status=success/);
   await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Finaliser l’adoption" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "La finalisation sera disponible après attribution d’un animal.",
+    ),
+  ).toBeVisible();
 
   const quickActions = page.locator("#quick-actions");
   await quickActions.locator('select[name="animal_id"]').selectOption(animalId);
@@ -282,6 +290,14 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   await expect(
     page.getByRole("button", { name: "Finaliser l’adoption" }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "+ Enregistrer un encaissement" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "+ Enregistrer un remboursement" }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Enregistrer le tarif" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retirer l’attribution" })).toHaveCount(0);
 
   const afterAdoption = await readReservation(supabase, reservationId);
   expect(afterAdoption.status).toBe("adopted");
