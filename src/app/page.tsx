@@ -73,6 +73,18 @@ const quickLinks = [
   },
 ];
 
+const closedOrNegativeReservationStatuses = new Set([
+  "adopted",
+  "withdrawn",
+  "cancelled",
+  "expired",
+  "archived",
+]);
+
+function isClosedOrNegativeReservationStatus(status: string | null | undefined) {
+  return Boolean(status && closedOrNegativeReservationStatuses.has(status));
+}
+
 export default async function Home() {
   const supabase = await createClient();
   const {
@@ -170,7 +182,6 @@ export default async function Home() {
     .in("status", ["requested", "pending", "partially_paid"])
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
-  const paymentsNeedAttention = rawPayments || [];
 
   // Load documents to generate or sent (not signed)
   const { data: rawDocuments } = await supabase
@@ -179,17 +190,42 @@ export default async function Home() {
     .in("status", ["to_generate", "sent"])
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
-  const documentsNeedAttention = rawDocuments || [];
 
   // Load reservations for attention checks
   const { data: rawReservations } = await supabase
     .from("reservation_overview")
     .select("id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
     .order("created_at", { ascending: false });
+  const reservationStatusById = new Map(
+    (rawReservations || []).map((reservation) => [
+      reservation.id,
+      reservation.status,
+    ]),
+  );
+  const isActionableLinkedReservation = (reservationId: string | null) => {
+    if (!reservationId) {
+      return true;
+    }
+
+    return !isClosedOrNegativeReservationStatus(
+      reservationStatusById.get(reservationId),
+    );
+  };
+  const paymentsNeedAttention = (rawPayments || []).filter((payment) =>
+    isActionableLinkedReservation(payment.reservation_id),
+  );
+  const documentsNeedAttention = (rawDocuments || []).filter((document) =>
+    isActionableLinkedReservation(document.reservation_id),
+  );
   const reservationsNeedAttention = (rawReservations || []).filter((r) => {
     const isPreResRequested = r.status === "pre_reservation_requested";
     const isPreResPaid = r.status === "pre_reservation_paid";
-    const isArrhesCompleteNoAnimal = r.paid_cents !== null && r.paid_cents >= 50000 && !r.animal_id && r.status !== "adopted" && r.status !== "cancelled" && r.status !== "withdrawn" && r.status !== "expired";
+    const isArrhesCompleteNoAnimal =
+      r.paid_cents !== null &&
+      r.paid_cents >= 50000 &&
+      !r.animal_id &&
+      r.status !== "animal_assigned" &&
+      !isClosedOrNegativeReservationStatus(r.status);
     return isPreResRequested || isPreResPaid || isArrhesCompleteNoAnimal;
   });
 
@@ -432,10 +468,20 @@ export default async function Home() {
                   <p className="text-sm text-muted py-2">Aucune réservation demandant attention.</p>
                 ) : (
                   reservationsNeedAttention.slice(0, 5).map((res) => {
-                    const isArrhesCompleteNoAnimal = res.paid_cents !== null && res.paid_cents >= 50000 && !res.animal_id;
+                    const isArrhesCompleteNoAnimal =
+                      res.paid_cents !== null &&
+                      res.paid_cents >= 50000 &&
+                      !res.animal_id &&
+                      res.status !== "animal_assigned" &&
+                      !isClosedOrNegativeReservationStatus(res.status);
                     let detailText = getReservationStatusLabel(res.status);
                     if (isArrhesCompleteNoAnimal) {
-                      detailText = "Arrhes complètes (chiot non attribué)";
+                      detailText = "Arrhes complètes — animal non attribué";
+                    }
+                    if (res.status === "pre_reservation_paid") {
+                      detailText = isArrhesCompleteNoAnimal
+                        ? "Dossier en pré-réservation payée — Arrhes complètes"
+                        : "Dossier en pré-réservation payée";
                     }
                     return (
                       <div key={res.id} className="flex items-center justify-between text-sm py-1">
