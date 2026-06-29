@@ -528,7 +528,8 @@ export async function adoptReservation(formData: FormData) {
     redirect(adoptionUrl(reservationId, "error"));
   }
 
-  if (reservation.status !== "active") {
+  const adoptionAllowedStatuses = ["active", "animal_assigned"];
+  if (!adoptionAllowedStatuses.includes(reservation.status)) {
     redirect(adoptionUrl(reservationId, "invalid_state"));
   }
 
@@ -543,7 +544,7 @@ export async function adoptReservation(formData: FormData) {
     })
     .eq("id", reservation.id)
     .eq("organization_id", reservation.organization_id)
-    .eq("status", "active")
+    .in("status", adoptionAllowedStatuses)
     .is("deleted_at", null)
     .select("id")
     .maybeSingle();

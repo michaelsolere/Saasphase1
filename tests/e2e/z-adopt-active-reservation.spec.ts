@@ -69,6 +69,40 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
   return { applicationId, contactId, displayName };
 }
 
+async function createAvailableAnimalFixture(supabase: SupabaseTestClient) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
+
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+  const displayName = `Adoption Animal ${suffix}`;
+
+  const { error: animalError } = await supabase.from("animals").insert({
+    id: animalId,
+    organization_id: organizationId,
+    species: "dog",
+    breed: "Golden Retriever",
+    display_name: displayName,
+    sex: "male",
+    status: "available",
+    ownership_status: "produced",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (animalError) {
+    throw new Error(`create adoption animal: ${animalError.message}`);
+  }
+
+  return { animalId, displayName };
+}
+
 async function findReservationForApplication(
   supabase: SupabaseTestClient,
   applicationId: string,
@@ -101,6 +135,18 @@ async function readReservation(
   );
 }
 
+async function readAnimal(supabase: SupabaseTestClient, animalId: string) {
+  return expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select("id, status, ownership_status")
+      .eq("id", animalId)
+      .is("deleted_at", null)
+      .single(),
+    "read animal",
+  );
+}
+
 async function countRows(
   supabase: SupabaseTestClient,
   table: "documents" | "notes" | "payments",
@@ -127,7 +173,7 @@ async function createDraftReservation(
   await page
     .getByRole("button", { name: "Créer une réservation brouillon" })
     .click();
-  await expect(page).toHaveURL(/reservation_status=created/);
+  await expect(page).toHaveURL(/\/reservations\/[0-9a-f-]+|reservation_status=created/);
 
   return await expect
     .poll(async () => {
@@ -152,12 +198,14 @@ async function createDraftReservation(
     });
 }
 
-test("adopts an active reservation manually without side effects", async ({
+test("adopts an animal-assigned reservation manually without side effects", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   const { applicationId, contactId, displayName } =
     await createQualifiedApplicationFixture(supabase);
+  const { animalId, displayName: animalDisplayName } =
+    await createAvailableAnimalFixture(supabase);
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("owner@saasphase1.invalid");
@@ -179,11 +227,25 @@ test("adopts an active reservation manually without side effects", async ({
   await expect(page).toHaveURL(/activation_status=success/);
   await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
 
+  const quickActions = page.locator("#quick-actions");
+  await quickActions.locator('select[name="animal_id"]').selectOption(animalId);
+  await quickActions.getByRole("button", { name: "Attribuer cet animal" }).click();
+  await expect(page).toHaveURL(/animal_assign_status=success/);
+  await expect(page.getByText("L’animal a été attribué à la réservation.")).toBeVisible();
+  await expect(
+    page.locator("#adoption-preparation").getByText(animalDisplayName),
+  ).toBeVisible();
+
   const beforeAdoption = await readReservation(supabase, reservationId);
-  expect(beforeAdoption.status).toBe("active");
+  expect(beforeAdoption.status).toBe("animal_assigned");
   expect(beforeAdoption.adoption_completed_at).toBeNull();
   expect(beforeAdoption.application_id).toBe(applicationId);
   expect(beforeAdoption.contact_id).toBe(contactId);
+  expect(beforeAdoption.animal_id).toBe(animalId);
+  expect(beforeAdoption.animal_assigned_at).not.toBeNull();
+  const animalBeforeAdoption = await readAnimal(supabase, animalId);
+  expect(animalBeforeAdoption.status).toBe("reserved");
+  expect(animalBeforeAdoption.ownership_status).toBe("produced");
   const paymentCountBefore = await countRows(supabase, "payments", reservationId);
   const documentCountBefore = await countRows(supabase, "documents", reservationId);
   const noteCountBefore = await countRows(supabase, "notes", reservationId);
@@ -191,17 +253,32 @@ test("adopts an active reservation manually without side effects", async ({
   expect(documentCountBefore).toBe(0);
   expect(noteCountBefore).toBe(0);
 
-  await expect(page.getByRole("button", { name: "Finaliser l’adoption" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Préparation adoption / départ" }),
+  ).toBeVisible();
+  const adoptionPreparation = page.locator("#adoption-preparation");
+  await expect(adoptionPreparation.getByText("Animal attribué")).toBeVisible();
+  await expect(adoptionPreparation.getByText("Documents clés")).toBeVisible();
+  await expect(adoptionPreparation.getByText("Points à vérifier manuellement")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Finaliser l’adoption" }).first()).toBeVisible();
   await expect(
     page.getByText(
       "Cette action finalise manuellement l’adoption. Elle ne crée ni paiement, ni document, ni note, ni modification d’animal.",
     ),
-  ).toBeVisible();
+  ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Finaliser l’adoption" }).click();
+  await page.getByRole("button", { name: "Finaliser l’adoption" }).first().click();
+  await expect(
+    page.getByText(
+      "Finaliser l’adoption ? Cette action marque la réservation comme adoptée et l’animal comme adopté. Elle ne crée aucun paiement, document, email, facture ou signature. Vérifiez manuellement que le solde, les documents et la date de départ sont corrects.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmer la finalisation" }).click();
   await expect(page).toHaveURL(/adoption_status=success/);
   await expect(page.getByText("L’adoption a été finalisée.")).toBeVisible();
-  await expect(page.getByText("Adopté", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("#dossier-summary").getByText("Adopté", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Finaliser l’adoption" }),
   ).toHaveCount(0);
@@ -232,4 +309,8 @@ test("adopts an active reservation manually without side effects", async ({
   expect(await countRows(supabase, "notes", reservationId)).toBe(
     noteCountBefore,
   );
+
+  const animalAfterAdoption = await readAnimal(supabase, animalId);
+  expect(animalAfterAdoption.status).toBe("adopted");
+  expect(animalAfterAdoption.ownership_status).toBe("adopted_out");
 });

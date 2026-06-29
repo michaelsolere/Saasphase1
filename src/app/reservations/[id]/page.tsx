@@ -23,7 +23,6 @@ import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
 import {
-  adoptReservation,
   cancelReservation,
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
@@ -58,6 +57,7 @@ import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialo
 import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
 import { PreReservationBalanceConfirmDialog } from "@/features/reservations/pre-reservation-balance-confirm-dialog";
 import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
+import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -920,7 +920,37 @@ export default async function ReservationDetailPage({
   const missingReservationDocumentLabels = [
     commitmentDocument ? null : "certificat d’engagement",
     reservationContractDocument ? null : "contrat de réservation",
-  ].filter(Boolean);
+  ].filter((label): label is string => Boolean(label));
+  const adoptionDocumentStatusItems = [
+    {
+      label: "Certificat d’engagement",
+      document: commitmentDocument,
+    },
+    {
+      label: "Contrat de réservation",
+      document: reservationContractDocument,
+    },
+    {
+      label: "Attestation de vente",
+      document: saleCertificateDocument,
+    },
+  ];
+  const adoptionDateLabel = reservation?.adoption_completed_at
+    ? `Effective : ${formatApplicationDate(reservation.adoption_completed_at)}`
+    : reservation?.adoption_planned_at
+      ? `Prévue : ${formatApplicationDate(reservation.adoption_planned_at)}`
+      : "Non renseignée";
+  const canFinalizeAdoptionManually =
+    reservation?.status === "active" || reservation?.status === "animal_assigned";
+  const adoptionPreparationWarnings = [
+    !reservation?.animal_id ? "Aucun animal n’est attribué à cette réservation." : null,
+    remainingBalanceCents !== null && remainingBalanceCents > 0
+      ? `Un reste à régler est visible : ${formatPrice(remainingBalanceCents, currency)}.`
+      : null,
+    missingReservationDocumentLabels.length > 0
+      ? `Documents à vérifier : ${missingReservationDocumentLabels.join(", ")}.`
+      : null,
+  ].filter((warning): warning is string => Boolean(warning));
 
   let docsSummaryText = "";
   if (totalDocs === 0) {
@@ -1028,6 +1058,7 @@ export default async function ReservationDetailPage({
 
   const sectionNavItems = [
     { href: "#quick-actions", label: "Actions rapides" },
+    { href: "#adoption-preparation", label: "Préparation départ" },
     { href: "#contact-details", label: "Dossier adoptant" },
     { href: "#application-details", label: "Candidature / projet" },
     { href: "#reservation-details", label: "Réservation" },
@@ -1682,34 +1713,35 @@ export default async function ReservationDetailPage({
                             </button>
                           </form>
                         )}
-                        {reservation.status === "active" && (
+                        {canFinalizeAdoptionManually && (
                           <div className="pt-1 space-y-2">
-                            <form action={adoptReservation}>
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <button type="submit" className="w-full text-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm">
-                                Finaliser l&apos;adoption
-                              </button>
-                            </form>
-                            <div className="flex gap-2">
-                              <form action={cancelReservation} className="flex-1">
-                                <input type="hidden" name="reservation_id" value={id} />
-                                <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
-                                  Annuler
-                                </button>
-                              </form>
-                              <form action={withdrawReservation} className="flex-1">
-                                <input type="hidden" name="reservation_id" value={id} />
-                                <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
-                                  Désistement
-                                </button>
-                              </form>
-                              <form action={expireReservation} className="flex-1">
-                                <input type="hidden" name="reservation_id" value={id} />
-                                <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
-                                  Expirer
-                                </button>
-                              </form>
-                            </div>
+                            <AdoptionConfirmDialog
+                              reservationId={id}
+                              compactLabel
+                              buttonClassName="w-full text-center rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-sm"
+                            />
+                            {reservation.status === "active" ? (
+                              <div className="flex gap-2">
+                                <form action={cancelReservation} className="flex-1">
+                                  <input type="hidden" name="reservation_id" value={id} />
+                                  <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
+                                    Annuler
+                                  </button>
+                                </form>
+                                <form action={withdrawReservation} className="flex-1">
+                                  <input type="hidden" name="reservation_id" value={id} />
+                                  <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
+                                    Désistement
+                                  </button>
+                                </form>
+                                <form action={expireReservation} className="flex-1">
+                                  <input type="hidden" name="reservation_id" value={id} />
+                                  <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
+                                    Expirer
+                                  </button>
+                                </form>
+                              </div>
+                            ) : null}
                           </div>
                         )}
                       </div>
@@ -1864,6 +1896,93 @@ export default async function ReservationDetailPage({
                 </section>
 
                 {/* 2. Section Dossier Adoptant */}
+                <section id="adoption-preparation" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">
+                        Préparation adoption / départ
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Lecture séparée des points à vérifier avant la décision finale de l&apos;éleveur.
+                      </p>
+                    </div>
+                    <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                      Décision manuelle
+                    </span>
+                  </div>
+
+                  <dl className="grid gap-4 sm:grid-cols-2">
+                    <DetailItem
+                      label="Animal attribué"
+                      value={reservation.animal_id ? "Oui" : "Non"}
+                    />
+                    <DetailItem
+                      label="Animal"
+                      value={animalSummaryLabel}
+                    />
+                    <DetailItem
+                      label={balanceLabel}
+                      value={balanceValue}
+                    />
+                    <DetailItem
+                      label="Date d’adoption / départ"
+                      value={adoptionDateLabel}
+                    />
+                  </dl>
+
+                  <div className="mt-6 rounded-xl border bg-background p-4">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Documents clés
+                    </h3>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      {adoptionDocumentStatusItems.map((item) => (
+                        <DetailItem
+                          key={item.label}
+                          label={item.label}
+                          value={
+                            item.document
+                              ? getDocumentStatusLabel(
+                                  item.document.status,
+                                  item.document.document_type,
+                                )
+                              : "Non lié"
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {adoptionPreparationWarnings.length > 0 ? (
+                    <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <h3 className="text-sm font-semibold text-amber-950">
+                        Points à vérifier manuellement
+                      </h3>
+                      <ul className="mt-2 space-y-1 text-sm leading-6 text-amber-950">
+                        {adoptionPreparationWarnings.map((warning) => (
+                          <li key={warning}>{warning}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
+                      Aucun point d’attention automatique n’est visible. La finalisation reste une décision manuelle.
+                    </p>
+                  )}
+
+                  {canFinalizeAdoptionManually ? (
+                    <div className="mt-6 border-t pt-6">
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Cette action ne valide pas automatiquement le solde, les documents ou la date de départ.
+                      </p>
+                      <AdoptionConfirmDialog
+                        reservationId={id}
+                        buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                      />
+                    </div>
+                  ) : null}
+                </section>
+
+                {/* 3. Section Dossier Adoptant */}
                 <section id="contact-details" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
                     <div>
@@ -2205,28 +2324,18 @@ export default async function ReservationDetailPage({
                             <h4 className="text-sm font-semibold">
                               Finaliser positivement
                             </h4>
-                            <form
-                              action={adoptReservation}
-                              className="mt-3"
-                            >
-                              <input
-                                type="hidden"
-                                name="reservation_id"
-                                value={id}
-                              />
+                            <div className="mt-3">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
                                 Cette action finalise l’adoption : la réservation
                                 passera en adoptée, la date d’adoption sera renseignée,
                                 le contact sera marqué comme adoptant et, si un animal
                                 est lié, son statut sera mis à jour comme adopté.
                               </p>
-                              <button
-                                type="submit"
-                                className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                              >
-                                Finaliser l’adoption
-                              </button>
-                            </form>
+                              <AdoptionConfirmDialog
+                                reservationId={id}
+                                buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              />
+                            </div>
                           </div>
 
                           <div className="border-t pt-5">
