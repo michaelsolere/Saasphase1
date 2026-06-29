@@ -353,6 +353,22 @@ La séquence PR208 à PR212 n'a pas introduit :
 * Plus tard seulement : accordéons ou onglets pour des détails secondaires, après stabilisation des écrans métier.
 * Éviter une refonte graphique complète tant que les écrans métier ne sont pas stabilisés.
 
+## Jalon adoption / finalisation manuelle
+
+Objectif : clarifier la préparation du départ et sécuriser la finalisation manuelle d'une adoption depuis la fiche Réservation.
+
+État documenté :
+
+* section `Préparation adoption / départ` ajoutée sur la fiche Réservation ;
+* affichage séparé de l'animal attribué, de l'état financier, des documents clés et des dates importantes ;
+* avertissements informatifs et non bloquants pour aider la relecture du dossier ;
+* finalisation disponible seulement depuis `animal_assigned` avec un animal attribué ;
+* confirmation explicite requise avant le passage manuel en `adopted` ;
+* après adoption, les actions sensibles sont masquées ;
+* aucune création automatique de paiement, document, email, facture, PDF, signature ou upload.
+
+Hors périmètre conservé : aucun code applicatif ajouté ici, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
+
 ## Mise à jour documentaire — PR193 à PR197
 
 ### PR193 — DOC-5J — Audit / cadrage attestation de vente
