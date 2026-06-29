@@ -20,6 +20,20 @@ Documentation projet à jour jusqu'à PR212.
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
 
+## Jalon pré-réservation 1/2 — 250 €
+
+Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 € avant la suite du parcours réservation.
+
+État documenté :
+
+* validation cohérente du paiement 250 € depuis la fiche Paiement et depuis la fiche Réservation ;
+* passage manuel `pre_reservation_requested` → `pre_reservation_paid` ;
+* anti-doublon sur la demande d'arrhes 250 € en statuts `requested` ou `paid` ;
+* fiabilisation du cas où une réservation existe déjà sans demande 250 € ;
+* affichage UX `Demande 1/2 — 250 €` distinguant les états absente, demandée et pré-réservation payée.
+
+Hors périmètre conservé : aucun code applicatif ajouté ici, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
+
 ## Mise à jour réservation — PR199 à PR205
 
 ### PR199 — RES-UX-1 — Audit fiche réservation comme centre du dossier adoptant
