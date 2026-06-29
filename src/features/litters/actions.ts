@@ -41,6 +41,37 @@ const allowedLitterStatuses = new Set([
   "archived",
 ]);
 
+const allowedLitterEventTypes = new Set([
+  "contact_follow_up",
+  "application_review",
+  "payment_due",
+  "document_due",
+  "mating",
+  "pregnancy_check",
+  "ultrasound",
+  "vaccination",
+  "xray",
+  "birth_expected",
+  "birth_actual",
+  "puppy_choice",
+  "adoption",
+  "post_adoption_follow_up",
+  "other",
+]);
+
+const allowedEventStatuses = new Set([
+  "planned",
+  "todo",
+  "in_progress",
+  "done",
+  "late",
+  "cancelled",
+  "postponed",
+  "not_applicable",
+]);
+
+const allowedEventPriorities = new Set(["low", "normal", "high", "urgent"]);
+
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -84,6 +115,13 @@ function litterOffspringUrl(
   }
 
   return `/litters/${litterId}?${params.toString()}#animaux-lies`;
+}
+
+function litterEventUrl(
+  litterId: string,
+  outcome: "success" | "title_required" | "invalid_date" | "error",
+) {
+  return `/litters/${litterId}?event_status=${outcome}#evenements-lies`;
 }
 
 function normalizeOptionalText(
@@ -850,6 +888,98 @@ export async function createLitterOffspring(formData: FormData) {
   revalidatePath("/litters");
   revalidatePath(`/litters/${litterId}`);
   redirect(litterOffspringUrl(litterId, "success", animalsToCreate.length));
+}
+
+/**
+ * Crée manuellement un événement daté lié à une portée.
+ *
+ * Cette action reste volontairement simple : elle insère un événement existant
+ * dans `events`, rattaché à `litter_id`, sans template, calcul relatif ni
+ * automatisation.
+ */
+export async function createLitterEvent(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+    redirect("/litters");
+  }
+
+  const litterId = rawLitterId.trim();
+  const title = normalizeOptionalText(formData.get("title"), 255);
+
+  if (!title) {
+    redirect(litterEventUrl(litterId, "title_required"));
+  }
+
+  const plannedDate = normalizeOptionalDate(formData.get("event_date"));
+
+  if (!plannedDate) {
+    redirect(litterEventUrl(litterId, "invalid_date"));
+  }
+
+  const rawEventType = formData.get("event_type");
+  const eventType =
+    typeof rawEventType === "string" &&
+    allowedLitterEventTypes.has(rawEventType.trim())
+      ? rawEventType.trim()
+      : "other";
+
+  const rawStatus = formData.get("status");
+  const status =
+    typeof rawStatus === "string" && allowedEventStatuses.has(rawStatus.trim())
+      ? rawStatus.trim()
+      : "planned";
+
+  const rawPriority = formData.get("priority");
+  const priority =
+    typeof rawPriority === "string" &&
+    allowedEventPriorities.has(rawPriority.trim())
+      ? rawPriority.trim()
+      : "normal";
+
+  const description = normalizeOptionalText(formData.get("description"));
+  const isTask = formData.get("is_task") === "on";
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter?.organization_id) {
+    redirect(litterEventUrl(litterId, "error"));
+  }
+
+  const { error: insertError } = await supabase.from("events").insert({
+    organization_id: litter.organization_id,
+    litter_id: litter.id,
+    event_type: eventType,
+    title,
+    description,
+    planned_date: plannedDate,
+    status,
+    priority,
+    is_task: isTask,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (insertError) {
+    redirect(litterEventUrl(litterId, "error"));
+  }
+
+  revalidatePath(`/litters/${litterId}`);
+  redirect(litterEventUrl(litterId, "success"));
 }
 
 function litterGroupAssignmentUrl(

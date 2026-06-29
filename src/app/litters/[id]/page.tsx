@@ -17,6 +17,7 @@ import {
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
 import {
+  createLitterEvent,
   updateLitterDetails,
   updateLitterGroupAssignment,
 } from "@/features/litters/actions";
@@ -148,6 +149,42 @@ type LitterSummary = Pick<
   | "animal_count"
   | "reservation_count"
 >;
+
+const litterEventTypeOptions = [
+  ["mating", "Saillie"],
+  ["pregnancy_check", "Contrôle de gestation"],
+  ["ultrasound", "Échographie"],
+  ["vaccination", "Vaccination"],
+  ["xray", "Radiographie"],
+  ["birth_expected", "Naissance prévue"],
+  ["birth_actual", "Naissance réelle"],
+  ["puppy_choice", "Choix du chiot"],
+  ["adoption", "Adoption"],
+  ["contact_follow_up", "Suivi contact"],
+  ["application_review", "Relecture candidature"],
+  ["payment_due", "Paiement attendu"],
+  ["document_due", "Document attendu"],
+  ["post_adoption_follow_up", "Suivi post-adoption"],
+  ["other", "Autre"],
+] as const;
+
+const eventStatusOptions = [
+  ["planned", "Planifié"],
+  ["todo", "À faire"],
+  ["in_progress", "En cours"],
+  ["done", "Fait"],
+  ["late", "En retard"],
+  ["cancelled", "Annulé"],
+  ["postponed", "Reporté"],
+  ["not_applicable", "Sans objet"],
+] as const;
+
+const eventPriorityOptions = [
+  ["low", "Basse"],
+  ["normal", "Normale"],
+  ["high", "Haute"],
+  ["urgent", "Urgente"],
+] as const;
 
 function NotFoundOrUnauthorized() {
   return (
@@ -486,13 +523,19 @@ function RelatedReservationsSection({
 function RelatedEventsSection({
   events,
   hasError,
+  banner,
+  footer,
 }: {
   events: RelatedEvent[] | null;
   hasError: boolean;
+  banner?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+    <section id="evenements-lies" className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Événements liés</h2>
+
+      {banner}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -537,7 +580,155 @@ function RelatedEventsSection({
           ))}
         </div>
       )}
+
+      {footer}
     </section>
+  );
+}
+
+function LitterEventCreationForm({ litterId }: { litterId: string }) {
+  return (
+    <form action={createLitterEvent} className="mt-8 border-t pt-6">
+      <input type="hidden" name="litter_id" value={litterId} />
+      <h3 className="text-sm font-semibold text-foreground">
+        Ajouter un événement
+      </h3>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+        <div>
+          <label
+            htmlFor="litter-event-title"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Titre <span className="text-accent">*</span>
+          </label>
+          <input
+            id="litter-event-title"
+            name="title"
+            type="text"
+            required
+            maxLength={255}
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="litter-event-date"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Date <span className="text-accent">*</span>
+          </label>
+          <input
+            id="litter-event-date"
+            name="event_date"
+            type="date"
+            required
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="litter-event-type"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Type
+          </label>
+          <select
+            id="litter-event-type"
+            name="event_type"
+            defaultValue="other"
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          >
+            {litterEventTypeOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="litter-event-status"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Statut
+          </label>
+          <select
+            id="litter-event-status"
+            name="status"
+            defaultValue="planned"
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          >
+            {eventStatusOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="litter-event-priority"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Priorité
+          </label>
+          <select
+            id="litter-event-priority"
+            name="priority"
+            defaultValue="normal"
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          >
+            {eventPriorityOptions.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <label
+          htmlFor="litter-event-is-task"
+          className="flex items-center gap-3 self-end rounded-xl border bg-background px-4 py-3 text-sm text-muted"
+        >
+          <input
+            id="litter-event-is-task"
+            name="is_task"
+            type="checkbox"
+            className="h-4 w-4 rounded border-border accent-accent"
+          />
+          Marquer comme tâche
+        </label>
+
+        <div className="sm:col-span-2">
+          <label
+            htmlFor="litter-event-description"
+            className="text-xs font-semibold uppercase tracking-wide text-muted"
+          >
+            Description
+          </label>
+          <textarea
+            id="litter-event-description"
+            name="description"
+            rows={3}
+            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <button
+          type="submit"
+          className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+        >
+          Ajouter l’événement
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -674,6 +865,7 @@ export default async function LitterDetailPage({
     reservation_attach_status?: string;
     offspring_status?: string;
     offspring_count?: string;
+    event_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -686,6 +878,7 @@ export default async function LitterDetailPage({
     reservation_attach_status,
     offspring_status,
     offspring_count,
+    event_status,
   } = await searchParams;
   const supabase = await createClient();
   const {
@@ -1141,6 +1334,37 @@ export default async function LitterDetailPage({
         className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
       >
         Impossible de créer les animaux. Aucune réservation n’a été modifiée.
+      </p>
+    ) : null;
+
+  const eventBanner =
+    event_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        L’événement a été ajouté à cette portée.
+      </p>
+    ) : event_status === "title_required" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Le titre de l’événement est obligatoire.
+      </p>
+    ) : event_status === "invalid_date" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        La date de l’événement est obligatoire.
+      </p>
+    ) : event_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible d’ajouter l’événement. Aucune modification n’a été appliquée.
       </p>
     ) : null;
 
@@ -1646,6 +1870,8 @@ export default async function LitterDetailPage({
               <RelatedEventsSection
                 events={litterEvents}
                 hasError={Boolean(eventsError)}
+                banner={eventBanner}
+                footer={<LitterEventCreationForm litterId={litter.id} />}
               />
 
               <RelatedNotesSection
