@@ -127,7 +127,9 @@ async function createDraftReservation(
   await page
     .getByRole("button", { name: "Créer une réservation brouillon" })
     .click();
-  await expect(page).toHaveURL(/reservation_status=created/);
+  await expect(page).toHaveURL(
+    /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
+  );
 
   return await expect
     .poll(async () => {
@@ -194,14 +196,25 @@ test("cancels an active reservation manually without side effects", async ({
   await expect(page.getByRole("button", { name: "Annuler la réservation" })).toBeVisible();
   await expect(
     page.getByText(
-      "Cette action annule manuellement la réservation. Elle ne crée aucun remboursement, ne modifie aucun paiement, ne crée ni document ni note, ne modifie pas l’animal, ne retire pas automatiquement l’attribution, et ne modifie ni tarif, ni commentaire, ni échéance.",
+      "Annule manuellement la réservation sans créer de remboursement ni modifier les paiements, documents ou l’animal attribué.",
     ),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Annuler la réservation" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Confirmer l’annulation de cette réservation ?",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmer l’annulation" }).click();
   await expect(page).toHaveURL(/cancellation_status=success/);
   await expect(page.getByText("Réservation annulée.")).toBeVisible();
-  await expect(page.getByText("Annulée", { exact: true })).toBeVisible();
+  await expect(page.getByText("Annulée", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Annuler la réservation" }),
   ).toHaveCount(0);

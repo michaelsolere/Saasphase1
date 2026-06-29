@@ -127,7 +127,9 @@ async function createDraftReservation(
   await page
     .getByRole("button", { name: "Créer une réservation brouillon" })
     .click();
-  await expect(page).toHaveURL(/reservation_status=created/);
+  await expect(page).toHaveURL(
+    /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
+  );
 
   return await expect
     .poll(async () => {
@@ -196,14 +198,25 @@ test("expires an active reservation manually without side effects", async ({
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Cette action marque manuellement la réservation comme expirée. Elle ne crée aucun remboursement, ne modifie aucun paiement, ne crée ni document ni note, ne modifie pas l’animal, ne retire pas automatiquement l’attribution, ne modifie ni tarif, ni commentaire, ni échéance, et ne lance aucune automatisation liée à l’échéance de pré-réservation.",
+      "Marque la réservation comme expirée sans automatisation liée à l’échéance de pré-réservation.",
     ),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Marquer comme expirée" }).click();
+  await expect(
+    page.getByRole("heading", {
+      name: "Confirmer l’expiration de cette réservation ?",
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmer l’expiration" }).click();
   await expect(page).toHaveURL(/expiration_status=success/);
   await expect(page.getByText("Réservation marquée comme expirée.")).toBeVisible();
-  await expect(page.getByText("Expirée", { exact: true })).toBeVisible();
+  await expect(page.getByText("Expirée", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Marquer comme expirée" }),
   ).toHaveCount(0);

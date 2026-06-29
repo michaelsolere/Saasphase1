@@ -23,15 +23,12 @@ import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
 import {
-  cancelReservation,
   updateReservationInternalComment,
   updateReservationPreReservationDeadline,
   updateReservationPrice,
   activateReservation,
   assignAnimalToReservation,
-  expireReservation,
   unassignAnimalFromReservation,
-  withdrawReservation,
   syncReservationScopeFromApplication,
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
@@ -58,6 +55,7 @@ import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-di
 import { PreReservationBalanceConfirmDialog } from "@/features/reservations/pre-reservation-balance-confirm-dialog";
 import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
+import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -1730,24 +1728,24 @@ export default async function ReservationDetailPage({
                         )}
                         {reservation.status === "active" ? (
                           <div className="flex gap-2">
-                            <form action={cancelReservation} className="flex-1">
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <button type="submit" className="w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition">
-                                Annuler
-                              </button>
-                            </form>
-                            <form action={withdrawReservation} className="flex-1">
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <button type="submit" className="w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition">
-                                Désistement
-                              </button>
-                            </form>
-                            <form action={expireReservation} className="flex-1">
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <button type="submit" className="w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition">
-                                Expirer
-                              </button>
-                            </form>
+                            <ReservationNegativeActionConfirmDialog
+                              actionType="cancel"
+                              reservationId={id}
+                              triggerLabel="Annuler"
+                              triggerClassName="flex-1 w-full text-center rounded-lg border border-red-200 bg-red-50 text-red-700 px-2 py-1.5 text-xs font-semibold hover:bg-red-100 transition"
+                            />
+                            <ReservationNegativeActionConfirmDialog
+                              actionType="withdraw"
+                              reservationId={id}
+                              triggerLabel="Désistement"
+                              triggerClassName="flex-1 w-full text-center rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-2 py-1.5 text-xs font-semibold hover:bg-amber-100 transition"
+                            />
+                            <ReservationNegativeActionConfirmDialog
+                              actionType="expire"
+                              reservationId={id}
+                              triggerLabel="Expirer"
+                              triggerClassName="flex-1 w-full text-center rounded-lg border border-slate-300 bg-slate-50 text-slate-700 px-2 py-1.5 text-xs font-semibold hover:bg-slate-100 transition"
+                            />
                           </div>
                         ) : null}
                         {!canFinalizeAdoptionManually && reservation.status === "active" ? (
@@ -2344,62 +2342,44 @@ export default async function ReservationDetailPage({
                               Sorties finales
                             </h4>
                             <div className="mt-4 space-y-5">
-                              <form action={cancelReservation}>
-                                <input
-                                  type="hidden"
-                                  name="reservation_id"
-                                  value={id}
-                                />
+                              <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Annule manuellement la réservation sans créer
                                   de remboursement ni modifier les paiements,
                                   documents ou l’animal attribué.
                                 </p>
-                                <button
-                                  type="submit"
-                                  className="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
-                                >
-                                  Annuler la réservation
-                                </button>
-                              </form>
-
-                              <form action={withdrawReservation}>
-                                <input
-                                  type="hidden"
-                                  name="reservation_id"
-                                  value={id}
+                                <ReservationNegativeActionConfirmDialog
+                                  actionType="cancel"
+                                  reservationId={id}
+                                  triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
                                 />
+                              </div>
+
+                              <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Enregistre le désistement sans créer de
                                   remboursement ni modifier les paiements,
                                   documents ou l’animal attribué.
                                 </p>
-                                <button
-                                  type="submit"
-                                  className="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
-                                >
-                                  Marquer comme désistée
-                                </button>
-                              </form>
-
-                              <form action={expireReservation}>
-                                <input
-                                  type="hidden"
-                                  name="reservation_id"
-                                  value={id}
+                                <ReservationNegativeActionConfirmDialog
+                                  actionType="withdraw"
+                                  reservationId={id}
+                                  triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
                                 />
+                              </div>
+
+                              <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Marque la réservation comme expirée sans
                                   automatisation liée à l’échéance de
                                   pré-réservation.
                                 </p>
-                                <button
-                                  type="submit"
-                                  className="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
-                                >
-                                  Marquer comme expirée
-                                </button>
-                              </form>
+                                <ReservationNegativeActionConfirmDialog
+                                  actionType="expire"
+                                  reservationId={id}
+                                  triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
+                                />
+                              </div>
                             </div>
                           </div>
                         </div>

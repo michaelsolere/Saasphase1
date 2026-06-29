@@ -127,7 +127,9 @@ async function createDraftReservation(
   await page
     .getByRole("button", { name: "Créer une réservation brouillon" })
     .click();
-  await expect(page).toHaveURL(/reservation_status=created/);
+  await expect(page).toHaveURL(
+    /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
+  );
 
   return await expect
     .poll(async () => {
@@ -196,14 +198,23 @@ test("withdraws an active reservation manually without side effects", async ({
   ).toBeVisible();
   await expect(
     page.getByText(
-      "Cette action enregistre manuellement un désistement ou retrait du candidat ou adoptant. Elle ne crée aucun remboursement, ne modifie aucun paiement, ne crée ni document ni note, ne modifie pas l’animal, ne retire pas automatiquement l’attribution, et ne modifie ni tarif, ni commentaire, ni échéance.",
+      "Enregistre le désistement sans créer de remboursement ni modifier les paiements, documents ou l’animal attribué.",
     ),
   ).toBeVisible();
 
   await page.getByRole("button", { name: "Marquer comme désistée" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Confirmer le désistement ?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmer le désistement" }).click();
   await expect(page).toHaveURL(/withdrawal_status=success/);
   await expect(page.getByText("Réservation marquée comme désistée.")).toBeVisible();
-  await expect(page.getByText("Désistement", { exact: true })).toBeVisible();
+  await expect(page.getByText("Désistement", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Marquer comme désistée" }),
   ).toHaveCount(0);
