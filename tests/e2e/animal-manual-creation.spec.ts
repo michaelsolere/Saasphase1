@@ -1,9 +1,15 @@
+import { randomUUID } from "node:crypto";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import {
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
 } from "./helpers/supabase";
+
+const organizationId = "20000000-0000-4000-8000-000000000001";
+const ownerId = "10000000-0000-4000-8000-000000000001";
+const litterId = "c0000000-0000-4000-8000-000000000001";
 
 type ManualAnimalCase = {
   label: string;
@@ -220,4 +226,146 @@ test("creates manual animals without confusing them with litter offspring", asyn
 
   expect(error).toBeNull();
   expect(count).toBe(0);
+});
+
+test("edits only lightweight animal identity fields", async ({ page }) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const manualAnimalId = randomUUID();
+  const litterAnimalId = randomUUID();
+  const suffix = manualAnimalId.slice(0, 8);
+
+  const { error: manualInsertError } = await supabase.from("animals").insert({
+    id: manualAnimalId,
+    organization_id: organizationId,
+    display_name: `QA edition legere ${suffix}`,
+    species: "dog",
+    breed: "Golden Retriever",
+    sex: "female",
+    status: "active",
+    ownership_status: "owned",
+    birth_date: "2023-01-10",
+    identification_number: "OLD-ID",
+    color: "Sable",
+    coat_color: "Claire",
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(manualInsertError).toBeNull();
+
+  const { error: litterAnimalInsertError } = await supabase
+    .from("animals")
+    .insert({
+      id: litterAnimalId,
+      organization_id: organizationId,
+      litter_id: litterId,
+      display_name: `QA edition chiot ${suffix}`,
+      species: "dog",
+      breed: "Golden Retriever",
+      sex: "male",
+      status: "born",
+      ownership_status: "produced",
+      birth_date: "2026-04-15",
+      created_by: ownerId,
+      updated_by: ownerId,
+    });
+
+  expect(litterAnimalInsertError).toBeNull();
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/animals/${manualAnimalId}`);
+  await page.getByRole("link", { name: "Modifier les informations" }).click();
+  await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit`);
+  await page.getByLabel("Nom principal").fill(`QA edition modifiee ${suffix}`);
+  await page.getByLabel("Identification").fill("NEW-ID");
+  await page.getByLabel("Couleur").fill("Doré");
+  await page.getByLabel("Robe").fill("Fauve clair");
+  await page.getByLabel("Date de naissance").fill("2023-02-11");
+  await page.locator("form").evaluate((form) => {
+    for (const [name, value] of [
+      ["status", "adopted"],
+      ["ownership_status", "adopted_out"],
+      ["sex", "male"],
+      ["species", "cat"],
+      ["breed", "Persan"],
+      ["litter_id", "c0000000-0000-4000-8000-000000000001"],
+      ["is_breeder", "yes"],
+      ["is_external", "yes"],
+      ["is_retired", "yes"],
+    ]) {
+      const input = document.createElement("input");
+      input.name = name;
+      input.value = value;
+      form.append(input);
+    }
+  });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page).toHaveURL(
+    `/animals/${manualAnimalId}?identity_status=success`,
+  );
+  await expect(page.getByText("Les informations de l’animal ont été mises à jour.")).toBeVisible();
+
+  const updatedManualAnimal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select(
+        "display_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, is_breeder, is_external, is_retired",
+      )
+      .eq("id", manualAnimalId)
+      .single(),
+    "read updated manual animal",
+  );
+
+  expect(updatedManualAnimal).toMatchObject({
+    display_name: `QA edition modifiee ${suffix}`,
+    identification_number: "NEW-ID",
+    color: "Doré",
+    coat_color: "Fauve clair",
+    birth_date: "2023-02-11",
+    status: "active",
+    ownership_status: "owned",
+    sex: "female",
+    species: "dog",
+    breed: "Golden Retriever",
+    litter_id: null,
+    is_breeder: false,
+    is_external: false,
+    is_retired: false,
+  });
+
+  await page.goto(`/animals/${litterAnimalId}/edit`);
+  await expect(page.locator('input[name="birth_date"]')).toHaveCount(0);
+  await page.getByLabel("Nom principal").fill(`QA edition chiot modifie ${suffix}`);
+  await page.locator("form").evaluate((form) => {
+    const input = document.createElement("input");
+    input.name = "birth_date";
+    input.value = "2026-05-20";
+    form.append(input);
+  });
+  await page.getByRole("button", { name: "Enregistrer" }).click();
+  await expect(page).toHaveURL(
+    `/animals/${litterAnimalId}?identity_status=success`,
+  );
+
+  const updatedLitterAnimal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select("display_name, birth_date, litter_id, status, ownership_status")
+      .eq("id", litterAnimalId)
+      .single(),
+    "read updated litter animal",
+  );
+
+  expect(updatedLitterAnimal).toMatchObject({
+    display_name: `QA edition chiot modifie ${suffix}`,
+    birth_date: "2026-04-15",
+    litter_id: litterId,
+    status: "born",
+    ownership_status: "produced",
+  });
 });

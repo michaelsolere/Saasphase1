@@ -613,10 +613,12 @@ function RelatedDocumentsSection({
 
 export default async function AnimalDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ identity_status?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
   const {
     data: { user },
@@ -767,12 +769,26 @@ export default async function AnimalDetailPage({
                   </p>
                 ) : null}
               </div>
-              <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
-                Lecture seule
-              </span>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link
+                  href={`/animals/${animal.id}/edit`}
+                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                >
+                  Modifier les informations
+                </Link>
+                <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
+                  Lecture seule
+                </span>
+              </div>
             </header>
 
             <div className="space-y-6 py-8">
+              {query.identity_status === "success" ? (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950">
+                  Les informations de l’animal ont été mises à jour.
+                </section>
+              ) : null}
+
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Identité</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">

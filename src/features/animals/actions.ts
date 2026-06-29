@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
 type AnimalInsert = Database["public"]["Tables"]["animals"]["Insert"];
+type AnimalUpdate = Database["public"]["Tables"]["animals"]["Update"];
 
 const allowedSpecies = new Set(["dog", "cat"]);
 const allowedSexes = new Set(["male", "female", "unknown"]);
@@ -45,6 +46,13 @@ function animalCreateUrl(
     | "error",
 ) {
   return `/animals/new?status=${code}`;
+}
+
+function animalIdentityEditUrl(
+  animalId: string,
+  code: "name_required" | "invalid_date" | "error",
+) {
+  return `/animals/${animalId}/edit?status=${code}`;
 }
 
 function normalizeOptionalText(
@@ -270,4 +278,75 @@ export async function createManualAnimal(formData: FormData) {
   revalidatePath("/animals");
   revalidatePath(`/animals/${animal.id}`);
   redirect(`/animals/${animal.id}`);
+}
+
+export async function updateAnimalIdentity(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  const displayName = normalizeOptionalText(formData.get("display_name"));
+
+  if (!displayName) {
+    redirect(animalIdentityEditUrl(animalId, "name_required"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select("id, organization_id, litter_id")
+    .eq("id", animalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalIdentityEditUrl(animalId, "error"));
+  }
+
+  const animalToUpdate: AnimalUpdate = {
+    display_name: displayName,
+    identification_number: normalizeOptionalText(
+      formData.get("identification_number"),
+    ),
+    color: normalizeOptionalText(formData.get("color")),
+    coat_color: normalizeOptionalText(formData.get("coat_color")),
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  };
+
+  if (!animal.litter_id) {
+    const birthDate = normalizeOptionalDate(formData.get("birth_date"));
+
+    if (birthDate === "invalid") {
+      redirect(animalIdentityEditUrl(animalId, "invalid_date"));
+    }
+
+    animalToUpdate.birth_date = birthDate;
+  }
+
+  const { error: updateError } = await supabase
+    .from("animals")
+    .update(animalToUpdate)
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(animalIdentityEditUrl(animalId, "error"));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+  revalidatePath(`/animals/${animalId}/edit`);
+  redirect(`/animals/${animalId}?identity_status=success`);
 }
