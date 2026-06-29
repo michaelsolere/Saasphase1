@@ -585,17 +585,17 @@ test("creates the second 250 euro deposit request only after confirmation", asyn
   await page.goto(`/reservations/${reservationId}`);
   await page
     .locator("#reservation-details")
-    .getByRole("button", { name: "Demander le complément des arrhes" })
+    .getByRole("button", { name: "Demander le complément 2/2 — 250 €" })
     .click();
   await expect(
     page.getByText(
-      "Créer une demande 2/2 de 250 € d’arrhes ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
+      "Créer le complément 2/2 — 250 € ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Confirmer la demande" }).click();
   await expect(page).toHaveURL(/balance_request_status=success/);
   await expect(
-    page.getByText("La demande de complément des arrhes a bien été créée."),
+    page.getByText("Le complément 2/2 — 250 € a bien été créé."),
   ).toBeVisible();
 
   const payments = await readReservationPayments(supabase, reservationId);
@@ -651,9 +651,7 @@ test("does not show the second deposit action when the request already exists", 
     page.getByRole("button", { name: /Demander le complément/ }),
   ).toHaveCount(0);
   await expect(
-    page.getByText(
-      "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise.",
-    ),
+    page.getByText("Complément 2/2 — 250 € demandé."),
   ).toBeVisible();
 
   const payments = await readReservationPayments(supabase, reservationId);
@@ -687,7 +685,7 @@ test("can request the second deposit when only an old second request was cancell
   await page.goto(`/reservations/${reservationId}`);
   await page
     .locator("#reservation-details")
-    .getByRole("button", { name: "Demander le complément des arrhes" })
+    .getByRole("button", { name: "Demander le complément 2/2 — 250 €" })
     .click();
   await page.getByRole("button", { name: "Confirmer la demande" }).click();
   await expect(page).toHaveURL(/balance_request_status=success/);
