@@ -27,14 +27,14 @@ const speciesLabels: Record<string, string> = {
 };
 
 const ownershipStatusLabels: Record<string, string> = {
-  owned: "Détenu",
+  owned: "Maison / détenu",
   produced: "Produit à l’élevage",
-  external_stud: "Mâle extérieur",
+  external_stud: "Étalon extérieur",
   external_female: "Femelle extérieure",
   co_owned: "Copropriété",
   sold: "Vendu",
-  adopted_out: "Adopté",
-  unknown: "Non renseigné",
+  adopted_out: "Adopté hors élevage",
+  unknown: "Historique / origine inconnue",
 };
 
 export function getAnimalDisplayName(animal: Pick<AnimalListItem, "display_name" | "call_name" | "official_name" | "temporary_name" | "id">) {

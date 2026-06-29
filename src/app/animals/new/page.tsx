@@ -87,7 +87,9 @@ export default async function NewAnimalPage({
       ) : null}
 
       <section className="mt-8 rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm leading-6 text-amber-950">
-        Si l’animal est né d’une portée connue, créez-le depuis la fiche Portée.
+        Si l’animal est né d’une portée connue, créez-le depuis la fiche Portée :
+        ce formulaire ne crée pas de chiot/chaton et ne rattache pas d’animal à
+        une portée.
       </section>
 
       <form

@@ -194,8 +194,8 @@ export function AnimalFields({
           ))}
         </select>
         <p className="mt-2 text-xs leading-5 text-muted">
-          Les animaux nés d’une portée connue doivent être créés depuis la fiche
-          Portée.
+          L’origine “Né à l’élevage” est réservée aux chiots/chatons créés
+          depuis une fiche Portée.
         </p>
       </div>
 
