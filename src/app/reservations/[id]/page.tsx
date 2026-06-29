@@ -62,6 +62,28 @@ import { getContactRoleLabel } from "@/features/contacts/formatters";
 
 export const dynamic = "force-dynamic";
 
+type ReservationSearchParams = {
+  comment_status?: string;
+  deadline_status?: string;
+  price_status?: string;
+  payment_create_status?: string;
+  payment_mark_status?: string;
+  payment_refund_status?: string;
+  activation_status?: string;
+  role_status?: string;
+  adoption_status?: string;
+  animal_status?: string;
+  cancellation_status?: string;
+  withdrawal_status?: string;
+  expiration_status?: string;
+  animal_assign_status?: string;
+  animal_unassign_status?: string;
+  balance_request_status?: string;
+  document_action_status?: string;
+  note_status?: string;
+  scope_sync_status?: string;
+};
+
 type RelatedPayment = {
   id: string;
   amount_cents: number;
@@ -192,6 +214,326 @@ function ErrorMessage() {
         Retour aux réservations
       </Link>
     </section>
+  );
+}
+
+type ReservationStatusMessage = {
+  when: boolean;
+  role: "status" | "alert";
+  className: string;
+  message: string;
+};
+
+const successStatusMessageClassName =
+  "mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950";
+const errorStatusMessageClassName =
+  "mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950";
+
+function ReservationStatusMessages({
+  query,
+}: {
+  query: ReservationSearchParams;
+}) {
+  const messages: ReservationStatusMessage[] = [
+    {
+      when: query.price_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Le tarif convenu a bien été mis à jour.",
+    },
+    {
+      when: query.price_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le tarif convenu n’a pas pu être mis à jour. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.comment_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message:
+        "Le commentaire interne de réservation a bien été mis à jour.",
+    },
+    {
+      when: query.comment_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le commentaire interne n’a pas pu être mis à jour. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.deadline_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "L’échéance de pré-réservation a bien été mise à jour.",
+    },
+    {
+      when: query.deadline_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’échéance de pré-réservation n’a pas pu être mise à jour. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.payment_create_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Le paiement a bien été enregistré.",
+    },
+    {
+      when: query.payment_create_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.payment_mark_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Le paiement a bien été marqué comme payé.",
+    },
+    {
+      when: query.payment_mark_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le paiement n’a pas pu être marqué comme payé. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.payment_mark_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Ce paiement n’est plus dans un état permettant de le marquer comme payé depuis la réservation.",
+    },
+    {
+      when: query.balance_request_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Le complément 2/2 — 250 € a bien été créé.",
+    },
+    {
+      when: query.balance_request_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le complément 2/2 — 250 € n’a pas pu être créé. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.document_action_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "L’action sur le document a été effectuée avec succès.",
+    },
+    {
+      when: query.document_action_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.note_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "La note interne a bien été ajoutée.",
+    },
+    {
+      when: query.note_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La note interne n’a pas pu être ajoutée. Vérifiez le contenu saisi et réessayez.",
+    },
+    {
+      when: query.payment_refund_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message:
+        "Remboursement enregistré. Le solde de la réservation a été mis à jour.",
+    },
+    {
+      when: query.payment_refund_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Impossible d’enregistrer le remboursement. Vérifiez les informations saisies et réessayez. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.activation_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "La réservation a été confirmée.",
+    },
+    {
+      when: query.activation_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "La réservation ne peut pas être confirmée dans son état actuel.",
+    },
+    {
+      when: query.activation_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La réservation n’a pas pu être confirmée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.role_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’opération a bien été réalisée, mais le rôle du contact n’a pas pu être mis à jour. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.adoption_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "L’adoption a été finalisée.",
+    },
+    {
+      when: query.adoption_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "La réservation ne peut pas être finalisée dans son état actuel.",
+    },
+    {
+      when: query.adoption_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’adoption n’a pas pu être finalisée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.animal_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’adoption a été finalisée, mais le statut de l’animal n’a pas pu être mis à jour. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.cancellation_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Réservation annulée.",
+    },
+    {
+      when: query.cancellation_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "La réservation ne peut pas être annulée dans son état actuel.",
+    },
+    {
+      when: query.cancellation_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La réservation n’a pas pu être annulée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.withdrawal_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Réservation marquée comme désistée.",
+    },
+    {
+      when: query.withdrawal_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La réservation ne peut pas être marquée comme désistée dans son état actuel.",
+    },
+    {
+      when: query.withdrawal_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le désistement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.expiration_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Réservation marquée comme expirée.",
+    },
+    {
+      when: query.expiration_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La réservation ne peut pas être marquée comme expirée dans son état actuel.",
+    },
+    {
+      when: query.expiration_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’expiration n’a pas pu être enregistrée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.animal_assign_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "L’animal a été attribué à la réservation.",
+    },
+    {
+      when: query.animal_assign_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "L’attribution n’a pas pu être effectuée. Aucune autre donnée n’a été modifiée.",
+    },
+    {
+      when: query.animal_assign_status === "already_assigned",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "Cette réservation possède déjà un animal attribué.",
+    },
+    {
+      when: query.animal_assign_status === "animal_unavailable",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "Cet animal n’est plus disponible pour attribution.",
+    },
+    {
+      when: query.animal_unassign_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "L’attribution de l’animal a été retirée.",
+    },
+    {
+      when: query.animal_unassign_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le retrait de l’attribution n’a pas pu être effectué. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.animal_unassign_status === "no_animal",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "Cette réservation ne possède aucun animal attribué.",
+    },
+    {
+      when: query.animal_unassign_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "L’attribution de cette réservation ne peut plus être modifiée.",
+    },
+  ];
+
+  return (
+    <>
+      {messages.map((item) =>
+        item.when ? (
+          <p key={item.message} role={item.role} className={item.className}>
+            {item.message}
+          </p>
+        ) : null,
+      )}
+    </>
   );
 }
 
@@ -498,27 +840,7 @@ export default async function ReservationDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{
-    comment_status?: string;
-    deadline_status?: string;
-    price_status?: string;
-    payment_create_status?: string;
-    payment_mark_status?: string;
-    payment_refund_status?: string;
-    activation_status?: string;
-    role_status?: string;
-    adoption_status?: string;
-    animal_status?: string;
-    cancellation_status?: string;
-    withdrawal_status?: string;
-    expiration_status?: string;
-    animal_assign_status?: string;
-    animal_unassign_status?: string;
-    balance_request_status?: string;
-    document_action_status?: string;
-    note_status?: string;
-    scope_sync_status?: string;
-  }>;
+  searchParams: Promise<ReservationSearchParams>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -1107,406 +1429,7 @@ export default async function ReservationDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
-            {query.price_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Le tarif convenu a bien été mis à jour.
-              </p>
-            ) : null}
-
-            {query.price_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le tarif convenu n’a pas pu être mis à jour. Aucune autre
-                donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.comment_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Le commentaire interne de réservation a bien été mis à jour.
-              </p>
-            ) : null}
-
-            {query.comment_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le commentaire interne n’a pas pu être mis à jour. Aucune autre
-                donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.deadline_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                L’échéance de pré-réservation a bien été mise à jour.
-              </p>
-            ) : null}
-
-            {query.deadline_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’échéance de pré-réservation n’a pas pu être mise à jour.
-                Aucune autre donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.payment_create_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Le paiement a bien été enregistré.
-              </p>
-            ) : null}
-
-            {query.payment_create_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.payment_mark_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Le paiement a bien été marqué comme payé.
-              </p>
-            ) : null}
-
-            {query.payment_mark_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le paiement n’a pas pu être marqué comme payé. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.payment_mark_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Ce paiement n’est plus dans un état permettant de le marquer comme payé depuis la réservation.
-              </p>
-            ) : null}
-
-            {query.balance_request_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Le complément 2/2 — 250 € a bien été créé.
-              </p>
-            ) : null}
-
-            {query.balance_request_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le complément 2/2 — 250 € n’a pas pu être créé. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.document_action_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                L’action sur le document a été effectuée avec succès.
-              </p>
-            ) : null}
-
-            {query.document_action_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.note_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                La note interne a bien été ajoutée.
-              </p>
-            ) : null}
-
-            {query.note_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La note interne n’a pas pu être ajoutée. Vérifiez le contenu saisi et réessayez.
-              </p>
-            ) : null}
-
-            {query.payment_refund_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Remboursement enregistré. Le solde de la réservation a été mis à jour.
-              </p>
-            ) : null}
-
-            {query.payment_refund_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Impossible d’enregistrer le remboursement. Vérifiez les informations saisies et réessayez. Aucune autre donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.activation_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                La réservation a été confirmée.
-              </p>
-            ) : null}
-
-            {query.activation_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation ne peut pas être confirmée dans son état actuel.
-              </p>
-            ) : null}
-
-            {query.activation_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation n’a pas pu être confirmée. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.role_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’opération a bien été réalisée, mais le rôle du contact n’a
-                pas pu être mis à jour. Aucune autre donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.adoption_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                L’adoption a été finalisée.
-              </p>
-            ) : null}
-
-            {query.adoption_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation ne peut pas être finalisée dans son état actuel.
-              </p>
-            ) : null}
-
-            {query.adoption_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’adoption n’a pas pu être finalisée. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.animal_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’adoption a été finalisée, mais le statut de l’animal n’a pas
-                pu être mis à jour. Aucune autre donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.cancellation_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Réservation annulée.
-              </p>
-            ) : null}
-
-            {query.cancellation_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation ne peut pas être annulée dans son état actuel.
-              </p>
-            ) : null}
-
-            {query.cancellation_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation n’a pas pu être annulée. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.withdrawal_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Réservation marquée comme désistée.
-              </p>
-            ) : null}
-
-            {query.withdrawal_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation ne peut pas être marquée comme désistée dans son état actuel.
-              </p>
-            ) : null}
-
-            {query.withdrawal_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le désistement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.expiration_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                Réservation marquée comme expirée.
-              </p>
-            ) : null}
-
-            {query.expiration_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                La réservation ne peut pas être marquée comme expirée dans son état actuel.
-              </p>
-            ) : null}
-
-            {query.expiration_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’expiration n’a pas pu être enregistrée. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.animal_assign_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                L’animal a été attribué à la réservation.
-              </p>
-            ) : null}
-
-            {query.animal_assign_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’attribution n’a pas pu être effectuée. Aucune autre donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.animal_assign_status === "already_assigned" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Cette réservation possède déjà un animal attribué.
-              </p>
-            ) : null}
-
-            {query.animal_assign_status === "animal_unavailable" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Cet animal n’est plus disponible pour attribution.
-              </p>
-            ) : null}
-
-            {query.animal_unassign_status === "success" ? (
-              <p
-                role="status"
-                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-              >
-                L’attribution de l’animal a été retirée.
-              </p>
-            ) : null}
-
-            {query.animal_unassign_status === "error" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Le retrait de l’attribution n’a pas pu être effectué. Aucune donnée n’a été modifiée.
-              </p>
-            ) : null}
-
-            {query.animal_unassign_status === "no_animal" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                Cette réservation ne possède aucun animal attribué.
-              </p>
-            ) : null}
-
-            {query.animal_unassign_status === "invalid_state" ? (
-              <p
-                role="alert"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              >
-                L’attribution de cette réservation ne peut plus être modifiée.
-              </p>
-            ) : null}
+            <ReservationStatusMessages query={query} />
 
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
