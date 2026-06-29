@@ -110,13 +110,34 @@ export default async function AnimalEditPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, display_name, species, breed, sex, status, ownership_status, birth_date, litter_id, identification_number, color, coat_color, is_breeder, is_external, is_retired",
+      "id, display_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, is_breeder, is_external, is_retired",
     )
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
 
   const animal = rawAnimal as DBAnimal | null;
+  const parentIds = animal
+    ? (Array.from(
+        new Set([animal.mother_id, animal.father_id].filter(Boolean)),
+      ) as string[])
+    : [];
+  const { data: rawParents } = parentIds.length
+    ? await supabase
+        .from("animals")
+        .select("id, display_name")
+        .in("id", parentIds)
+        .is("deleted_at", null)
+    : { data: [] };
+  const parentsById = new Map(
+    (rawParents ?? []).map((parent) => [parent.id, parent.display_name]),
+  );
+  const motherDisplayName = animal?.mother_id
+    ? parentsById.get(animal.mother_id) ?? null
+    : null;
+  const fatherDisplayName = animal?.father_id
+    ? parentsById.get(animal.father_id) ?? null
+    : null;
   const errorMessage = query.status ? errorMessages[query.status] : undefined;
 
   return (
@@ -164,8 +185,8 @@ export default async function AnimalEditPage({
                 Modifier {getAnimalDisplayName(animal)}
               </h1>
               <p className="mt-3 max-w-2xl leading-7 text-muted">
-                Seules les informations d’identité non structurelles sont
-                modifiables ici.
+                Édition légère limitée aux informations d’identité non
+                structurelles.
               </p>
             </header>
 
@@ -180,8 +201,11 @@ export default async function AnimalEditPage({
 
             <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
               <h2 className="text-xl font-semibold">
-                Informations non modifiées dans ce lot
+                Informations structurelles en lecture seule
               </h2>
+              <p className="mt-2 text-sm leading-6 text-muted">
+                Ces valeurs ne sont pas modifiables dans l’édition légère.
+              </p>
               <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                 <ReadOnlyItem
                   label="Espèce"
@@ -204,6 +228,20 @@ export default async function AnimalEditPage({
                   label="Portée liée"
                   value={animal.litter_id ? "Oui" : "Non"}
                 />
+                <ReadOnlyItem label="Mère" value={motherDisplayName} />
+                <ReadOnlyItem label="Père" value={fatherDisplayName} />
+                <ReadOnlyItem
+                  label="Reproducteur"
+                  value={animal.is_breeder ? "Oui" : "Non"}
+                />
+                <ReadOnlyItem
+                  label="Animal extérieur"
+                  value={animal.is_external ? "Oui" : "Non"}
+                />
+                <ReadOnlyItem
+                  label="Retraité"
+                  value={animal.is_retired ? "Oui" : "Non"}
+                />
               </dl>
             </section>
 
@@ -212,8 +250,11 @@ export default async function AnimalEditPage({
               className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
             >
               <input type="hidden" name="animal_id" value={animal.id} />
+              <h2 className="text-xl font-semibold">
+                Informations d’identité modifiables
+              </h2>
 
-              <div className="grid gap-5 sm:grid-cols-2">
+              <div className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <TextField
                     id="animal-edit-display-name"
