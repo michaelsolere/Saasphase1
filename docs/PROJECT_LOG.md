@@ -4771,3 +4771,16 @@ Le module permet désormais :
 * pas de propagation automatique aux objets liés ;
 * pas de refactor complet de `reservations/[id]/page.tsx` ;
 * pas de nouvelle migration SQL.
+
+## Jalon parents de portée — éligibilité mère / père
+
+La sélection des parents de portée est désormais sécurisée en création et en édition de portée :
+
+* la mère doit être une femelle reproductrice éligible ;
+* le père doit être un mâle reproducteur éligible ;
+* les reproducteurs maison et extérieurs sont acceptés selon `ownership_status` / `is_external` ;
+* les animaux non reproducteurs, de mauvais sexe, adoptés hors élevage, retraités, décédés ou archivés sont exclus ;
+* un animal `produced` avec `litter_id` reste accepté s'il est devenu reproducteur ;
+* une race différente n'est pas bloquante ;
+* la règle est appliquée côté UI et côté serveur ;
+* un test e2e ciblé couvre ce jalon.
