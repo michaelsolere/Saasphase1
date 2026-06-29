@@ -1252,10 +1252,25 @@ export default async function ReservationDetailPage({
       document: reservationContractDocument,
     },
     {
-      label: "Attestation de vente",
+      label: "Certificat de vente",
       document: saleCertificateDocument,
     },
   ];
+  const firstDepositLabel = getPreReservationDepositLabel(
+    preReservationDepositState,
+  );
+  const secondDepositLabel = hasSecondPaid
+    ? "Complément payé"
+    : hasSecondPayment
+      ? "Complément demandé"
+      : "Complément non demandé";
+  const depositSummaryLabel = hasCompleteDeposit
+    ? "Arrhes complètes"
+    : hasFirstPaid
+      ? "Arrhes partielles"
+      : hasRequestedFirstDeposit
+        ? "Arrhes demandées"
+        : "Aucune arrhe visible";
   const adoptionDateLabel = reservation?.adoption_completed_at
     ? `Effective : ${formatApplicationDate(reservation.adoption_completed_at)}`
     : reservation?.adoption_planned_at
@@ -1869,6 +1884,26 @@ export default async function ReservationDetailPage({
                       value={adoptionDateLabel}
                     />
                   </dl>
+
+                  <div className="mt-6 rounded-xl border bg-background p-4">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Arrhes
+                    </h3>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <DetailItem
+                        label="Arrhes 1/2 — 250 €"
+                        value={firstDepositLabel}
+                      />
+                      <DetailItem
+                        label="Complément 2/2 — 250 €"
+                        value={secondDepositLabel}
+                      />
+                      <DetailItem
+                        label="État global des arrhes"
+                        value={depositSummaryLabel}
+                      />
+                    </div>
+                  </div>
 
                   <div className="mt-6 rounded-xl border bg-background p-4">
                     <h3 className="text-sm font-semibold text-foreground">
