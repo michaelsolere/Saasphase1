@@ -127,7 +127,7 @@ async function getOrCreateDraftReservation(
   await page
     .getByRole("button", { name: "Créer une réservation brouillon" })
     .click();
-  await expect(page).toHaveURL(/reservation_status=created/);
+  await expect(page).toHaveURL(/\/reservations\/[0-9a-f-]+/);
 
   return await expect
     .poll(async () => {
@@ -150,6 +150,111 @@ async function getOrCreateDraftReservation(
 
       return reservation.id;
     });
+}
+
+async function createPreReservationPaymentFixture(
+  supabase: SupabaseTestClient,
+) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
+
+  const contactId = randomUUID();
+  const applicationId = randomUUID();
+  const reservationId = randomUUID();
+  const paymentId = randomUUID();
+  const suffix = reservationId.slice(0, 8);
+  const displayName = `Pre Reservation Payment ${suffix}`;
+
+  const { error: contactError } = await supabase.from("contacts").insert({
+    id: contactId,
+    organization_id: organizationId,
+    contact_type: "person",
+    first_name: "Pre Reservation",
+    last_name: `Payment ${suffix}`,
+    display_name: displayName,
+    email: `pre-reservation-payment-${suffix}@example.invalid`,
+    origin_channel: "manual",
+    primary_status: "active",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (contactError) {
+    throw new Error(`create pre-reservation contact: ${contactError.message}`);
+  }
+
+  const { error: applicationError } = await supabase.from("applications").insert({
+    id: applicationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    species: "dog",
+    breed: "Golden Retriever",
+    desired_period: "Test pre-reservation payment",
+    desired_sex_preference: "no_preference",
+    desired_quantity: 1,
+    project_description:
+      "Fixture e2e dédiée à la validation d'un paiement de pré-réservation.",
+    status: "qualified",
+    submitted_at: "2026-04-01T10:00:00+00:00",
+    reviewed_at: "2026-04-01T12:00:00+00:00",
+    reviewed_by: user.id,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (applicationError) {
+    throw new Error(
+      `create pre-reservation application: ${applicationError.message}`,
+    );
+  }
+
+  const { error: reservationError } = await supabase.from("reservations").insert({
+    id: reservationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    application_id: applicationId,
+    species: "dog",
+    breed: "Golden Retriever",
+    reserved_sex_preference: "no_preference",
+    status: "pre_reservation_requested",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (reservationError) {
+    throw new Error(
+      `create pre-reservation reservation: ${reservationError.message}`,
+    );
+  }
+
+  const { error: paymentError } = await supabase.from("payments").insert({
+    id: paymentId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    reservation_id: reservationId,
+    amount_cents: 25000,
+    currency: "EUR",
+    payment_type: "arrhes",
+    status: "requested",
+    payment_method: "bank_transfer",
+    requested_at: "2026-04-02T10:00:00+00:00",
+    due_date: "2026-04-17",
+    notes: "Demande 1/2 — avance sur arrhes de pré-réservation.",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (paymentError) {
+    throw new Error(`create pre-reservation payment: ${paymentError.message}`);
+  }
+
+  return { paymentId, reservationId };
 }
 
 test("confirms a draft reservation manually without side effects", async ({
@@ -204,7 +309,9 @@ test("confirms a draft reservation manually without side effects", async ({
   await page.getByRole("button", { name: "Confirmer la réservation" }).click();
   await expect(page).toHaveURL(/activation_status=success/);
   await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(
+    page.locator("#reservation-details").getByText("Active", { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Confirmer la réservation" }),
   ).toHaveCount(0);
@@ -225,4 +332,43 @@ test("confirms a draft reservation manually without side effects", async ({
   expect(await countRows(supabase, "notes", reservationId)).toBe(
     noteCountBefore,
   );
+});
+
+test("marks a 250 euro pre-reservation payment as paid from reservation detail", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { paymentId, reservationId } =
+    await createPreReservationPaymentFixture(supabase);
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await expect(
+    page.getByRole("heading", { name: "Pré-réservation demandée" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Marquer payé" }).click();
+  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(/payment_mark_status=success/);
+  await expect(
+    page.getByRole("heading", { name: "Pré-réservation payée" }),
+  ).toBeVisible();
+
+  const updatedReservation = await readReservation(supabase, reservationId);
+  expect(updatedReservation.status).toBe("pre_reservation_paid");
+
+  const updatedPayment = expectSupabaseData(
+    await supabase
+      .from("payments")
+      .select("id, status, paid_at")
+      .eq("id", paymentId)
+      .single(),
+    "read updated pre-reservation payment",
+  );
+  expect(updatedPayment.status).toBe("paid");
+  expect(updatedPayment.paid_at).not.toBeNull();
 });

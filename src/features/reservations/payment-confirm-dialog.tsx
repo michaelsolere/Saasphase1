@@ -1,15 +1,15 @@
 "use client";
 
+import { useState } from "react";
+
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { markReservationPaymentAsPaid } from "@/features/payments/actions";
@@ -27,23 +27,25 @@ export function PaymentConfirmDialog({
   typeLabel: string;
   dueDateLabel: string | null;
 }) {
+  const [open, setOpen] = useState(false);
+
   return (
-    <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/60 hover:text-emerald-800"
-        >
-          Marquer payé
-        </Button>
-      </AlertDialogTrigger>
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setOpen(true)}
+        className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100/60 hover:text-emerald-800"
+      >
+        Marquer payé
+      </Button>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Confirmer le paiement reçu</AlertDialogTitle>
           <AlertDialogDescription>
-            Cette action marquera ce paiement comme payé aujourd’hui. Elle ne
-            modifiera pas le statut de la réservation.
+            Cette action marquera ce paiement comme payé aujourd’hui. Pour une
+            demande d’arrhes de 250 € liée à une pré-réservation demandée, le
+            dossier passera en pré-réservation payée.
           </AlertDialogDescription>
         </AlertDialogHeader>
 
@@ -60,17 +62,7 @@ export function PaymentConfirmDialog({
             <AlertDialogCancel type="button">Annuler</AlertDialogCancel>
             <input type="hidden" name="payment_id" value={paymentId} />
             <input type="hidden" name="reservation_id" value={reservationId} />
-            <AlertDialogAction asChild>
-              <button
-                type="submit"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.currentTarget.form?.requestSubmit();
-                }}
-              >
-                Confirmer le paiement
-              </button>
-            </AlertDialogAction>
+            <Button type="submit">Confirmer le paiement</Button>
           </AlertDialogFooter>
         </form>
       </AlertDialogContent>

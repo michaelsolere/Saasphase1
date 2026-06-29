@@ -24,6 +24,53 @@ function isUuid(value: string) {
   return uuidRegex.test(value);
 }
 
+async function markLinkedPreReservationAsPaidIfNeeded({
+  supabase,
+  reservationId,
+  paymentType,
+  amountCents,
+  userId,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  reservationId: string | null;
+  paymentType: string;
+  amountCents: number;
+  userId: string;
+}) {
+  if (!reservationId || paymentType !== "arrhes" || amountCents !== 25000) {
+    return;
+  }
+
+  const { data: reservation } = await supabase
+    .from("reservations")
+    .select("id, status")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (!reservation || reservation.status !== "pre_reservation_requested") {
+    return;
+  }
+
+  const { error: resUpdateError } = await supabase
+    .from("reservations")
+    .update({
+      status: "pre_reservation_paid",
+      updated_at: new Date().toISOString(),
+      updated_by: userId,
+    })
+    .eq("id", reservationId)
+    .eq("status", "pre_reservation_requested")
+    .is("deleted_at", null);
+
+  if (resUpdateError) {
+    console.error(
+      "Failed to update reservation status to pre_reservation_paid:",
+      resUpdateError,
+    );
+  }
+}
+
 export async function createReservationPayment(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
@@ -272,35 +319,13 @@ export async function markPaymentAsPaid(formData: FormData) {
     redirect(`/payments/${paymentId}?payment_mark_status=error`);
   }
 
-  // Si le paiement est lié à une pré-réservation et correspond au premier versement de 250 € d'arrhes,
-  // on fait passer la réservation au statut pre_reservation_paid.
-  if (
-    payment.reservation_id &&
-    payment.payment_type === "arrhes" &&
-    payment.amount_cents === 25000
-  ) {
-    const { data: reservation } = await supabase
-      .from("reservations")
-      .select("id, status")
-      .eq("id", payment.reservation_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (reservation && reservation.status === "pre_reservation_requested") {
-      const { error: resUpdateError } = await supabase
-        .from("reservations")
-        .update({
-          status: "pre_reservation_paid",
-          updated_at: new Date().toISOString(),
-          updated_by: user.id,
-        })
-        .eq("id", payment.reservation_id);
-
-      if (resUpdateError) {
-        console.error("Failed to update reservation status to pre_reservation_paid:", resUpdateError);
-      }
-    }
-  }
+  await markLinkedPreReservationAsPaidIfNeeded({
+    supabase,
+    reservationId: payment.reservation_id,
+    paymentType: payment.payment_type,
+    amountCents: payment.amount_cents,
+    userId: user.id,
+  });
 
   // 8. Revalidation des chemins
   revalidatePath(`/payments/${paymentId}`);
@@ -348,7 +373,7 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
 
   const { data: payment, error: paymentError } = await supabase
     .from("payments")
-    .select("id, organization_id, reservation_id, status, deleted_at")
+    .select("id, organization_id, reservation_id, status, deleted_at, amount_cents, payment_type")
     .eq("id", paymentId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -386,6 +411,14 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
   if (updateError || !updatedPayment) {
     redirect(reservationPaymentMarkUrl(reservationId, "error"));
   }
+
+  await markLinkedPreReservationAsPaidIfNeeded({
+    supabase,
+    reservationId: payment.reservation_id,
+    paymentType: payment.payment_type,
+    amountCents: payment.amount_cents,
+    userId: user.id,
+  });
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");

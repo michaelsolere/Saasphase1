@@ -1178,6 +1178,26 @@ export async function launchPreReservationCampaign(formData: FormData) {
       reservationId = newReservation.id;
     }
 
+    const { data: existingDepositPayments, error: existingPaymentErr } =
+      await supabase
+        .from("payments")
+        .select("id")
+        .eq("reservation_id", reservationId)
+        .eq("payment_type", "arrhes")
+        .eq("amount_cents", 25000)
+        .in("status", ["requested", "paid"])
+        .is("deleted_at", null)
+        .limit(1);
+
+    if (existingPaymentErr) {
+      errorCount++;
+      continue;
+    }
+
+    if (existingDepositPayments && existingDepositPayments.length > 0) {
+      continue;
+    }
+
     // 2. Créer la demande de paiement de 250 € (arrhes, requested, J+15)
     const { error: paymentErr } = await supabase.from("payments").insert({
       organization_id: litter.organization_id,
