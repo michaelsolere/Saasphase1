@@ -22,6 +22,7 @@ import {
   LitterFields,
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
+import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
 import {
   AttachApplicationForm,
   AttachReservationForm,
@@ -245,13 +246,20 @@ function getEventTypeLabel(value: string) {
 function RelatedAnimalsSection({
   animals,
   hasError,
+  banner,
+  footer,
 }: {
   animals: RelatedAnimal[] | null;
   hasError: boolean;
+  banner?: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+    <section id="animaux-lies" className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Animaux liés</h2>
+
+      {banner}
+      {footer}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -650,6 +658,8 @@ export default async function LitterDetailPage({
     detail_status?: string;
     attach_status?: string;
     reservation_attach_status?: string;
+    offspring_status?: string;
+    offspring_count?: string;
   }>;
 }) {
   const { id } = await params;
@@ -660,6 +670,8 @@ export default async function LitterDetailPage({
     detail_status,
     attach_status,
     reservation_attach_status,
+    offspring_status,
+    offspring_count,
   } = await searchParams;
   const supabase = await createClient();
   const {
@@ -1064,6 +1076,46 @@ export default async function LitterDetailPage({
       </p>
     ) : null;
 
+  const offspringBanner =
+    offspring_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        {offspring_count ?? "0"} animal(aux) ont été créés dans cette portée.
+        Aucune réservation n’a été modifiée.
+      </p>
+    ) : offspring_status === "empty" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Aucun animal à créer : renseignez au moins une ligne.
+      </p>
+    ) : offspring_status === "duplicate" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Un ordre de naissance ou un nom principal est déjà utilisé ou présent
+        plusieurs fois. Aucune création n’a été appliquée.
+      </p>
+    ) : offspring_status === "missing_confirmation" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        La création doit être confirmée avant insertion.
+      </p>
+    ) : offspring_status === "invalid" || offspring_status === "error" ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de créer les animaux. Aucune réservation n’a été modifiée.
+      </p>
+    ) : null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1420,6 +1472,16 @@ export default async function LitterDetailPage({
               <RelatedAnimalsSection
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
+                banner={offspringBanner}
+                footer={
+                  <OffspringCreationForm
+                    litterId={litter.id}
+                    species={litter.species}
+                    birthDate={formatLitterDate(
+                      litter.actual_birth_date ?? litter.expected_birth_date,
+                    )}
+                  />
+                }
               />
 
               <LinkedApplicationsSection

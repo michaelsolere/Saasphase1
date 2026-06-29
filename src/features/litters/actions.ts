@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database.types";
+
+type AnimalInsert = Database["public"]["Tables"]["animals"]["Insert"];
 
 const allowedLitterGroupStatuses = new Set([
   "planned",
@@ -17,6 +20,7 @@ const allowedLitterGroupStatuses = new Set([
 ]);
 
 const allowedSpecies = new Set(["dog", "cat"]);
+const allowedAnimalSexes = new Set(["male", "female", "unknown"]);
 
 const allowedLitterStatuses = new Set([
   "planned",
@@ -61,6 +65,26 @@ function litterErrorUrl(
   return `/litters/new?status=${code}`;
 }
 
+function litterOffspringUrl(
+  litterId: string,
+  outcome:
+    | "success"
+    | "empty"
+    | "invalid"
+    | "duplicate"
+    | "missing_confirmation"
+    | "error",
+  count?: number,
+) {
+  const params = new URLSearchParams({ offspring_status: outcome });
+
+  if (count !== undefined) {
+    params.set("offspring_count", String(count));
+  }
+
+  return `/litters/${litterId}?${params.toString()}#animaux-lies`;
+}
+
 function normalizeOptionalText(
   value: FormDataEntryValue | null,
   maxLength = 2_000,
@@ -95,6 +119,34 @@ function normalizeOptionalDate(value: FormDataEntryValue | null) {
   }
 
   return trimmed;
+}
+
+function parseOptionalPositiveInteger(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return { ok: true as const, value: null };
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return { ok: true as const, value: null };
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
+    return { ok: false as const };
+  }
+
+  const parsedValue = Number(trimmed);
+
+  if (!Number.isSafeInteger(parsedValue) || parsedValue <= 0) {
+    return { ok: false as const };
+  }
+
+  return { ok: true as const, value: parsedValue };
+}
+
+function getOffspringGenericName(species: string, index: number) {
+  return species === "cat" ? `Chaton ${index}` : `Chiot ${index}`;
 }
 
 /**
@@ -570,6 +622,206 @@ export async function updateLitterDetails(formData: FormData) {
   revalidatePath("/litters");
   revalidatePath(`/litters/${litterId}`);
   redirect(litterDetailEditUrl(litterId, "success"));
+}
+
+/**
+ * Crée plusieurs chiots/chatons depuis une portée existante.
+ *
+ * Cette action crée uniquement des lignes `animals` rattachées à la portée :
+ * aucune réservation, attribution, demande de paiement, document, email ou
+ * adoption n'est créé ou modifié ici.
+ */
+export async function createLitterOffspring(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+    redirect("/litters");
+  }
+
+  const litterId = rawLitterId.trim();
+
+  if (formData.get("confirm_offspring_creation") !== "yes") {
+    redirect(litterOffspringUrl(litterId, "missing_confirmation"));
+  }
+
+  const parsedRowCount = parseOptionalPositiveInteger(formData.get("row_count"));
+
+  if (!parsedRowCount.ok) {
+    redirect(litterOffspringUrl(litterId, "invalid"));
+  }
+
+  const rowCount = Math.min(parsedRowCount.value ?? 0, 12);
+
+  if (rowCount < 1) {
+    redirect(litterOffspringUrl(litterId, "empty"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select(
+      "id, organization_id, species, breed, mother_id, father_id, actual_birth_date, expected_birth_date",
+    )
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter?.organization_id) {
+    redirect(litterOffspringUrl(litterId, "error"));
+  }
+
+  const animalsToCreate: AnimalInsert[] = [];
+  const requestedBirthOrders = new Set<number>();
+  const requestedDisplayNames = new Set<string>();
+
+  for (let index = 0; index < rowCount; index += 1) {
+    const sexRaw = formData.get(`offspring_${index}_sex`);
+    const sex =
+      typeof sexRaw === "string" && allowedAnimalSexes.has(sexRaw)
+        ? sexRaw
+        : "unknown";
+    const temporaryName = normalizeOptionalText(
+      formData.get(`offspring_${index}_temporary_name`),
+      255,
+    );
+    const collarColor = normalizeOptionalText(
+      formData.get(`offspring_${index}_collar_color`),
+      255,
+    );
+    const parsedBirthOrder = parseOptionalPositiveInteger(
+      formData.get(`offspring_${index}_birth_order`),
+    );
+    const parsedBirthWeight = parseOptionalPositiveInteger(
+      formData.get(`offspring_${index}_birth_weight_grams`),
+    );
+
+    if (!parsedBirthOrder.ok || !parsedBirthWeight.ok) {
+      redirect(litterOffspringUrl(litterId, "invalid"));
+    }
+
+    const birthOrder = parsedBirthOrder.value;
+    const birthWeightGrams = parsedBirthWeight.value;
+    const hasExplicitValue = Boolean(
+      temporaryName ||
+        collarColor ||
+        birthOrder ||
+        birthWeightGrams ||
+        sex !== "unknown",
+    );
+
+    if (!hasExplicitValue) {
+      continue;
+    }
+
+    if (birthOrder) {
+      if (requestedBirthOrders.has(birthOrder)) {
+        redirect(litterOffspringUrl(litterId, "duplicate"));
+      }
+      requestedBirthOrders.add(birthOrder);
+    }
+
+    const fallbackName = getOffspringGenericName(
+      litter.species,
+      birthOrder ?? animalsToCreate.length + 1,
+    );
+    const displayName =
+      temporaryName || (collarColor ? `Collier ${collarColor}` : fallbackName);
+
+    if (requestedDisplayNames.has(displayName)) {
+      redirect(litterOffspringUrl(litterId, "duplicate"));
+    }
+
+    requestedDisplayNames.add(displayName);
+
+    animalsToCreate.push({
+      organization_id: litter.organization_id,
+      litter_id: litter.id,
+      species: litter.species,
+      breed: litter.breed,
+      mother_id: litter.mother_id,
+      father_id: litter.father_id,
+      birth_date: litter.actual_birth_date ?? litter.expected_birth_date,
+      status: "born",
+      ownership_status: "produced",
+      sex,
+      display_name: displayName,
+      temporary_name: temporaryName,
+      collar_color_initial: collarColor,
+      collar_color_current: collarColor,
+      birth_order: birthOrder,
+      birth_weight_grams: birthWeightGrams,
+      created_by: user.id,
+      updated_by: user.id,
+    });
+  }
+
+  if (animalsToCreate.length === 0) {
+    redirect(litterOffspringUrl(litterId, "empty"));
+  }
+
+  const birthOrders = Array.from(requestedBirthOrders);
+
+  if (birthOrders.length > 0) {
+    const { data: existingAnimals, error: existingError } = await supabase
+      .from("animals")
+      .select("id")
+      .eq("organization_id", litter.organization_id)
+      .eq("litter_id", litter.id)
+      .in("birth_order", birthOrders)
+      .is("deleted_at", null)
+      .limit(1);
+
+    if (existingError) {
+      redirect(litterOffspringUrl(litterId, "error"));
+    }
+
+    if (existingAnimals && existingAnimals.length > 0) {
+      redirect(litterOffspringUrl(litterId, "duplicate"));
+    }
+  }
+
+  const displayNames = Array.from(requestedDisplayNames);
+
+  if (displayNames.length > 0) {
+    const { data: existingNamedAnimals, error: existingNamedError } =
+      await supabase
+        .from("animals")
+        .select("id")
+        .eq("organization_id", litter.organization_id)
+        .eq("litter_id", litter.id)
+        .in("display_name", displayNames)
+        .is("deleted_at", null)
+        .limit(1);
+
+    if (existingNamedError) {
+      redirect(litterOffspringUrl(litterId, "error"));
+    }
+
+    if (existingNamedAnimals && existingNamedAnimals.length > 0) {
+      redirect(litterOffspringUrl(litterId, "duplicate"));
+    }
+  }
+
+  const { error: insertError } = await supabase
+    .from("animals")
+    .insert(animalsToCreate);
+
+  if (insertError) {
+    redirect(litterOffspringUrl(litterId, "error"));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath("/litters");
+  revalidatePath(`/litters/${litterId}`);
+  redirect(litterOffspringUrl(litterId, "success", animalsToCreate.length));
 }
 
 function litterGroupAssignmentUrl(
