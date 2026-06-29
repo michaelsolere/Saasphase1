@@ -869,7 +869,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 1. Relire la réservation
   const { data: reservation, error: readResError } = await supabase
     .from("reservations")
-    .select("id, organization_id, animal_id, litter_id, status, deleted_at")
+    .select("id, organization_id, animal_id, animal_assignment_locked, litter_id, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -881,6 +881,10 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 2. Vérifier si un animal est déjà attribué
   if (reservation.animal_id) {
     redirect(`/reservations/${reservationId}?animal_assign_status=already_assigned#scope-and-animal`);
+  }
+
+  if (reservation.animal_assignment_locked) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
   // 3. Vérifier que la réservation n'est pas finale
@@ -932,17 +936,22 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
-  // 9. Mettre à jour
+  const now = new Date().toISOString();
+
+  // 9. Mettre à jour la réservation
   const { data: updatedReservation, error: updateError } = await supabase
     .from("reservations")
     .update({
       animal_id: animalId,
-      animal_assigned_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      animal_assigned_at: now,
+      status: "animal_assigned",
+      updated_at: now,
       updated_by: user.id,
     })
     .eq("id", reservationId)
     .eq("organization_id", reservation.organization_id)
+    .eq("status", reservation.status)
+    .eq("animal_assignment_locked", false)
     .is("animal_id", null)
     .is("deleted_at", null)
     .select("id")
@@ -950,6 +959,26 @@ export async function assignAnimalToReservation(formData: FormData) {
 
   if (updateError || !updatedReservation) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
+  }
+
+  if (animal.status === "born" || animal.status === "available") {
+    const { data: updatedAnimal, error: animalUpdateError } = await supabase
+      .from("animals")
+      .update({
+        status: "reserved",
+        updated_at: now,
+        updated_by: user.id,
+      })
+      .eq("id", animal.id)
+      .eq("organization_id", reservation.organization_id)
+      .in("status", ["born", "available"])
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (animalUpdateError || !updatedAnimal) {
+      redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
+    }
   }
 
   revalidatePath("/reservations");
@@ -979,7 +1008,7 @@ export async function unassignAnimalFromReservation(formData: FormData) {
   // 1. Relire la réservation
   const { data: reservation, error: readResError } = await supabase
     .from("reservations")
-    .select("id, organization_id, animal_id, status, deleted_at")
+    .select("id, organization_id, animal_id, animal_assignment_locked, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -994,26 +1023,68 @@ export async function unassignAnimalFromReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_unassign_status=no_animal#scope-and-animal`);
   }
 
+  if (reservation.animal_assignment_locked) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state#scope-and-animal`);
+  }
+
   // 3. Vérifier que la réservation n'est pas finale
   if (isFinalReservationStatus(reservation.status)) {
     redirect(`/reservations/${reservationId}?animal_unassign_status=invalid_state#scope-and-animal`);
   }
 
+  const now = new Date().toISOString();
+
   // 4. Mettre à jour la réservation
-  const { error: updateError } = await supabase
+  const { data: updatedReservation, error: updateError } = await supabase
     .from("reservations")
     .update({
       animal_id: null,
       animal_assigned_at: null,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
       updated_by: user.id,
     })
     .eq("id", reservationId)
     .eq("organization_id", reservation.organization_id)
-    .is("deleted_at", null);
+    .eq("animal_id", animalId)
+    .eq("animal_assignment_locked", false)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (updateError) {
+  if (updateError || !updatedReservation) {
     redirect(`/reservations/${reservationId}?animal_unassign_status=error#scope-and-animal`);
+  }
+
+  const { data: activeReservationsForAnimal, error: activeReservationsError } =
+    await supabase
+      .from("reservations")
+      .select("id")
+      .eq("organization_id", reservation.organization_id)
+      .eq("animal_id", animalId)
+      .is("deleted_at", null)
+      .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`)
+      .limit(1);
+
+  if (activeReservationsError) {
+    redirect(`/reservations/${reservationId}?animal_unassign_status=error#scope-and-animal`);
+  }
+
+  if (!activeReservationsForAnimal || activeReservationsForAnimal.length === 0) {
+    const { error: animalUpdateError } = await supabase
+      .from("animals")
+      .update({
+        status: "available",
+        updated_at: now,
+        updated_by: user.id,
+      })
+      .eq("id", animalId)
+      .eq("organization_id", reservation.organization_id)
+      .eq("status", "reserved")
+      .is("deleted_at", null);
+
+    if (animalUpdateError) {
+      redirect(`/reservations/${reservationId}?animal_unassign_status=error#scope-and-animal`);
+    }
   }
 
   // 5. Revalidations
