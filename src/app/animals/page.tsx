@@ -294,6 +294,12 @@ export default async function AnimalsPage({
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link
+              href="/animals/new"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Nouvel animal
+            </Link>
+            <Link
               href="/litters"
               className="text-sm font-semibold text-accent hover:underline"
             >
