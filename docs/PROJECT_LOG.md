@@ -13,9 +13,9 @@ Il doit être mis à jour après chaque PR significative, afin de conserver :
 ## État actuel
 
 Branche principale : `main`
-Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires, et fiche `/reservations/[id]` consolidée comme centre opérationnel du dossier adoptant. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement. La fiche Réservation utilise désormais shadcn/ui de façon ciblée pour alléger les formulaires permanents et confirmer les actions sensibles, sans automatisation métier.
+Dernier état connu : chaîne candidature → réservation → paiement → animal validée globalement, fiches métier interconnectées, tableau de bord de flux simple disponible, paramètres élevage/vendeur/documents ajoutés, page `/documents/[id]` stabilisée comme écran de prévisualisation complète des données sources et d'aperçus internes documentaires, et fiche `/reservations/[id]` consolidée comme centre opérationnel du dossier adoptant. Les aperçus internes couvrent désormais le certificat d'engagement, le contrat de réservation et l'attestation de vente, sans génération réelle de document. La facture est cadrée métier/documentairement, mais n'est pas implémentée techniquement. La fiche Réservation utilise désormais shadcn/ui de façon ciblée pour alléger les formulaires permanents, réorganiser le cockpit et confirmer les actions sensibles, sans automatisation métier.
 Dernier commit connu : `2335e235 Merge pull request #212 from michaelsolere/feature/res-ux-12-note-dialog`
-Documentation projet à jour jusqu'à PR212.
+Documentation projet à jour jusqu'au lot cockpit Réservation / actions sensibles.
 
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
@@ -368,6 +368,22 @@ Objectif : clarifier la préparation du départ et sécuriser la finalisation ma
 * aucune création automatique de paiement, document, email, facture, PDF, signature ou upload.
 
 Hors périmètre conservé : aucun code applicatif ajouté ici, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
+
+## Mise à jour cockpit Réservation / actions sensibles
+
+Objectif : documenter l'état récent du cockpit Réservation après réorganisation visuelle et sécurisation des actions métier sensibles.
+
+État documenté :
+
+* cockpit Réservation réorganisé et plus lisible ;
+* sections finances, documents, animal et préparation départ mieux positionnées ;
+* libellés harmonisés : `1/2`, `2/2`, animal attribué et adoption ;
+* notes post-finalisation clarifiées ;
+* confirmations ajoutées pour annuler, désistement et expirer ;
+* aucune action négative ne crée automatiquement paiement, document, email, facture ou remboursement ;
+* actions sensibles masquées selon le statut final de la réservation.
+
+Hors périmètre conservé : aucun code applicatif ajouté ici, aucune refonte documentaire, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
 
 ## Mise à jour documentaire — PR193 à PR197
 
