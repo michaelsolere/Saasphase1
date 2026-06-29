@@ -41,6 +41,18 @@ Objectif : consolider le module Animaux autour des animaux produits, des reprodu
 * filtres métier Animaux : reproducteurs maison/extérieurs, nés, disponibles, réservés, gardés, adoptés, retraités, sexe, origine et portée ;
 * photos et médias non implémentés à ce stade, avec futur lien `media.animal_id` préservé.
 
+### Édition légère Animal
+
+Objectif : permettre une édition courte depuis `/animals/[id]/edit` sans modifier les liens métier structurants.
+
+État documenté :
+
+* champs modifiables : nom, identification, couleur et robe ;
+* date de naissance modifiable seulement si l'animal n'est lié à aucune portée ;
+* champs structurels en lecture seule : statut, origine, sexe, espèce, race, parents, portée, reproducteur, extérieur et retraité ;
+* garde-fou serveur : les champs structurels injectés sont ignorés ;
+* aucun impact sur réservation, portée, adoption, paiement, document ou média.
+
 Hors périmètre conservé : aucun code applicatif, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
 
 ## Jalon pré-réservation 1/2 — 250 €
