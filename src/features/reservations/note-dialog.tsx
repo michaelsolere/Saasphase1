@@ -14,14 +14,16 @@ import {
 
 export function ReservationNoteDialog({
   noteForm,
+  triggerLabel = "+ Ajouter une note interne",
 }: {
   noteForm: ReactNode;
+  triggerLabel?: string;
 }) {
   return (
     <Dialog>
       <DialogTrigger asChild>
         <Button type="button" className="w-full sm:w-auto">
-          + Ajouter une note interne
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">

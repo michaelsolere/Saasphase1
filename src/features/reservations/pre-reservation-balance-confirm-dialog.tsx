@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { requestPreReservationBalance } from "@/features/reservations/actions";
 
 const confirmationText =
-  "Créer une demande 2/2 de 250 € d’arrhes ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.";
+  "Créer le complément 2/2 — 250 € ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.";
 
 export function PreReservationBalanceConfirmDialog({
   reservationId,
@@ -36,13 +36,13 @@ export function PreReservationBalanceConfirmDialog({
         className={buttonClassName}
       >
         {compactLabel
-          ? "Demander le complément d’arrhes (250 €)"
-          : "Demander le complément des arrhes"}
+          ? "Complément 2/2 — 250 €"
+          : "Demander le complément 2/2 — 250 €"}
       </Button>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Créer une demande 2/2 de 250 € d’arrhes ?
+            Créer le complément 2/2 — 250 € ?
           </AlertDialogTitle>
           <AlertDialogDescription>{confirmationText}</AlertDialogDescription>
         </AlertDialogHeader>

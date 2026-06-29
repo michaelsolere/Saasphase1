@@ -1058,15 +1058,15 @@ export default async function ReservationDetailPage({
     : null;
 
   const sectionNavItems = [
-    { href: "#quick-actions", label: "Actions rapides" },
+    { href: "#payments", label: "Finances" },
+    { href: "#documents", label: "Documents" },
+    { href: "#scope-and-animal", label: "Animal attribué" },
     { href: "#adoption-preparation", label: "Préparation départ" },
+    { href: "#notes", label: "Notes internes" },
+    { href: "#quick-actions", label: "Actions / statut" },
     { href: "#contact-details", label: "Dossier adoptant" },
     { href: "#application-details", label: "Candidature / projet" },
     { href: "#reservation-details", label: "Réservation" },
-    { href: "#scope-and-animal", label: "Portée / animal" },
-    { href: "#payments", label: "Paiements" },
-    { href: "#documents", label: "Documents" },
-    { href: "#notes", label: "Notes" },
     { href: "#history", label: "Historique" },
   ];
 
@@ -1216,7 +1216,7 @@ export default async function ReservationDetailPage({
                 role="status"
                 className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
               >
-                La demande de complément des arrhes a bien été créée.
+                Le complément 2/2 — 250 € a bien été créé.
               </p>
             ) : null}
 
@@ -1225,7 +1225,7 @@ export default async function ReservationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                La demande de complément des arrhes n’a pas pu être créée. Aucune donnée n’a été modifiée.
+                Le complément 2/2 — 250 € n’a pas pu être créé. Aucune donnée n’a été modifiée.
               </p>
             ) : null}
 
@@ -1674,9 +1674,9 @@ export default async function ReservationDetailPage({
             </section>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="space-y-6">
+              <div className="flex flex-col gap-6">
                 {/* 1. Actions rapides cockpit */}
-                <section id="quick-actions" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                <section id="quick-actions" className="order-[70] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
                     <div>
                       <h2 className="text-xl font-semibold text-foreground">Actions rapides</h2>
@@ -1702,6 +1702,11 @@ export default async function ReservationDetailPage({
                         <div className="flex flex-wrap gap-2">
                           <ReservationNoteDialog
                             noteForm={<ReservationNoteForm reservationId={id} />}
+                            triggerLabel={
+                              reservationIsFinal
+                                ? "+ Ajouter une note de suivi interne"
+                                : undefined
+                            }
                           />
                         </div>
 
@@ -1761,7 +1766,7 @@ export default async function ReservationDetailPage({
                           Finances
                         </h3>
                         <p className="text-xs text-muted mt-2 leading-relaxed">
-                          Enregistrer les encaissements ou les remboursements, ou demander le complément d&apos;arrhes.
+                          Enregistrer les encaissements ou les remboursements, ou demander le complément 2/2 — 250 €.
                         </p>
                       </div>
                       <div className="space-y-3 pt-2">
@@ -1910,7 +1915,7 @@ export default async function ReservationDetailPage({
                 </section>
 
                 {/* 2. Section Dossier Adoptant */}
-                <section id="adoption-preparation" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                <section id="adoption-preparation" className="order-[40] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
                     <div>
                       <h2 className="text-xl font-semibold text-foreground">
@@ -1997,7 +2002,7 @@ export default async function ReservationDetailPage({
                 </section>
 
                 {/* 3. Section Dossier Adoptant */}
-                <section id="contact-details" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                <section id="contact-details" className="order-[80] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
                     <div>
                       <h2 className="text-xl font-semibold text-foreground">Dossier adoptant</h2>
@@ -2088,7 +2093,7 @@ export default async function ReservationDetailPage({
                 </section>
 
                 {/* 3. Section Candidature / Projet */}
-                <section id="application-details" className="rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
+                <section id="application-details" className="order-[81] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
                     <div>
                       <h2 className="text-xl font-semibold text-foreground">Candidature / Projet</h2>
@@ -2164,7 +2169,7 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
 
-                <section id="reservation-details" className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="reservation-details" className="order-[71] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Informations de la réservation
                   </h2>
@@ -2229,7 +2234,7 @@ export default async function ReservationDetailPage({
                             Dossier en pré-réservation payée
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément d’arrhes n’est demandé automatiquement à ce stade.
+                            Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — 250 € n’est demandé automatiquement à ce stade.
                           </p>
                         </>
                       )}
@@ -2346,11 +2351,9 @@ export default async function ReservationDetailPage({
                                   value={id}
                                 />
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
-                                  Cette action annule manuellement la réservation. Elle ne
-                                  crée aucun remboursement, ne modifie aucun paiement, ne
-                                  crée ni document ni note, ne modifie pas l’animal, ne
-                                  retire pas automatiquement l’attribution, et ne modifie
-                                  ni tarif, ni commentaire, ni échéance.
+                                  Annule manuellement la réservation sans créer
+                                  de remboursement ni modifier les paiements,
+                                  documents ou l’animal attribué.
                                 </p>
                                 <button
                                   type="submit"
@@ -2367,12 +2370,9 @@ export default async function ReservationDetailPage({
                                   value={id}
                                 />
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
-                                  Cette action enregistre manuellement un désistement ou
-                                  retrait du candidat ou adoptant. Elle ne crée aucun
-                                  remboursement, ne modifie aucun paiement, ne crée ni
-                                  document ni note, ne modifie pas l’animal, ne retire
-                                  pas automatiquement l’attribution, et ne modifie ni
-                                  tarif, ni commentaire, ni échéance.
+                                  Enregistre le désistement sans créer de
+                                  remboursement ni modifier les paiements,
+                                  documents ou l’animal attribué.
                                 </p>
                                 <button
                                   type="submit"
@@ -2389,13 +2389,9 @@ export default async function ReservationDetailPage({
                                   value={id}
                                 />
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
-                                  Cette action marque manuellement la réservation comme
-                                  expirée. Elle ne crée aucun remboursement, ne modifie
-                                  aucun paiement, ne crée ni document ni note, ne modifie
-                                  pas l’animal, ne retire pas automatiquement
-                                  l’attribution, ne modifie ni tarif, ni commentaire, ni
-                                  échéance, et ne lance aucune automatisation liée à
-                                  l’échéance de pré-réservation.
+                                  Marque la réservation comme expirée sans
+                                  automatisation liée à l’échéance de
+                                  pré-réservation.
                                 </p>
                                 <button
                                   type="submit"
@@ -2414,7 +2410,7 @@ export default async function ReservationDetailPage({
                           {canRequestPreReservationBalance ? (
                             <div className="mt-4">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Cette action va émettre la deuxième demande de paiement de 250 € pour finaliser le complément des arrhes (total attendu : 500 €).
+                                Cette action crée le complément 2/2 — 250 € pour atteindre 500 € d’arrhes.
                               </p>
                               <PreReservationBalanceConfirmDialog
                                 reservationId={id}
@@ -2426,9 +2422,9 @@ export default async function ReservationDetailPage({
                               <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
                                 <p className="text-sm text-slate-700">
                                   {hasSecondPaid ? (
-                                    "Le complément des arrhes a été payé (2/2 payés)."
+                                    "Complément 2/2 — 250 € payé."
                                   ) : (
-                                    "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise."
+                                    "Complément 2/2 — 250 € demandé."
                                   )}
                                 </p>
                               </div>
@@ -2559,8 +2555,8 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
-                <section id="scope-and-animal" className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">Attribution et portée</h2>
+                <section id="scope-and-animal" className="order-[30] rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">Animal attribué et portée</h2>
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem
                       label="Portée"
@@ -2747,10 +2743,10 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section className="order-[31] rounded-2xl border bg-surface p-6 sm:p-8">
                   <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                     <div>
-                      <h2 className="text-xl font-semibold">Animal lié</h2>
+                      <h2 className="text-xl font-semibold">Animal attribué</h2>
                       {relatedAnimal ? (
                         <p className="mt-2 text-sm text-muted">
                           {getAnimalDisplayName(relatedAnimal)}
@@ -2890,7 +2886,7 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section className="order-[72] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">Priorité et suivi</h2>
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem
@@ -2960,7 +2956,7 @@ export default async function ReservationDetailPage({
                 </section>
 
                 {reservation.status === "adopted" ? (
-                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <section className="order-[41] rounded-2xl border bg-surface p-6 sm:p-8">
                     <h2 className="text-xl font-semibold">
                       Suivi post-adoption
                     </h2>
@@ -3030,7 +3026,7 @@ export default async function ReservationDetailPage({
                   </section>
                 ) : null}
 
-                <section id="notes" className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="notes" className="order-[50] rounded-2xl border bg-surface p-6 sm:p-8">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                     <div>
                       <h2 className="text-xl font-semibold">
@@ -3093,11 +3089,16 @@ export default async function ReservationDetailPage({
                   <div className="mt-6 border-t pt-6">
                     <ReservationNoteDialog
                       noteForm={<ReservationNoteForm reservationId={id} />}
+                      triggerLabel={
+                        reservationIsFinal
+                          ? "+ Ajouter une note de suivi interne"
+                          : undefined
+                      }
                     />
                   </div>
                 </section>
 
-                <section id="history" className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="history" className="order-[90] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
                     Événements liés
                   </h2>
@@ -3156,7 +3157,7 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
 
-                <section id="payments" className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="payments" className="order-[10] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
                     Paiements liés
                   </h2>
@@ -3317,7 +3318,7 @@ export default async function ReservationDetailPage({
                   ) : null}
                 </section>
 
-                <section id="documents" className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <section id="documents" className="order-[20] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
                     Documents liés
                   </h2>
