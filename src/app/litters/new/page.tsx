@@ -16,8 +16,10 @@ const errorMessages: Record<string, string> = {
   name_required: "Le nom de la portée est obligatoire.",
   same_parents: "La mère et le père doivent être différents.",
   invalid_group: "Le groupe de portées sélectionné est invalide.",
-  invalid_mother: "La mère sélectionnée est invalide.",
-  invalid_father: "Le père sélectionné est invalide.",
+  invalid_mother:
+    "La mère sélectionnée est introuvable, inaccessible ou non éligible pour cette portée.",
+  invalid_father:
+    "Le père sélectionné est introuvable, inaccessible ou non éligible pour cette portée.",
   error: "Impossible de créer la portée pour le moment.",
 };
 

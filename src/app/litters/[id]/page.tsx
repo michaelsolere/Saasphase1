@@ -765,8 +765,10 @@ export default async function LitterDetailPage({
     invalid_species: "L’espèce sélectionnée est invalide.",
     invalid_status: "Le statut sélectionné est invalide.",
     same_parents: "La mère et le père doivent être différents.",
-    invalid_mother: "La mère sélectionnée est invalide.",
-    invalid_father: "Le père sélectionné est invalide.",
+    invalid_mother:
+      "La mère sélectionnée est introuvable, inaccessible ou non éligible pour cette portée.",
+    invalid_father:
+      "Le père sélectionné est introuvable, inaccessible ou non éligible pour cette portée.",
     error: "Impossible de modifier la portée pour le moment.",
   };
 

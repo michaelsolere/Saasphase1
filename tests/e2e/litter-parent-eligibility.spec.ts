@@ -16,6 +16,7 @@ type ParentSeed = {
   is_breeder: boolean;
   is_external?: boolean;
   is_retired?: boolean;
+  litter_id?: string | null;
 };
 
 async function login(page: Page) {
@@ -48,11 +49,25 @@ test("secures litter parent choices in UI and server actions", async ({
 
   const supabase = await createAuthenticatedSupabaseClient();
   const suffix = randomUUID().slice(0, 8);
+  const sourceLitterId = randomUUID();
+
+  const { error: sourceLitterError } = await supabase.from("litters").insert({
+    id: sourceLitterId,
+    organization_id: organizationId,
+    name: `QA portee source parent ${suffix}`,
+    species: "dog",
+    breed: "Golden Retriever",
+    status: "closed",
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(sourceLitterError).toBeNull();
 
   const parents: ParentSeed[] = [
     {
       id: randomUUID(),
-      label: `QA mere valide ${suffix}`,
+      label: `QA mere maison valide ${suffix}`,
       sex: "female",
       status: "breeding",
       ownership_status: "owned",
@@ -60,11 +75,47 @@ test("secures litter parent choices in UI and server actions", async ({
     },
     {
       id: randomUUID(),
-      label: `QA pere valide ${suffix}`,
+      label: `QA pere maison valide ${suffix}`,
       sex: "male",
       status: "breeding",
       ownership_status: "owned",
       is_breeder: true,
+    },
+    {
+      id: randomUUID(),
+      label: `QA mere exterieure valide ${suffix}`,
+      sex: "female",
+      status: "breeding",
+      ownership_status: "external_female",
+      is_breeder: true,
+      is_external: true,
+    },
+    {
+      id: randomUUID(),
+      label: `QA pere exterieur valide ${suffix}`,
+      sex: "male",
+      status: "breeding",
+      ownership_status: "external_stud",
+      is_breeder: true,
+      is_external: true,
+    },
+    {
+      id: randomUUID(),
+      label: `QA femelle produite reproductrice ${suffix}`,
+      sex: "female",
+      status: "breeding",
+      ownership_status: "produced",
+      is_breeder: true,
+      litter_id: sourceLitterId,
+    },
+    {
+      id: randomUUID(),
+      label: `QA male produit reproducteur ${suffix}`,
+      sex: "male",
+      status: "breeding",
+      ownership_status: "produced",
+      is_breeder: true,
+      litter_id: sourceLitterId,
     },
     {
       id: randomUUID(),
@@ -76,11 +127,12 @@ test("secures litter parent choices in UI and server actions", async ({
     },
     {
       id: randomUUID(),
-      label: `QA non reproducteur ${suffix}`,
+      label: `QA chiot non reproducteur ${suffix}`,
       sex: "female",
       status: "active",
-      ownership_status: "owned",
+      ownership_status: "produced",
       is_breeder: false,
+      litter_id: sourceLitterId,
     },
     {
       id: randomUUID(),
@@ -130,6 +182,7 @@ test("secures litter parent choices in UI and server actions", async ({
       is_breeder: parent.is_breeder,
       is_external: parent.is_external ?? false,
       is_retired: parent.is_retired ?? false,
+      litter_id: parent.litter_id ?? null,
       created_by: ownerId,
       updated_by: ownerId,
     })),
@@ -146,14 +199,26 @@ test("secures litter parent choices in UI and server actions", async ({
   await expect(page.locator('select[name="father_id"]')).toContainText(
     parents[1].label,
   );
+  await expect(page.locator('select[name="mother_id"]')).toContainText(
+    parents[2].label,
+  );
+  await expect(page.locator('select[name="father_id"]')).toContainText(
+    parents[3].label,
+  );
+  await expect(page.locator('select[name="mother_id"]')).toContainText(
+    parents[4].label,
+  );
+  await expect(page.locator('select[name="father_id"]')).toContainText(
+    parents[5].label,
+  );
 
-  for (const invalidParent of parents.slice(2)) {
+  for (const invalidParent of parents.slice(6)) {
     await expect(page.locator('select[name="mother_id"]')).not.toContainText(
       invalidParent.label,
     );
   }
 
-  const invalidMotherCases = parents.slice(2);
+  const invalidMotherCases = parents.slice(6);
 
   for (const invalidMother of invalidMotherCases) {
     await page.goto("/litters/new");
@@ -173,10 +238,31 @@ test("secures litter parent choices in UI and server actions", async ({
 
   await page.goto("/litters/new");
   await page.getByLabel("Nom de la portée").fill(`Portee valide ${suffix}`);
+  await page.getByLabel("Race").fill("Berger Australien");
   await page.locator('select[name="mother_id"]').selectOption(parents[0].id);
   await page.locator('select[name="father_id"]').selectOption(parents[1].id);
   await page.getByRole("button", { name: "Créer la portée" }).click();
   await expect(page).toHaveURL(/\/litters\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("link", { name: parents[0].label })).toBeVisible();
   await expect(page.getByRole("link", { name: parents[1].label })).toBeVisible();
+
+  await expect(page.locator('select[name="mother_id"]')).toContainText(
+    parents[2].label,
+  );
+  await expect(page.locator('select[name="father_id"]')).toContainText(
+    parents[3].label,
+  );
+  await expect(page.locator('select[name="mother_id"]')).toContainText(
+    parents[4].label,
+  );
+  await expect(page.locator('select[name="father_id"]')).toContainText(
+    parents[5].label,
+  );
+
+  await page.locator('select[name="mother_id"]').selectOption(parents[4].id);
+  await page.locator('select[name="father_id"]').selectOption(parents[5].id);
+  await page.getByRole("button", { name: "Enregistrer la portée" }).click();
+  await expect(page).toHaveURL(/detail_status=success/);
+  await expect(page.getByRole("link", { name: parents[4].label })).toBeVisible();
+  await expect(page.getByRole("link", { name: parents[5].label })).toBeVisible();
 });
