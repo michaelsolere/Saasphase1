@@ -4824,6 +4824,14 @@ Le module permet désormais :
 * pas de refactor complet de `reservations/[id]/page.tsx` ;
 * pas de nouvelle migration SQL.
 
+## Jalon événements de portée
+
+La fiche Portée permet désormais d'ajouter manuellement un événement lié à la portée. L'événement est stocké dans la table `events` avec `litter_id`, puis réapparaît dans la section existante « Événements liés ».
+
+Un test e2e ciblé couvre la création depuis une fiche Portée et le réaffichage de l'événement dans cette section.
+
+Décision métier : ne pas créer de timeline artificielle uniquement à partir des quelques dates existantes de la portée. La priorité retenue est de permettre d'abord à l'éleveur de saisir des événements réels ou prévus. Une timeline et des templates réutilisables pourront être conçus plus tard à partir des événements saisis, mais les templates ne sont pas implémentés à ce stade car ils nécessiteront un cadrage de modèle dédié.
+
 ## Jalon parents de portée — éligibilité mère / père
 
 La sélection des parents de portée est désormais sécurisée en création et en édition de portée :
