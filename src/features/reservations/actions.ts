@@ -1116,44 +1116,31 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   for (const app of applications) {
     // 1. Vérifier s'il existe déjà une réservation liée à cette candidature + portée
-    const { data: existingReservation } = await supabase
-      .from("reservations")
-      .select("id, status")
-      .eq("organization_id", litter.organization_id)
-      .eq("contact_id", app.contact_id)
-      .eq("application_id", app.id)
-      .eq("litter_id", litterId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    const { data: existingReservation, error: existingReservationErr } =
+      await supabase
+        .from("reservations")
+        .select("id, status")
+        .eq("organization_id", litter.organization_id)
+        .eq("contact_id", app.contact_id)
+        .eq("application_id", app.id)
+        .eq("litter_id", litterId)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+    if (existingReservationErr) {
+      errorCount++;
+      continue;
+    }
 
     let reservationId: string | null = null;
+    let reservationStatus: string | null = null;
 
     if (existingReservation) {
-      // Si la réservation est déjà à pre_reservation_requested ou plus avancée,
-      // on ne la modifie pas — on ignore silencieusement.
-      if (existingReservation.status !== "draft") {
-        continue;
-      }
-      // Mettre à jour le brouillon existant vers pre_reservation_requested
-      const { error: updateErr } = await supabase
-        .from("reservations")
-        .update({
-          status: "pre_reservation_requested",
-          updated_at: new Date().toISOString(),
-          updated_by: user.id,
-        })
-        .eq("id", existingReservation.id)
-        .eq("organization_id", litter.organization_id)
-        .eq("status", "draft")
-        .is("deleted_at", null);
-
-      if (updateErr) {
-        errorCount++;
-        continue;
-      }
       reservationId = existingReservation.id;
+      reservationStatus = existingReservation.status;
     } else {
-      // Créer une nouvelle réservation en pre_reservation_requested
+      // Créer une nouvelle réservation en brouillon d'abord : elle ne sera
+      // promue qu'après création effective de la demande de paiement.
       const { data: newReservation, error: insertErr } = await supabase
         .from("reservations")
         .insert({
@@ -1164,7 +1151,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
           species: litter.species ?? "dog",
           breed: litter.breed ?? "Golden Retriever",
           reserved_sex_preference: app.desired_sex_preference ?? "unknown",
-          status: "pre_reservation_requested",
+          status: "draft",
           created_by: user.id,
           updated_by: user.id,
         })
@@ -1176,6 +1163,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
         continue;
       }
       reservationId = newReservation.id;
+      reservationStatus = "draft";
     }
 
     const { data: existingDepositPayments, error: existingPaymentErr } =
@@ -1194,28 +1182,62 @@ export async function launchPreReservationCampaign(formData: FormData) {
       continue;
     }
 
-    if (existingDepositPayments && existingDepositPayments.length > 0) {
+    const hasExistingDepositPayment =
+      existingDepositPayments && existingDepositPayments.length > 0;
+    const canCreateMissingDepositRequest =
+      reservationStatus === "draft" ||
+      reservationStatus === "pre_reservation_requested";
+
+    if (!hasExistingDepositPayment && !canCreateMissingDepositRequest) {
       continue;
     }
 
-    // 2. Créer la demande de paiement de 250 € (arrhes, requested, J+15)
-    const { error: paymentErr } = await supabase.from("payments").insert({
-      organization_id: litter.organization_id,
-      contact_id: app.contact_id,
-      reservation_id: reservationId,
-      amount_cents: 25000, // 250,00 €
-      currency: "EUR",
-      payment_type: "arrhes",
-      status: "requested",
-      payment_method: "bank_transfer",
-      requested_at: new Date().toISOString(),
-      due_date: dueDateStr,
-      notes: note,
-      created_by: user.id,
-      updated_by: user.id,
-    });
+    if (!hasExistingDepositPayment) {
+      // 2. Créer la demande de paiement de 250 € (arrhes, requested, J+15)
+      const { error: paymentErr } = await supabase.from("payments").insert({
+        organization_id: litter.organization_id,
+        contact_id: app.contact_id,
+        reservation_id: reservationId,
+        amount_cents: 25000, // 250,00 €
+        currency: "EUR",
+        payment_type: "arrhes",
+        status: "requested",
+        payment_method: "bank_transfer",
+        requested_at: new Date().toISOString(),
+        due_date: dueDateStr,
+        notes: note,
+        created_by: user.id,
+        updated_by: user.id,
+      });
 
-    if (paymentErr) {
+      if (paymentErr) {
+        errorCount++;
+        continue;
+      }
+    }
+
+    if (reservationStatus !== "draft") {
+      if (!hasExistingDepositPayment) {
+        successCount++;
+      }
+      continue;
+    }
+
+    // Mettre à jour le brouillon vers pre_reservation_requested uniquement
+    // après existence confirmée de la demande 250 €.
+    const { error: updateErr } = await supabase
+      .from("reservations")
+      .update({
+        status: "pre_reservation_requested",
+        updated_at: new Date().toISOString(),
+        updated_by: user.id,
+      })
+      .eq("id", reservationId)
+      .eq("organization_id", litter.organization_id)
+      .eq("status", "draft")
+      .is("deleted_at", null);
+
+    if (updateErr) {
       errorCount++;
       continue;
     }
