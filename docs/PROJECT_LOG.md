@@ -69,6 +69,14 @@ Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 �
 
 Hors périmètre conservé : aucun code applicatif ajouté ici, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
 
+### Note métier — justificatif versement 1/2 et documents reçus
+
+Le versement 1/2 de 250 € pourra donner lieu plus tard à un justificatif spécifique, mais ce document ne doit pas encore être implémenté. Son intitulé, son contenu et sa portée juridique restent à cadrer avant toute automatisation. Éviter pour l'instant les termes trop engageants comme `reçu d'arrhes` tant que le régime juridique n'est pas validé ; un libellé provisoire possible est `Justificatif de versement 1/2 — pré-réservation`.
+
+Ce versement est destiné à être inclus dans les 500 € d'arrhes si la réservation est confirmée après naissance. Le caractère remboursable jusqu'à signature du contrat de réservation doit être confirmé juridiquement avant d'être automatisé ou présenté comme règle définitive.
+
+Côté documents, conserver la distinction entre `reçu` et `reçu signé` pour les futurs parcours : `reçu` désigne un document réceptionné sans signature nécessaire, tandis que `reçu signé` désigne un document retourné signé.
+
 ## Jalon complément d'arrhes 2/2 — 250 €
 
 Objectif : sécuriser l'action manuelle `Demander le complément des arrhes` sans changer le modèle existant.
