@@ -1133,7 +1133,7 @@ export default async function LitterDetailPage({
                     value={getLitterDisplayName(litter.name, litter.id)}
                   />
                   <DetailItem
-                    label="Groupe de portée"
+                    label="Groupe de portées"
                     value={
                       litter.litter_group_id ? (
                         <Link
@@ -1197,7 +1197,8 @@ export default async function LitterDetailPage({
                 <p className="mt-1 text-sm text-muted">
                   Rattachez cette portée à un groupe de portées (période),
                   changez de groupe, ou détachez-la. Le statut de la portée
-                  n’est pas modifié.
+                  n’est pas modifié et les réservations liées ne sont pas
+                  déplacées automatiquement.
                 </p>
 
                 {group_assignment_status === "success" ? (
@@ -1423,7 +1424,7 @@ export default async function LitterDetailPage({
                       label:
                         "Rattacher une candidature existante à cette portée",
                       warning:
-                        "Cette action modifiera la portée souhaitée de la candidature.",
+                        "Cette action modifiera la portée souhaitée de la candidature et reprendra le groupe réel de cette portée.",
                     }}
                     applications={attachableApplications}
                   />
@@ -1525,7 +1526,7 @@ export default async function LitterDetailPage({
                       label:
                         "Rattacher une réservation existante à cette portée",
                       warning:
-                        "Cette action modifiera le rattachement portée/groupe de la réservation.",
+                        "Cette action modifiera le rattachement de la réservation vers cette portée et conservera le groupe réel de la portée.",
                     }}
                     reservations={attachableReservations}
                   />

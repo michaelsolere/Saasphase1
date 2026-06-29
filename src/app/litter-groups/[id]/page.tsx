@@ -742,7 +742,7 @@ export default async function LitterGroupDetailPage({
                       label:
                         "Rattacher une candidature existante à ce groupe",
                       warning:
-                        "Cette action modifiera la période souhaitée de la candidature (groupe), sans portée précise.",
+                        "Cette action modifiera la période souhaitée de la candidature vers ce groupe, sans imposer de portée.",
                     }}
                     applications={attachableApplications}
                   />
@@ -843,7 +843,7 @@ export default async function LitterGroupDetailPage({
                     groupId: group.id,
                     label: "Rattacher une réservation existante à ce groupe",
                     warning:
-                      "Cette action modifiera le rattachement portée/groupe de la réservation (groupe, sans portée précise).",
+                      "Cette action modifiera le rattachement de la réservation vers ce groupe et retirera toute portée précise.",
                   }}
                   reservations={attachableReservations}
                 />

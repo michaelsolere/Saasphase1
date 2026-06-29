@@ -32,7 +32,21 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
   if (litters.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed bg-surface px-6 py-12 text-center">
-        <p className="text-sm text-muted">Aucune portée trouvée.</p>
+        <p className="text-sm text-muted">Aucune portée pour l’instant.</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <Link
+            href="/litters/new"
+            className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+          >
+            Créer une portée
+          </Link>
+          <Link
+            href="/litter-groups/new"
+            className="inline-flex rounded-xl border border-accent px-4 py-2.5 text-sm font-semibold text-accent transition hover:bg-accent-soft"
+          >
+            Créer un groupe
+          </Link>
+        </div>
       </div>
     );
   }
@@ -82,7 +96,8 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
                   {getLitterDisplayName(litter.name, litter.id)}
                 </p>
                 <p className="mt-1 text-xs text-muted">
-                  {getSpeciesLabel(litter.species)} · {litter.breed || "Race non renseignée"}
+                  {getSpeciesLabel(litter.species)} ·{" "}
+                  {litter.breed || "Race non renseignée"}
                 </p>
               </td>
               <td className="min-w-48 px-6 py-4 text-sm">
