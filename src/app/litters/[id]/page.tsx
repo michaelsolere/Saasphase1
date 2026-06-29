@@ -40,6 +40,9 @@ import {
 import type { LitterOverview } from "@/features/litters/types";
 import {
   formatPrice,
+  getPreReservationDepositBadgeClassName,
+  getPreReservationDepositLabel,
+  getPreReservationDepositStateFromStatus,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import { launchPreReservationCampaign } from "@/features/reservations/actions";
@@ -360,6 +363,8 @@ function RelatedReservationsSection({
         <div className="mt-6 divide-y divide-border">
           {reservations.map((reservation, index) => {
             const dateText = formatLitterDate(reservation.created_at);
+            const preReservationDepositState =
+              getPreReservationDepositStateFromStatus(reservation.status);
 
             return (
               <div
@@ -385,6 +390,15 @@ function RelatedReservationsSection({
                       </span>
                       <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                         {getReservationStatusLabel(reservation.status)}
+                      </span>
+                      <span
+                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
+                          preReservationDepositState,
+                        )}`}
+                      >
+                        {getPreReservationDepositLabel(
+                          preReservationDepositState,
+                        )}
                       </span>
                     </div>
                     <p className="text-xs text-muted">

@@ -24,6 +24,50 @@ export function getReservationStatusLabel(value: string | null) {
   return statusLabels[value] ?? value.replaceAll("_", " ");
 }
 
+export type PreReservationDepositState = "absent" | "requested" | "paid";
+
+export function getPreReservationDepositStateFromStatus(
+  reservationStatus: string | null,
+): PreReservationDepositState {
+  if (reservationStatus === "pre_reservation_paid") {
+    return "paid";
+  }
+
+  if (reservationStatus === "pre_reservation_requested") {
+    return "requested";
+  }
+
+  return "absent";
+}
+
+export function getPreReservationDepositLabel(
+  state: PreReservationDepositState,
+) {
+  if (state === "paid") {
+    return "Pré-réservation payée";
+  }
+
+  if (state === "requested") {
+    return "Demande 1/2 — 250 € demandée";
+  }
+
+  return "Demande 1/2 — 250 € absente";
+}
+
+export function getPreReservationDepositBadgeClassName(
+  state: PreReservationDepositState,
+) {
+  if (state === "paid") {
+    return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  }
+
+  if (state === "requested") {
+    return "text-amber-700 bg-amber-50 border-amber-200";
+  }
+
+  return "text-muted bg-muted-soft border-border";
+}
+
 export function formatPrice(priceCents: number | null, currency: string | null) {
   if (priceCents === null || priceCents === undefined) {
     return "Non renseigné";

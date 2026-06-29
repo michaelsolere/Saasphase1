@@ -41,7 +41,14 @@ import { ReservationRefundForm } from "@/features/payments/reservation-refund-fo
 import {
   initializeReservationDocuments,
 } from "@/features/documents/actions";
-import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
+import {
+  formatPrice,
+  getPreReservationDepositBadgeClassName,
+  getPreReservationDepositLabel,
+  getPreReservationDepositStateFromStatus,
+  getReservationStatusLabel,
+  type PreReservationDepositState,
+} from "@/features/reservations/formatters";
 import {
   FINAL_RESERVATION_STATUSES,
   isFinalReservationStatus,
@@ -650,6 +657,17 @@ export default async function ReservationDetailPage({
   const hasSecondPayment = arrhesPayments.length >= 2;
   const hasSecondPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 2;
   const hasFirstPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 1;
+  const hasRequestedFirstDeposit = arrhesPayments.some(
+    (p) => p.status === "requested" || p.status === "pending",
+  );
+  const preReservationDepositState: PreReservationDepositState =
+    hasFirstPaid || reservation?.status === "pre_reservation_paid"
+      ? "paid"
+      : hasRequestedFirstDeposit ||
+          getPreReservationDepositStateFromStatus(reservation?.status ?? null) ===
+            "requested"
+        ? "requested"
+        : "absent";
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = reservation?.id
@@ -1530,6 +1548,22 @@ export default async function ReservationDetailPage({
                           ? "text-rose-700 bg-rose-50 border-rose-200"
                           : "text-muted bg-muted-soft border-border"
                   }
+                />
+                <SummaryItem
+                  label="Demande 1/2 — 250 €"
+                  value={getPreReservationDepositLabel(
+                    preReservationDepositState,
+                  )}
+                  detail={
+                    preReservationDepositState === "paid"
+                      ? "Le premier versement de pré-réservation est enregistré comme payé."
+                      : preReservationDepositState === "requested"
+                        ? "La demande de pré-réservation est envoyée ou en attente de règlement."
+                        : "Aucune demande de pré-réservation de 250 € n’est visible sur ce dossier."
+                  }
+                  badgeClassName={getPreReservationDepositBadgeClassName(
+                    preReservationDepositState,
+                  )}
                 />
                 <SummaryItem
                   label="Portée / groupe"
@@ -3011,7 +3045,7 @@ export default async function ReservationDetailPage({
                     Paiements liés
                   </h2>
 
-                  <div className="mb-6 grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="mb-6 grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-2 lg:grid-cols-5">
                     <DetailItem
                       label="Tarif convenu"
                       value={formatPrice(reservation.price_cents, reservation.currency)}
@@ -3023,6 +3057,20 @@ export default async function ReservationDetailPage({
                     <DetailItem
                       label={balanceLabel}
                       value={balanceValue}
+                    />
+                    <DetailItem
+                      label="Demande 1/2 — 250 €"
+                      value={
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
+                            preReservationDepositState,
+                          )}`}
+                        >
+                          {getPreReservationDepositLabel(
+                            preReservationDepositState,
+                          )}
+                        </span>
+                      }
                     />
                     <DetailItem
                       label="Paiements"

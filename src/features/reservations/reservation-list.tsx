@@ -4,7 +4,13 @@ import {
   formatApplicationDate,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
-import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
+import {
+  formatPrice,
+  getPreReservationDepositBadgeClassName,
+  getPreReservationDepositLabel,
+  getPreReservationDepositStateFromStatus,
+  getReservationStatusLabel,
+} from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 
 export function ReservationList({
@@ -26,13 +32,14 @@ export function ReservationList({
   return (
     <div className="overflow-hidden rounded-2xl border bg-surface">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1000px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
           <thead className="border-b bg-background text-xs font-semibold uppercase tracking-wide text-muted">
             <tr>
               <th className="px-5 py-4">Client</th>
               <th className="px-5 py-4">Portée / Groupe</th>
               <th className="px-5 py-4">Préférence</th>
               <th className="px-5 py-4">Statut</th>
+              <th className="px-5 py-4">Demande 1/2</th>
               <th className="px-5 py-4">Tarif</th>
               <th className="px-5 py-4">Animal</th>
               <th className="px-5 py-4">Date de création</th>
@@ -44,6 +51,8 @@ export function ReservationList({
           <tbody className="divide-y divide-border">
             {reservations.map((res, index) => {
               const targetLitter = res.litter_name || res.litter_group_name || "Non précisée";
+              const preReservationDepositState =
+                getPreReservationDepositStateFromStatus(res.status);
               return (
                 <tr key={res.id ?? index}>
                   <td className="px-5 py-5 align-top font-medium">
@@ -73,6 +82,17 @@ export function ReservationList({
                       }
                     >
                       {getReservationStatusLabel(res.status)}
+                    </span>
+                  </td>
+                  <td className="px-5 py-5 align-top">
+                    <span
+                      className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
+                        preReservationDepositState,
+                      )}`}
+                    >
+                      {getPreReservationDepositLabel(
+                        preReservationDepositState,
+                      )}
                     </span>
                   </td>
                   <td className="px-5 py-5 align-top">

@@ -16,7 +16,12 @@ import {
   getLitterStatusLabel,
   getSpeciesLabel,
 } from "@/features/litters/formatters";
-import { getReservationStatusLabel } from "@/features/reservations/formatters";
+import {
+  getPreReservationDepositBadgeClassName,
+  getPreReservationDepositLabel,
+  getPreReservationDepositStateFromStatus,
+  getReservationStatusLabel,
+} from "@/features/reservations/formatters";
 import { updateLitterGroupDetails } from "@/features/litters/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -769,7 +774,13 @@ export default async function LitterGroupDetailPage({
                   </p>
                 ) : (
                   <div className="mt-6 divide-y divide-border">
-                    {groupReservations.map((reservation, index) => (
+                    {groupReservations.map((reservation, index) => {
+                      const preReservationDepositState =
+                        getPreReservationDepositStateFromStatus(
+                          reservation.status,
+                        );
+
+                      return (
                       <div
                         key={reservation.id ?? `${reservation.contact_id}-${index}`}
                         className="py-5 first:pt-0 last:pb-0"
@@ -793,6 +804,15 @@ export default async function LitterGroupDetailPage({
                               </span>
                               <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                 {getReservationStatusLabel(reservation.status)}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
+                                  preReservationDepositState,
+                                )}`}
+                              >
+                                {getPreReservationDepositLabel(
+                                  preReservationDepositState,
+                                )}
                               </span>
                             </div>
                             <p className="text-xs text-muted">
@@ -833,7 +853,8 @@ export default async function LitterGroupDetailPage({
                           ) : null}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
 
