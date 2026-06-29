@@ -33,7 +33,6 @@ import {
   expireReservation,
   unassignAnimalFromReservation,
   withdrawReservation,
-  requestPreReservationBalance,
   syncReservationScopeFromApplication,
 } from "@/features/reservations/actions";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
@@ -57,6 +56,7 @@ import { ReservationNoteForm } from "@/features/reservations/note-form";
 import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
 import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
+import { PreReservationBalanceConfirmDialog } from "@/features/reservations/pre-reservation-balance-confirm-dialog";
 import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -654,9 +654,19 @@ export default async function ReservationDetailPage({
   const arrhesPayments = reservationPayments?.filter(
     (p) => p.payment_type === "arrhes" && p.amount_cents === 25000
   ) || [];
-  const hasSecondPayment = arrhesPayments.length >= 2;
-  const hasSecondPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 2;
-  const hasFirstPaid = arrhesPayments.filter((p) => p.status === "paid").length >= 1;
+  const activeArrhesPayments = arrhesPayments.filter(
+    (p) => p.status === "requested" || p.status === "paid",
+  );
+  const paidArrhesPaymentCount = activeArrhesPayments.filter(
+    (p) => p.status === "paid",
+  ).length;
+  const hasSecondPayment = activeArrhesPayments.length >= 2;
+  const hasSecondPaid = paidArrhesPaymentCount >= 2;
+  const hasFirstPaid = paidArrhesPaymentCount >= 1;
+  const canRequestPreReservationBalance =
+    reservation?.status === "pre_reservation_paid" &&
+    activeArrhesPayments.length === 1 &&
+    paidArrhesPaymentCount === 1;
   const hasRequestedFirstDeposit = arrhesPayments.some(
     (p) => p.status === "requested" || p.status === "pending",
   );
@@ -1757,14 +1767,15 @@ export default async function ReservationDetailPage({
                           />
                         </div>
 
-                        {reservation.status === "pre_reservation_paid" && !hasSecondPayment && (
-                          <form action={requestPreReservationBalance} className="pt-1">
-                            <input type="hidden" name="reservation_id" value={id} />
-                            <button type="submit" className="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm">
-                              Demander le complément d&apos;arrhes (250 €)
-                            </button>
-                          </form>
-                        )}
+                        {canRequestPreReservationBalance ? (
+                          <div className="pt-1">
+                            <PreReservationBalanceConfirmDialog
+                              reservationId={id}
+                              compactLabel
+                              buttonClassName="w-full text-center rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white hover:opacity-90 transition shadow-sm"
+                            />
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -2295,27 +2306,17 @@ export default async function ReservationDetailPage({
 
                       {reservation.status === "pre_reservation_paid" ? (
                         <div className="mt-4">
-                          {!hasSecondPayment ? (
-                            <form
-                              action={requestPreReservationBalance}
-                              className="mt-4"
-                            >
-                              <input
-                                type="hidden"
-                                name="reservation_id"
-                                value={id}
-                              />
+                          {canRequestPreReservationBalance ? (
+                            <div className="mt-4">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
                                 Cette action va émettre la deuxième demande de paiement de 250 € pour finaliser le complément des arrhes (total attendu : 500 €).
                               </p>
-                              <button
-                                type="submit"
-                                className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                              >
-                                Demander le complément des arrhes
-                              </button>
-                            </form>
-                          ) : (
+                              <PreReservationBalanceConfirmDialog
+                                reservationId={id}
+                                buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              />
+                            </div>
+                          ) : hasSecondPayment ? (
                             <div className="mt-4 space-y-4">
                               <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
                                 <p className="text-sm text-slate-700">
@@ -2327,7 +2328,7 @@ export default async function ReservationDetailPage({
                                 </p>
                               </div>
                             </div>
-                          )}
+                          ) : null}
 
                           {hasFirstPaid && needsDocInitialization ? (
                             <form
