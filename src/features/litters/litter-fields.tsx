@@ -16,6 +16,12 @@ export type LitterAnimalOption = {
   species: string | null;
   breed: string | null;
   status: string | null;
+  ownership_status: string | null;
+  is_breeder: boolean | null;
+  is_external: boolean | null;
+  is_retired: boolean | null;
+  litter_id: string | null;
+  deleted_at?: string | null;
 };
 
 export type LitterFieldDefaults = {
@@ -111,12 +117,14 @@ export function LitterFields({
   idPrefix,
   defaults,
   groups,
-  animals,
+  motherOptions,
+  fatherOptions,
 }: {
   idPrefix: string;
   defaults?: LitterFieldDefaults;
   groups?: LitterGroupOption[] | null;
-  animals: LitterAnimalOption[];
+  motherOptions: LitterAnimalOption[];
+  fatherOptions: LitterAnimalOption[];
 }) {
   const values = defaults ?? {};
 
@@ -217,7 +225,7 @@ export function LitterFields({
           className={inputClass}
         >
           <option value="">Aucune mère</option>
-          {animals.map((animal) => (
+          {motherOptions.map((animal) => (
             <option key={animal.id} value={animal.id}>
               {animalOptionLabel(animal)}
             </option>
@@ -236,7 +244,7 @@ export function LitterFields({
           className={inputClass}
         >
           <option value="">Aucun père</option>
-          {animals.map((animal) => (
+          {fatherOptions.map((animal) => (
             <option key={animal.id} value={animal.id}>
               {animalOptionLabel(animal)}
             </option>

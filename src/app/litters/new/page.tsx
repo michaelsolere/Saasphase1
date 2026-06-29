@@ -7,6 +7,7 @@ import {
   type LitterAnimalOption,
   type LitterGroupOption,
 } from "@/features/litters/litter-fields";
+import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -35,21 +36,41 @@ export default async function NewLitterPage({
     redirect("/login");
   }
 
-  const [groupsResult, animalsResult] = await Promise.all([
-    supabase
-      .from("litter_groups")
-      .select("id, name, species, status, expected_period_start, expected_period_end")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("animals")
-      .select("id, display_name, sex, species, breed, status")
-      .is("deleted_at", null)
-      .order("display_name", { ascending: true }),
-  ]);
+  const { data: membership } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const organizationId = membership?.organization_id ?? null;
+
+  const [groupsResult, animalsResult] = organizationId
+    ? await Promise.all([
+        supabase
+          .from("litter_groups")
+          .select("id, name, species, status, expected_period_start, expected_period_end")
+          .eq("organization_id", organizationId)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("animals")
+          .select(
+            "id, display_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
+          )
+          .eq("organization_id", organizationId)
+          .is("deleted_at", null)
+          .order("display_name", { ascending: true }),
+      ])
+    : [{ data: [] }, { data: [] }];
 
   const groups = (groupsResult.data ?? []) as LitterGroupOption[];
   const animals = (animalsResult.data ?? []) as LitterAnimalOption[];
+  const motherOptions = filterEligibleLitterParents(animals, "mother", "dog");
+  const fatherOptions = filterEligibleLitterParents(animals, "father", "dog");
 
   const errorMessage = query.status ? errorMessages[query.status] : undefined;
 
@@ -99,7 +120,12 @@ export default async function NewLitterPage({
         action={createLitter}
         className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
       >
-        <LitterFields idPrefix="litter-new" groups={groups} animals={animals} />
+        <LitterFields
+          idPrefix="litter-new"
+          groups={groups}
+          motherOptions={motherOptions}
+          fatherOptions={fatherOptions}
+        />
 
         <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
           <Link

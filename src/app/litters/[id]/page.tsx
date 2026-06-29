@@ -24,6 +24,7 @@ import {
   LitterFields,
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
+import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
 import {
   AttachApplicationForm,
@@ -739,13 +740,25 @@ export default async function LitterDetailPage({
     litter && litter.organization_id
       ? await supabase
           .from("animals")
-          .select("id, display_name, sex, species, breed, status")
+          .select(
+            "id, display_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
+          )
           .eq("organization_id", litter.organization_id)
           .is("deleted_at", null)
           .order("display_name", { ascending: true })
       : { data: null };
 
   const animalOptions = (rawAnimalOptions ?? []) as LitterAnimalOption[];
+  const motherOptions = filterEligibleLitterParents(
+    animalOptions,
+    "mother",
+    litter?.species ?? "dog",
+  );
+  const fatherOptions = filterEligibleLitterParents(
+    animalOptions,
+    "father",
+    litter?.species ?? "dog",
+  );
 
   const detailEditErrorMessages: Record<string, string> = {
     name_required: "Le nom de la portée est obligatoire.",
@@ -1405,7 +1418,8 @@ export default async function LitterDetailPage({
                       actualBirthDate: litter.actual_birth_date,
                       notes: litter.notes,
                     }}
-                    animals={animalOptions}
+                    motherOptions={motherOptions}
+                    fatherOptions={fatherOptions}
                   />
 
                   <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">

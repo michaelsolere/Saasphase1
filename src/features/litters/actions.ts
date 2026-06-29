@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { isEligibleLitterParent } from "@/features/litters/parent-eligibility";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -249,8 +250,10 @@ export async function createLitterGroup(formData: FormData) {
  * Décisions (Lot 2) :
  *   - `name` obligatoire ; `species` validé (défaut dog) ; `breed` défaut
  *     Golden Retriever si vide ; `status` validé (défaut planned).
- *   - `litter_group_id`, `mother_id`, `father_id` optionnels mais vérifiés
- *     comme appartenant à la même organisation s'ils sont fournis.
+ *   - `litter_group_id` optionnel mais vérifié comme appartenant à la même
+ *     organisation s'il est fourni.
+ *   - `mother_id`, `father_id` optionnels mais vérifiés dans la même
+ *     organisation, avec rôle reproducteur cohérent et même espèce.
  *   - Mère et père doivent être différents.
  *   - `organization_id` résolu via la membership active, jamais depuis le client.
  *   - Aucun animal, réservation, document ou événement créé ici.
@@ -368,32 +371,44 @@ export async function createLitter(formData: FormData) {
     }
   }
 
-  // La mère éventuelle doit appartenir à la même organisation.
+  // La mère éventuelle doit appartenir à la même organisation et être éligible.
   if (motherId) {
     const { data: mother, error: motherError } = await supabase
       .from("animals")
-      .select("id")
+      .select(
+        "id, sex, species, status, ownership_status, is_breeder, is_external, is_retired, deleted_at",
+      )
       .eq("id", motherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (motherError || !mother) {
+    if (
+      motherError ||
+      !mother ||
+      !isEligibleLitterParent(mother, "mother", species)
+    ) {
       redirect(litterErrorUrl("invalid_mother"));
     }
   }
 
-  // Le père éventuel doit appartenir à la même organisation.
+  // Le père éventuel doit appartenir à la même organisation et être éligible.
   if (fatherId) {
     const { data: father, error: fatherError } = await supabase
       .from("animals")
-      .select("id")
+      .select(
+        "id, sex, species, status, ownership_status, is_breeder, is_external, is_retired, deleted_at",
+      )
       .eq("id", fatherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (fatherError || !father) {
+    if (
+      fatherError ||
+      !father ||
+      !isEligibleLitterParent(father, "father", species)
+    ) {
       redirect(litterErrorUrl("invalid_father"));
     }
   }
@@ -458,7 +473,8 @@ function litterDetailEditUrl(
  *   - `name` obligatoire ; `species` validé (dog/cat) ; `breed` défaut
  *     Golden Retriever si vide ; `status` validé.
  *   - `mother_id`/`father_id` optionnels, vérifiés dans la même organisation,
- *     et obligatoirement distincts.
+ *     avec rôle reproducteur cohérent, même espèce, et obligatoirement
+ *     distincts.
  *   - Le `litter_group_id` n'est PAS géré ici : le rattachement au groupe reste
  *     piloté par la section dédiée (updateLitterGroupAssignment).
  *   - `organization_id` jamais accepté du client : déduit de la portée en base.
@@ -563,32 +579,44 @@ export async function updateLitterDetails(formData: FormData) {
 
   const organizationId = litter.organization_id;
 
-  // La mère éventuelle doit appartenir à la même organisation.
+  // La mère éventuelle doit appartenir à la même organisation et être éligible.
   if (motherId) {
     const { data: mother, error: motherError } = await supabase
       .from("animals")
-      .select("id")
+      .select(
+        "id, sex, species, status, ownership_status, is_breeder, is_external, is_retired, deleted_at",
+      )
       .eq("id", motherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (motherError || !mother) {
+    if (
+      motherError ||
+      !mother ||
+      !isEligibleLitterParent(mother, "mother", species)
+    ) {
       redirect(litterDetailEditUrl(litterId, "invalid_mother"));
     }
   }
 
-  // Le père éventuel doit appartenir à la même organisation.
+  // Le père éventuel doit appartenir à la même organisation et être éligible.
   if (fatherId) {
     const { data: father, error: fatherError } = await supabase
       .from("animals")
-      .select("id")
+      .select(
+        "id, sex, species, status, ownership_status, is_breeder, is_external, is_retired, deleted_at",
+      )
       .eq("id", fatherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (fatherError || !father) {
+    if (
+      fatherError ||
+      !father ||
+      !isEligibleLitterParent(father, "father", species)
+    ) {
       redirect(litterDetailEditUrl(litterId, "invalid_father"));
     }
   }
