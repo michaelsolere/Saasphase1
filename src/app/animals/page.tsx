@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import {
+  AnimalFilters,
+  type AnimalFilterState,
+  type AnimalLitterFilterOption,
+  type AnimalOriginFilter,
+  type AnimalQuickFilter,
+  type AnimalSexFilter,
+} from "@/features/animals/animal-filters";
 import { AnimalList } from "@/features/animals/animal-list";
 import type { AnimalListItem, DBAnimal } from "@/features/animals/types";
 import { logout } from "@/features/auth/actions";
@@ -15,6 +23,24 @@ type LitterLookup = {
 };
 
 type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
+
+const quickFilters = new Set<AnimalQuickFilter>([
+  "born",
+  "available",
+  "reserved",
+  "kept",
+  "adopted",
+  "home_breeders",
+  "external_breeders",
+  "retired",
+]);
+
+const sexFilters = new Set<AnimalSexFilter>(["male", "female", "unknown"]);
+const originFilters = new Set<AnimalOriginFilter>([
+  "produced",
+  "external",
+  "home",
+]);
 
 function ErrorMessage() {
   return (
@@ -34,7 +60,129 @@ function uniqueIds(values: Array<string | null>) {
   return Array.from(new Set(values.filter(Boolean))) as string[];
 }
 
-export default async function AnimalsPage() {
+function firstParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function parseAnimalFilters(params: Record<string, string | string[] | undefined>) {
+  const filter = firstParam(params.filter);
+  const sex = firstParam(params.sex);
+  const origin = firstParam(params.origin);
+  const litterId = firstParam(params.litter_id);
+
+  return {
+    filter:
+      filter && quickFilters.has(filter as AnimalQuickFilter)
+        ? (filter as AnimalQuickFilter)
+        : null,
+    sex:
+      sex && sexFilters.has(sex as AnimalSexFilter)
+        ? (sex as AnimalSexFilter)
+        : null,
+    origin:
+      origin && originFilters.has(origin as AnimalOriginFilter)
+        ? (origin as AnimalOriginFilter)
+        : null,
+    litter_id: litterId || null,
+  } satisfies AnimalFilterState;
+}
+
+function isExternalAnimal(animal: Pick<AnimalListItem, "is_external" | "ownership_status">) {
+  return (
+    animal.is_external ||
+    animal.ownership_status === "external_stud" ||
+    animal.ownership_status === "external_female"
+  );
+}
+
+function isHomeAnimal(animal: Pick<AnimalListItem, "is_external" | "ownership_status">) {
+  return (
+    !isExternalAnimal(animal) &&
+    (animal.ownership_status === "owned" ||
+      animal.ownership_status === "produced")
+  );
+}
+
+function matchesQuickFilter(animal: AnimalListItem, filter: AnimalQuickFilter) {
+  switch (filter) {
+    case "born":
+      return animal.status === "born" && Boolean(animal.litter_id);
+    case "available":
+      return animal.status === "available";
+    case "reserved":
+      return animal.status === "reserved";
+    case "kept":
+      return animal.status === "kept";
+    case "adopted":
+      return (
+        animal.status === "adopted" ||
+        animal.ownership_status === "adopted_out"
+      );
+    case "home_breeders":
+      return animal.is_breeder && isHomeAnimal(animal);
+    case "external_breeders":
+      return animal.is_breeder && isExternalAnimal(animal);
+    case "retired":
+      return animal.status === "retired" || animal.is_retired;
+  }
+}
+
+function matchesOriginFilter(animal: AnimalListItem, origin: AnimalOriginFilter) {
+  switch (origin) {
+    case "produced":
+      return animal.ownership_status === "produced";
+    case "external":
+      return isExternalAnimal(animal);
+    case "home":
+      return isHomeAnimal(animal);
+  }
+}
+
+function applyAnimalFilters(
+  animals: AnimalListItem[],
+  filters: AnimalFilterState,
+) {
+  return animals.filter((animal) => {
+    if (filters.filter && !matchesQuickFilter(animal, filters.filter)) {
+      return false;
+    }
+
+    if (filters.sex && animal.sex !== filters.sex) {
+      return false;
+    }
+
+    if (filters.origin && !matchesOriginFilter(animal, filters.origin)) {
+      return false;
+    }
+
+    if (filters.litter_id && animal.litter_id !== filters.litter_id) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function buildLitterOptions(
+  litters: Map<string, LitterLookup>,
+): AnimalLitterFilterOption[] {
+  return Array.from(litters.values())
+    .filter((litter): litter is LitterLookup & { id: string } =>
+      Boolean(litter.id),
+    )
+    .map((litter) => ({
+      id: litter.id,
+      label: litter.name || "Portée",
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, "fr"));
+}
+
+export default async function AnimalsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const filters = parseAnimalFilters(await searchParams);
   const supabase = await createClient();
 
   const {
@@ -46,13 +194,14 @@ export default async function AnimalsPage() {
     redirect("/login");
   }
 
-  let animals = null;
+  let animals: AnimalListItem[] | null = null;
+  let litterOptions: AnimalLitterFilterOption[] = [];
   let hasLoadingError = Boolean(authError);
 
   const result = await supabase
     .from("animals")
     .select(
-      "id, display_name, temporary_name, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, created_at",
+      "id, display_name, temporary_name, call_name, official_name, species, breed, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
@@ -84,10 +233,10 @@ export default async function AnimalsPage() {
     hasLoadingError =
       hasLoadingError || Boolean(littersError) || Boolean(parentsError);
 
-    const littersById = new Map(
-      ((rawLitters as LitterLookup[] | null) ?? [])
-        .filter((litter) => litter.id)
-        .map((litter) => [litter.id, litter]),
+    const littersById = new Map<string, LitterLookup>(
+      ((rawLitters as LitterLookup[] | null) ?? []).flatMap((litter) =>
+        litter.id ? [[litter.id, litter]] : [],
+      ),
     );
     const parentsById = new Map(
       ((rawParents as ParentLookup[] | null) ?? []).map((parent) => [
@@ -95,8 +244,9 @@ export default async function AnimalsPage() {
         parent.display_name,
       ]),
     );
+    litterOptions = buildLitterOptions(littersById);
 
-    animals = rawAnimals.map((animal) => {
+    const mappedAnimals = rawAnimals.map((animal) => {
       const litter = animal.litter_id
         ? littersById.get(animal.litter_id)
         : null;
@@ -113,6 +263,8 @@ export default async function AnimalsPage() {
           : null,
       } satisfies AnimalListItem;
     });
+
+    animals = applyAnimalFilters(mappedAnimals, filters);
   }
 
   return (
@@ -180,7 +332,10 @@ export default async function AnimalsPage() {
         {hasLoadingError || !animals ? (
           <ErrorMessage />
         ) : (
-          <AnimalList animals={animals} />
+          <div className="space-y-6">
+            <AnimalFilters filters={filters} litterOptions={litterOptions} />
+            <AnimalList animals={animals} />
+          </div>
         )}
       </section>
     </main>
