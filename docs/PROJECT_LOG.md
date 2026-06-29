@@ -34,6 +34,21 @@ Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 �
 
 Hors périmètre conservé : aucun code applicatif ajouté ici, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
 
+## Jalon complément d'arrhes 2/2 — 250 €
+
+Objectif : sécuriser l'action manuelle `Demander le complément des arrhes` sans changer le modèle existant.
+
+État documenté :
+
+* création manuelle d'une demande 2/2 de 250 € en `arrhes` avec statut `requested` ;
+* confirmation explicite avant création de la demande ;
+* bouton affiché seulement si l'état métier est cohérent : pré-réservation payée, une arrhe 250 € payée, aucun complément déjà demandé ou payé ;
+* anti-doublon sur la demande 2/2 ;
+* aucun changement automatique de statut réservation, animal, adoption, email ou document ;
+* tests e2e ciblés ajoutés pour le succès, l'anti-doublon, le refus si 1/2 non payé et l'absence d'effets automatiques.
+
+Hors périmètre conservé : aucune migration, aucun SQL, aucune règle RLS, aucune RPC, aucune automatisation Supabase, aucun email, aucun document généré et aucun changement automatique de workflow.
+
 ## Mise à jour réservation — PR199 à PR205
 
 ### PR199 — RES-UX-1 — Audit fiche réservation comme centre du dossier adoptant
