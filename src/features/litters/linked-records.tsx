@@ -302,7 +302,7 @@ export function AttachReservationForm({
             </select>
             <p className="mt-2 text-xs text-muted">
               Les réservations ayant déjà un animal attribué sont désactivées :
-              un animal appartient à une portée précise.
+              elles ne peuvent pas être déplacées depuis cet écran.
             </p>
           </div>
 
