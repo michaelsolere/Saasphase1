@@ -62,6 +62,13 @@ test("creates newborn animals from a litter without touching reservations", asyn
 
   await page.getByRole("button", { name: "Créer les chiots" }).click();
   await expect(page).toHaveURL(/offspring_status=success/);
+  await expect(page.locator("#animaux-lies")).toContainText(`Femelle ${suffix}`);
+  await expect(page.locator("#animaux-lies")).toContainText(
+    "Chiot né, non encore disponible/réservé",
+  );
+  await expect(page.locator("#animaux-lies")).toContainText(
+    "Origine : Produit à l’élevage",
+  );
 
   const createdAnimal = expectSupabaseData(
     await supabase
@@ -91,6 +98,23 @@ test("creates newborn animals from a litter without touching reservations", asyn
     birth_order: 1,
     birth_weight_grams: 420,
   });
+
+  await page.goto("/animals");
+  const animalRow = page.locator("tbody tr").filter({
+    hasText: `Femelle ${suffix}`,
+  });
+  await expect(animalRow).toContainText(`Portee creation chiots ${suffix}`);
+  await expect(animalRow).toContainText(
+    "Chiot né, non encore disponible/réservé",
+  );
+  await expect(animalRow).toContainText("Origine : Produit à l’élevage");
+
+  await page.goto(`/animals/${createdAnimal.id}`);
+  await expect(page.getByRole("heading", { name: `Femelle ${suffix}` })).toBeVisible();
+  await expect(page.getByText("Chiot né, non encore disponible/réservé")).toBeVisible();
+  await expect(page.getByText("Produit à l’élevage")).toBeVisible();
+  await page.getByRole("link", { name: "Consulter la portée" }).click();
+  await expect(page).toHaveURL(new RegExp(`/litters/${litterId}`));
 
   const { count: reservationsAfter, error: reservationsAfterError } =
     await supabase

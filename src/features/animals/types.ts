@@ -13,6 +13,7 @@ export type AnimalListItem = Pick<
   | "breed"
   | "sex"
   | "status"
+  | "ownership_status"
   | "birth_date"
   | "litter_id"
   | "mother_id"

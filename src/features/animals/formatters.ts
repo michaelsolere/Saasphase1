@@ -26,6 +26,17 @@ const speciesLabels: Record<string, string> = {
   cat: "Chat",
 };
 
+const ownershipStatusLabels: Record<string, string> = {
+  owned: "Détenu",
+  produced: "Produit à l’élevage",
+  external_stud: "Mâle extérieur",
+  external_female: "Femelle extérieure",
+  co_owned: "Copropriété",
+  sold: "Vendu",
+  adopted_out: "Adopté",
+  unknown: "Non renseigné",
+};
+
 export function getAnimalDisplayName(animal: Pick<AnimalListItem, "display_name" | "call_name" | "official_name" | "temporary_name" | "id">) {
   return (
     animal.display_name ||
@@ -58,6 +69,33 @@ export function getAnimalStatusLabel(value: string | null) {
   }
 
   return animalStatusLabels[value] ?? value.replaceAll("_", " ");
+}
+
+export function getOwnershipStatusLabel(value: string | null) {
+  if (!value) {
+    return "Non renseigné";
+  }
+
+  return ownershipStatusLabels[value] ?? value.replaceAll("_", " ");
+}
+
+export function getBornOffspringLabel(animal: {
+  species: string | null;
+  status: string | null;
+  ownership_status: string | null;
+  litter_id: string | null;
+}) {
+  if (
+    animal.status !== "born" ||
+    animal.ownership_status !== "produced" ||
+    !animal.litter_id
+  ) {
+    return null;
+  }
+
+  const youngLabel = animal.species === "cat" ? "Chaton né" : "Chiot né";
+
+  return `${youngLabel}, non encore disponible/réservé`;
 }
 
 export function formatAnimalDate(value: string | null) {

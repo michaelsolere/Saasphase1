@@ -8,6 +8,8 @@ import {
   getAnimalSexLabel,
   getAnimalSpeciesLabel,
   getAnimalStatusLabel,
+  getBornOffspringLabel,
+  getOwnershipStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
 import { getSexPreferenceLabel } from "@/features/applications/formatters";
@@ -84,25 +86,6 @@ type RelatedNote = {
   created_by: string | null;
   profiles: { display_name: string | null } | null;
 };
-
-const ownershipStatusLabels: Record<string, string> = {
-  owned: "Détenu",
-  produced: "Produit à l’élevage",
-  external_stud: "Mâle extérieur",
-  external_female: "Femelle extérieure",
-  co_owned: "Copropriété",
-  sold: "Vendu",
-  adopted_out: "Adopté",
-  unknown: "Non renseigné",
-};
-
-function getOwnershipStatusLabel(value: string | null) {
-  if (!value) {
-    return "Non renseigné";
-  }
-
-  return ownershipStatusLabels[value] ?? value.replaceAll("_", " ");
-}
 
 function booleanLabel(value: boolean | null) {
   return value ? "Oui" : "Non";
@@ -778,6 +761,11 @@ export default async function AnimalDetailPage({
                 <p className="mt-3 text-sm text-muted">
                   Créé le {formatAnimalDate(animal.created_at)}
                 </p>
+                {getBornOffspringLabel(animal) ? (
+                  <p className="mt-3 w-fit rounded-xl border bg-surface px-4 py-2 text-sm font-medium text-muted">
+                    {getBornOffspringLabel(animal)}
+                  </p>
+                ) : null}
               </div>
               <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
                 Lecture seule
@@ -853,7 +841,10 @@ export default async function AnimalDetailPage({
                     label="Date de décès"
                     value={formatAnimalDate(animal.death_date)}
                   />
-                  <DetailItem label="Portée liée" value={litter?.name ?? null} />
+                  <DetailItem
+                    label="Portée liée"
+                    value={litter ? getLitterDisplayName(litter.name, litter.id) : null}
+                  />
                   <DetailItem
                     label="Groupe de portée"
                     value={litter?.litter_group_name ?? null}

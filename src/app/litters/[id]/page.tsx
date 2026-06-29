@@ -7,6 +7,8 @@ import {
   getAnimalDisplayName,
   getAnimalSexLabel,
   getAnimalStatusLabel,
+  getBornOffspringLabel,
+  getOwnershipStatusLabel,
 } from "@/features/animals/formatters";
 import { getSexPreferenceLabel } from "@/features/applications/formatters";
 import {
@@ -60,8 +62,11 @@ type RelatedAnimal = Pick<
   | "temporary_name"
   | "call_name"
   | "official_name"
+  | "species"
   | "sex"
   | "status"
+  | "ownership_status"
+  | "litter_id"
   | "birth_date"
   | "birth_order"
   | "identification_number"
@@ -304,6 +309,11 @@ function RelatedAnimalsSection({
                     <p className="mt-1 text-xs text-muted">
                       Sexe : {getAnimalSexLabel(animal.sex)}
                     </p>
+                    {getBornOffspringLabel(animal) ? (
+                      <p className="mt-1 text-xs text-muted">
+                        {getBornOffspringLabel(animal)}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-muted">
                       Ordre : {formatBirthOrder(animal.birth_order)}
                     </p>
@@ -312,6 +322,9 @@ function RelatedAnimalsSection({
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                       {getAnimalStatusLabel(animal.status)}
                     </span>
+                    <p className="mt-2 text-xs text-muted">
+                      Origine : {getOwnershipStatusLabel(animal.ownership_status)}
+                    </p>
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted">
                     {formatAnimalDate(animal.birth_date)}
@@ -753,7 +766,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("animals")
         .select(
-          "id, display_name, temporary_name, call_name, official_name, sex, status, birth_date, birth_order, identification_number, color, coat_color, created_at",
+          "id, display_name, temporary_name, call_name, official_name, species, sex, status, ownership_status, litter_id, birth_date, birth_order, identification_number, color, coat_color, created_at",
         )
         .eq("litter_id", id)
         .is("deleted_at", null)

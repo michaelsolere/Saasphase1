@@ -7,6 +7,8 @@ import {
   getAnimalSexLabel,
   getAnimalSpeciesLabel,
   getAnimalStatusLabel,
+  getBornOffspringLabel,
+  getOwnershipStatusLabel,
 } from "./formatters";
 import type { AnimalListItem } from "./types";
 
@@ -75,13 +77,31 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                   {getAnimalStatusLabel(animal.status)}
                 </span>
+                {getBornOffspringLabel(animal) ? (
+                  <p className="mt-2 max-w-44 text-xs leading-5 text-muted">
+                    {getBornOffspringLabel(animal)}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-xs text-muted">
+                  Origine : {getOwnershipStatusLabel(animal.ownership_status)}
+                </p>
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-muted">
                 {formatAnimalDate(animal.birth_date)}
               </td>
               <td className="min-w-56 px-6 py-4 text-xs leading-6">
                 <p>
-                  Portée : <OptionalValue value={animal.litterName} />
+                  Portée :{" "}
+                  {animal.litter_id ? (
+                    <Link
+                      href={`/litters/${animal.litter_id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {animal.litterName || "Portée"}
+                    </Link>
+                  ) : (
+                    <OptionalValue value={animal.litterName} />
+                  )}
                 </p>
                 <p>
                   Groupe : <OptionalValue value={animal.litterGroupName} />

@@ -52,7 +52,7 @@ export default async function AnimalsPage() {
   const result = await supabase
     .from("animals")
     .select(
-      "id, display_name, temporary_name, call_name, official_name, species, breed, sex, status, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, created_at",
+      "id, display_name, temporary_name, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
