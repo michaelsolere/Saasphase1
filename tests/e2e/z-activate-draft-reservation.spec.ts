@@ -92,12 +92,29 @@ async function readReservation(
     await supabase
       .from("reservations")
       .select(
-        "id, status, reservation_confirmed_at, updated_at, updated_by, price_cents, animal_id, application_id, contact_id",
+        "id, status, reservation_confirmed_at, updated_at, updated_by, price_cents, animal_id, animal_assigned_at, application_id, contact_id, adoption_completed_at",
       )
       .eq("id", reservationId)
       .is("deleted_at", null)
       .single(),
     "read reservation",
+  );
+}
+
+async function readReservationPayments(
+  supabase: SupabaseTestClient,
+  reservationId: string,
+) {
+  return expectSupabaseData(
+    await supabase
+      .from("payments")
+      .select(
+        "id, amount_cents, status, payment_type, payment_method, requested_at, due_date, paid_at, notes",
+      )
+      .eq("reservation_id", reservationId)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true }),
+    "read reservation payments",
   );
 }
 
@@ -257,6 +274,145 @@ async function createPreReservationPaymentFixture(
   return { paymentId, reservationId };
 }
 
+async function createPreReservationBalanceFixture(
+  supabase: SupabaseTestClient,
+  {
+    reservationStatus,
+    firstPaymentStatus,
+    withSecondRequest = false,
+  }: {
+    reservationStatus: "pre_reservation_requested" | "pre_reservation_paid";
+    firstPaymentStatus: "requested" | "paid";
+    withSecondRequest?: boolean;
+  },
+) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
+
+  const contactId = randomUUID();
+  const applicationId = randomUUID();
+  const reservationId = randomUUID();
+  const firstPaymentId = randomUUID();
+  const secondPaymentId = withSecondRequest ? randomUUID() : null;
+  const suffix = reservationId.slice(0, 8);
+  const displayName = `Balance Request ${suffix}`;
+
+  const { error: contactError } = await supabase.from("contacts").insert({
+    id: contactId,
+    organization_id: organizationId,
+    contact_type: "person",
+    first_name: "Balance",
+    last_name: `Request ${suffix}`,
+    display_name: displayName,
+    email: `balance-request-${suffix}@example.invalid`,
+    origin_channel: "manual",
+    primary_status: "active",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (contactError) {
+    throw new Error(`create balance contact: ${contactError.message}`);
+  }
+
+  const { error: applicationError } = await supabase.from("applications").insert({
+    id: applicationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    species: "dog",
+    breed: "Golden Retriever",
+    desired_period: "Test complement arrhes",
+    desired_sex_preference: "no_preference",
+    desired_quantity: 1,
+    project_description:
+      "Fixture e2e dédiée à la demande manuelle de complément d'arrhes.",
+    status: "qualified",
+    submitted_at: "2026-04-01T10:00:00+00:00",
+    reviewed_at: "2026-04-01T12:00:00+00:00",
+    reviewed_by: user.id,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (applicationError) {
+    throw new Error(`create balance application: ${applicationError.message}`);
+  }
+
+  const { error: reservationError } = await supabase.from("reservations").insert({
+    id: reservationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    application_id: applicationId,
+    species: "dog",
+    breed: "Golden Retriever",
+    reserved_sex_preference: "no_preference",
+    status: reservationStatus,
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (reservationError) {
+    throw new Error(`create balance reservation: ${reservationError.message}`);
+  }
+
+  const paymentsToInsert = [
+    {
+      id: firstPaymentId,
+      organization_id: organizationId,
+      contact_id: contactId,
+      reservation_id: reservationId,
+      amount_cents: 25000,
+      currency: "EUR",
+      payment_type: "arrhes",
+      status: firstPaymentStatus,
+      payment_method: "bank_transfer",
+      requested_at: "2026-04-02T10:00:00+00:00",
+      due_date: "2026-04-17",
+      paid_at:
+        firstPaymentStatus === "paid" ? "2026-04-03T10:00:00+00:00" : null,
+      notes: "Demande 1/2 — avance sur arrhes de pré-réservation.",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+  ];
+
+  if (secondPaymentId) {
+    paymentsToInsert.push({
+      id: secondPaymentId,
+      organization_id: organizationId,
+      contact_id: contactId,
+      reservation_id: reservationId,
+      amount_cents: 25000,
+      currency: "EUR",
+      payment_type: "arrhes",
+      status: "requested",
+      payment_method: "bank_transfer",
+      requested_at: "2026-04-04T10:00:00+00:00",
+      due_date: "2026-04-19",
+      paid_at: null,
+      notes: "Demande 2/2 — complément des arrhes.",
+      created_by: user.id,
+      updated_by: user.id,
+    });
+  }
+
+  const { error: paymentError } = await supabase
+    .from("payments")
+    .insert(paymentsToInsert);
+
+  if (paymentError) {
+    throw new Error(`create balance payments: ${paymentError.message}`);
+  }
+
+  return { reservationId, firstPaymentId, secondPaymentId };
+}
+
 test("confirms a draft reservation manually without side effects", async ({
   page,
 }) => {
@@ -371,4 +527,142 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
   );
   expect(updatedPayment.status).toBe("paid");
   expect(updatedPayment.paid_at).not.toBeNull();
+});
+
+test("creates the second 250 euro deposit request only after confirmation", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
+    reservationStatus: "pre_reservation_paid",
+    firstPaymentStatus: "paid",
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  const beforeReservation = await readReservation(supabase, reservationId);
+  expect(beforeReservation).toMatchObject({
+    status: "pre_reservation_paid",
+    animal_id: null,
+    animal_assigned_at: null,
+    adoption_completed_at: null,
+  });
+
+  await page.goto(`/reservations/${reservationId}`);
+  await page
+    .locator("#reservation-details")
+    .getByRole("button", { name: "Demander le complément des arrhes" })
+    .click();
+  await expect(
+    page.getByText(
+      "Créer une demande 2/2 de 250 € d’arrhes ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Confirmer la demande" }).click();
+  await expect(page).toHaveURL(/balance_request_status=success/);
+  await expect(
+    page.getByText("La demande de complément des arrhes a bien été créée."),
+  ).toBeVisible();
+
+  const payments = await readReservationPayments(supabase, reservationId);
+  expect(payments).toHaveLength(2);
+  expect(
+    payments.filter(
+      (payment) =>
+        payment.payment_type === "arrhes" &&
+        payment.amount_cents === 25000 &&
+        payment.status === "paid",
+    ),
+  ).toHaveLength(1);
+
+  const secondRequest = payments.find(
+    (payment) =>
+      payment.payment_type === "arrhes" &&
+      payment.amount_cents === 25000 &&
+      payment.status === "requested",
+  );
+  expect(secondRequest).toBeTruthy();
+  expect(secondRequest?.payment_method).toBe("bank_transfer");
+  expect(secondRequest?.requested_at).not.toBeNull();
+  expect(secondRequest?.due_date).not.toBeNull();
+  expect(secondRequest?.paid_at).toBeNull();
+
+  const afterReservation = await readReservation(supabase, reservationId);
+  expect(afterReservation).toMatchObject({
+    status: beforeReservation.status,
+    animal_id: beforeReservation.animal_id,
+    animal_assigned_at: beforeReservation.animal_assigned_at,
+    adoption_completed_at: beforeReservation.adoption_completed_at,
+  });
+});
+
+test("does not show the second deposit action when the request already exists", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
+    reservationStatus: "pre_reservation_paid",
+    firstPaymentStatus: "paid",
+    withSecondRequest: true,
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await expect(
+    page.getByRole("button", { name: /Demander le complément/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      "Complément demandé (1/2 payé) : la deuxième demande de paiement de 250 € a été émise.",
+    ),
+  ).toBeVisible();
+
+  const payments = await readReservationPayments(supabase, reservationId);
+  expect(payments).toHaveLength(2);
+  expect(
+    payments.filter(
+      (payment) =>
+        payment.payment_type === "arrhes" &&
+        payment.amount_cents === 25000 &&
+        (payment.status === "requested" || payment.status === "paid"),
+    ),
+  ).toHaveLength(2);
+});
+
+test("does not show the second deposit action when the first deposit is not paid", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
+    reservationStatus: "pre_reservation_paid",
+    firstPaymentStatus: "requested",
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await expect(
+    page.getByRole("button", { name: /Demander le complément/ }),
+  ).toHaveCount(0);
+
+  const payments = await readReservationPayments(supabase, reservationId);
+  expect(payments).toHaveLength(1);
+  expect(payments[0]).toMatchObject({
+    amount_cents: 25000,
+    payment_type: "arrhes",
+    status: "requested",
+  });
 });
