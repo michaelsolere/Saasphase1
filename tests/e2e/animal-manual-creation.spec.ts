@@ -294,6 +294,8 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       ["species", "cat"],
       ["breed", "Persan"],
       ["litter_id", "c0000000-0000-4000-8000-000000000001"],
+      ["mother_id", "c0000000-0000-4000-8000-000000000002"],
+      ["father_id", "c0000000-0000-4000-8000-000000000003"],
       ["is_breeder", "yes"],
       ["is_external", "yes"],
       ["is_retired", "yes"],
@@ -314,7 +316,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await supabase
       .from("animals")
       .select(
-        "display_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, is_breeder, is_external, is_retired",
+        "display_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
       )
       .eq("id", manualAnimalId)
       .single(),
@@ -333,6 +335,8 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     species: "dog",
     breed: "Golden Retriever",
     litter_id: null,
+    mother_id: null,
+    father_id: null,
     is_breeder: false,
     is_external: false,
     is_retired: false,
