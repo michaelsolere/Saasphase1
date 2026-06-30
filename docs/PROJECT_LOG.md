@@ -55,6 +55,22 @@ Objectif : permettre une édition courte depuis `/animals/[id]/edit` sans modifi
 
 Hors périmètre conservé : aucun code applicatif, aucune migration, aucun SQL, aucune règle RLS, aucune RPC et aucune automatisation Supabase.
 
+### Santé Animal lecture seule
+
+Objectif : regrouper sur la fiche Animal les informations santé déjà liées à l'animal, sans créer de module santé complet.
+
+État documenté :
+
+* ajout d'une section `Santé` en lecture seule sur `/animals/[id]` ;
+* regroupement uniquement à partir des données déjà liées à l'animal ;
+* notes santé identifiées par `notes.note_type = 'health'` ;
+* événements santé limités aux événements liés par `events.animal_id` et clairement identifiables comme santé ;
+* documents santé limités aux documents liés par `documents.animal_id` et clairement sanitaires ;
+* état vide sobre si aucune donnée santé identifiable ;
+* test e2e ciblé ajouté pour vérifier la présence de la section et l'état vide.
+
+Hors périmètre conservé : aucun module santé complet, aucune création d'événement santé depuis la fiche Animal, aucune récurrence, aucun template, aucun rappel automatique, aucune migration et aucun nouveau modèle.
+
 ## Jalon pré-réservation 1/2 — 250 €
 
 Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 € avant la suite du parcours réservation.
