@@ -92,6 +92,13 @@ function animalHomeBreederPromotionUrl(
   return `/animals/${animalId}?home_breeder_promotion_status=${code}`;
 }
 
+function animalKeepAtKennelUrl(
+  animalId: string,
+  code: "success" | "not_allowed" | "error",
+) {
+  return `/animals/${animalId}?keep_at_kennel_status=${code}`;
+}
+
 function normalizeOptionalText(
   value: FormDataEntryValue | null,
   maxLength = 255,
@@ -555,6 +562,88 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath("/cheptel");
   redirect(animalHomeBreederPromotionUrl(animalId, "success"));
+}
+
+export async function keepAnimalAtKennel(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  if (formData.get("confirm_keep_at_kennel") !== "yes") {
+    redirect(animalKeepAtKennelUrl(animalId, "not_allowed"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(animalKeepAtKennelUrl(animalId, "error"));
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select("id, organization_id, status, ownership_status, is_external, is_retired")
+    .eq("id", animalId)
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalKeepAtKennelUrl(animalId, "error"));
+  }
+
+  const isAdoptedOut = ["adopted_out", "sold"].includes(
+    String(animal.ownership_status),
+  );
+  const canKeep =
+    ["born", "active", "available"].includes(animal.status) &&
+    !animal.is_external &&
+    !animal.is_retired &&
+    !isAdoptedOut;
+
+  if (!canKeep) {
+    redirect(animalKeepAtKennelUrl(animalId, "not_allowed"));
+  }
+
+  const { data: keptAnimal, error: updateError } = await supabase
+    .from("animals")
+    .update({ status: "kept" })
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null)
+    .in("status", ["born", "active", "available"])
+    .eq("is_external", false)
+    .eq("is_retired", false)
+    .not("ownership_status", "in", "(adopted_out,sold)")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !keptAnimal?.id) {
+    redirect(animalKeepAtKennelUrl(animalId, "error"));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+  revalidatePath("/cheptel");
+  redirect(animalKeepAtKennelUrl(animalId, "success"));
 }
 
 export async function createAnimalHealthEvent(formData: FormData) {
