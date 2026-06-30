@@ -374,7 +374,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   });
 });
 
-test("shows a readonly empty health section on animal detail", async ({
+test("shows an empty health section on animal detail", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
@@ -406,8 +406,83 @@ test("shows a readonly empty health section on animal detail", async ({
   await expect(
     page.getByRole("heading", { name: `QA sante vide ${suffix}` }),
   ).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Santé" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Santé", exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText("Aucune donnée santé clairement identifiable pour cet animal."),
   ).toBeVisible();
+});
+
+test("creates a health event from an animal detail page", async ({ page }) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+  const eventTitle = `Vaccination animal e2e ${suffix}`;
+
+  const { error: animalInsertError } = await supabase.from("animals").insert({
+    id: animalId,
+    organization_id: organizationId,
+    display_name: `QA evenement sante ${suffix}`,
+    species: "dog",
+    breed: "Golden Retriever",
+    sex: "female",
+    status: "active",
+    ownership_status: "owned",
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(animalInsertError).toBeNull();
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/animals/${animalId}#sante`);
+
+  const healthSection = page.locator("#sante");
+  await expect(
+    healthSection.getByRole("heading", { name: "Santé", exact: true }),
+  ).toBeVisible();
+  await expect(
+    healthSection.getByRole("heading", { name: "Ajouter un événement santé" }),
+  ).toBeVisible();
+
+  await healthSection.locator("#animal-health-event-title").fill(eventTitle);
+  await healthSection.locator("#animal-health-event-date").fill("2026-06-30");
+  await healthSection
+    .locator("#animal-health-event-type")
+    .selectOption("vaccination");
+  await healthSection
+    .locator("#animal-health-event-status")
+    .selectOption("planned");
+  await healthSection
+    .locator("#animal-health-event-priority")
+    .selectOption("normal");
+  await healthSection
+    .locator("#animal-health-event-description")
+    .fill("Evenement sante cree depuis le test e2e.");
+
+  await healthSection
+    .getByRole("button", { name: "Ajouter l’événement" })
+    .click();
+
+  await expect(page).toHaveURL(
+    new RegExp(`/animals/${animalId}.*health_event_status=success`),
+  );
+  await expect(page).toHaveURL(/#sante/);
+  await expect(healthSection).toContainText("L’événement santé a été ajouté.");
+  await expect(
+    healthSection.getByRole("heading", { name: "Événements santé" }),
+  ).toBeVisible();
+  await expect(healthSection).toContainText(eventTitle);
+  await expect(healthSection).toContainText("Type : vaccination");
+  await expect(healthSection).toContainText("planned");
+  await expect(healthSection).toContainText("Date utile : 30 juin 2026");
+  await expect(healthSection).toContainText(
+    "Evenement sante cree depuis le test e2e.",
+  );
 });
