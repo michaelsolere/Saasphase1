@@ -71,6 +71,23 @@ Objectif : regrouper sur la fiche Animal les informations santé déjà liées �
 
 Hors périmètre conservé : aucun module santé complet, aucune création d'événement santé depuis la fiche Animal, aucune récurrence, aucun template, aucun rappel automatique, aucune migration et aucun nouveau modèle.
 
+### Création d'événement santé Animal
+
+Objectif : permettre un ajout manuel léger d'événement santé depuis la fiche Animal, sans créer de module santé complet.
+
+État documenté :
+
+* la fiche Animal permet maintenant d'ajouter manuellement un événement santé depuis la section `Santé` ;
+* l'événement est stocké dans `events` avec `animal_id` ;
+* l'action serveur relit l'animal pour récupérer `organization_id` et conserver le bon rattachement organisation ;
+* après création, le retour se fait sur `/animals/[id]`, section `Santé` ;
+* les types proposés restent limités aux types SQL existants, avec préférence pour les types clairement santé : `vaccination`, `xray`, `ultrasound` et `pregnancy_check` ;
+* `other` reste possible avec prudence, car il peut ne pas réapparaître dans la section Santé selon le filtre actuel ;
+* l'événement créé apparaît dans `Événements santé` si son `event_type` est reconnu par le filtre santé ;
+* un test e2e ciblé couvre la création d'un événement santé Animal depuis la fiche.
+
+Hors périmètre conservé : aucun module santé complet, aucune récurrence, aucun template, aucun rappel automatique, aucune migration et aucun nouveau modèle.
+
 ## Jalon pré-réservation 1/2 — 250 €
 
 Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 € avant la suite du parcours réservation.
