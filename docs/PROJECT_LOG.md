@@ -88,6 +88,28 @@ Objectif : permettre un ajout manuel léger d'événement santé depuis la fiche
 
 Hors périmètre conservé : aucun module santé complet, aucune récurrence, aucun template, aucun rappel automatique, aucune migration et aucun nouveau modèle.
 
+### Cheptel et décisions d'élevage
+
+Objectif : clarifier la frontière entre le registre complet des animaux et la vue opérationnelle du cheptel réel.
+
+État documenté :
+
+* `/cheptel` est une vue synthétique du cheptel réel, pas un doublon de `/animals` ;
+* les panneaux Cheptel sont recentrés sur reproductrices maison, mâles maison, reproducteurs extérieurs, animaux restant à l'élevage et retraités ;
+* les panneaux chiots disponibles, réservés et adoptés ont été retirés de Cheptel ;
+* les libellés Cheptel ont été clarifiés, notamment `Origine / détention`, `Né à l'élevage` et `Maison` ;
+* la section `Décisions d'élevage` rend plus visibles les actions sensibles sur la fiche Animal ;
+* `Garder à l'élevage` met uniquement `status = kept` ;
+* `Remettre disponible` remet uniquement `status = available` ;
+* ces deux actions ne modifient pas `is_breeder` ;
+* la promotion reproductrice maison reste une action séparée ;
+* la promotion reproductrice maison met uniquement `is_breeder = true` ;
+* elle est bloquée si l'animal a moins de 15 mois, si `birth_date` est absente ou si `identification_number` est absent ;
+* les contrôles LOF, confirmation, radios hanches/coudes et tests ADN restent manuels en Phase 1 ;
+* des tests e2e ciblés couvrent `Garder à l'élevage` et `Remettre disponible`.
+
+Hors périmètre conservé : aucune migration, aucun nouveau statut, aucun nouveau modèle, aucun SQL, aucune règle RLS et aucune RPC.
+
 ## Jalon pré-réservation 1/2 — 250 €
 
 Objectif : consolider le suivi manuel de la première demande d'arrhes de 250 € avant la suite du parcours réservation.
