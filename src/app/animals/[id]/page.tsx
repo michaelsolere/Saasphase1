@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import {
   createAnimalHealthEvent,
+  promoteAnimalToHomeBreeder,
 } from "@/features/animals/actions";
 import {
   formatAnimalCoat,
@@ -209,6 +210,29 @@ function isHealthEvent(event: RelatedEvent) {
 
 function isHealthDocument(document: RelatedDocument) {
   return hasHealthKeyword(`${document.document_type} ${document.title}`);
+}
+
+function canPromoteToHomeBreeder(animal: DBAnimal) {
+  const isHomeOrKept =
+    animal.status === "kept" ||
+    ["owned", "produced"].includes(String(animal.ownership_status)) ||
+    Boolean(animal.litter_id);
+  const isAdoptedOut = ["adopted_out", "sold"].includes(
+    String(animal.ownership_status),
+  );
+
+  return (
+    animal.sex === "female" &&
+    !animal.is_external &&
+    !animal.is_breeder &&
+    !animal.is_retired &&
+    animal.status !== "adopted" &&
+    animal.status !== "deceased" &&
+    animal.status !== "archived" &&
+    animal.status !== "retired" &&
+    !isAdoptedOut &&
+    isHomeOrKept
+  );
 }
 
 function NotFoundOrUnauthorized() {
@@ -998,6 +1022,7 @@ export default async function AnimalDetailPage({
   searchParams: Promise<{
     identity_status?: string;
     health_event_status?: string;
+    home_breeder_promotion_status?: string;
   }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
@@ -1174,6 +1199,19 @@ export default async function AnimalDetailPage({
                 </section>
               ) : null}
 
+              {query.home_breeder_promotion_status === "success" ? (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950">
+                  L’animal est maintenant reproductrice maison.
+                </section>
+              ) : query.home_breeder_promotion_status ? (
+                <section
+                  role="alert"
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-950"
+                >
+                  Impossible de promouvoir cet animal en reproductrice maison.
+                </section>
+              ) : null}
+
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Identité</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -1227,6 +1265,36 @@ export default async function AnimalDetailPage({
                     value={booleanLabel(animal.is_retired)}
                   />
                 </dl>
+
+                {canPromoteToHomeBreeder(animal) ? (
+                  <form
+                    action={promoteAnimalToHomeBreeder}
+                    className="mt-6 border-t pt-6"
+                  >
+                    <input type="hidden" name="animal_id" value={animal.id} />
+                    <label
+                      htmlFor="confirm-home-breeder-promotion"
+                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                    >
+                      <input
+                        id="confirm-home-breeder-promotion"
+                        name="confirm_home_breeder_promotion"
+                        type="checkbox"
+                        value="yes"
+                        required
+                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                      />
+                      Je confirme que cet animal doit devenir reproductrice
+                      maison.
+                    </label>
+                    <button
+                      type="submit"
+                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Promouvoir en reproductrice maison
+                    </button>
+                  </form>
+                ) : null}
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">

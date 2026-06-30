@@ -81,6 +81,13 @@ function animalHealthEventUrl(
   return `/animals/${animalId}?health_event_status=${code}#sante`;
 }
 
+function animalHomeBreederPromotionUrl(
+  animalId: string,
+  code: "success" | "not_allowed" | "error",
+) {
+  return `/animals/${animalId}?home_breeder_promotion_status=${code}`;
+}
+
 function normalizeOptionalText(
   value: FormDataEntryValue | null,
   maxLength = 255,
@@ -375,6 +382,102 @@ export async function updateAnimalIdentity(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath(`/animals/${animalId}/edit`);
   redirect(`/animals/${animalId}?identity_status=success`);
+}
+
+export async function promoteAnimalToHomeBreeder(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  if (formData.get("confirm_home_breeder_promotion") !== "yes") {
+    redirect(animalHomeBreederPromotionUrl(animalId, "not_allowed"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(animalHomeBreederPromotionUrl(animalId, "error"));
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select(
+      "id, organization_id, sex, status, ownership_status, litter_id, is_breeder, is_external, is_retired",
+    )
+    .eq("id", animalId)
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalHomeBreederPromotionUrl(animalId, "error"));
+  }
+
+  const isEligibleStatus =
+    animal.status === "kept" ||
+    ["owned", "produced"].includes(String(animal.ownership_status)) ||
+    Boolean(animal.litter_id);
+  const isAdoptedOut = ["adopted_out", "sold"].includes(
+    String(animal.ownership_status),
+  );
+
+  const canPromote =
+    animal.sex === "female" &&
+    !animal.is_external &&
+    !animal.is_breeder &&
+    !animal.is_retired &&
+    animal.status !== "adopted" &&
+    animal.status !== "deceased" &&
+    animal.status !== "archived" &&
+    animal.status !== "retired" &&
+    !isAdoptedOut &&
+    isEligibleStatus;
+
+  if (!canPromote) {
+    redirect(animalHomeBreederPromotionUrl(animalId, "not_allowed"));
+  }
+
+  const { data: promotedAnimal, error: updateError } = await supabase
+    .from("animals")
+    .update({ is_breeder: true })
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null)
+    .eq("sex", "female")
+    .eq("is_external", false)
+    .eq("is_breeder", false)
+    .eq("is_retired", false)
+    .not("status", "in", "(adopted,deceased,archived,retired)")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !promotedAnimal?.id) {
+    redirect(animalHomeBreederPromotionUrl(animalId, "error"));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+  revalidatePath("/cheptel");
+  redirect(animalHomeBreederPromotionUrl(animalId, "success"));
 }
 
 export async function createAnimalHealthEvent(formData: FormData) {
