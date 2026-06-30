@@ -1974,22 +1974,20 @@ export default async function ReservationDetailPage({
                       value={formatPrice(reservation.price_cents, reservation.currency)}
                     />
                     <DetailItem
-                      label="Montant réglé"
+                      label="Suivi financier"
                       value={
-                        reservation.paid_cents !== null && reservation.paid_cents !== undefined
-                          ? formatPrice(reservation.paid_cents, reservation.currency)
-                          : "Aucun paiement"
+                        <div className="space-y-1.5">
+                          <p>
+                            {paymentCount} paiement{paymentCount > 1 ? "s" : ""} lié{paymentCount > 1 ? "s" : ""} · {balanceLabel}
+                          </p>
+                          <a
+                            href="#payments"
+                            className="inline-flex text-sm font-semibold text-accent hover:underline"
+                          >
+                            Voir les paiements liés
+                          </a>
+                        </div>
                       }
-                    />
-                    {reservation.refunded_cents !== null && reservation.refunded_cents !== undefined && reservation.refunded_cents > 0 ? (
-                      <DetailItem
-                        label="Montant remboursé"
-                        value={formatPrice(reservation.refunded_cents, reservation.currency)}
-                      />
-                    ) : null}
-                    <DetailItem
-                      label={balanceLabel}
-                      value={balanceValue}
                     />
                   </dl>
 
