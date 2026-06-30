@@ -71,6 +71,12 @@ const quickLinks = [
     description: "Les animaux avec portée, réservation, documents, notes et événements.",
     status: "Privé",
   },
+  {
+    href: "/cheptel",
+    title: "Cheptel",
+    description: "Le cockpit synthétique des reproducteurs, chiots et statuts clés.",
+    status: "Privé",
+  },
 ];
 
 const closedOrNegativeReservationStatuses = new Set([
