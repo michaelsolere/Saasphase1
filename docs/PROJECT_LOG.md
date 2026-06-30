@@ -213,6 +213,14 @@ La fiche `/reservations/[id]` est désormais le centre opérationnel du dossier 
 * aucune facture ou reçu ;
 * workflows encore sous contrôle manuel de l'éleveur.
 
+## Note de cadrage — événements, tâches, mise-bas et templates
+
+Les `events` ne doivent pas devenir un gestionnaire de tâches généraliste. Les tâches doivent rester contextualisées par module et par objet métier : portée, animal, réservation, contact ou candidature. Les événements de portée servent d'abord au suivi local d'une portée ; certaines entrées peuvent être des tâches liées à cette portée, mais pas des tâches globales libres.
+
+Le journal de mise-bas devra être cadré séparément plus tard, avec une UX mobile-first adaptée au terrain : horodatage rapide, gros boutons et observations fréquentes. Les templates de portée devront aussi être cadrés séparément plus tard, autour de jalons réutilisables, de dates relatives et probablement d'un modèle dédié.
+
+La table `events` peut servir de support technique, mais l'UX doit rester métier et contextualisée. Ne pas implémenter maintenant de timeline, de templates, de gestionnaire global de tâches ou de journal de mise-bas.
+
 ## Décisions structurantes actées côté Réservation
 
 * La réservation est bien le centre opérationnel du dossier adoptant.
