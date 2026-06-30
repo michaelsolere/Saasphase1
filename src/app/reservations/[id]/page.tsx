@@ -556,7 +556,7 @@ function DetailItem({
   );
 }
 
-function SummaryItem({
+function SummaryMetric({
   label,
   value,
   detail,
@@ -578,21 +578,67 @@ function SummaryItem({
   );
 
   return (
-    <div className="rounded-xl border bg-background px-4 py-3.5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/70 py-2.5 last:border-b-0">
+      <dt className="shrink-0 text-xs font-semibold uppercase tracking-wide text-muted">
         {label}
-      </p>
-      <div className="mt-2 text-sm leading-6">
-        {badgeClassName ? (
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassName}`}>
-            {content}
-          </span>
-        ) : (
-          content
-        )}
+      </dt>
+      <dd className="min-w-0 text-right text-sm leading-5">
+        <div className="min-w-0">
+          {badgeClassName ? (
+            <span className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassName}`}>
+              <span className="truncate">{content}</span>
+            </span>
+          ) : (
+            content
+          )}
+          {detail ? (
+            <p className="mt-1 truncate text-xs text-muted">{detail}</p>
+          ) : null}
+        </div>
+      </dd>
+    </div>
+  );
+}
+
+function SummaryIndicator({
+  label,
+  value,
+  detail,
+  href,
+  badgeClassName,
+}: {
+  label: string;
+  value: React.ReactNode;
+  detail?: React.ReactNode;
+  href?: string;
+  badgeClassName?: string;
+}) {
+  const content = href ? (
+    <Link href={href} className="font-semibold text-accent hover:underline">
+      {value}
+    </Link>
+  ) : (
+    <span className="font-semibold">{value}</span>
+  );
+
+  return (
+    <div className="min-w-0 rounded-lg border bg-background px-3 py-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted">
+          {label}
+        </span>
+        <span
+          className={`inline-flex min-w-0 rounded-full border px-2 py-0.5 text-xs font-semibold ${
+            badgeClassName ?? "border-border bg-surface text-foreground"
+          }`}
+        >
+          <span className="truncate">{content}</span>
+        </span>
       </div>
       {detail ? (
-        <p className="mt-2 text-xs leading-5 text-muted">{detail}</p>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted">
+          {detail}
+        </p>
       ) : null}
     </div>
   );
@@ -1481,73 +1527,87 @@ export default async function ReservationDetailPage({
                 </span>
               </div>
 
-              <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <SummaryItem
-                  label="Adoptant"
-                  value={reservation.contact_display_name ?? "Client associé"}
-                  detail={
-                    contactDetails
-                      ? `${contactDetails.email || ""} ${contactDetails.phone || ""}`.trim() || "Aucune coordonnée enregistrée."
-                      : "Mémoire relationnelle du dossier."
-                  }
-                  href={
-                    reservation.contact_id
-                      ? `/contacts/${reservation.contact_id}`
-                      : undefined
-                  }
+              <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <dl className="rounded-xl border bg-background px-4 py-2">
+                  <SummaryMetric
+                    label="Adoptant"
+                    value={reservation.contact_display_name ?? "Client associé"}
+                    href={
+                      reservation.contact_id
+                        ? `/contacts/${reservation.contact_id}`
+                        : undefined
+                    }
+                  />
+                  <SummaryMetric
+                    label="Statut"
+                    value={getReservationStatusLabel(reservation.status)}
+                    badgeClassName={
+                      reservation.status === "adopted" || reservation.status === "pre_reservation_paid"
+                        ? "text-emerald-700 bg-emerald-50 border-emerald-200"
+                        : reservation.status === "pre_reservation_requested" || reservation.status === "active"
+                          ? "text-amber-700 bg-amber-50 border-amber-200"
+                          : reservation.status === "cancelled" || reservation.status === "withdrawn" || reservation.status === "expired"
+                            ? "text-rose-700 bg-rose-50 border-rose-200"
+                            : "text-muted bg-muted-soft border-border"
+                    }
+                  />
+                  <SummaryMetric
+                    label="Animal"
+                    value={animalSummaryLabel}
+                    detail={animalSummaryDetail}
+                    href={
+                      reservation.animal_id
+                        ? `/animals/${reservation.animal_id}`
+                        : undefined
+                    }
+                  />
+                </dl>
+
+                <div className="rounded-xl border bg-background px-4 py-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Prochaine action
+                  </p>
+                  {nextAction ? (
+                    <>
+                      <p className="mt-1.5 text-sm font-semibold leading-6 text-foreground">
+                        {nextAction.label}
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-muted">
+                        {nextAction.detail}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1.5 text-sm text-muted">
+                      Aucune action automatique identifiée.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <SummaryIndicator
+                  label="Finances"
+                  value={paymentsSummaryText}
+                  detail={financialSummaryDetail}
+                  badgeClassName={paymentsSummaryColor}
                 />
-                <SummaryItem
-                  label="Candidature"
-                  value={
-                    applicationDetails
-                      ? `${applicationDetails.breed} (${applicationDetails.species === "dog" ? "Chien" : "Chat"})`
-                      : reservation.application_id
-                        ? "Candidature liée"
-                        : "Non renseignée"
-                  }
-                  detail={
-                    applicationDetails
-                      ? `Qualification : ${applicationDetails.status === "qualified" ? "Qualifié" : applicationDetails.status}`
-                      : "Aucune candidature liée à cette réservation."
-                  }
-                  href={
-                    reservation.application_id
-                      ? `/candidatures/${reservation.application_id}`
-                      : undefined
-                  }
-                />
-                <SummaryItem
-                  label="Statut"
-                  value={getReservationStatusLabel(reservation.status)}
-                  detail={`Créée le ${formatApplicationDate(reservation.created_at)}`}
-                  badgeClassName={
-                    reservation.status === "adopted" || reservation.status === "pre_reservation_paid"
-                      ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                      : reservation.status === "pre_reservation_requested" || reservation.status === "active"
-                        ? "text-amber-700 bg-amber-50 border-amber-200"
-                        : reservation.status === "cancelled" || reservation.status === "withdrawn" || reservation.status === "expired"
-                          ? "text-rose-700 bg-rose-50 border-rose-200"
-                          : "text-muted bg-muted-soft border-border"
-                  }
-                />
-                <SummaryItem
-                  label="Demande 1/2 — 250 €"
+                <SummaryIndicator
+                  label="Arrhes 1/2"
                   value={getPreReservationDepositLabel(
                     preReservationDepositState,
                   )}
-                  detail={
-                    preReservationDepositState === "paid"
-                      ? "Le premier versement de pré-réservation est enregistré comme payé."
-                      : preReservationDepositState === "requested"
-                        ? "La demande de pré-réservation est envoyée ou en attente de règlement."
-                        : "Aucune demande de pré-réservation de 250 € n’est visible sur ce dossier."
-                  }
+                  detail={secondDepositLabel}
                   badgeClassName={getPreReservationDepositBadgeClassName(
                     preReservationDepositState,
                   )}
                 />
-                <SummaryItem
-                  label="Portée / groupe"
+                <SummaryIndicator
+                  label="Documents"
+                  value={docsSummaryText}
+                  detail={documentSummaryDetail}
+                />
+                <SummaryIndicator
+                  label="Portée"
                   value={scopeSummaryValue}
                   detail={
                     reservation.rank_active
@@ -1560,40 +1620,6 @@ export default async function ReservationDetailPage({
                       : undefined
                   }
                 />
-                <SummaryItem
-                  label="Animal"
-                  value={animalSummaryLabel}
-                  detail={animalSummaryDetail}
-                  href={
-                    reservation.animal_id
-                      ? `/animals/${reservation.animal_id}`
-                      : undefined
-                  }
-                />
-                <SummaryItem
-                  label="Paiements"
-                  value={paymentsSummaryText}
-                  detail={financialSummaryDetail}
-                  badgeClassName={paymentsSummaryColor}
-                />
-                <SummaryItem
-                  label="Documents"
-                  value={docsSummaryText}
-                  detail={documentSummaryDetail}
-                />
-                <SummaryItem
-                  label="Suivi"
-                  value={followUpSummaryLabel}
-                  detail="Notes et événements restent consultables plus bas dans la fiche."
-                />
-                {nextAction ? (
-                  <SummaryItem
-                    label="Prochaine action"
-                    value={nextAction.label}
-                    detail={nextAction.detail}
-                    badgeClassName={nextAction.badgeClassName}
-                  />
-                ) : null}
               </div>
 
               <nav
