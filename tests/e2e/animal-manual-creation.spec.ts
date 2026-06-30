@@ -373,3 +373,41 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     ownership_status: "produced",
   });
 });
+
+test("shows a readonly empty health section on animal detail", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+
+  const { error: animalInsertError } = await supabase.from("animals").insert({
+    id: animalId,
+    organization_id: organizationId,
+    display_name: `QA sante vide ${suffix}`,
+    species: "dog",
+    breed: "Golden Retriever",
+    sex: "female",
+    status: "active",
+    ownership_status: "owned",
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(animalInsertError).toBeNull();
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/animals/${animalId}`);
+  await expect(
+    page.getByRole("heading", { name: `QA sante vide ${suffix}` }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Santé" })).toBeVisible();
+  await expect(
+    page.getByText("Aucune donnée santé clairement identifiable pour cet animal."),
+  ).toBeVisible();
+});
