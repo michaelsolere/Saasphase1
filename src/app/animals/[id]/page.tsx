@@ -1198,6 +1198,15 @@ export default async function AnimalDetailPage({
 
   const relatedReservation =
     ((rawReservations as ReservationOverview[] | null) ?? [])[0] ?? null;
+  const canKeepAnimalAtKennel = animal ? canKeepAtKennel(animal) : false;
+  const canMakeAnimalAvailable = animal ? canMakeAvailable(animal) : false;
+  const canPromoteAnimalToHomeBreeder = animal
+    ? canPromoteToHomeBreeder(animal)
+    : false;
+  const hasUnavailableBreedingDecision =
+    !canKeepAnimalAtKennel ||
+    !canMakeAnimalAvailable ||
+    !canPromoteAnimalToHomeBreeder;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -1407,6 +1416,117 @@ export default async function AnimalDetailPage({
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div>
+                    <h2 className="text-xl font-semibold">
+                      Décisions d’élevage
+                    </h2>
+                    {hasUnavailableBreedingDecision ? (
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Les actions dépendent du statut, de la réservation et
+                        du rôle de l’animal.
+                      </p>
+                    ) : null}
+                  </div>
+                  <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                    Statut opérationnel
+                  </span>
+                </div>
+
+                {canKeepAnimalAtKennel ? (
+                  <form
+                    action={keepAnimalAtKennel}
+                    className="mt-6 border-t pt-6"
+                  >
+                    <input type="hidden" name="animal_id" value={animal.id} />
+                    <label
+                      htmlFor="confirm-keep-at-kennel"
+                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                    >
+                      <input
+                        id="confirm-keep-at-kennel"
+                        name="confirm_keep_at_kennel"
+                        type="checkbox"
+                        value="yes"
+                        required
+                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                      />
+                      Je confirme que cet animal doit rester à l’élevage. Il ne
+                      sera pas promu reproducteur automatiquement et sortira de
+                      la logique disponible/réservable.
+                    </label>
+                    <button
+                      type="submit"
+                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Garder à l’élevage
+                    </button>
+                  </form>
+                ) : null}
+
+                {canMakeAnimalAvailable ? (
+                  <form
+                    action={makeKeptAnimalAvailable}
+                    className="mt-6 border-t pt-6"
+                  >
+                    <input type="hidden" name="animal_id" value={animal.id} />
+                    <label
+                      htmlFor="confirm-make-available"
+                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                    >
+                      <input
+                        id="confirm-make-available"
+                        name="confirm_make_available"
+                        type="checkbox"
+                        value="yes"
+                        required
+                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                      />
+                      Je confirme que cet animal ne sera plus marqué comme
+                      restant à l’élevage, qu’il pourra de nouveau être proposé
+                      ou attribué, et qu’aucune autre donnée ne sera modifiée.
+                    </label>
+                    <button
+                      type="submit"
+                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Remettre disponible
+                    </button>
+                  </form>
+                ) : null}
+
+                {canPromoteAnimalToHomeBreeder ? (
+                  <form
+                    action={promoteAnimalToHomeBreeder}
+                    className="mt-6 border-t pt-6"
+                  >
+                    <input type="hidden" name="animal_id" value={animal.id} />
+                    <label
+                      htmlFor="confirm-home-breeder-promotion"
+                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                    >
+                      <input
+                        id="confirm-home-breeder-promotion"
+                        name="confirm_home_breeder_promotion"
+                        type="checkbox"
+                        value="yes"
+                        required
+                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                      />
+                      Je confirme que cet animal doit devenir reproductrice
+                      maison.
+                    </label>
+                    <button
+                      type="submit"
+                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Promouvoir en reproductrice maison
+                    </button>
+                  </form>
+                ) : null}
+              </section>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
                   Statut et informations générales
                 </h2>
@@ -1441,98 +1561,6 @@ export default async function AnimalDetailPage({
                     value={booleanLabel(animal.is_retired)}
                   />
                 </dl>
-
-                {canKeepAtKennel(animal) ? (
-                  <form
-                    action={keepAnimalAtKennel}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-keep-at-kennel"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
-                    >
-                      <input
-                        id="confirm-keep-at-kennel"
-                        name="confirm_keep_at_kennel"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal doit rester à l’élevage. Il ne
-                      sera pas promu reproducteur automatiquement et sortira de
-                      la logique disponible/réservable.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Garder à l’élevage
-                    </button>
-                  </form>
-                ) : null}
-
-                {canMakeAvailable(animal) ? (
-                  <form
-                    action={makeKeptAnimalAvailable}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-make-available"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
-                    >
-                      <input
-                        id="confirm-make-available"
-                        name="confirm_make_available"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal ne sera plus marqué comme
-                      restant à l’élevage, qu’il pourra de nouveau être proposé
-                      ou attribué, et qu’aucune autre donnée ne sera modifiée.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Remettre disponible
-                    </button>
-                  </form>
-                ) : null}
-
-                {canPromoteToHomeBreeder(animal) ? (
-                  <form
-                    action={promoteAnimalToHomeBreeder}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-home-breeder-promotion"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
-                    >
-                      <input
-                        id="confirm-home-breeder-promotion"
-                        name="confirm_home_breeder_promotion"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal doit devenir reproductrice
-                      maison.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Promouvoir en reproductrice maison
-                    </button>
-                  </form>
-                ) : null}
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
