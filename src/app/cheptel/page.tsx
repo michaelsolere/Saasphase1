@@ -103,12 +103,10 @@ function isExternalAnimal(animal: Pick<HerdAnimal, "is_external" | "ownership_st
   );
 }
 
-function isHomeAnimal(animal: Pick<HerdAnimal, "is_external" | "ownership_status">) {
-  return (
-    !isExternalAnimal(animal) &&
-    (animal.ownership_status === "owned" ||
-      animal.ownership_status === "produced")
-  );
+function isHomeBreeder(
+  animal: Pick<HerdAnimal, "is_breeder" | "is_external">,
+) {
+  return animal.is_breeder && !animal.is_external;
 }
 
 function normalizeHealthLookup(value: string) {
@@ -146,9 +144,8 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
       description: "Femelles reproductrices détenues ou produites à l’élevage.",
       animals: animals.filter(
         (animal) =>
-          animal.is_breeder &&
-          animal.sex === "female" &&
-          isHomeAnimal(animal),
+          isHomeBreeder(animal) &&
+          animal.sex === "female",
       ),
     },
     {
@@ -157,9 +154,8 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
       description: "Mâles reproducteurs détenus ou produits à l’élevage.",
       animals: animals.filter(
         (animal) =>
-          animal.is_breeder &&
-          animal.sex === "male" &&
-          isHomeAnimal(animal),
+          isHomeBreeder(animal) &&
+          animal.sex === "male",
       ),
     },
     {
@@ -167,14 +163,19 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
       title: "Reproducteurs extérieurs",
       description: "Étalons ou femelles extérieurs utilisés dans le suivi.",
       animals: animals.filter(
-        (animal) => animal.is_breeder && isExternalAnimal(animal),
+        (animal) =>
+          animal.is_breeder &&
+          !isHomeBreeder(animal) &&
+          isExternalAnimal(animal),
       ),
     },
     {
       key: "kept",
       title: "Restent à l’élevage",
       description: "Animaux identifiés avec le statut Gardé à l’élevage.",
-      animals: animals.filter((animal) => animal.status === "kept"),
+      animals: animals.filter(
+        (animal) => animal.status === "kept" && !isHomeBreeder(animal),
+      ),
     },
     {
       key: "retired",
