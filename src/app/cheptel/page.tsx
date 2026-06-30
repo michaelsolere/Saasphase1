@@ -133,6 +133,10 @@ function getHerdSituationLabel(animal: Pick<HerdAnimal, "status">) {
     return "Reste à l’élevage";
   }
 
+  if (animal.status === "active") {
+    return null;
+  }
+
   return getAnimalStatusLabel(animal.status);
 }
 
@@ -214,6 +218,7 @@ function OptionalMeta({ label, value }: { label: string; value: string | null })
 function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
   const reservation = animal.reservation;
   const healthEvent = animal.nextHealthEvent;
+  const situationLabel = getHerdSituationLabel(animal);
 
   return (
     <article className="rounded-xl border bg-background p-4">
@@ -226,7 +231,8 @@ function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
             {getAnimalDisplayName(animal)}
           </Link>
           <p className="mt-1 text-xs text-muted">
-            {getAnimalSexLabel(animal.sex)} · {getHerdSituationLabel(animal)}
+            {getAnimalSexLabel(animal.sex)}
+            {situationLabel ? ` · ${situationLabel}` : null}
           </p>
         </div>
         {animal.pedigree_url ? (
@@ -243,10 +249,12 @@ function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
 
       <div className="mt-4 grid gap-2 text-xs leading-5 text-muted sm:grid-cols-2">
         <OptionalMeta
-          label="Rôle"
+          label="Origine / détention"
           value={getOwnershipStatusLabel(animal.ownership_status)}
         />
-        <OptionalMeta label="Situation" value={getHerdSituationLabel(animal)} />
+        {situationLabel ? (
+          <OptionalMeta label="Situation" value={situationLabel} />
+        ) : null}
         <OptionalMeta label="Portée" value={animal.litterName} />
         <OptionalMeta label="Groupe" value={animal.litterGroupName} />
         <p>
