@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { logout } from "@/features/auth/actions";
 import { PaymentList } from "@/features/payments/payment-list";
+import type { PaymentListItem } from "@/features/payments/payment-list";
 import type { DBPayment } from "@/features/payments/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,6 +46,31 @@ export default async function PaymentsPage() {
 
   payments = result.data as DBPayment[] | null;
   hasLoadingError = hasLoadingError || Boolean(result.error);
+
+  let paymentListItems: PaymentListItem[] | null = null;
+
+  if (payments) {
+    const contactIds = Array.from(
+      new Set(payments.map((payment) => payment.contact_id).filter(Boolean)),
+    );
+    const contactNameMap = new Map<string, string | null>();
+
+    if (contactIds.length > 0) {
+      const { data: contacts } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .in("id", contactIds);
+
+      contacts?.forEach((contact) => {
+        contactNameMap.set(contact.id, contact.display_name);
+      });
+    }
+
+    paymentListItems = payments.map((payment) => ({
+      ...payment,
+      contact_display_name: contactNameMap.get(payment.contact_id) ?? null,
+    }));
+  }
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -108,10 +134,10 @@ export default async function PaymentsPage() {
       </header>
 
       <section className="py-8">
-        {hasLoadingError || !payments ? (
+        {hasLoadingError || !paymentListItems ? (
           <ErrorMessage />
         ) : (
-          <PaymentList payments={payments} />
+          <PaymentList payments={paymentListItems} />
         )}
       </section>
     </main>

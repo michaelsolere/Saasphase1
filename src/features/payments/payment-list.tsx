@@ -10,6 +10,10 @@ import {
 } from "./formatters";
 import type { DBPayment } from "./types";
 
+export type PaymentListItem = DBPayment & {
+  contact_display_name?: string | null;
+};
+
 function StatusBadge({ status }: { status: string }) {
   const label = getPaymentStatusLabel(status);
   
@@ -35,7 +39,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export function PaymentList({ payments }: { payments: DBPayment[] }) {
+export function PaymentList({ payments }: { payments: PaymentListItem[] }) {
   if (payments.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed bg-surface px-6 py-12 text-center">
@@ -62,6 +66,7 @@ export function PaymentList({ payments }: { payments: DBPayment[] }) {
         <tbody className="divide-y divide-border">
           {payments.map((payment) => {
             const dateValue = payment.paid_at || payment.created_at;
+            const contactLabel = payment.contact_display_name || "Contact lié";
 
             return (
               <tr key={payment.id} className="hover:bg-muted-soft/40 transition-colors">
@@ -85,7 +90,7 @@ export function PaymentList({ payments }: { payments: DBPayment[] }) {
                     href={`/contacts/${payment.contact_id}`}
                     className="font-medium text-accent hover:underline"
                   >
-                    Contact lié
+                    {contactLabel}
                   </Link>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
@@ -94,7 +99,7 @@ export function PaymentList({ payments }: { payments: DBPayment[] }) {
                       href={`/reservations/${payment.reservation_id}`}
                       className="font-medium text-accent hover:underline"
                     >
-                      Réservation liée
+                      Dossier réservation
                     </Link>
                   ) : (
                     <span className="text-muted/60">—</span>
