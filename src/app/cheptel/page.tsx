@@ -6,7 +6,6 @@ import {
   getAnimalDisplayName,
   getAnimalSexLabel,
   getAnimalStatusLabel,
-  getOwnershipStatusLabel,
 } from "@/features/animals/formatters";
 import { logout } from "@/features/auth/actions";
 import { getReservationStatusLabel } from "@/features/reservations/formatters";
@@ -91,6 +90,17 @@ const HEALTH_KEYWORDS = [
   "pregnancy_check",
 ];
 
+const herdOwnershipStatusLabels: Record<string, string> = {
+  owned: "Maison",
+  produced: "Né à l’élevage",
+  external_stud: "Étalon extérieur",
+  external_female: "Femelle extérieure",
+  co_owned: "Copropriété",
+  sold: "Adopté / vendu",
+  adopted_out: "Adopté / vendu",
+  unknown: "Non précisé",
+};
+
 function uniqueIds(values: Array<string | null>) {
   return Array.from(new Set(values.filter(Boolean))) as string[];
 }
@@ -138,6 +148,14 @@ function getHerdSituationLabel(animal: Pick<HerdAnimal, "status">) {
   }
 
   return getAnimalStatusLabel(animal.status);
+}
+
+function getHerdOwnershipStatusLabel(value: string | null) {
+  if (!value) {
+    return "Non précisé";
+  }
+
+  return herdOwnershipStatusLabels[value] ?? value.replaceAll("_", " ");
 }
 
 function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
@@ -250,7 +268,7 @@ function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
       <div className="mt-4 grid gap-2 text-xs leading-5 text-muted sm:grid-cols-2">
         <OptionalMeta
           label="Origine / détention"
-          value={getOwnershipStatusLabel(animal.ownership_status)}
+          value={getHerdOwnershipStatusLabel(animal.ownership_status)}
         />
         {situationLabel ? (
           <OptionalMeta label="Situation" value={situationLabel} />
