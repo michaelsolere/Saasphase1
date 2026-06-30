@@ -1280,6 +1280,9 @@ export default async function ReservationDetailPage({
     reservation?.status === "animal_assigned" && Boolean(reservation.animal_id);
   const adoptionPreparationWarnings = [
     !reservation?.animal_id ? "Aucun animal n’est attribué à cette réservation." : null,
+    reservation?.animal_id && relatedAnimal && !relatedAnimal.identification_number
+      ? "Numéro d’identification de l’animal absent."
+      : null,
     remainingBalanceCents !== null && remainingBalanceCents > 0
       ? `Un reste à régler est visible : ${formatPrice(remainingBalanceCents, currency)}.`
       : null,
@@ -1884,6 +1887,29 @@ export default async function ReservationDetailPage({
                       value={adoptionDateLabel}
                     />
                   </dl>
+
+                  {reservation.animal_id ? (
+                    <div className="mt-6 rounded-xl border bg-background p-4">
+                      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground">
+                            Identité de l’animal
+                          </h3>
+                          <p className="mt-1 text-xs leading-5 text-muted">
+                            {relatedAnimal?.identification_number
+                              ? "Numéro d’identification renseigné."
+                              : "Numéro d’identification absent avant départ."}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/animals/${reservation.animal_id}#identite-definitive`}
+                          className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        >
+                          Renseigner sur la fiche Animal
+                        </Link>
+                      </div>
+                    </div>
+                  ) : null}
 
                   <div className="mt-6 rounded-xl border bg-background p-4">
                     <h3 className="text-sm font-semibold text-foreground">

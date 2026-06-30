@@ -74,6 +74,10 @@ function animalIdentityEditUrl(
   return `/animals/${animalId}/edit?status=${code}`;
 }
 
+function animalFinalIdentityUrl(animalId: string, code: "success" | "error") {
+  return `/animals/${animalId}?final_identity_status=${code}#identite-definitive`;
+}
+
 function animalHealthEventUrl(
   animalId: string,
   code: "success" | "title_required" | "invalid_date" | "error",
@@ -382,6 +386,79 @@ export async function updateAnimalIdentity(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath(`/animals/${animalId}/edit`);
   redirect(`/animals/${animalId}?identity_status=success`);
+}
+
+export async function updateAnimalFinalIdentity(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select("id, organization_id")
+    .eq("id", animalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalFinalIdentityUrl(animalId, "error"));
+  }
+
+  const animalToUpdate: AnimalUpdate = {
+    identification_number: normalizeOptionalText(
+      formData.get("identification_number"),
+    ),
+    official_name: normalizeOptionalText(formData.get("official_name")),
+    call_name: normalizeOptionalText(formData.get("call_name")),
+    chosen_name_by_adopter: normalizeOptionalText(
+      formData.get("chosen_name_by_adopter"),
+    ),
+    official_affix_name: normalizeOptionalText(
+      formData.get("official_affix_name"),
+    ),
+    lof_number: normalizeOptionalText(formData.get("lof_number")),
+    updated_at: new Date().toISOString(),
+    updated_by: user.id,
+  };
+
+  const { error: updateError } = await supabase
+    .from("animals")
+    .update(animalToUpdate)
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(animalFinalIdentityUrl(animalId, "error"));
+  }
+
+  const { data: relatedReservations } = await supabase
+    .from("reservations")
+    .select("id")
+    .eq("animal_id", animalId)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null);
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+  revalidatePath(`/animals/${animalId}/edit`);
+
+  for (const reservation of relatedReservations ?? []) {
+    revalidatePath(`/reservations/${reservation.id}`);
+  }
+
+  redirect(animalFinalIdentityUrl(animalId, "success"));
 }
 
 export async function promoteAnimalToHomeBreeder(formData: FormData) {

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   createAnimalHealthEvent,
   promoteAnimalToHomeBreeder,
+  updateAnimalFinalIdentity,
 } from "@/features/animals/actions";
 import {
   formatAnimalCoat,
@@ -321,6 +322,35 @@ function DetailLink({
           "Non renseigné"
         )}
       </dd>
+    </div>
+  );
+}
+
+function FinalIdentityField({
+  id,
+  label,
+  name,
+  defaultValue,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  defaultValue: string | null;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="text-xs font-semibold uppercase tracking-wide text-muted"
+      >
+        {label}
+      </label>
+      <input
+        id={id}
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+      />
     </div>
   );
 }
@@ -1021,6 +1051,7 @@ export default async function AnimalDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{
     identity_status?: string;
+    final_identity_status?: string;
     health_event_status?: string;
     home_breeder_promotion_status?: string;
   }>;
@@ -1199,6 +1230,20 @@ export default async function AnimalDetailPage({
                 </section>
               ) : null}
 
+              {query.final_identity_status === "success" ? (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950">
+                  L’identité définitive de l’animal a été mise à jour.
+                </section>
+              ) : query.final_identity_status ? (
+                <section
+                  role="alert"
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-950"
+                >
+                  Impossible de mettre à jour l’identité définitive. Aucune
+                  autre donnée n’a été modifiée.
+                </section>
+              ) : null}
+
               {query.home_breeder_promotion_status === "success" ? (
                 <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950">
                   L’animal est maintenant reproductrice maison.
@@ -1228,6 +1273,80 @@ export default async function AnimalDetailPage({
                     value={animal.official_affix_name}
                   />
                 </dl>
+              </section>
+
+              <section
+                id="identite-definitive"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div>
+                    <h2 className="text-xl font-semibold">
+                      Renseigner l’identité définitive
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-muted">
+                      Mise à jour des informations utiles avant départ, sans
+                      modifier le nom provisoire, le collier ou le nom
+                      principal.
+                    </p>
+                  </div>
+                  <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                    Avant départ
+                  </span>
+                </div>
+
+                <form
+                  action={updateAnimalFinalIdentity}
+                  className="mt-6 border-t pt-6"
+                >
+                  <input type="hidden" name="animal_id" value={animal.id} />
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <FinalIdentityField
+                      id="animal-final-identification"
+                      label="Numéro d’identification"
+                      name="identification_number"
+                      defaultValue={animal.identification_number}
+                    />
+                    <FinalIdentityField
+                      id="animal-final-official-name"
+                      label="Nom officiel"
+                      name="official_name"
+                      defaultValue={animal.official_name}
+                    />
+                    <FinalIdentityField
+                      id="animal-final-call-name"
+                      label="Nom d’usage"
+                      name="call_name"
+                      defaultValue={animal.call_name}
+                    />
+                    <FinalIdentityField
+                      id="animal-final-adopter-name"
+                      label="Nom choisi par l’adoptant"
+                      name="chosen_name_by_adopter"
+                      defaultValue={animal.chosen_name_by_adopter}
+                    />
+                    <FinalIdentityField
+                      id="animal-final-affix-name"
+                      label="Nom d’affixe officiel"
+                      name="official_affix_name"
+                      defaultValue={animal.official_affix_name}
+                    />
+                    <FinalIdentityField
+                      id="animal-final-lof-number"
+                      label="Numéro LOF"
+                      name="lof_number"
+                      defaultValue={animal.lof_number}
+                    />
+                  </div>
+                  <div className="mt-6 flex justify-end border-t pt-6">
+                    <button
+                      type="submit"
+                      className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      Enregistrer l’identité définitive
+                    </button>
+                  </div>
+                </form>
               </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
