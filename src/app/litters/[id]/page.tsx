@@ -283,7 +283,24 @@ function getUsefulEventDate(event: RelatedEvent) {
 }
 
 function getEventTypeLabel(value: string) {
-  return value.replaceAll("_", " ");
+  return (
+    litterEventTypeOptions.find(([optionValue]) => optionValue === value)?.[1] ??
+    value.replaceAll("_", " ")
+  );
+}
+
+function getEventStatusLabel(value: string) {
+  return (
+    eventStatusOptions.find(([optionValue]) => optionValue === value)?.[1] ??
+    value
+  );
+}
+
+function getEventPriorityLabel(value: string) {
+  return (
+    eventPriorityOptions.find(([optionValue]) => optionValue === value)?.[1] ??
+    value
+  );
 }
 
 function RelatedAnimalsSection({
@@ -555,10 +572,10 @@ function RelatedEventsSection({
                     {event.title || getEventTypeLabel(event.event_type)}
                   </span>
                   <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                    {event.status}
+                    {getEventStatusLabel(event.status)}
                   </span>
                   <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                    Priorité : {event.priority}
+                    Priorité : {getEventPriorityLabel(event.priority)}
                   </span>
                 </div>
                 <p className="text-xs text-muted">
@@ -617,7 +634,7 @@ function LitterEventCreationForm({ litterId }: { litterId: string }) {
             htmlFor="litter-event-date"
             className="text-xs font-semibold uppercase tracking-wide text-muted"
           >
-            Date <span className="text-accent">*</span>
+            Date prévue / échéance <span className="text-accent">*</span>
           </label>
           <input
             id="litter-event-date"
@@ -626,6 +643,9 @@ function LitterEventCreationForm({ litterId }: { litterId: string }) {
             required
             className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
           />
+          <p className="mt-1.5 text-xs leading-5 text-muted">
+            Cette date sert à planifier l’événement ou l’échéance.
+          </p>
         </div>
 
         <div>
@@ -691,25 +711,30 @@ function LitterEventCreationForm({ litterId }: { litterId: string }) {
           </select>
         </div>
 
-        <label
-          htmlFor="litter-event-is-task"
-          className="flex items-center gap-3 self-end rounded-xl border bg-background px-4 py-3 text-sm text-muted"
-        >
-          <input
-            id="litter-event-is-task"
-            name="is_task"
-            type="checkbox"
-            className="h-4 w-4 rounded border-border accent-accent"
-          />
-          Marquer comme tâche
-        </label>
+        <div className="self-end">
+          <label
+            htmlFor="litter-event-is-task"
+            className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 text-sm text-muted"
+          >
+            <input
+              id="litter-event-is-task"
+              name="is_task"
+              type="checkbox"
+              className="h-4 w-4 rounded border-border accent-accent"
+            />
+            Marquer comme tâche
+          </label>
+          <p className="mt-1.5 text-xs leading-5 text-muted">
+            À cocher quand l’événement demande une action à suivre.
+          </p>
+        </div>
 
         <div className="sm:col-span-2">
           <label
             htmlFor="litter-event-description"
             className="text-xs font-semibold uppercase tracking-wide text-muted"
           >
-            Description
+            Note / observation
           </label>
           <textarea
             id="litter-event-description"
