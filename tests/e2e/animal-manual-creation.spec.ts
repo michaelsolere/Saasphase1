@@ -476,6 +476,99 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
   await expect(keptSection).not.toContainText(animalName);
 });
 
+test("promotes an eligible identified adult female to home breeder", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+  const animalName = `QA promotion repro maison ${suffix}`;
+
+  const { error: animalInsertError } = await supabase.from("animals").insert({
+    id: animalId,
+    organization_id: organizationId,
+    display_name: animalName,
+    species: "dog",
+    breed: "Golden Retriever",
+    sex: "female",
+    status: "kept",
+    ownership_status: "owned",
+    birth_date: "2024-01-10",
+    identification_number: `QA-ID-${suffix}`,
+    is_breeder: false,
+    is_external: false,
+    is_retired: false,
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(animalInsertError).toBeNull();
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/animals/${animalId}`);
+  await expect(page.getByRole("heading", { name: animalName })).toBeVisible();
+
+  const promotionForm = page.locator("form").filter({
+    has: page.getByRole("button", {
+      name: "Promouvoir en reproductrice maison",
+    }),
+  });
+  await expect(
+    page.getByRole("button", { name: "Promouvoir en reproductrice maison" }),
+  ).toBeVisible();
+  await expect(promotionForm).toContainText("LOF");
+  await expect(promotionForm).toContainText("confirmation");
+  await expect(promotionForm).toContainText("radios hanches-coudes");
+  await expect(promotionForm).toContainText("tests ADN");
+
+  await page.locator("#confirm-home-breeder-promotion").check();
+  await page
+    .getByRole("button", { name: "Promouvoir en reproductrice maison" })
+    .click();
+  await expect(page).toHaveURL(
+    new RegExp(`/animals/${animalId}.*home_breeder_promotion_status=success`),
+  );
+  await expect(
+    page.getByText("L’animal est maintenant reproductrice maison."),
+  ).toBeVisible();
+
+  const statusSection = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Statut et informations générales",
+      exact: true,
+    }),
+  });
+  await expect(
+    statusSection.locator("div").filter({ hasText: "Reproducteur" }),
+  ).toContainText("Oui");
+
+  const promotedAnimal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select("id, is_breeder")
+      .eq("id", animalId)
+      .single(),
+    "read promoted home breeder",
+  );
+  expect(promotedAnimal).toMatchObject({ id: animalId, is_breeder: true });
+
+  await page.goto("/cheptel");
+  const homeFemalesSection = page.locator("section.rounded-2xl").filter({
+    has: page.getByRole("heading", {
+      name: "Reproductrices maison",
+      exact: true,
+    }),
+  });
+  await expect(homeFemalesSection).toContainText(animalName);
+});
+
 test("shows an empty health section on animal detail", async ({
   page,
 }) => {
