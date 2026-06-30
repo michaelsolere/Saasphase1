@@ -188,6 +188,22 @@ function getOffspringGenericName(species: string, index: number) {
   return species === "cat" ? `Chaton ${index}` : `Chiot ${index}`;
 }
 
+function getCollarDisplayName(
+  collarColor: string,
+  motherDisplayName: string | null,
+  fatherDisplayName: string | null,
+) {
+  const parentDisplayNames = [motherDisplayName, fatherDisplayName].filter(
+    Boolean,
+  );
+
+  if (parentDisplayNames.length === 0) {
+    return `Collier ${collarColor}`;
+  }
+
+  return `Collier ${collarColor} — ${parentDisplayNames.join(" × ")}`;
+}
+
 /**
  * Crée un groupe de portées (période) depuis l'interface Portées.
  *
@@ -744,6 +760,32 @@ export async function createLitterOffspring(formData: FormData) {
     redirect(litterOffspringUrl(litterId, "error"));
   }
 
+  const parentIds = [litter.mother_id, litter.father_id].filter(
+    (value): value is string => Boolean(value),
+  );
+  let motherDisplayName: string | null = null;
+  let fatherDisplayName: string | null = null;
+
+  if (parentIds.length > 0) {
+    const { data: parents, error: parentsError } = await supabase
+      .from("animals")
+      .select("id, display_name")
+      .eq("organization_id", litter.organization_id)
+      .in("id", parentIds)
+      .is("deleted_at", null);
+
+    if (parentsError) {
+      redirect(litterOffspringUrl(litterId, "error"));
+    }
+
+    motherDisplayName =
+      parents?.find((parent) => parent.id === litter.mother_id)
+        ?.display_name ?? null;
+    fatherDisplayName =
+      parents?.find((parent) => parent.id === litter.father_id)
+        ?.display_name ?? null;
+  }
+
   const animalsToCreate: AnimalInsert[] = [];
   const requestedBirthOrders = new Set<number>();
   const requestedDisplayNames = new Set<string>();
@@ -799,7 +841,14 @@ export async function createLitterOffspring(formData: FormData) {
       birthOrder ?? animalsToCreate.length + 1,
     );
     const displayName =
-      temporaryName || (collarColor ? `Collier ${collarColor}` : fallbackName);
+      temporaryName ||
+      (collarColor
+        ? getCollarDisplayName(
+            collarColor,
+            motherDisplayName,
+            fatherDisplayName,
+          )
+        : fallbackName);
 
     if (requestedDisplayNames.has(displayName)) {
       redirect(litterOffspringUrl(litterId, "duplicate"));

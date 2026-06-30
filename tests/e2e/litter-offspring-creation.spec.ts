@@ -15,7 +15,43 @@ test("creates newborn animals from a litter without touching reservations", asyn
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   const litterId = randomUUID();
+  const motherId = randomUUID();
+  const fatherId = randomUUID();
   const suffix = litterId.slice(0, 8);
+  const motherName = `Rosie ${suffix}`;
+  const fatherName = `Rimbaud ${suffix}`;
+  const generatedDisplayName = `Collier bleu — ${motherName} × ${fatherName}`;
+
+  const { error: parentsError } = await supabase.from("animals").insert([
+    {
+      id: motherId,
+      organization_id: organizationId,
+      display_name: motherName,
+      species: "dog",
+      breed: "Golden Retriever",
+      sex: "female",
+      status: "active",
+      ownership_status: "owned",
+      is_breeder: true,
+      created_by: ownerId,
+      updated_by: ownerId,
+    },
+    {
+      id: fatherId,
+      organization_id: organizationId,
+      display_name: fatherName,
+      species: "dog",
+      breed: "Golden Retriever",
+      sex: "male",
+      status: "active",
+      ownership_status: "owned",
+      is_breeder: true,
+      created_by: ownerId,
+      updated_by: ownerId,
+    },
+  ]);
+
+  expect(parentsError).toBeNull();
 
   const { error: litterError } = await supabase.from("litters").insert({
     id: litterId,
@@ -24,6 +60,8 @@ test("creates newborn animals from a litter without touching reservations", asyn
     species: "dog",
     breed: "Golden Retriever",
     status: "born",
+    mother_id: motherId,
+    father_id: fatherId,
     actual_birth_date: "2026-06-20",
     created_by: ownerId,
     updated_by: ownerId,
@@ -54,6 +92,8 @@ test("creates newborn animals from a litter without touching reservations", asyn
   await page.locator('input[name="offspring_0_collar_color"]').fill("Rose");
   await page.locator('input[name="offspring_0_birth_order"]').fill("1");
   await page.locator('input[name="offspring_0_birth_weight_grams"]').fill("420");
+  await page.locator('input[name="offspring_1_collar_color"]').fill("bleu");
+  await page.locator('input[name="offspring_1_birth_order"]').fill("2");
 
   page.on("dialog", async (dialog) => {
     expect(dialog.message()).toContain("Créer les chiots");
@@ -63,6 +103,7 @@ test("creates newborn animals from a litter without touching reservations", asyn
   await page.getByRole("button", { name: "Créer les chiots" }).click();
   await expect(page).toHaveURL(/offspring_status=success/);
   await expect(page.locator("#animaux-lies")).toContainText(`Femelle ${suffix}`);
+  await expect(page.locator("#animaux-lies")).toContainText(generatedDisplayName);
   await expect(page.locator("#animaux-lies")).toContainText(
     "Chiot né, non encore disponible/réservé",
   );
@@ -97,6 +138,26 @@ test("creates newborn animals from a litter without touching reservations", asyn
     birth_date: "2026-06-20",
     birth_order: 1,
     birth_weight_grams: 420,
+  });
+
+  const generatedAnimal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select(
+        "display_name, temporary_name, collar_color_initial, collar_color_current, birth_order",
+      )
+      .eq("litter_id", litterId)
+      .eq("display_name", generatedDisplayName)
+      .single(),
+    "read generated collar offspring",
+  );
+
+  expect(generatedAnimal).toMatchObject({
+    display_name: generatedDisplayName,
+    temporary_name: null,
+    collar_color_initial: "bleu",
+    collar_color_current: "bleu",
+    birth_order: 2,
   });
 
   await page.goto("/animals");
