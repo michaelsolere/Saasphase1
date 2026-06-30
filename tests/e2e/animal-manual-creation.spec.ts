@@ -374,6 +374,108 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   });
 });
 
+test("keeps then makes an eligible animal available again", async ({ page }) => {
+  test.setTimeout(60_000);
+
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+  const animalName = `QA garder disponible ${suffix}`;
+
+  const { error: animalInsertError } = await supabase.from("animals").insert({
+    id: animalId,
+    organization_id: organizationId,
+    display_name: animalName,
+    species: "dog",
+    breed: "Golden Retriever",
+    sex: "unknown",
+    status: "available",
+    ownership_status: "owned",
+    is_breeder: false,
+    is_external: false,
+    is_retired: false,
+    created_by: ownerId,
+    updated_by: ownerId,
+  });
+
+  expect(animalInsertError).toBeNull();
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/animals/${animalId}`);
+  await expect(page.getByRole("heading", { name: animalName })).toBeVisible();
+  const statusSection = page.locator("section").filter({
+    has: page.getByRole("heading", {
+      name: "Statut et informations générales",
+      exact: true,
+    }),
+  });
+  await expect(
+    page.getByRole("button", { name: "Garder à l’élevage" }),
+  ).toBeVisible();
+
+  await page.locator("#confirm-keep-at-kennel").check();
+  await page.getByRole("button", { name: "Garder à l’élevage" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/animals/${animalId}.*keep_at_kennel_status=success`),
+  );
+  await expect(
+    page.getByText("L’animal est maintenant gardé à l’élevage."),
+  ).toBeVisible();
+  await expect(statusSection).toContainText("Gardé à l’élevage");
+  await expect(
+    page.getByRole("button", { name: "Remettre disponible" }),
+  ).toBeVisible();
+
+  let animal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select("id, status")
+      .eq("id", animalId)
+      .single(),
+    "read kept animal",
+  );
+  expect(animal).toMatchObject({ id: animalId, status: "kept" });
+
+  await page.goto("/cheptel");
+  const keptSection = page.locator("section.rounded-2xl").filter({
+    has: page.getByRole("heading", {
+      name: "Restent à l’élevage",
+      exact: true,
+    }),
+  });
+  await expect(keptSection).toContainText(animalName);
+
+  await page.goto(`/animals/${animalId}`);
+  await page.locator("#confirm-make-available").check();
+  await page.getByRole("button", { name: "Remettre disponible" }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/animals/${animalId}.*make_available_status=success`),
+  );
+  await expect(page.getByText("L’animal est maintenant disponible.")).toBeVisible();
+  await expect(statusSection).toContainText("Disponible");
+  await expect(
+    page.getByRole("button", { name: "Garder à l’élevage" }),
+  ).toBeVisible();
+
+  animal = expectSupabaseData(
+    await supabase
+      .from("animals")
+      .select("id, status")
+      .eq("id", animalId)
+      .single(),
+    "read available animal",
+  );
+  expect(animal).toMatchObject({ id: animalId, status: "available" });
+
+  await page.goto("/cheptel");
+  await expect(keptSection).not.toContainText(animalName);
+});
+
 test("shows an empty health section on animal detail", async ({
   page,
 }) => {
