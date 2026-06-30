@@ -130,6 +130,14 @@ function getEventDateValue(event: AnimalEventLookup) {
   return event.planned_date ?? event.planned_at ?? event.actual_at ?? event.created_at;
 }
 
+function getHerdSituationLabel(animal: Pick<HerdAnimal, "status">) {
+  if (animal.status === "kept") {
+    return "Reste à l’élevage";
+  }
+
+  return getAnimalStatusLabel(animal.status);
+}
+
 function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
   return [
     {
@@ -163,45 +171,10 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
       ),
     },
     {
-      key: "born_here",
-      title: "Jeunes nés ici",
-      description: "Chiots ou chatons produits à l’élevage et liés à une portée.",
-      animals: animals.filter(
-        (animal) =>
-          animal.status === "born" &&
-          animal.ownership_status === "produced" &&
-          Boolean(animal.litter_id),
-      ),
-    },
-    {
       key: "kept",
-      title: "Gardés",
-      description: "Animaux conservés à l’élevage.",
+      title: "Restent à l’élevage",
+      description: "Animaux identifiés avec le statut Gardé à l’élevage.",
       animals: animals.filter((animal) => animal.status === "kept"),
-    },
-    {
-      key: "available",
-      title: "Disponibles",
-      description: "Animaux disponibles pour attribution ou adoption.",
-      animals: animals.filter((animal) => animal.status === "available"),
-    },
-    {
-      key: "reserved",
-      title: "Réservés / attribués",
-      description: "Animaux réservés ou déjà reliés à une réservation.",
-      animals: animals.filter(
-        (animal) => animal.status === "reserved" || Boolean(animal.reservation),
-      ),
-    },
-    {
-      key: "adopted",
-      title: "Adoptés",
-      description: "Animaux sortis de l’élevage via adoption.",
-      animals: animals.filter(
-        (animal) =>
-          animal.status === "adopted" ||
-          animal.ownership_status === "adopted_out",
-      ),
     },
     {
       key: "retired",
@@ -252,7 +225,7 @@ function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
             {getAnimalDisplayName(animal)}
           </Link>
           <p className="mt-1 text-xs text-muted">
-            {getAnimalSexLabel(animal.sex)} · {getAnimalStatusLabel(animal.status)}
+            {getAnimalSexLabel(animal.sex)} · {getHerdSituationLabel(animal)}
           </p>
         </div>
         {animal.pedigree_url ? (
@@ -272,6 +245,7 @@ function HerdAnimalCard({ animal }: { animal: HerdAnimalItem }) {
           label="Rôle"
           value={getOwnershipStatusLabel(animal.ownership_status)}
         />
+        <OptionalMeta label="Situation" value={getHerdSituationLabel(animal)} />
         <OptionalMeta label="Portée" value={animal.litterName} />
         <OptionalMeta label="Groupe" value={animal.litterGroupName} />
         <p>
@@ -459,8 +433,8 @@ export default async function HerdPage() {
               Cheptel
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Vue synthétique des reproducteurs, jeunes, animaux attribués et
-              soins prévus, à partir des données Animaux existantes.
+              Vue synthétique des reproducteurs, animaux restant à l’élevage,
+              retraités et soins prévus, à partir des données Animaux existantes.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -493,32 +467,42 @@ export default async function HerdPage() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Animaux suivis
-                </p>
-                <p className="mt-3 text-3xl font-semibold">{herdAnimals.length}</p>
-              </div>
-              <div className="rounded-2xl border bg-surface p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Reproducteurs
+                  Cheptel suivi
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
-                  {herdAnimals.filter((animal) => animal.is_breeder).length}
-                </p>
-              </div>
-              <div className="rounded-2xl border bg-surface p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Disponibles
-                </p>
-                <p className="mt-3 text-3xl font-semibold">
-                  {categories.find((category) => category.key === "available")?.animals.length ?? 0}
+                  {
+                    new Set(
+                      categories.flatMap((category) =>
+                        category.animals.map((animal) => animal.id),
+                      ),
+                    ).size
+                  }
                 </p>
               </div>
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Réservés
+                  Reproducteurs maison
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
-                  {categories.find((category) => category.key === "reserved")?.animals.length ?? 0}
+                  {categories.find((category) => category.key === "home_females")?.animals.length ?? 0}
+                  {" / "}
+                  {categories.find((category) => category.key === "home_males")?.animals.length ?? 0}
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-surface p-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Extérieurs
+                </p>
+                <p className="mt-3 text-3xl font-semibold">
+                  {categories.find((category) => category.key === "external_breeders")?.animals.length ?? 0}
+                </p>
+              </div>
+              <div className="rounded-2xl border bg-surface p-5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Restent à l’élevage
+                </p>
+                <p className="mt-3 text-3xl font-semibold">
+                  {categories.find((category) => category.key === "kept")?.animals.length ?? 0}
                 </p>
               </div>
               <div className="rounded-2xl border bg-surface p-5">
