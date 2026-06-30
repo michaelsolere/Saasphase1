@@ -556,6 +556,25 @@ function DetailItem({
   );
 }
 
+function CompactField({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1 truncate text-sm leading-5">
+        {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
 function SummaryMetric({
   label,
   value,
@@ -2546,54 +2565,195 @@ export default async function ReservationDetailPage({
                 </section>
 
                 <section id="scope-and-animal" className="order-[30] rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">Animal attribué et portée</h2>
-                  <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                    <DetailItem
-                      label="Portée"
-                      value={
-                        reservation.litter_id ? (
-                          <Link
-                            href={`/litters/${reservation.litter_id}`}
-                            className="font-medium text-accent hover:underline"
-                          >
-                            {reservation.litter_name}
-                          </Link>
-                        ) : (
-                          reservation.litter_name
-                        )
-                      }
-                    />
-                    <DetailItem
-                      label="Groupe de portée"
-                      value={reservation.litter_group_name}
-                    />
-                    <DetailItem
-                      label="Animal attribué"
-                      value={
-                        reservation.animal_id ? (
-                          <Link
-                            href={`/animals/${reservation.animal_id}`}
-                            className="font-medium text-accent hover:underline"
-                          >
-                            {reservation.animal_display_name}
-                          </Link>
-                        ) : (
-                          "Animal non attribué pour l’instant"
-                        )
-                      }
-                    />
-                    <DetailItem
-                      label="Date d'adoption prévue"
-                      value={formatApplicationDate(reservation.adoption_planned_at)}
-                    />
-                    <DetailItem
-                      label="Date d'adoption effective"
-                      value={formatApplicationDate(reservation.adoption_completed_at)}
-                    />
+                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">Animal attribué et portée</h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Vue compacte du rattachement portée, de l&apos;animal attribué
+                        et des informations utiles avant le départ.
+                      </p>
+                    </div>
+                    {relatedAnimal?.id ? (
+                      <Link
+                        href={`/animals/${relatedAnimal.id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Consulter la fiche Animal
+                      </Link>
+                    ) : null}
+                  </div>
+
+                  <dl className="mt-5 rounded-xl border bg-background px-4 py-2">
+                    <div className="grid gap-3 border-b border-border/70 py-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                      <CompactField
+                        label="Portée"
+                        value={
+                          reservation.litter_id ? (
+                            <Link
+                              href={`/litters/${reservation.litter_id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {reservation.litter_name}
+                            </Link>
+                          ) : (
+                            reservation.litter_name
+                          )
+                        }
+                      />
+                      <CompactField
+                        label="Groupe de portée"
+                        value={reservation.litter_group_name}
+                      />
+                      <CompactField
+                        label="Animal attribué"
+                        value={
+                          relatedAnimal?.id ? (
+                            <Link
+                              href={`/animals/${relatedAnimal.id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {getAnimalDisplayName(relatedAnimal)}
+                            </Link>
+                          ) : reservation.animal_id ? (
+                            reservation.animal_display_name
+                          ) : (
+                            "Animal non attribué pour l’instant"
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-3 border-b border-border/70 py-3 sm:grid-cols-3">
+                      <CompactField
+                        label="Sexe"
+                        value={relatedAnimal ? getAnimalSexLabel(relatedAnimal.sex) : null}
+                      />
+                      <CompactField
+                        label="Naissance"
+                        value={relatedAnimal ? formatAnimalDate(relatedAnimal.birth_date) : null}
+                      />
+                      <CompactField
+                        label="Identification"
+                        value={
+                          relatedAnimal?.identification_number ? (
+                            relatedAnimal.identification_number
+                          ) : reservation.animal_id ? (
+                            <span className="text-amber-700">
+                              Numéro absent avant départ
+                            </span>
+                          ) : null
+                        }
+                      />
+                    </div>
+                    <div className="grid gap-3 border-b border-border/70 py-3 sm:grid-cols-3">
+                      <CompactField
+                        label="Statut animal"
+                        value={relatedAnimal ? getAnimalStatusLabel(relatedAnimal.status) : null}
+                      />
+                      <CompactField
+                        label="Couleur"
+                        value={relatedAnimal?.color}
+                      />
+                      <CompactField
+                        label="Robe"
+                        value={relatedAnimal?.coat_color}
+                      />
+                    </div>
+                    <div className="grid gap-3 py-3 sm:grid-cols-2">
+                      <CompactField
+                        label="Date d'adoption prévue"
+                        value={formatApplicationDate(reservation.adoption_planned_at)}
+                      />
+                      <CompactField
+                        label="Date d'adoption effective"
+                        value={formatApplicationDate(reservation.adoption_completed_at)}
+                      />
+                    </div>
                   </dl>
 
+                  {animalError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger l’animal lié.
+                    </p>
+                  ) : !relatedAnimal ? (
+                    <div className="mt-6 border-t pt-5">
+                      <p className="text-sm text-muted">
+                        Aucun animal lié à cette réservation.
+                      </p>
+
+                      {!isFinalReservationStatus(reservation.status) ? (
+                        <div className="mt-4">
+                          {availableAnimalsError ? (
+                            <p role="alert" className="text-sm text-amber-800">
+                              Impossible de charger les animaux disponibles.
+                            </p>
+                          ) : availableAnimals.length === 0 ? (
+                            <p className="text-sm text-muted">
+                              {reservation.litter_id
+                                ? "Aucun animal disponible dans cette portée."
+                                : "Aucun animal attribuable trouvé pour cette réservation."}
+                            </p>
+                          ) : (
+                            <form action={assignAnimalToReservation} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                              <input type="hidden" name="reservation_id" value={id} />
+                              <div className="max-w-xs flex-1">
+                                <label htmlFor="animal_id" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-2">
+                                  Attribuer un animal
+                                </label>
+                                <select
+                                  id="animal_id"
+                                  name="animal_id"
+                                  required
+                                  className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                                >
+                                  <option value="">-- Choisir un animal --</option>
+                                  {availableAnimals.map((animal) => {
+                                    const name = getAnimalDisplayName(animal);
+                                    const sex = getAnimalSexLabel(animal.sex);
+                                    const breed = animal.breed || "Race inconnue";
+                                    return (
+                                      <option key={animal.id} value={animal.id}>
+                                        {name} ({sex} - {breed})
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <p className="mt-2 text-xs leading-5 text-muted">
+                                  {reservation.litter_id
+                                    ? "Seuls les animaux disponibles de la portée liée sont proposés."
+                                    : "Seuls les animaux disponibles de l’organisation sont proposés."}
+                                </p>
+                              </div>
+                              <button
+                                type="submit"
+                                className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                              >
+                                Attribuer l’animal
+                              </button>
+                            </form>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : !isFinalReservationStatus(reservation.status) ? (
+                    <form action={unassignAnimalFromReservation} className="mt-6 border-t pt-5">
+                      <input type="hidden" name="reservation_id" value={id} />
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="max-w-2xl text-xs leading-5 text-muted">
+                          Cela retire uniquement le lien entre la réservation et
+                          l’animal. L’animal n’est pas supprimé.
+                        </p>
+                        <button
+                          type="submit"
+                          className="inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100/60 hover:border-red-300"
+                        >
+                          Retirer l’attribution
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+
                   {/* Rattachement portée/groupe : candidature (projet) vs réservation (engagement) */}
-                  <div className="mt-8 border-t pt-6">
+                  <div className="mt-6 border-t pt-5">
                     <h3 className="text-sm font-semibold text-foreground">
                       Rattachement de la candidature liée
                     </h3>
@@ -2731,149 +2891,6 @@ export default async function ReservationDetailPage({
                       </>
                     )}
                   </div>
-                </section>
-
-                <section className="order-[31] rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                    <div>
-                      <h2 className="text-xl font-semibold">Animal attribué</h2>
-                      {relatedAnimal ? (
-                        <p className="mt-2 text-sm text-muted">
-                          {getAnimalDisplayName(relatedAnimal)}
-                        </p>
-                      ) : null}
-                    </div>
-                    {relatedAnimal?.id ? (
-                      <Link
-                        href={`/animals/${relatedAnimal.id}`}
-                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
-                  </div>
-
-                  {animalError ? (
-                    <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger l’animal lié.
-                    </p>
-                  ) : !relatedAnimal ? (
-                    <div className="space-y-6">
-                      <p className="mt-5 text-sm text-muted">
-                        Aucun animal lié à cette réservation.
-                      </p>
-
-                      {!isFinalReservationStatus(reservation.status) && (
-                        <div className="border-t pt-6">
-                          {availableAnimalsError ? (
-                            <p role="alert" className="text-sm text-amber-800">
-                              Impossible de charger les animaux disponibles.
-                            </p>
-                          ) : availableAnimals.length === 0 ? (
-                            <p className="text-sm text-muted">
-                              {reservation.litter_id
-                                ? "Aucun animal disponible dans cette portée."
-                                : "Aucun animal attribuable trouvé pour cette réservation."}
-                            </p>
-                          ) : (
-                            <form action={assignAnimalToReservation} className="space-y-4">
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <div>
-                                <label htmlFor="animal_id" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-2">
-                                  Attribuer un animal
-                                </label>
-                                <p className="mb-3 text-xs leading-5 text-muted">
-                                  {reservation.litter_id
-                                    ? "Seuls les animaux disponibles de la portée liée sont proposés."
-                                    : "Seuls les animaux disponibles de l’organisation sont proposés."}
-                                </p>
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                                  <div className="max-w-xs flex-1">
-                                    <select
-                                      id="animal_id"
-                                      name="animal_id"
-                                      required
-                                      className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                                    >
-                                      <option value="">-- Choisir un animal --</option>
-                                      {availableAnimals.map((animal) => {
-                                        const name = getAnimalDisplayName(animal);
-                                        const sex = getAnimalSexLabel(animal.sex);
-                                        const breed = animal.breed || "Race inconnue";
-                                        return (
-                                          <option key={animal.id} value={animal.id}>
-                                            {name} ({sex} - {breed})
-                                          </option>
-                                        );
-                                      })}
-                                    </select>
-                                  </div>
-                                  <button
-                                    type="submit"
-                                    className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                                  >
-                                    Attribuer l’animal
-                                  </button>
-                                </div>
-                              </div>
-                            </form>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                        <DetailItem
-                          label="Nom"
-                          value={getAnimalDisplayName(relatedAnimal)}
-                        />
-                        <DetailItem
-                          label="Sexe"
-                          value={getAnimalSexLabel(relatedAnimal.sex)}
-                        />
-                        <DetailItem
-                          label="Statut"
-                          value={getAnimalStatusLabel(relatedAnimal.status)}
-                        />
-                        <DetailItem
-                          label="Date de naissance"
-                          value={formatAnimalDate(relatedAnimal.birth_date)}
-                        />
-                        <DetailItem
-                          label="Portée liée"
-                          value={reservation.litter_name}
-                        />
-                        <DetailItem
-                          label="Identification"
-                          value={relatedAnimal.identification_number}
-                        />
-                        <DetailItem
-                          label="Couleur ou robe"
-                          value={formatAnimalCoat(relatedAnimal)}
-                        />
-                      </dl>
-
-                      {!isFinalReservationStatus(reservation.status) && (
-                        <div className="border-t pt-6">
-                          <form action={unassignAnimalFromReservation} className="space-y-4">
-                            <input type="hidden" name="reservation_id" value={id} />
-                            <div className="flex flex-col gap-3">
-                              <p className="text-xs text-muted">
-                                Cela retire uniquement le lien entre la réservation et l’animal. L’animal n’est pas supprimé.
-                              </p>
-                              <button
-                                type="submit"
-                                className="inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100/60 hover:border-red-300"
-                              >
-                                Retirer l’attribution
-                              </button>
-                            </div>
-                          </form>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </section>
 
                 <section className="order-[72] rounded-2xl border bg-surface p-6 sm:p-8">
