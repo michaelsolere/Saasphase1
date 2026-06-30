@@ -221,6 +221,14 @@ Le journal de mise-bas devra être cadré séparément plus tard, avec une UX mo
 
 La table `events` peut servir de support technique, mais l'UX doit rester métier et contextualisée. Ne pas implémenter maintenant de timeline, de templates, de gestionnaire global de tâches ou de journal de mise-bas.
 
+### Cadrage santé animal, portée et cheptel
+
+Le modèle actuel permet déjà un futur suivi santé individuel via `events.animal_id`, sans migration immédiate. Les événements collectifs de portée sont aussi possibles via `events.litter_id`, et les documents ou notes peuvent déjà être liés à un animal ou à une portée. Côté notes, `notes.note_type = health` existe déjà.
+
+Des événements de cheptel sont techniquement possibles via `events.organization_id` seul, mais le périmètre fonctionnel reste à cadrer avant toute UX ou automatisation. La récurrence n'est pas couverte proprement par le modèle actuel : il faut distinguer événement réel, tâche planifiée, tâche récurrente et template. Une future récurrence devra probablement passer par un modèle dédié plutôt que par un étirement de `events`.
+
+Ne pas implémenter maintenant de module santé complet, récurrence, templates, rappels automatiques ou gestionnaire cheptel global.
+
 ## Décisions structurantes actées côté Réservation
 
 * La réservation est bien le centre opérationnel du dossier adoptant.
