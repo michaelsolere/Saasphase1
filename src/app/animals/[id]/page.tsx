@@ -87,6 +87,20 @@ type RelatedNote = {
   profiles: { display_name: string | null } | null;
 };
 
+const HEALTH_KEYWORDS = [
+  "health",
+  "sante",
+  "sanitaire",
+  "medical",
+  "veterinaire",
+  "veterinary",
+  "vaccin",
+  "vaccination",
+  "vaccine",
+  "vermifuge",
+  "deworming",
+];
+
 function booleanLabel(value: boolean | null) {
   return value ? "Oui" : "Non";
 }
@@ -141,6 +155,31 @@ function getUsefulEventDate(event: RelatedEvent) {
 
 function getEventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function normalizeHealthLookup(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function hasHealthKeyword(value: string) {
+  const normalizedValue = normalizeHealthLookup(value);
+
+  return HEALTH_KEYWORDS.some((keyword) => normalizedValue.includes(keyword));
+}
+
+function isHealthNote(note: RelatedNote) {
+  return note.note_type === "health";
+}
+
+function isHealthEvent(event: RelatedEvent) {
+  return hasHealthKeyword(event.event_type);
+}
+
+function isHealthDocument(document: RelatedDocument) {
+  return hasHealthKeyword(`${document.document_type} ${document.title}`);
 }
 
 function NotFoundOrUnauthorized() {
@@ -438,6 +477,150 @@ function RelatedReservationSection({
   );
 }
 
+function AnimalHealthSection({
+  notes,
+  events,
+  documents,
+  hasError,
+}: {
+  notes: RelatedNote[];
+  events: RelatedEvent[];
+  documents: RelatedDocument[];
+  hasError: boolean;
+}) {
+  const hasHealthData =
+    notes.length > 0 || events.length > 0 || documents.length > 0;
+
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <h2 className="text-xl font-semibold">Santé</h2>
+
+      {hasError ? (
+        <p role="alert" className="mt-5 text-sm text-amber-800">
+          Certaines données liées n’ont pas pu être chargées.
+        </p>
+      ) : null}
+
+      {!hasHealthData ? (
+        <p className="mt-5 text-sm text-muted">
+          Aucune donnée santé clairement identifiable pour cet animal.
+        </p>
+      ) : (
+        <div className="mt-6 space-y-7">
+          {notes.length > 0 ? (
+            <div>
+              <h3 className="text-sm font-semibold">Notes santé</h3>
+              <div className="mt-3 divide-y divide-border">
+                {notes.map((note) => {
+                  const authorName = note.profiles?.display_name ?? null;
+
+                  return (
+                    <div key={note.id} className="py-4 first:pt-0 last:pb-0">
+                      <div className="space-y-2">
+                        {note.title ? (
+                          <p className="text-sm font-semibold text-foreground">
+                            {note.title}
+                          </p>
+                        ) : null}
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                          {note.body}
+                        </p>
+                        <div className="flex flex-wrap gap-2 text-xs text-muted">
+                          <span>Type : {note.note_type}</span>
+                          <span>
+                            Créée le {formatAnimalDate(note.created_at)}
+                          </span>
+                          {authorName ? <span>Par {authorName}</span> : null}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          {events.length > 0 ? (
+            <div>
+              <h3 className="text-sm font-semibold">Événements santé</h3>
+              <div className="mt-3 divide-y divide-border">
+                {events.map((event) => (
+                  <div key={event.id} className="py-4 first:pt-0 last:pb-0">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-semibold text-foreground">
+                          {event.title || getEventTypeLabel(event.event_type)}
+                        </span>
+                        <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                          {event.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted">
+                        Type : {getEventTypeLabel(event.event_type)}
+                      </p>
+                      <p className="text-xs text-muted">
+                        Date utile :{" "}
+                        {formatAnimalDate(getUsefulEventDate(event))}
+                      </p>
+                      {event.description ? (
+                        <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                          {event.description}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {documents.length > 0 ? (
+            <div>
+              <h3 className="text-sm font-semibold">Documents santé</h3>
+              <div className="mt-3 divide-y divide-border">
+                {documents.map((document) => {
+                  const usefulDate = getUsefulDocumentDate(document);
+
+                  return (
+                    <div
+                      key={document.id}
+                      className="py-4 first:pt-0 last:pb-0"
+                    >
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span className="text-sm font-semibold text-foreground">
+                            {document.title}
+                          </span>
+                          <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                            {getDocumentStatusLabel(document.status)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted">
+                          Type : {getDocumentTypeLabel(document.document_type)}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {usefulDate.label}{" "}
+                          {formatAnimalDate(usefulDate.value)}
+                        </p>
+                        <Link
+                          href={`/documents/${document.id}`}
+                          className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        >
+                          Consulter
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function RelatedEventsSection({
   events,
   hasError,
@@ -712,6 +895,9 @@ export default async function AnimalDetailPage({
     : { data: null, error: null };
 
   const animalNotes = rawNotes as RelatedNote[] | null;
+  const healthNotes = (animalNotes ?? []).filter(isHealthNote);
+  const healthEvents = (animalEvents ?? []).filter(isHealthEvent);
+  const healthDocuments = (animalDocuments ?? []).filter(isHealthDocument);
 
   const { data: rawReservations, error: reservationError } = animal
     ? await supabase
@@ -890,6 +1076,13 @@ export default async function AnimalDetailPage({
               <RelatedReservationSection
                 reservation={relatedReservation}
                 hasError={Boolean(reservationError)}
+              />
+
+              <AnimalHealthSection
+                notes={healthNotes}
+                events={healthEvents}
+                documents={healthDocuments}
+                hasError={Boolean(documentsError || eventsError || notesError)}
               />
 
               <RelatedDocumentsSection
