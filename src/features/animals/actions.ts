@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { FINAL_RESERVATION_STATUSES } from "@/features/reservations/statuses";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -97,6 +98,13 @@ function animalKeepAtKennelUrl(
   code: "success" | "not_allowed" | "error",
 ) {
   return `/animals/${animalId}?keep_at_kennel_status=${code}`;
+}
+
+function animalMakeAvailableUrl(
+  animalId: string,
+  code: "success" | "not_allowed" | "error",
+) {
+  return `/animals/${animalId}?make_available_status=${code}`;
 }
 
 function normalizeOptionalText(
@@ -644,6 +652,109 @@ export async function keepAnimalAtKennel(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath("/cheptel");
   redirect(animalKeepAtKennelUrl(animalId, "success"));
+}
+
+export async function makeKeptAnimalAvailable(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  if (formData.get("confirm_make_available") !== "yes") {
+    redirect(animalMakeAvailableUrl(animalId, "not_allowed"));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(animalMakeAvailableUrl(animalId, "error"));
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select(
+      "id, organization_id, status, ownership_status, is_breeder, is_external, is_retired",
+    )
+    .eq("id", animalId)
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalMakeAvailableUrl(animalId, "error"));
+  }
+
+  const isAdoptedOut = ["adopted_out", "sold"].includes(
+    String(animal.ownership_status),
+  );
+  const canMakeAvailable =
+    animal.status === "kept" &&
+    !animal.is_breeder &&
+    !animal.is_external &&
+    !animal.is_retired &&
+    !isAdoptedOut;
+
+  if (!canMakeAvailable) {
+    redirect(animalMakeAvailableUrl(animalId, "not_allowed"));
+  }
+
+  const { data: activeReservations, error: reservationsError } = await supabase
+    .from("reservations")
+    .select("id")
+    .eq("organization_id", animal.organization_id)
+    .eq("animal_id", animal.id)
+    .is("deleted_at", null)
+    .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`)
+    .limit(1);
+
+  if (reservationsError) {
+    redirect(animalMakeAvailableUrl(animalId, "error"));
+  }
+
+  if (activeReservations && activeReservations.length > 0) {
+    redirect(animalMakeAvailableUrl(animalId, "not_allowed"));
+  }
+
+  const { data: availableAnimal, error: updateError } = await supabase
+    .from("animals")
+    .update({ status: "available" })
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .is("deleted_at", null)
+    .eq("status", "kept")
+    .eq("is_breeder", false)
+    .eq("is_external", false)
+    .eq("is_retired", false)
+    .not("ownership_status", "in", "(adopted_out,sold)")
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !availableAnimal?.id) {
+    redirect(animalMakeAvailableUrl(animalId, "error"));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+  revalidatePath("/cheptel");
+  redirect(animalMakeAvailableUrl(animalId, "success"));
 }
 
 export async function createAnimalHealthEvent(formData: FormData) {
