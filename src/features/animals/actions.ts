@@ -8,6 +8,7 @@ import type { Database } from "@/types/database.types";
 
 type AnimalInsert = Database["public"]["Tables"]["animals"]["Insert"];
 type AnimalUpdate = Database["public"]["Tables"]["animals"]["Update"];
+type EventInsert = Database["public"]["Tables"]["events"]["Insert"];
 
 const allowedSpecies = new Set(["dog", "cat"]);
 const allowedSexes = new Set(["male", "female", "unknown"]);
@@ -32,6 +33,24 @@ const allowedManualOwnershipStatuses = new Set([
   "adopted_out",
   "unknown",
 ]);
+const allowedAnimalHealthEventTypes = new Set([
+  "vaccination",
+  "xray",
+  "ultrasound",
+  "pregnancy_check",
+  "other",
+]);
+const allowedEventStatuses = new Set([
+  "planned",
+  "todo",
+  "in_progress",
+  "done",
+  "late",
+  "cancelled",
+  "postponed",
+  "not_applicable",
+]);
+const allowedEventPriorities = new Set(["low", "normal", "high", "urgent"]);
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -53,6 +72,13 @@ function animalIdentityEditUrl(
   code: "name_required" | "invalid_date" | "error",
 ) {
   return `/animals/${animalId}/edit?status=${code}`;
+}
+
+function animalHealthEventUrl(
+  animalId: string,
+  code: "success" | "title_required" | "invalid_date" | "error",
+) {
+  return `/animals/${animalId}?health_event_status=${code}#sante`;
 }
 
 function normalizeOptionalText(
@@ -349,4 +375,89 @@ export async function updateAnimalIdentity(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath(`/animals/${animalId}/edit`);
   redirect(`/animals/${animalId}?identity_status=success`);
+}
+
+export async function createAnimalHealthEvent(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  const title = normalizeOptionalText(formData.get("title"), 255);
+
+  if (!title) {
+    redirect(animalHealthEventUrl(animalId, "title_required"));
+  }
+
+  const plannedDate = normalizeOptionalDate(formData.get("planned_date"));
+
+  if (!plannedDate || plannedDate === "invalid") {
+    redirect(animalHealthEventUrl(animalId, "invalid_date"));
+  }
+
+  const rawEventType = formData.get("event_type");
+  const eventType =
+    typeof rawEventType === "string" &&
+    allowedAnimalHealthEventTypes.has(rawEventType.trim())
+      ? rawEventType.trim()
+      : "vaccination";
+
+  const rawStatus = formData.get("status");
+  const status =
+    typeof rawStatus === "string" && allowedEventStatuses.has(rawStatus.trim())
+      ? rawStatus.trim()
+      : "planned";
+
+  const rawPriority = formData.get("priority");
+  const priority =
+    typeof rawPriority === "string" &&
+    allowedEventPriorities.has(rawPriority.trim())
+      ? rawPriority.trim()
+      : "normal";
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: animal, error: animalError } = await supabase
+    .from("animals")
+    .select("id, organization_id")
+    .eq("id", animalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (animalError || !animal?.organization_id) {
+    redirect(animalHealthEventUrl(animalId, "error"));
+  }
+
+  const eventToCreate: EventInsert = {
+    organization_id: animal.organization_id,
+    animal_id: animal.id,
+    event_type: eventType,
+    title,
+    description: normalizeOptionalText(formData.get("description"), 2_000),
+    planned_date: plannedDate,
+    status,
+    priority,
+    is_task: formData.get("is_task") === "on",
+    created_by: user.id,
+    updated_by: user.id,
+  };
+
+  const { error: insertError } = await supabase
+    .from("events")
+    .insert(eventToCreate);
+
+  if (insertError) {
+    redirect(animalHealthEventUrl(animalId, "error"));
+  }
+
+  revalidatePath(`/animals/${animalId}`);
+  redirect(animalHealthEventUrl(animalId, "success"));
 }

@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  createAnimalHealthEvent,
+} from "@/features/animals/actions";
+import {
   formatAnimalCoat,
   formatAnimalDate,
   getAnimalDisplayName,
@@ -100,6 +103,32 @@ const HEALTH_KEYWORDS = [
   "vermifuge",
   "deworming",
 ];
+
+const animalHealthEventTypeOptions = [
+  ["vaccination", "Vaccination"],
+  ["xray", "Radiographie"],
+  ["ultrasound", "Échographie"],
+  ["pregnancy_check", "Contrôle de gestation"],
+  ["other", "Autre"],
+] as const;
+
+const eventStatusOptions = [
+  ["planned", "Planifié"],
+  ["todo", "À faire"],
+  ["in_progress", "En cours"],
+  ["done", "Fait"],
+  ["late", "En retard"],
+  ["cancelled", "Annulé"],
+  ["postponed", "Reporté"],
+  ["not_applicable", "Sans objet"],
+] as const;
+
+const eventPriorityOptions = [
+  ["low", "Basse"],
+  ["normal", "Normale"],
+  ["high", "Haute"],
+  ["urgent", "Urgente"],
+] as const;
 
 function booleanLabel(value: boolean | null) {
   return value ? "Oui" : "Non";
@@ -478,22 +507,42 @@ function RelatedReservationSection({
 }
 
 function AnimalHealthSection({
+  animalId,
   notes,
   events,
   documents,
   hasError,
+  eventStatus,
 }: {
+  animalId: string;
   notes: RelatedNote[];
   events: RelatedEvent[];
   documents: RelatedDocument[];
   hasError: boolean;
+  eventStatus?: string;
 }) {
   const hasHealthData =
     notes.length > 0 || events.length > 0 || documents.length > 0;
 
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+    <section id="sante" className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Santé</h2>
+
+      {eventStatus === "success" ? (
+        <p
+          role="status"
+          className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+        >
+          L’événement santé a été ajouté.
+        </p>
+      ) : eventStatus ? (
+        <p
+          role="alert"
+          className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          Impossible d’ajouter l’événement santé. Vérifiez le titre et la date.
+        </p>
+      ) : null}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -617,6 +666,153 @@ function AnimalHealthSection({
           ) : null}
         </div>
       )}
+
+      <form action={createAnimalHealthEvent} className="mt-8 border-t pt-6">
+        <input type="hidden" name="animal_id" value={animalId} />
+        <h3 className="text-sm font-semibold text-foreground">
+          Ajouter un événement santé
+        </h3>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="animal-health-event-title"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Titre <span className="text-accent">*</span>
+            </label>
+            <input
+              id="animal-health-event-title"
+              name="title"
+              type="text"
+              required
+              maxLength={255}
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="animal-health-event-date"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Date prévue / réelle <span className="text-accent">*</span>
+            </label>
+            <input
+              id="animal-health-event-date"
+              name="planned_date"
+              type="date"
+              required
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label
+              htmlFor="animal-health-event-type"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Type
+            </label>
+            <select
+              id="animal-health-event-type"
+              name="event_type"
+              defaultValue="vaccination"
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              {animalHealthEventTypeOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs leading-5 text-muted">
+              Le type Autre peut ne pas réapparaître dans cette section avec le
+              filtre santé actuel.
+            </p>
+          </div>
+
+          <div>
+            <label
+              htmlFor="animal-health-event-status"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Statut
+            </label>
+            <select
+              id="animal-health-event-status"
+              name="status"
+              defaultValue="planned"
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              {eventStatusOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="animal-health-event-priority"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Priorité
+            </label>
+            <select
+              id="animal-health-event-priority"
+              name="priority"
+              defaultValue="normal"
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            >
+              {eventPriorityOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="self-end">
+            <label
+              htmlFor="animal-health-event-is-task"
+              className="flex items-center gap-3 rounded-xl border bg-background px-4 py-3 text-sm text-muted"
+            >
+              <input
+                id="animal-health-event-is-task"
+                name="is_task"
+                type="checkbox"
+                className="h-4 w-4 rounded border-border accent-accent"
+              />
+              Marquer comme tâche
+            </label>
+          </div>
+
+          <div className="sm:col-span-2">
+            <label
+              htmlFor="animal-health-event-description"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Note
+            </label>
+            <textarea
+              id="animal-health-event-description"
+              name="description"
+              rows={4}
+              maxLength={2000}
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm leading-6 focus:border-accent focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          className="mt-5 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+        >
+          Ajouter l’événement
+        </button>
+      </form>
     </section>
   );
 }
@@ -799,7 +995,10 @@ export default async function AnimalDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ identity_status?: string }>;
+  searchParams: Promise<{
+    identity_status?: string;
+    health_event_status?: string;
+  }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
@@ -1079,10 +1278,12 @@ export default async function AnimalDetailPage({
               />
 
               <AnimalHealthSection
+                animalId={animal.id}
                 notes={healthNotes}
                 events={healthEvents}
                 documents={healthDocuments}
                 hasError={Boolean(documentsError || eventsError || notesError)}
+                eventStatus={query.health_event_status}
               />
 
               <RelatedDocumentsSection
