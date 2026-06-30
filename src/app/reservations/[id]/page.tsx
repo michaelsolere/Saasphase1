@@ -1307,20 +1307,6 @@ export default async function ReservationDetailPage({
     commitmentDocument ? null : "certificat d’engagement",
     reservationContractDocument ? null : "contrat de réservation",
   ].filter((label): label is string => Boolean(label));
-  const adoptionDocumentStatusItems = [
-    {
-      label: "Certificat d’engagement",
-      document: commitmentDocument,
-    },
-    {
-      label: "Contrat de réservation",
-      document: reservationContractDocument,
-    },
-    {
-      label: "Certificat de vente",
-      document: saleCertificateDocument,
-    },
-  ];
   const firstDepositLabel = getPreReservationDepositLabel(
     preReservationDepositState,
   );
@@ -1737,24 +1723,21 @@ export default async function ReservationDetailPage({
                   </div>
 
                   <div className="mt-6 rounded-xl border bg-background p-4">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      Documents clés
-                    </h3>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      {adoptionDocumentStatusItems.map((item) => (
-                        <DetailItem
-                          key={item.label}
-                          label={item.label}
-                          value={
-                            item.document
-                              ? getDocumentStatusLabel(
-                                  item.document.status,
-                                  item.document.document_type,
-                                )
-                              : "Non lié"
-                          }
-                        />
-                      ))}
+                    <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Documents à vérifier
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-muted">
+                          {docsSummaryText}
+                        </p>
+                      </div>
+                      <a
+                        href="#documents"
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Voir les documents liés
+                      </a>
                     </div>
                   </div>
 
