@@ -3240,69 +3240,50 @@ export default async function ReservationDetailPage({
                 </section>
               </div>
 
-              <aside className="h-fit rounded-2xl border bg-surface p-6 space-y-6">
+              <aside className="h-fit rounded-2xl border bg-surface p-6">
                 <div>
                   <h2 className="text-lg font-semibold">Liens utiles</h2>
                   <p className="mt-2 text-xs leading-5 text-muted">
-                    Accès rapides aux objets métier liés au dossier.
+                    Accès rapides aux fiches sources liées au dossier.
                   </p>
                 </div>
 
-                <div>
-                  <h2 className="text-lg font-semibold">Client associé</h2>
-                  <div className="mt-4">
-                    {reservation.contact_id ? (
-                      <Link
-                        href={`/contacts/${reservation.contact_id}`}
-                        className="font-medium text-sm text-accent hover:underline"
-                      >
-                        {reservation.contact_display_name ?? "Client anonyme"}
-                      </Link>
-                    ) : (
-                      <p className="font-medium text-sm">{reservation.contact_display_name ?? "Client anonyme"}</p>
-                    )}
-                    {reservation.contact_id ? (
-                      <Link
-                        href={`/contacts/${reservation.contact_id}`}
-                        className="mt-3 inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la fiche contact
-                      </Link>
-                    ) : null}
-                  </div>
-                </div>
+                <div className="mt-5 grid gap-2">
+                  {reservation.contact_id ? (
+                    <Link
+                      href={`/contacts/${reservation.contact_id}`}
+                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Fiche contact
+                    </Link>
+                  ) : null}
 
-                <div className="border-t pt-6">
-                  <h2 className="text-lg font-semibold">Candidature liée</h2>
-                  <div className="mt-4">
-                    {reservation.application_id ? (
-                      <Link
-                        href={`/candidatures/${reservation.application_id}`}
-                        className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la candidature
-                      </Link>
-                    ) : (
-                      <p className="rounded-xl border border-dashed bg-background px-4 py-3 text-sm text-muted">
-                        Aucune candidature liée à cette réservation.
-                      </p>
-                    )}
-                  </div>
-                </div>
+                  {reservation.application_id ? (
+                    <Link
+                      href={`/candidatures/${reservation.application_id}`}
+                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Candidature
+                    </Link>
+                  ) : null}
 
-                <div className="border-t pt-6">
-                  <h2 className="text-lg font-semibold">Sections</h2>
-                  <div className="mt-4 grid gap-2">
-                    {sectionNavItems.map((item) => (
-                      <a
-                        key={item.href}
-                        href={item.href}
-                        className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        {item.label}
-                      </a>
-                    ))}
-                  </div>
+                  {reservation.animal_id ? (
+                    <Link
+                      href={`/animals/${reservation.animal_id}`}
+                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Animal attribué
+                    </Link>
+                  ) : null}
+
+                  {reservation.litter_id ? (
+                    <Link
+                      href={`/litters/${reservation.litter_id}`}
+                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Portée
+                    </Link>
+                  ) : null}
                 </div>
               </aside>
             </div>
