@@ -134,8 +134,66 @@ const eventPriorityOptions = [
   ["urgent", "Urgente"],
 ] as const;
 
+const HOME_BREEDER_MIN_AGE_MONTHS = 15;
+
 function booleanLabel(value: boolean | null) {
   return value ? "Oui" : "Non";
+}
+
+function parseDateOnly(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function addMonths(date: Date, months: number) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + months;
+  const day = date.getUTCDate();
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(year, month + 1, 0),
+  ).getUTCDate();
+
+  return new Date(Date.UTC(year, month, Math.min(day, lastDayOfTargetMonth)));
+}
+
+function hasReachedHomeBreederMinimumAge(birthDate: string | null) {
+  const parsedBirthDate = parseDateOnly(birthDate);
+
+  if (!parsedBirthDate) {
+    return false;
+  }
+
+  const today = new Date();
+  const todayDateOnly = new Date(
+    Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    ),
+  );
+
+  return (
+    addMonths(parsedBirthDate, HOME_BREEDER_MIN_AGE_MONTHS) <= todayDateOnly
+  );
 }
 
 function formatBirthWeight(value: number | null) {
@@ -234,6 +292,8 @@ function canPromoteToHomeBreeder(animal: DBAnimal) {
     animal.status !== "archived" &&
     animal.status !== "retired" &&
     !isAdoptedOut &&
+    hasReachedHomeBreederMinimumAge(animal.birth_date) &&
+    Boolean(animal.identification_number?.trim()) &&
     isHomeOrKept
   );
 }
@@ -1514,7 +1574,10 @@ export default async function AnimalDetailPage({
                         className="mt-1 h-4 w-4 rounded border-border accent-accent"
                       />
                       Je confirme que cet animal doit devenir reproductrice
-                      maison.
+                      maison. Le LOF, la confirmation, les radios
+                      hanches-coudes et les tests ADN ont été contrôlés
+                      manuellement ; ces validations ne sont pas automatisées
+                      en Phase 1.
                     </label>
                     <button
                       type="submit"

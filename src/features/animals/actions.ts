@@ -56,6 +56,8 @@ const allowedEventPriorities = new Set(["low", "normal", "high", "urgent"]);
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const HOME_BREEDER_MIN_AGE_MONTHS = 15;
+
 function animalCreateUrl(
   code:
     | "name_required"
@@ -140,6 +142,79 @@ function normalizeOptionalDate(value: FormDataEntryValue | null) {
   }
 
   return trimmed;
+}
+
+function parseDateOnly(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatDateOnly(date: Date) {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function addMonths(date: Date, months: number) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + months;
+  const day = date.getUTCDate();
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(year, month + 1, 0),
+  ).getUTCDate();
+
+  return new Date(Date.UTC(year, month, Math.min(day, lastDayOfTargetMonth)));
+}
+
+function todayDateOnly() {
+  const today = new Date();
+
+  return new Date(
+    Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    ),
+  );
+}
+
+function latestHomeBreederEligibleBirthDate() {
+  return formatDateOnly(
+    addMonths(todayDateOnly(), -HOME_BREEDER_MIN_AGE_MONTHS),
+  );
+}
+
+function hasReachedHomeBreederMinimumAge(birthDate: string | null) {
+  const parsedBirthDate = parseDateOnly(birthDate);
+
+  if (!parsedBirthDate) {
+    return false;
+  }
+
+  return (
+    addMonths(parsedBirthDate, HOME_BREEDER_MIN_AGE_MONTHS) <= todayDateOnly()
+  );
 }
 
 function parseOptionalUuid(value: FormDataEntryValue | null) {
@@ -513,7 +588,7 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
   const { data: animal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, organization_id, sex, status, ownership_status, litter_id, is_breeder, is_external, is_retired",
+      "id, organization_id, sex, status, ownership_status, birth_date, litter_id, identification_number, is_breeder, is_external, is_retired",
     )
     .eq("id", animalId)
     .eq("organization_id", membership.organization_id)
@@ -542,6 +617,8 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
     animal.status !== "archived" &&
     animal.status !== "retired" &&
     !isAdoptedOut &&
+    hasReachedHomeBreederMinimumAge(animal.birth_date) &&
+    Boolean(animal.identification_number?.trim()) &&
     isEligibleStatus;
 
   if (!canPromote) {
@@ -558,6 +635,10 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
     .eq("is_external", false)
     .eq("is_breeder", false)
     .eq("is_retired", false)
+    .not("birth_date", "is", null)
+    .lte("birth_date", latestHomeBreederEligibleBirthDate())
+    .not("identification_number", "is", null)
+    .neq("identification_number", "")
     .not("status", "in", "(adopted,deceased,archived,retired)")
     .select("id")
     .maybeSingle();
