@@ -459,8 +459,8 @@ export function MainSidebar({
                     "flex min-h-10 min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold transition",
                     collapsed && "justify-center px-2",
                     active
-                      ? "bg-accent text-white"
-                      : "text-foreground hover:bg-background",
+                      ? "bg-accent !text-white hover:!text-white focus-visible:!text-white"
+                      : "text-foreground hover:bg-background hover:text-foreground focus-visible:text-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />
@@ -482,8 +482,8 @@ export function MainSidebar({
                     "flex min-h-10 w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold transition",
                     collapsed && "justify-center px-2",
                     active
-                      ? "bg-accent text-white"
-                      : "text-foreground hover:bg-background",
+                      ? "bg-accent !text-white hover:!text-white focus-visible:!text-white"
+                      : "text-foreground hover:bg-background hover:text-foreground focus-visible:text-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" aria-hidden="true" />
