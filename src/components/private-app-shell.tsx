@@ -21,6 +21,8 @@ const privateRoutes = [
 ];
 const sidebarCollapsedStorageKey = "main-sidebar-collapsed";
 
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
 function isPublicRoute(pathname: string) {
   return publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
@@ -41,8 +43,8 @@ export function PrivateAppShell({
   initialIsAuthenticated: boolean;
 }>) {
   const pathname = usePathname();
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    initialIsAuthenticated,
+  const [authStatus, setAuthStatus] = useState<AuthStatus>(
+    initialIsAuthenticated ? "authenticated" : "loading",
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -58,16 +60,16 @@ export function PrivateAppShell({
     const supabase = createClient();
     let isMounted = true;
 
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       if (isMounted) {
-        setIsAuthenticated(Boolean(data.user));
+        setAuthStatus(data.session ? "authenticated" : "unauthenticated");
       }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setIsAuthenticated(Boolean(session?.user));
+      setAuthStatus(session ? "authenticated" : "unauthenticated");
     });
 
     return () => {
@@ -76,8 +78,10 @@ export function PrivateAppShell({
     };
   }, []);
 
+  const isAuthenticated = authStatus === "authenticated";
   const shouldShowSidebar =
-    !isPublicRoute(pathname) && (isPrivateRoute(pathname) || (pathname === "/" && isAuthenticated));
+    !isPublicRoute(pathname) &&
+    (isPrivateRoute(pathname) || (pathname === "/" && isAuthenticated));
 
   if (!shouldShowSidebar) {
     return children;
@@ -95,7 +99,9 @@ export function PrivateAppShell({
     <div
       className="private-shell"
       data-collapsed={sidebarCollapsed ? "true" : "false"}
+      data-auth-status={authStatus}
       data-private-shell=""
+      data-should-show-sidebar={shouldShowSidebar ? "true" : "false"}
     >
       <div className="private-sidebar-desktop" data-sidebar-desktop="">
         <div className="sticky top-0 h-screen">

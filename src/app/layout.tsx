@@ -10,6 +10,8 @@ export const metadata: Metadata = {
   description: "Socle technique du SaaS de gestion d’élevage.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function RootLayout({
   children,
 }: Readonly<{

@@ -81,7 +81,7 @@ const sections: SidebarSection[] = [
     items: [
       { label: "Documents en cours", href: "/documents" },
       { label: "Documents archivés", comingSoon: true },
-      { label: "Modèles d’emails", comingSoon: true },
+      { label: "Modèles d’emails", href: "/documents/email-templates" },
       { label: "Modèles de contrats", comingSoon: true },
     ],
   },
