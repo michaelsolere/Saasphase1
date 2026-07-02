@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { logout } from "@/features/auth/actions";
 import { createClient } from "@/lib/supabase/server";
 import {
   getSexPreferenceLabel,
@@ -43,8 +42,8 @@ const quickLinks = [
   },
   {
     href: "/reservations",
-    title: "Réservations",
-    description: "Le suivi des réservations, paiements, animal et notes liés.",
+    title: "Parcours adoptants",
+    description: "Le cockpit des dossiers adoptants, paiements, documents, animal et suivi liés.",
     status: "Privé",
   },
   {
@@ -62,7 +61,7 @@ const quickLinks = [
   {
     href: "/litters",
     title: "Portées",
-    description: "Les portées, animaux, réservations, notes et événements liés.",
+    description: "Les portées, animaux, parcours adoptants, notes et événements liés.",
     status: "Privé",
   },
   {
@@ -128,7 +127,7 @@ export default async function Home() {
             </h1>
             <p className="mt-6 max-w-2xl text-lg leading-8 text-muted">
               Les modules principaux sont accessibles pour consulter les
-              contacts, candidatures, réservations, paiements, documents, portées
+              contacts, candidatures, parcours adoptants, paiements, documents, portées
               et animaux. Connectez-vous à l’espace privé pour piloter l’élevage.
             </p>
           </div>
@@ -285,14 +284,6 @@ export default async function Home() {
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/50">
             Connecté
           </span>
-          <form action={logout}>
-            <button
-              type="submit"
-              className="text-sm font-semibold text-muted hover:text-foreground hover:underline"
-            >
-              Se déconnecter
-            </button>
-          </form>
         </div>
       </header>
 
@@ -455,11 +446,11 @@ export default async function Home() {
             </div>
           </div>
 
-          {/* 4. Réservations à suivre */}
+          {/* 4. Parcours adoptants à suivre */}
           <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Réservations à suivre</h2>
+                <h2 className="text-lg font-semibold text-foreground">Parcours adoptants à suivre</h2>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   reservationsNeedAttention.length > 0
                     ? "bg-amber-50 text-amber-700 border border-amber-200"
@@ -521,7 +512,7 @@ export default async function Home() {
                 href="/reservations"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir toutes les réservations ({reservationsNeedAttention.length}) →
+                Voir tous les parcours adoptants ({reservationsNeedAttention.length}) →
               </Link>
             </div>
           </div>

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { logout } from "@/features/auth/actions";
 import {
   formatLitterDate,
   getLitterGroupStatusLabel,
@@ -172,20 +171,6 @@ export default async function LitterGroupsPage() {
             >
               Nouveau groupe de portées
             </Link>
-            <Link
-              href="/litters"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Portées
-            </Link>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>
