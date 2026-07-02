@@ -18,6 +18,26 @@ function getProjectExcerpt(value: string | null) {
   return value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
 }
 
+function getEmptyMessage(filter: ApplicationFilter) {
+  if (filter === "to_validate") {
+    return "Aucune candidature à valider";
+  }
+
+  if (filter === "validated") {
+    return "Aucune candidature validée";
+  }
+
+  if (filter === "unsuccessful") {
+    return "Aucune candidature non aboutie";
+  }
+
+  return "Aucune candidature reçue";
+}
+
+function isToValidateStatus(status: string | null) {
+  return status === "new" || status === "to_review" || status === "to_call";
+}
+
 export function ApplicationList({
   applications,
   filter,
@@ -28,11 +48,7 @@ export function ApplicationList({
   if (applications.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center">
-        <p className="text-lg font-semibold">
-          {filter === "to_review"
-            ? "Aucune candidature à relire"
-            : "Aucune candidature reçue"}
-        </p>
+        <p className="text-lg font-semibold">{getEmptyMessage(filter)}</p>
         <p className="mt-2 text-sm text-muted">
           Les nouvelles candidatures apparaîtront ici après leur envoi.
         </p>
@@ -60,12 +76,12 @@ export function ApplicationList({
           </thead>
           <tbody className="divide-y divide-border">
             {applications.map((application) => {
-              const isToReview = application.status === "to_review";
+              const isToValidate = isToValidateStatus(application.status);
 
               return (
                 <tr
                   key={application.id}
-                  className={isToReview ? "bg-accent-soft/35" : undefined}
+                  className={isToValidate ? "bg-accent-soft/35" : undefined}
                 >
                   <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
                     {formatApplicationDate(
@@ -95,7 +111,7 @@ export function ApplicationList({
                   <td className="px-5 py-5 align-top">
                     <span
                       className={
-                        isToReview
+                        isToValidate
                           ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
                           : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
                       }

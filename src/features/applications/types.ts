@@ -37,4 +37,8 @@ export type ApplicationDetail = Pick<
   | "created_at"
 >;
 
-export type ApplicationFilter = "to_review" | "all";
+export type ApplicationFilter =
+  | "to_validate"
+  | "validated"
+  | "unsuccessful"
+  | "all";

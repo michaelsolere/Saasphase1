@@ -42,7 +42,7 @@ function Field({
 }
 
 const initialRoleOptions = [
-  ["prospect", "Prospect"],
+  ["prospect", "Candidat"],
   ["candidate", "Candidat"],
   ["pre_reservation_holder", "Titulaire de pré-réservation"],
   ["reservation_holder", "Titulaire de réservation"],

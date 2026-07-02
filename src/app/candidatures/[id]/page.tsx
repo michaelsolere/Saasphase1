@@ -92,7 +92,7 @@ function NotFoundOrUnauthorized() {
         href="/candidatures"
         className="mt-6 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
       >
-        Retour aux candidatures
+        Retour aux candidats
       </Link>
     </section>
   );
@@ -114,7 +114,7 @@ function ErrorMessage() {
         href="/candidatures"
         className="mt-6 inline-flex text-sm font-semibold underline"
       >
-        Retour aux candidatures
+        Retour aux candidats
       </Link>
     </section>
   );
@@ -271,17 +271,10 @@ export default async function ApplicationDetailPage({
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         <Link
-          href="/"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Tableau de bord
-        </Link>
-        <span className="text-muted text-sm select-none" aria-hidden="true">|</span>
-        <Link
           href="/candidatures"
           className="text-sm font-medium text-accent hover:underline"
         >
-          ← Retour aux candidatures
+          ← Retour aux candidats
         </Link>
       </div>
 
