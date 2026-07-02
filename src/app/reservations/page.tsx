@@ -49,13 +49,7 @@ export default async function ReservationsPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
       <header className="border-b pb-7">
-        <Link
-          href="/"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          ← Retour au tableau de bord
-        </Link>
-        <div className="mt-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-accent">
               Espace privé · Aperçu
@@ -70,7 +64,7 @@ export default async function ReservationsPage() {
           <div className="flex flex-wrap items-center gap-4">
             <Link
               href="/reservations/new"
-              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
             >
               Nouvelle réservation
             </Link>
