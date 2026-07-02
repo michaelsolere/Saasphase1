@@ -31,6 +31,11 @@ import {
   unassignAnimalFromReservation,
   syncReservationScopeFromApplication,
 } from "@/features/reservations/actions";
+import {
+  ReservationAppointmentForm,
+  type ReservationAppointmentFormValues,
+} from "@/features/reservations/appointment-form";
+import { ReservationAppointmentDialog } from "@/features/reservations/appointment-dialog";
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
 import {
@@ -82,6 +87,7 @@ type ReservationSearchParams = {
   document_action_status?: string;
   note_status?: string;
   scope_sync_status?: string;
+  appointment_status?: string;
 };
 
 type RelatedPayment = {
@@ -128,6 +134,18 @@ type RelatedReservationEvent = RelatedPostAdoptionEvent & {
   event_type: string;
 };
 
+type AppointmentKind = "puppy_choice" | "adoption";
+
+type ReservationAppointmentSummary = {
+  kind: AppointmentKind;
+  eventId: string | null;
+  label: string;
+  plannedAt: string | null;
+  actualAt: string | null;
+  status: "missing" | "planned" | "done" | "postponed";
+  description: string | null;
+};
+
 type RelatedReservationNote = {
   id: string;
   title: string | null;
@@ -163,6 +181,7 @@ type ReservationInternalComment = {
 type ReservationPreReservationDeadline = {
   id: string;
   pre_reservation_deadline: string | null;
+  choice_meeting_at: string | null;
   deleted_at: string | null;
 };
 
@@ -176,6 +195,181 @@ function getUsefulReservationEventDate(event: RelatedReservationEvent) {
 
 function formatEventType(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getAppointmentStatusLabel(status: ReservationAppointmentSummary["status"]) {
+  if (status === "done") {
+    return "Validé par l’adoptant";
+  }
+
+  if (status === "postponed") {
+    return "À modifier";
+  }
+
+  if (status === "planned") {
+    return "Proposé";
+  }
+
+  return "Non proposé";
+}
+
+function getAppointmentStatusClassName(
+  status: ReservationAppointmentSummary["status"],
+) {
+  if (status === "done") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "postponed") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (status === "planned") {
+    return "border-accent/20 bg-accent/10 text-accent";
+  }
+
+  return "border-border bg-muted-soft text-muted";
+}
+
+function deriveAppointmentSummary({
+  kind,
+  label,
+  events,
+  fallbackPlannedAt,
+}: {
+  kind: AppointmentKind;
+  label: string;
+  events: RelatedReservationEvent[] | null;
+  fallbackPlannedAt?: string | null;
+}): ReservationAppointmentSummary {
+  const event = (events ?? []).find((item) => item.event_type === kind);
+
+  if (event) {
+    const status =
+      event.status === "done"
+        ? "done"
+        : event.status === "postponed"
+          ? "postponed"
+          : "planned";
+
+    return {
+      kind,
+      eventId: event.id,
+      label,
+      plannedAt: event.planned_at ?? event.planned_date,
+      actualAt: event.actual_at,
+      status,
+      description: event.description,
+    };
+  }
+
+  return {
+    kind,
+    eventId: null,
+    label,
+    plannedAt: fallbackPlannedAt ?? null,
+    actualAt: null,
+    status: fallbackPlannedAt ? "planned" : "missing",
+    description: null,
+  };
+}
+
+function toAppointmentFormValues(
+  appointment: ReservationAppointmentSummary,
+): ReservationAppointmentFormValues {
+  return {
+    eventId: appointment.eventId,
+    kind: appointment.kind,
+    plannedAt: appointment.plannedAt,
+    actualAt: appointment.actualAt,
+    status:
+      appointment.status === "done" || appointment.status === "postponed"
+        ? appointment.status
+        : "planned",
+    description: appointment.description,
+  };
+}
+
+function hasAppointmentChronologyWarning({
+  choiceAppointment,
+  adoptionAppointment,
+}: {
+  choiceAppointment: ReservationAppointmentSummary;
+  adoptionAppointment: ReservationAppointmentSummary;
+}) {
+  if (!choiceAppointment.plannedAt || !adoptionAppointment.plannedAt) {
+    return false;
+  }
+
+  const choiceDate = new Date(choiceAppointment.plannedAt);
+  const adoptionDate = new Date(adoptionAppointment.plannedAt);
+
+  if (
+    !Number.isFinite(choiceDate.getTime()) ||
+    !Number.isFinite(adoptionDate.getTime())
+  ) {
+    return false;
+  }
+
+  return adoptionDate.getTime() < choiceDate.getTime();
+}
+
+function AppointmentSummaryCard({
+  reservationId,
+  appointment,
+}: {
+  reservationId: string;
+  appointment: ReservationAppointmentSummary;
+}) {
+  const triggerLabel = appointment.eventId ? "Modifier" : "Renseigner";
+
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">
+            {appointment.label}
+          </h3>
+          <span
+            className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getAppointmentStatusClassName(appointment.status)}`}
+          >
+            {getAppointmentStatusLabel(appointment.status)}
+          </span>
+        </div>
+        <ReservationAppointmentDialog
+          title={appointment.label}
+          description="Renseignez manuellement le créneau proposé, la validation adoptant et un commentaire court."
+          triggerLabel={triggerLabel}
+          appointmentForm={
+            <ReservationAppointmentForm
+              reservationId={reservationId}
+              appointment={toAppointmentFormValues(appointment)}
+            />
+          }
+        />
+      </div>
+
+      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+        <DetailItem
+          label="Créneau proposé"
+          value={formatApplicationDate(appointment.plannedAt)}
+        />
+        <DetailItem
+          label="Date de validation adoptant"
+          value={formatApplicationDate(appointment.actualAt)}
+        />
+      </dl>
+
+      <div className="mt-4 rounded-lg border border-dashed px-3 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+          Commentaire
+        </p>
+        <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-muted">
+          {appointment.description || "Aucun commentaire renseigné."}
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function NotFoundOrUnauthorized() {
@@ -346,6 +540,20 @@ function ReservationStatusMessages({
       className: errorStatusMessageClassName,
       message:
         "La note interne n’a pas pu être ajoutée. Vérifiez le contenu saisi et réessayez.",
+    },
+    {
+      when: query.appointment_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message:
+        "Le créneau de rendez-vous a bien été enregistré.",
+    },
+    {
+      when: query.appointment_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le créneau de rendez-vous n’a pas pu être enregistré. Aucune autre donnée n’a été modifiée.",
     },
     {
       when: query.payment_refund_status === "success",
@@ -802,50 +1010,6 @@ const journeyStepConnectorClassNames: Record<JourneyStepState, string> = {
   unknown: "bg-border",
 };
 
-function normalizeJourneyText(value: string | null | undefined) {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-}
-
-function isAppointmentRelatedEvent(event: RelatedReservationEvent) {
-  const text = normalizeJourneyText(
-    [
-      event.event_type,
-      event.title,
-      event.description,
-      event.status,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
-
-  return (
-    text.includes("rdv") ||
-    text.includes("rv") ||
-    text.includes("rendez") ||
-    text.includes("creneau") ||
-    text.includes("appointment") ||
-    text.includes("meeting")
-  );
-}
-
-function isValidatedAppointmentEvent(event: RelatedReservationEvent) {
-  const text = normalizeJourneyText(
-    [event.status, event.title, event.description].filter(Boolean).join(" "),
-  );
-
-  return (
-    Boolean(event.actual_at) ||
-    text.includes("valide") ||
-    text.includes("confirme") ||
-    text.includes("confirmed") ||
-    text.includes("completed") ||
-    text.includes("done")
-  );
-}
-
 function getAdopterJourneySteps({
   preReservationDepositState,
   reservationStatus,
@@ -856,8 +1020,9 @@ function getAdopterJourneySteps({
   hasCompleteDeposit,
   isPaidInFull,
   remainingBalanceCents,
-  reservationEvents,
   reservationEventsError,
+  choiceAppointment,
+  adoptionAppointment,
   adoptionCompletedAt,
 }: {
   preReservationDepositState: PreReservationDepositState;
@@ -869,8 +1034,9 @@ function getAdopterJourneySteps({
   hasCompleteDeposit: boolean;
   isPaidInFull: boolean;
   remainingBalanceCents: number | null;
-  reservationEvents: RelatedReservationEvent[] | null;
   reservationEventsError: unknown;
+  choiceAppointment: ReservationAppointmentSummary;
+  adoptionAppointment: ReservationAppointmentSummary;
   adoptionCompletedAt: string | null | undefined;
 }): JourneyStep[] {
   const visibleDocuments = reservationDocuments ?? [];
@@ -886,12 +1052,17 @@ function getAdopterJourneySteps({
     commitmentDocument?.status === "signed" &&
       reservationContractDocument?.status === "signed",
   );
-  const appointmentEvents =
-    reservationEvents?.filter(isAppointmentRelatedEvent) ?? [];
-  const hasAppointmentProposal = appointmentEvents.length > 0;
-  const hasValidatedAppointment = appointmentEvents.some(
-    isValidatedAppointmentEvent,
-  );
+  const appointments = [choiceAppointment, adoptionAppointment];
+  const proposedAppointmentCount = appointments.filter(
+    (appointment) => appointment.status !== "missing",
+  ).length;
+  const validatedAppointmentCount = appointments.filter(
+    (appointment) => appointment.status === "done",
+  ).length;
+  const hasBothAppointmentProposals = proposedAppointmentCount === 2;
+  const hasBothValidatedAppointments = validatedAppointmentCount === 2;
+  const hasAnyAppointmentProposal = proposedAppointmentCount > 0;
+  const hasAnyValidatedAppointment = validatedAppointmentCount > 0;
   const adoptionIsEffective =
     reservationStatus === "adopted" || Boolean(adoptionCompletedAt);
   const balanceIsSettled =
@@ -952,30 +1123,34 @@ function getAdopterJourneySteps({
       label: "Créneaux RV proposés",
       state: reservationEventsError
         ? "needs_check"
-        : hasAppointmentProposal
+        : hasBothAppointmentProposals
           ? "done"
+          : hasAnyAppointmentProposal
+            ? "in_progress"
           : "unknown",
       detail: reservationEventsError
         ? "Événements liés indisponibles."
-        : hasAppointmentProposal
-          ? "Un événement lié évoque un rendez-vous ou un créneau."
-          : "Aucun créneau RV dédié n'est disponible.",
+        : hasBothAppointmentProposals
+          ? "Les deux créneaux sont renseignés."
+          : hasAnyAppointmentProposal
+            ? "Un seul des deux créneaux est renseigné."
+            : "Aucun créneau RV dédié n'est disponible.",
     },
     {
       label: "Créneaux RV validés",
       state: reservationEventsError
         ? "needs_check"
-        : hasValidatedAppointment
+        : hasBothValidatedAppointments
           ? "done"
-          : hasAppointmentProposal
+          : hasAnyAppointmentProposal || hasAnyValidatedAppointment
             ? "in_progress"
             : "unknown",
       detail: reservationEventsError
         ? "Événements liés indisponibles."
-        : hasValidatedAppointment
-          ? "Un événement RV semble confirmé ou réalisé."
-          : hasAppointmentProposal
-            ? "Proposition visible, validation à confirmer."
+        : hasBothValidatedAppointments
+          ? "Les deux rendez-vous sont validés par l'adoptant."
+          : hasAnyAppointmentProposal || hasAnyValidatedAppointment
+            ? "Validation partielle ou à confirmer."
             : "Aucune validation de créneau visible.",
     },
     {
@@ -1316,13 +1491,13 @@ export default async function ReservationDetailPage({
   const reservationInternalComment =
     rawInternalComment as ReservationInternalComment | null;
 
-  // Fetch planning fields directly because reservation_overview only exposes
-  // the read-only ranks, not the pre-reservation deadline.
+  // Fetch planning fields directly because reservation_overview does not expose
+  // every appointment-oriented reservation field.
   const { data: rawPreReservationDeadline, error: preReservationDeadlineError } =
     reservation?.id
       ? await supabase
           .from("reservations")
-          .select("id, pre_reservation_deadline, deleted_at")
+          .select("id, pre_reservation_deadline, choice_meeting_at, deleted_at")
           .eq("id", reservation.id)
           .is("deleted_at", null)
           .maybeSingle()
@@ -1765,6 +1940,22 @@ export default async function ReservationDetailPage({
         reservationContractDocument,
       })
     : null;
+  const choiceAppointment = deriveAppointmentSummary({
+    kind: "puppy_choice",
+    label: "Choix du chiot/chaton",
+    events: reservationEvents,
+    fallbackPlannedAt: reservationPreReservationDeadline?.choice_meeting_at,
+  });
+  const adoptionAppointment = deriveAppointmentSummary({
+    kind: "adoption",
+    label: "Adoption / départ",
+    events: reservationEvents,
+    fallbackPlannedAt: reservation?.adoption_planned_at,
+  });
+  const showAppointmentChronologyWarning = hasAppointmentChronologyWarning({
+    choiceAppointment,
+    adoptionAppointment,
+  });
   const adopterJourneySteps = reservation
     ? getAdopterJourneySteps({
         preReservationDepositState,
@@ -1776,8 +1967,9 @@ export default async function ReservationDetailPage({
         hasCompleteDeposit,
         isPaidInFull,
         remainingBalanceCents,
-        reservationEvents,
         reservationEventsError,
+        choiceAppointment,
+        adoptionAppointment,
         adoptionCompletedAt: reservation.adoption_completed_at,
       })
     : [];
@@ -1786,6 +1978,7 @@ export default async function ReservationDetailPage({
     { href: "#payments", label: "Finances" },
     { href: "#documents", label: "Documents" },
     { href: "#scope-and-animal", label: "Animal attribué" },
+    { href: "#appointments", label: "Créneaux RV" },
     { href: "#adoption-preparation", label: "Préparation départ" },
     { href: "#notes", label: "Notes internes" },
     { href: "#contact-details", label: "Dossier adoptant" },
@@ -1952,6 +2145,52 @@ export default async function ReservationDetailPage({
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="flex flex-col gap-6">
+                <section id="appointments" className="order-[35] rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
+                  <div className="flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">
+                        Créneaux de rendez-vous
+                      </h2>
+                      <p className="mt-2 text-sm leading-6 text-muted">
+                        Suivi manuel des deux rendez-vous distincts proposés à
+                        l’adoptant.
+                      </p>
+                    </div>
+                    <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                      Saisie manuelle
+                    </span>
+                  </div>
+
+                  {reservationEventsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les événements de rendez-vous.
+                    </p>
+                  ) : (
+                    <>
+                      {showAppointmentChronologyWarning ? (
+                        <p
+                          role="alert"
+                          className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+                        >
+                          Attention : le créneau d’adoption / départ est
+                          programmé avant le créneau de choix du chiot/chaton.
+                        </p>
+                      ) : null}
+
+                      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                        <AppointmentSummaryCard
+                          reservationId={id}
+                          appointment={choiceAppointment}
+                        />
+                        <AppointmentSummaryCard
+                          reservationId={id}
+                          appointment={adoptionAppointment}
+                        />
+                      </div>
+                    </>
+                  )}
+                </section>
+
                 {/* 2. Section Dossier Adoptant */}
                 <section id="adoption-preparation" className="order-[40] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">

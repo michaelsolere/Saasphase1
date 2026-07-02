@@ -8,6 +8,9 @@ import {
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database.types";
+
+type EventUpdate = Database["public"]["Tables"]["events"]["Update"];
 
 function priceUrl(
   reservationId: string,
@@ -35,6 +38,13 @@ function noteUrl(
   outcome: "success" | "error",
 ) {
   return `/reservations/${reservationId}?note_status=${outcome}#notes`;
+}
+
+function appointmentUrl(
+  reservationId: string,
+  outcome: "success" | "error",
+) {
+  return `/reservations/${reservationId}?appointment_status=${outcome}#appointments`;
 }
 
 function activationUrl(
@@ -145,6 +155,47 @@ function parsePreReservationDeadline(value: FormDataEntryValue | null) {
   }
 
   return { ok: true as const, deadline: date.toISOString() };
+}
+
+function normalizeOptionalText(
+  value: FormDataEntryValue | null,
+  maxLength = 2_000,
+) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  return trimmedValue.slice(0, maxLength);
+}
+
+function parseOptionalDateTimeLocal(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return { ok: false as const };
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return { ok: true as const, value: null };
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmedValue)) {
+    return { ok: false as const };
+  }
+
+  const date = new Date(trimmedValue);
+
+  if (!Number.isFinite(date.getTime())) {
+    return { ok: false as const };
+  }
+
+  return { ok: true as const, value: date.toISOString() };
 }
 
 export async function updateReservationPrice(formData: FormData) {
@@ -371,6 +422,129 @@ export async function createReservationNote(formData: FormData) {
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(noteUrl(reservationId, "success"));
+}
+
+export async function upsertReservationAppointment(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+  const appointmentKind = formData.get("appointment_kind");
+  const eventIdValue = formData.get("event_id");
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof appointmentKind !== "string" ||
+    !["puppy_choice", "adoption"].includes(appointmentKind)
+  ) {
+    if (typeof reservationId === "string" && isUuid(reservationId)) {
+      redirect(appointmentUrl(reservationId, "error"));
+    }
+
+    redirect("/reservations?erreur=appointment");
+  }
+
+  const eventId =
+    typeof eventIdValue === "string" && isUuid(eventIdValue)
+      ? eventIdValue
+      : null;
+
+  const plannedAt = parseOptionalDateTimeLocal(formData.get("planned_at"));
+  const actualAt = parseOptionalDateTimeLocal(formData.get("actual_at"));
+
+  if (!plannedAt.ok || !actualAt.ok) {
+    redirect(appointmentUrl(reservationId, "error"));
+  }
+
+  const rawStatus = formData.get("status");
+  const status =
+    typeof rawStatus === "string" &&
+    ["planned", "done", "postponed"].includes(rawStatus)
+      ? rawStatus
+      : "planned";
+
+  if (!plannedAt.value && !actualAt.value) {
+    redirect(appointmentUrl(reservationId, "error"));
+  }
+
+  const description = normalizeOptionalText(formData.get("description"), 500);
+  const title =
+    appointmentKind === "puppy_choice"
+      ? "Rendez-vous de choix du chiot/chaton"
+      : "Rendez-vous d’adoption / départ";
+  const now = new Date().toISOString();
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: readError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, deleted_at")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !reservation?.organization_id) {
+    redirect(appointmentUrl(reservationId, "error"));
+  }
+
+  const eventValues = {
+    event_type: appointmentKind,
+    title,
+    description,
+    planned_at: plannedAt.value,
+    planned_date: null,
+    actual_at: actualAt.value,
+    status,
+    priority: "normal",
+    is_task: status !== "done",
+    updated_at: now,
+    updated_by: user.id,
+  } satisfies EventUpdate;
+
+  if (eventId) {
+    const { data: updatedEvent, error: updateError } = await supabase
+      .from("events")
+      .update(eventValues)
+      .eq("id", eventId)
+      .eq("organization_id", reservation.organization_id)
+      .eq("reservation_id", reservation.id)
+      .eq("event_type", appointmentKind)
+      .is("deleted_at", null)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError || !updatedEvent) {
+      redirect(appointmentUrl(reservationId, "error"));
+    }
+  } else {
+    const { error: insertError } = await supabase.from("events").insert({
+      organization_id: reservation.organization_id,
+      reservation_id: reservation.id,
+      event_type: appointmentKind,
+      title,
+      description,
+      planned_at: plannedAt.value,
+      actual_at: actualAt.value,
+      status,
+      priority: "normal",
+      is_task: status !== "done",
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+    if (insertError) {
+      redirect(appointmentUrl(reservationId, "error"));
+    }
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  redirect(appointmentUrl(reservationId, "success"));
 }
 
 export async function activateReservation(formData: FormData) {
