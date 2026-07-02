@@ -7,6 +7,51 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+const filters = [
+  {
+    value: "to_validate",
+    label: "À valider",
+    href: "/candidatures",
+  },
+  {
+    value: "validated",
+    label: "Validées",
+    href: "/candidatures?filtre=validees",
+  },
+  {
+    value: "unsuccessful",
+    label: "Non abouties",
+    href: "/candidatures?filtre=non-abouties",
+  },
+  {
+    value: "all",
+    label: "Toutes",
+    href: "/candidatures?filtre=toutes",
+  },
+] satisfies Array<{
+  value: ApplicationFilter;
+  label: string;
+  href: string;
+}>;
+
+const toValidateStatuses = ["new", "to_review", "to_call"];
+
+function getApplicationFilter(value: string | undefined): ApplicationFilter {
+  if (value === "validees") {
+    return "validated";
+  }
+
+  if (value === "non-abouties") {
+    return "unsuccessful";
+  }
+
+  if (value === "toutes") {
+    return "all";
+  }
+
+  return "to_validate";
+}
+
 function ErrorMessage() {
   return (
     <div
@@ -31,8 +76,7 @@ export default async function ApplicationsPage({
   }>;
 }) {
   const params = await searchParams;
-  const filter: ApplicationFilter =
-    params.filtre === "toutes" ? "all" : "to_review";
+  const filter = getApplicationFilter(params.filtre);
   const supabase = await createClient();
 
   const {
@@ -55,8 +99,12 @@ export default async function ApplicationsPage({
     .order("submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
-  if (filter === "to_review") {
-    query = query.eq("status", "to_review");
+  if (filter === "to_validate") {
+    query = query.in("status", toValidateStatuses);
+  } else if (filter === "validated") {
+    query = query.in("status", ["qualified", "waiting_litter"]);
+  } else if (filter === "unsuccessful") {
+    query = query.in("status", ["rejected", "withdrawn", "archived"]);
   }
 
   const result = await query;
@@ -72,11 +120,10 @@ export default async function ApplicationsPage({
               Espace privé · Aperçu
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Candidatures
+              Candidats
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez les demandes reçues et repérez rapidement celles qui
-              attendent une première relecture.
+              Candidatures reçues avant entrée dans un parcours adoptant.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -114,28 +161,22 @@ export default async function ApplicationsPage({
               aria-label="Filtrer les candidatures"
               className="mb-5 flex w-fit gap-1 rounded-xl border bg-surface p-1"
             >
-              <Link
-                href="/candidatures"
-                aria-current={filter === "to_review" ? "page" : undefined}
-                className={
-                  filter === "to_review"
-                    ? "rounded-lg bg-accent px-4 py-2 text-sm font-semibold !text-white hover:!text-white"
-                    : "rounded-lg px-4 py-2 text-sm font-medium text-muted hover:bg-background"
-                }
-              >
-                À relire
-              </Link>
-              <Link
-                href="/candidatures?filtre=toutes"
-                aria-current={filter === "all" ? "page" : undefined}
-                className={
-                  filter === "all"
-                    ? "rounded-lg bg-accent px-4 py-2 text-sm font-semibold !text-white hover:!text-white"
-                    : "rounded-lg px-4 py-2 text-sm font-medium text-muted hover:bg-background"
-                }
-              >
-                Toutes
-              </Link>
+              {filters.map((candidateFilter) => (
+                <Link
+                  key={candidateFilter.value}
+                  href={candidateFilter.href}
+                  aria-current={
+                    filter === candidateFilter.value ? "page" : undefined
+                  }
+                  className={
+                    filter === candidateFilter.value
+                      ? "rounded-lg bg-accent px-4 py-2 text-sm font-semibold !text-white hover:!text-white"
+                      : "rounded-lg px-4 py-2 text-sm font-medium text-muted hover:bg-background"
+                  }
+                >
+                  {candidateFilter.label}
+                </Link>
+              ))}
             </nav>
             <ApplicationList applications={applications} filter={filter} />
           </>

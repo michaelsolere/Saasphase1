@@ -7,7 +7,7 @@ import { transitions, type QualificationAction } from "./transitions";
 
 const actionLabels: Record<QualificationAction, string> = {
   archive: "Archiver",
-  qualify: "Qualifier",
+  qualify: "Valider",
   reject: "Refuser",
   to_call: "À appeler",
 };
