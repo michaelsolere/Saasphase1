@@ -581,22 +581,6 @@ export default async function Home() {
         </div>
       </section>
 
-      {/* Secondary quick links section */}
-      <section className="border-t py-8 mt-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted mb-6">Accès rapide aux modules privés</h2>
-        <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
-          {quickLinks.slice(1).map((area) => (
-            <Link
-              key={area.href}
-              href={area.href}
-              className="rounded-xl border bg-surface p-4 text-sm font-medium text-foreground transition hover:border-accent hover:bg-accent-soft block text-center"
-            >
-              {area.title}
-            </Link>
-          ))}
-        </div>
-      </section>
-
       <footer className="border-t pt-6 text-sm text-muted">
         Phase 1 — consultation d’abord, écritures métier ajoutées par petites PRs ciblées.
       </footer>

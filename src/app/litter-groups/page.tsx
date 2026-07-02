@@ -167,7 +167,7 @@ export default async function LitterGroupsPage() {
           <div className="flex flex-wrap items-center gap-4">
             <Link
               href="/litter-groups/new"
-              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
             >
               Nouveau groupe de portées
             </Link>
@@ -185,7 +185,7 @@ export default async function LitterGroupsPage() {
             </p>
             <Link
               href="/litter-groups/new"
-              className="mt-5 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+              className="mt-5 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
             >
               Créer un groupe de portées
             </Link>

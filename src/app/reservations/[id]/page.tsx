@@ -1460,37 +1460,7 @@ export default async function ReservationDetailPage({
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <Link
-          href="/"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Tableau de bord
-        </Link>
-        <span className="text-muted text-sm select-none" aria-hidden="true">|</span>
-        <Link
-          href="/reservations"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          ← Retour aux réservations
-        </Link>
-        <span className="text-muted text-sm select-none" aria-hidden="true">|</span>
-        <Link
-          href="/candidatures"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Candidatures
-        </Link>
-        <span className="text-muted text-sm select-none" aria-hidden="true">|</span>
-        <Link
-          href="/contacts"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Contacts
-        </Link>
-      </div>
-
-      <div className="mt-8">
+      <div>
         {readError ? (
           <ErrorMessage />
         ) : !reservation ? (
@@ -1502,10 +1472,10 @@ export default async function ReservationDetailPage({
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Réservation · Consultation · complétion limitée
+                  Parcours adoptant · Consultation · complétion limitée
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Réservation de {reservation.contact_display_name ?? "Client anonyme"}
+                  Parcours adoptant de {reservation.contact_display_name ?? "Client anonyme"}
                 </h1>
                 <p className="mt-3 text-sm text-muted">
                   Créée le {formatApplicationDate(reservation.created_at)}

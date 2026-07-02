@@ -21,7 +21,7 @@
   --card-foreground: #20231f;
   --popover: #ffffff;
   --popover-foreground: #20231f;
-  --accent-foreground: #20231f;
+  --accent-foreground: #ffffff;
 }
 
 @theme inline {
