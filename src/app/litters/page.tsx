@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { logout } from "@/features/auth/actions";
 import { LitterList } from "@/features/litters/litter-list";
 import type { LitterOverview } from "@/features/litters/types";
 import { createClient } from "@/lib/supabase/server";
@@ -94,44 +93,6 @@ export default async function LittersPage({
             >
               Groupes de portées
             </Link>
-            <Link
-              href="/candidatures"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Candidatures
-            </Link>
-            <Link
-              href="/contacts"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Contacts
-            </Link>
-            <Link
-              href="/reservations"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Réservations
-            </Link>
-            <Link
-              href="/payments"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Paiements
-            </Link>
-            <Link
-              href="/documents"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Documents
-            </Link>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>

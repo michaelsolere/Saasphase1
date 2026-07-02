@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { logout } from "@/features/auth/actions";
 import { ReservationList } from "@/features/reservations/reservation-list";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -62,10 +61,10 @@ export default async function ReservationsPage() {
               Espace privé · Aperçu
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Réservations
+              Parcours adoptants
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez les réservations d’animaux en cours pour votre élevage.
+              Consultez les dossiers adoptants en cours, du premier engagement au départ.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -75,41 +74,9 @@ export default async function ReservationsPage() {
             >
               Nouvelle réservation
             </Link>
-            <Link
-              href="/candidatures"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Candidatures
-            </Link>
-            <Link
-              href="/contacts"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Contacts
-            </Link>
-            <Link
-              href="/payments"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Paiements
-            </Link>
-            <Link
-              href="/documents"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Documents
-            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>

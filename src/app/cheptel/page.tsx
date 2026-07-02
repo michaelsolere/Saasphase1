@@ -7,7 +7,6 @@ import {
   getAnimalSexLabel,
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
-import { logout } from "@/features/auth/actions";
 import { getReservationStatusLabel } from "@/features/reservations/formatters";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -474,14 +473,6 @@ export default async function HerdPage() {
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>

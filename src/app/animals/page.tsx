@@ -11,7 +11,6 @@ import {
 } from "@/features/animals/animal-filters";
 import { AnimalList } from "@/features/animals/animal-list";
 import type { AnimalListItem, DBAnimal } from "@/features/animals/types";
-import { logout } from "@/features/auth/actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -299,41 +298,9 @@ export default async function AnimalsPage({
             >
               Nouvel animal
             </Link>
-            <Link
-              href="/litters"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Portées
-            </Link>
-            <Link
-              href="/reservations"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Réservations
-            </Link>
-            <Link
-              href="/contacts"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Contacts
-            </Link>
-            <Link
-              href="/documents"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Documents
-            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { logout } from "@/features/auth/actions";
 import { ContactList } from "@/features/contacts/contact-list";
 import type { ContactOverview } from "@/features/contacts/types";
 import { createClient } from "@/lib/supabase/server";
@@ -68,43 +67,11 @@ export default async function ContactsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link
-              href="/candidatures"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Candidatures
-            </Link>
-            <Link
-              href="/reservations"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Réservations
-            </Link>
-            <Link
-              href="/payments"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Paiements
-            </Link>
-            <Link
-              href="/documents"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Documents
-            </Link>
-            <Link
               href="/contacts/new"
               className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
             >
               Nouveau contact
             </Link>
-            <form action={logout}>
-              <button
-                type="submit"
-                className="text-sm font-medium text-muted hover:text-foreground hover:underline"
-              >
-                Se déconnecter
-              </button>
-            </form>
           </div>
         </div>
       </header>
