@@ -9,6 +9,10 @@ const actionableReservationDocumentTypes = [
   "reservation_contract",
   "sale_certificate",
 ];
+const reservationBundleDocumentTypes = [
+  "commitment_certificate",
+  "reservation_contract",
+];
 
 // Utility to validate UUIDs
 function isUuid(value: string) {
@@ -27,6 +31,60 @@ function getDocumentActionRedirectPath(
   }
 
   return `/reservations/${reservationId}?document_action_status=${status}#documents`;
+}
+
+function getReservationBundleRedirectPath(
+  reservationId: string,
+  status: "success" | "error" | "incomplete",
+) {
+  return `/reservations/${reservationId}?document_action_status=${status}#documents`;
+}
+
+async function readReservationForDocumentBundle(reservationId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    redirect(getReservationBundleRedirectPath(reservationId, "error"));
+  }
+
+  const { data: documents, error: documentsError } = await supabase
+    .from("documents")
+    .select("id, document_type")
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservationId)
+    .in("document_type", reservationBundleDocumentTypes)
+    .is("deleted_at", null);
+
+  if (documentsError || !documents) {
+    redirect(getReservationBundleRedirectPath(reservationId, "error"));
+  }
+
+  const hasCommitment = documents.some(
+    (document) => document.document_type === "commitment_certificate",
+  );
+  const hasContract = documents.some(
+    (document) => document.document_type === "reservation_contract",
+  );
+
+  if (!hasCommitment || !hasContract) {
+    redirect(getReservationBundleRedirectPath(reservationId, "incomplete"));
+  }
+
+  return { supabase, user, reservation, documents };
 }
 
 export async function initializeReservationDocuments(formData: FormData) {
@@ -316,4 +374,73 @@ export async function markDocumentAsSigned(formData: FormData) {
   revalidatePath("/documents");
 
   redirect(getDocumentActionRedirectPath(formData, documentId, reservationId, "success"));
+}
+
+export async function markReservationDocumentsAsSent(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=document_action");
+  }
+
+  const { supabase, user, reservation } =
+    await readReservationForDocumentBundle(reservationId);
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from("documents")
+    .update({
+      status: "sent",
+      sent_at: now,
+      updated_by: user.id,
+      updated_at: now,
+    })
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservationId)
+    .in("document_type", reservationBundleDocumentTypes)
+    .neq("status", "signed");
+
+  if (updateError) {
+    redirect(getReservationBundleRedirectPath(reservationId, "error"));
+  }
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/reservations");
+  revalidatePath("/documents");
+
+  redirect(getReservationBundleRedirectPath(reservationId, "success"));
+}
+
+export async function markReservationDocumentsAsSigned(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=document_action");
+  }
+
+  const { supabase, user, reservation } =
+    await readReservationForDocumentBundle(reservationId);
+  const now = new Date().toISOString();
+
+  const { error: updateError } = await supabase
+    .from("documents")
+    .update({
+      status: "signed",
+      signed_at: now,
+      updated_by: user.id,
+      updated_at: now,
+    })
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservationId)
+    .in("document_type", reservationBundleDocumentTypes);
+
+  if (updateError) {
+    redirect(getReservationBundleRedirectPath(reservationId, "error"));
+  }
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/reservations");
+  revalidatePath("/documents");
+
+  redirect(getReservationBundleRedirectPath(reservationId, "success"));
 }

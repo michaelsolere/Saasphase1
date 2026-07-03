@@ -57,7 +57,10 @@ import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
 import { PaymentConfirmDialog } from "@/features/reservations/payment-confirm-dialog";
 import { PreReservationBalanceConfirmDialog } from "@/features/reservations/pre-reservation-balance-confirm-dialog";
-import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
+import {
+  DocumentConfirmDialog,
+  ReservationDocumentsBundleConfirmDialog,
+} from "@/features/reservations/document-confirm-dialog";
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import type { ReservationOverview } from "@/features/reservations/types";
@@ -523,6 +526,13 @@ function ReservationStatusMessages({
       className: errorStatusMessageClassName,
       message:
         "L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.document_action_status === "incomplete",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le lot de documents de réservation est incomplet : le certificat d’engagement et le contrat de réservation doivent tous les deux être liés avant de valider l’action groupée.",
     },
     {
       when: query.note_status === "success",
@@ -1029,12 +1039,20 @@ function getAdopterJourneySteps({
 }): JourneyStep[] {
   const visibleDocuments = reservationDocuments ?? [];
   const hasDocuments = visibleDocuments.length > 0;
-  const hasSentDocuments = visibleDocuments.some(
-    (document) =>
-      document.status === "sent" ||
-      document.status === "signed" ||
-      Boolean(document.sent_at) ||
-      Boolean(document.signed_at),
+  const hasReservationDocuments = Boolean(
+    commitmentDocument && reservationContractDocument,
+  );
+  const mainDocumentsSent = Boolean(
+    commitmentDocument &&
+      reservationContractDocument &&
+      (commitmentDocument.status === "sent" ||
+        commitmentDocument.status === "signed" ||
+        Boolean(commitmentDocument.sent_at) ||
+        Boolean(commitmentDocument.signed_at)) &&
+      (reservationContractDocument.status === "sent" ||
+        reservationContractDocument.status === "signed" ||
+        Boolean(reservationContractDocument.sent_at) ||
+        Boolean(reservationContractDocument.signed_at)),
   );
   const mainDocumentsSigned = Boolean(
     commitmentDocument?.status === "signed" &&
@@ -1077,17 +1095,21 @@ function getAdopterJourneySteps({
       label: "Documents envoyés",
       state: documentsError
         ? "needs_check"
-        : hasSentDocuments
+        : mainDocumentsSent
           ? "done"
-          : hasDocuments
+          : hasReservationDocuments
             ? "in_progress"
+            : hasDocuments
+              ? "needs_check"
             : "unknown",
       detail: documentsError
         ? "Chargement des documents à vérifier."
-        : hasSentDocuments
-          ? "Au moins un document est envoyé ou signé."
-          : hasDocuments
-            ? "Documents liés, envoi non confirmé."
+        : mainDocumentsSent
+          ? "Certificat d’engagement et contrat de réservation envoyés ou signés."
+          : hasReservationDocuments
+            ? "Les deux documents de réservation sont liés, envoi groupé non confirmé."
+            : hasDocuments
+              ? "Lot incomplet : certificat d’engagement et contrat de réservation à vérifier."
             : "Aucun document lié au dossier.",
     },
     {
@@ -1254,7 +1276,6 @@ function getReservationNextAction({
   isPaidInFull,
   hasCompleteDeposit,
   totalDocs,
-  sentDocs,
   toPrepareDocs,
   commitmentDocument,
   reservationContractDocument,
@@ -1266,7 +1287,6 @@ function getReservationNextAction({
   isPaidInFull: boolean;
   hasCompleteDeposit: boolean;
   totalDocs: number;
-  sentDocs: number;
   toPrepareDocs: number;
   commitmentDocument: RelatedDocument | undefined;
   reservationContractDocument: RelatedDocument | undefined;
@@ -1278,6 +1298,15 @@ function getReservationNextAction({
   const mainDocumentsSigned =
     commitmentDocument?.status === "signed" &&
     reservationContractDocument?.status === "signed";
+  const mainDocumentsSent =
+    (commitmentDocument?.status === "sent" ||
+      commitmentDocument?.status === "signed" ||
+      Boolean(commitmentDocument?.sent_at) ||
+      Boolean(commitmentDocument?.signed_at)) &&
+    (reservationContractDocument?.status === "sent" ||
+      reservationContractDocument?.status === "signed" ||
+      Boolean(reservationContractDocument?.sent_at) ||
+      Boolean(reservationContractDocument?.signed_at));
   const hasMissingMainDocuments =
     !commitmentDocument || !reservationContractDocument;
   const hasPositiveRemainingBalance =
@@ -1323,10 +1352,10 @@ function getReservationNextAction({
     };
   }
 
-  if (sentDocs > 0) {
+  if (mainDocumentsSent && !mainDocumentsSigned) {
     return {
-      label: "Document envoyé, en attente de retour signé.",
-      detail: "Au moins un document est envoyé mais pas encore reçu signé.",
+      label: "Documents envoyés, en attente de retours signés.",
+      detail: "Le certificat d’engagement et le contrat de réservation sont envoyés.",
       badgeClassName: attentionBadge,
     };
   }
@@ -1815,10 +1844,47 @@ export default async function ReservationDetailPage({
   const saleCertificateDocument = reservationDocuments?.find(
     (d) => d.document_type === "sale_certificate",
   );
+  const reservationBundleDocuments = [
+    commitmentDocument,
+    reservationContractDocument,
+  ].filter((document): document is RelatedDocument => Boolean(document));
+  const hasReservationDocumentsBundle =
+    Boolean(commitmentDocument) && Boolean(reservationContractDocument);
+  const reservationDocumentsBundleSent = Boolean(
+    commitmentDocument &&
+      reservationContractDocument &&
+      (commitmentDocument.status === "sent" ||
+        commitmentDocument.status === "signed" ||
+        Boolean(commitmentDocument.sent_at) ||
+        Boolean(commitmentDocument.signed_at)) &&
+      (reservationContractDocument.status === "sent" ||
+        reservationContractDocument.status === "signed" ||
+        Boolean(reservationContractDocument.sent_at) ||
+        Boolean(reservationContractDocument.signed_at)),
+  );
+  const reservationDocumentsBundleSigned = Boolean(
+    commitmentDocument?.status === "signed" &&
+      reservationContractDocument?.status === "signed",
+  );
   const missingReservationDocumentLabels = [
     commitmentDocument ? null : "certificat d’engagement",
     reservationContractDocument ? null : "contrat de réservation",
   ].filter((label): label is string => Boolean(label));
+  const reservationDocumentsBundleStatusSummary =
+    commitmentDocument && reservationContractDocument
+      ? [
+          `Certificat : ${getDocumentStatusLabel(
+            commitmentDocument.status,
+            commitmentDocument.document_type,
+          )}`,
+          `Contrat : ${getDocumentStatusLabel(
+            reservationContractDocument.status,
+            reservationContractDocument.document_type,
+          )}`,
+        ].join(" · ")
+      : `Lot incomplet : ${missingReservationDocumentLabels.join(", ")} manquant${
+          missingReservationDocumentLabels.length > 1 ? "s" : ""
+        }.`;
   const firstDepositLabel = getPreReservationDepositLabel(
     preReservationDepositState,
   );
@@ -1898,10 +1964,16 @@ export default async function ReservationDetailPage({
     .join(" · ");
 
   let docsSummaryText = "";
-  if (totalDocs === 0) {
+  if (documentsError) {
+    docsSummaryText = "Documents à vérifier";
+  } else if (totalDocs === 0) {
     docsSummaryText = "Aucun document lié";
-  } else if (signedDocs === totalDocs) {
-    docsSummaryText = "Tous les documents reçus signés";
+  } else if (!hasReservationDocumentsBundle) {
+    docsSummaryText = "Documents de réservation incomplets";
+  } else if (reservationDocumentsBundleSigned) {
+    docsSummaryText = "Documents de réservation reçus signés";
+  } else if (reservationDocumentsBundleSent) {
+    docsSummaryText = "Documents de réservation envoyés";
   } else {
     docsSummaryText = `${signedDocs} reçu(s) signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
   }
@@ -1997,7 +2069,6 @@ export default async function ReservationDetailPage({
         isPaidInFull,
         hasCompleteDeposit,
         totalDocs,
-        sentDocs,
         toPrepareDocs,
         commitmentDocument,
         reservationContractDocument,
@@ -3402,29 +3473,83 @@ export default async function ReservationDetailPage({
                     Documents liés
                   </h2>
 
-                  <div className="mb-6 grid gap-3 rounded-xl border bg-background p-4 sm:grid-cols-3">
-                    <DetailItem
-                      label="Certificat d'engagement"
-                      value={
-                        commitmentDocument
-                          ? getDocumentStatusLabel(
-                              commitmentDocument.status,
-                              commitmentDocument.document_type,
-                            )
-                          : "Non lié"
-                      }
-                    />
-                    <DetailItem
-                      label="Contrat de réservation"
-                      value={
-                        reservationContractDocument
-                          ? getDocumentStatusLabel(
-                              reservationContractDocument.status,
-                              reservationContractDocument.document_type,
-                            )
-                          : "Non lié"
-                      }
-                    />
+                  <div className="mb-6 rounded-xl border bg-background p-4">
+                    <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Documents de réservation
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-muted">
+                          Certificat d’engagement et contrat de réservation sont
+                          traités ensemble sur ce parcours.
+                        </p>
+                      </div>
+                      {!reservationIsFinal && hasReservationDocumentsBundle ? (
+                        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[230px]">
+                          {!reservationDocumentsBundleSent ? (
+                            <ReservationDocumentsBundleConfirmDialog
+                              actionType="sent"
+                              reservationId={id}
+                              statusSummary={
+                                reservationDocumentsBundleStatusSummary
+                              }
+                            />
+                          ) : null}
+
+                          {!reservationDocumentsBundleSigned ? (
+                            <ReservationDocumentsBundleConfirmDialog
+                              actionType="signed"
+                              reservationId={id}
+                              statusSummary={
+                                reservationDocumentsBundleStatusSummary
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {documentsError ? (
+                      <p role="alert" className="mt-4 text-sm text-amber-800">
+                        Impossible de charger les documents de réservation.
+                      </p>
+                    ) : !hasReservationDocumentsBundle ? (
+                      <p
+                        role="alert"
+                        className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+                      >
+                        {reservationDocumentsBundleStatusSummary} Initialisez ou
+                        rattachez les deux documents avant de valider une action
+                        groupée.
+                      </p>
+                    ) : (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {reservationBundleDocuments.map((document) => (
+                          <DetailItem
+                            key={document.id}
+                            label={getDocumentTypeLabel(document.document_type)}
+                            value={getDocumentStatusLabel(
+                              document.status,
+                              document.document_type,
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <DetailItem
+                        label="Documents envoyés"
+                        value={reservationDocumentsBundleSent ? "Oui" : "Non"}
+                      />
+                      <DetailItem
+                        label="Reçus signés"
+                        value={reservationDocumentsBundleSigned ? "Oui" : "Non"}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mb-6 rounded-xl border bg-background p-4">
                     <DetailItem
                       label="Attestation de vente"
                       value={
@@ -3445,9 +3570,7 @@ export default async function ReservationDetailPage({
                   ) : reservationDocuments && reservationDocuments.length > 0 ? (
                     <div className="divide-y divide-border">
                       {reservationDocuments.map((document) => {
-                        const isChecklistDoc =
-                          document.document_type === "commitment_certificate" ||
-                          document.document_type === "reservation_contract" ||
+                        const hasIndividualDocumentAction =
                           document.document_type === "sale_certificate";
 
                         return (
@@ -3506,7 +3629,7 @@ export default async function ReservationDetailPage({
                                 Consulter
                               </Link>
 
-                              {!reservationIsFinal && isChecklistDoc ? (
+                              {!reservationIsFinal && hasIndividualDocumentAction ? (
                                 <>
                                   {document.status === "to_generate" ? (
                                     <DocumentConfirmDialog
