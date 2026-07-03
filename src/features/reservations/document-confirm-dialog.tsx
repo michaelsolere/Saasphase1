@@ -55,12 +55,14 @@ export function DocumentConfirmDialog({
   reservationId,
   documentLabel,
   statusLabel,
+  returnTo,
 }: {
   actionType: DocumentConfirmAction;
   documentId: string;
   reservationId: string;
   documentLabel: string;
   statusLabel: string;
+  returnTo?: "reservation" | "document";
 }) {
   const copy = actionCopy[actionType];
   const action =
@@ -94,6 +96,9 @@ export function DocumentConfirmDialog({
             <AlertDialogCancel type="button">Annuler</AlertDialogCancel>
             <input type="hidden" name="document_id" value={documentId} />
             <input type="hidden" name="reservation_id" value={reservationId} />
+            {returnTo === "document" ? (
+              <input type="hidden" name="return_to" value="document" />
+            ) : null}
             <AlertDialogAction asChild>
               <button
                 type="submit"

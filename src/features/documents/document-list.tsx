@@ -127,14 +127,17 @@ export function DocumentList({ documents }: { documents: DocumentWithContact[] }
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                    {getDocumentStatusLabel(document.status)}
+                    {getDocumentStatusLabel(
+                      document.status,
+                      document.document_type,
+                    )}
                   </span>
                 </td>
                 <td className="min-w-64 px-6 py-4 text-xs leading-6">
                   <p>Créé : <DateValue value={document.created_at} /></p>
                   <p>Mis à jour : <DateValue value={document.updated_at} /></p>
                   <p>Envoyé : <DateValue value={document.sent_at} /></p>
-                  <p>Signé : <DateValue value={document.signed_at} /></p>
+                  <p>Reçu signé : <DateValue value={document.signed_at} /></p>
                   <p>Reçu : <DateValue value={document.received_at} /></p>
                   <p>Expire : <DateValue value={document.expires_at} /></p>
                 </td>

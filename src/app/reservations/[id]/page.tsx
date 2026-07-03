@@ -1874,7 +1874,7 @@ export default async function ReservationDetailPage({
   } else if (signedDocs === totalDocs) {
     docsSummaryText = "Tous les documents reçus signés";
   } else {
-    docsSummaryText = `${signedDocs} signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
+    docsSummaryText = `${signedDocs} reçu(s) signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
   }
 
   let paymentsSummaryText = "";
@@ -3442,7 +3442,7 @@ export default async function ReservationDetailPage({
                               ) : null}
                               {document.signed_at ? (
                                 <p className="text-xs text-muted">
-                                  Signé le : {formatApplicationDate(document.signed_at)}
+                                  Reçu signé le : {formatApplicationDate(document.signed_at)}
                                 </p>
                               ) : null}
                               {document.received_at ? (

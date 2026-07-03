@@ -21,6 +21,8 @@ import {
   formatPrice,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
+import { DocumentConfirmDialog } from "@/features/reservations/document-confirm-dialog";
+import { isFinalReservationStatus } from "@/features/reservations/statuses";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -190,6 +192,10 @@ type OrganizationDocumentSettings = {
   commitment_certificate_text: string | null;
   legal_mentions: string | null;
   signature_city_default: string | null;
+};
+
+type DocumentSearchParams = {
+  document_action_status?: string;
 };
 
 const contactTypeLabels: Record<string, string> = {
@@ -381,14 +387,21 @@ function getNetPaidCents(paidCents: number | null, refundedCents: number | null)
 
 function getExpectedNextStep(document: { status: string; signature_required: boolean }) {
   switch (document.status) {
+    case "to_generate":
+      return "À marquer comme envoyé après transmission manuelle";
+    case "generated":
     case "draft":
       return "À envoyer à l'adoptant";
     case "sent":
-      return document.signature_required ? "En attente de signature" : "En attente de réception";
+      return document.signature_required
+        ? "En attente du retour signé"
+        : "En attente de réception";
     case "signed":
     case "approved":
     case "completed":
-      return "Document finalisé";
+      return document.signature_required
+        ? "Document reçu signé"
+        : "Document finalisé";
     case "rejected":
       return "Document rejeté (à recréer ou corriger)";
     default:
@@ -1492,7 +1505,9 @@ function SaleCertificatePreview({
                   {doc.document_type === "commitment_certificate" ? (
                     <div className="mt-3 rounded-md border bg-surface p-3 text-xs leading-5 text-muted">
                       <p>Envoi : {formatApplicationDate(doc.sent_at)}</p>
-                      <p>Signature : {formatApplicationDate(doc.signed_at)}</p>
+                      <p>
+                        Réception signée : {formatApplicationDate(doc.signed_at)}
+                      </p>
                       <p>
                         Délai indicatif :{" "}
                         {commitmentDelayDays === null
@@ -1686,10 +1701,13 @@ function RelatedBusinessLinks({ document }: { document: DBDocument }) {
 
 export default async function DocumentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<DocumentSearchParams>;
 }) {
   const { id } = await params;
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -2138,6 +2156,33 @@ export default async function DocumentDetailPage({
     }
   }
 
+  const documentActionStatusMessage =
+    query.document_action_status === "success"
+      ? {
+          role: "status" as const,
+          className:
+            "mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900",
+          message: "L’action sur le document a été effectuée avec succès.",
+        }
+      : query.document_action_status === "error"
+        ? {
+            role: "alert" as const,
+            className:
+              "mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950",
+            message:
+              "L’action sur le document n’a pas pu être effectuée. Aucune donnée n’a été modifiée.",
+          }
+        : null;
+  const actionReservationId =
+    document?.reservation_id &&
+    relatedReservation &&
+    !isFinalReservationStatus(relatedReservation.status) &&
+    (document.document_type === "commitment_certificate" ||
+      document.document_type === "reservation_contract" ||
+      document.document_type === "sale_certificate")
+      ? document.reservation_id
+      : null;
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -2169,9 +2214,18 @@ export default async function DocumentDetailPage({
                 </p>
               </div>
               <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted">
-                {getDocumentStatusLabel(document.status)}
+                {getDocumentStatusLabel(document.status, document.document_type)}
               </span>
             </header>
+
+            {documentActionStatusMessage ? (
+              <p
+                role={documentActionStatusMessage.role}
+                className={documentActionStatusMessage.className}
+              >
+                {documentActionStatusMessage.message}
+              </p>
+            ) : null}
 
             {pointsOfAttention.length > 0 && (
               <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-6">
@@ -2200,7 +2254,10 @@ export default async function DocumentDetailPage({
                     />
                     <DetailItem
                       label="Statut"
-                      value={getDocumentStatusLabel(document.status)}
+                      value={getDocumentStatusLabel(
+                        document.status,
+                        document.document_type,
+                      )}
                     />
                     <DetailItem
                       label="Signature requise"
@@ -2221,7 +2278,7 @@ export default async function DocumentDetailPage({
                       value={formatApplicationDate(document.sent_at)}
                     />
                     <DetailItem
-                      label="Date de signature"
+                      label="Date de réception signée"
                       value={formatApplicationDate(document.signed_at)}
                     />
                   </dl>
@@ -2236,7 +2293,7 @@ export default async function DocumentDetailPage({
                       </p>
                       {document.signed_at ? (
                         <p className="mt-2 text-xs font-semibold text-emerald-700">
-                          ✅ Signé le {formatApplicationDate(document.signed_at)}
+                          Reçu signé le {formatApplicationDate(document.signed_at)}
                         </p>
                       ) : (
                         <p className="mt-2 text-xs font-semibold text-amber-700">
@@ -3005,7 +3062,7 @@ export default async function DocumentDetailPage({
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="text-xs font-semibold uppercase tracking-wide px-2.5 py-1 rounded-full border bg-surface text-muted">
-                              {getDocumentStatusLabel(doc.status)}
+                              {getDocumentStatusLabel(doc.status, doc.document_type)}
                             </span>
                             <Link
                               href={`/documents/${doc.id}`}
@@ -3040,7 +3097,7 @@ export default async function DocumentDetailPage({
                       value={formatApplicationDate(document.received_at)}
                     />
                     <DetailItem
-                      label="Signature"
+                      label="Réception signée"
                       value={formatApplicationDate(document.signed_at)}
                     />
                     <DetailItem
@@ -3102,11 +3159,59 @@ export default async function DocumentDetailPage({
                 />
               </div>
 
-              <aside className="h-fit rounded-2xl border bg-surface p-6">
-                <h2 className="text-lg font-semibold">Liens métier</h2>
-                <div className="mt-6">
-                  <RelatedBusinessLinks document={document} />
-                </div>
+              <aside className="h-fit space-y-6 rounded-2xl border bg-surface p-6">
+                <section>
+                  <h2 className="text-lg font-semibold">Liens métier</h2>
+                  <div className="mt-6">
+                    <RelatedBusinessLinks document={document} />
+                  </div>
+                </section>
+
+                {actionReservationId ? (
+                  <section className="border-t pt-6">
+                    <h2 className="text-lg font-semibold">Suivi adoptant</h2>
+                    <p className="mt-2 text-sm text-muted">
+                      État actuel :{" "}
+                      {getDocumentStatusLabel(
+                        document.status,
+                        document.document_type,
+                      )}
+                    </p>
+                    <div className="mt-4 space-y-2">
+                      {document.status === "to_generate" ? (
+                        <DocumentConfirmDialog
+                          actionType="sent"
+                          documentId={document.id}
+                          reservationId={actionReservationId}
+                          documentLabel={getDocumentTypeLabel(
+                            document.document_type,
+                          )}
+                          statusLabel={getDocumentStatusLabel(
+                            document.status,
+                            document.document_type,
+                          )}
+                          returnTo="document"
+                        />
+                      ) : null}
+
+                      {document.status === "sent" ? (
+                        <DocumentConfirmDialog
+                          actionType="signed"
+                          documentId={document.id}
+                          reservationId={actionReservationId}
+                          documentLabel={getDocumentTypeLabel(
+                            document.document_type,
+                          )}
+                          statusLabel={getDocumentStatusLabel(
+                            document.status,
+                            document.document_type,
+                          )}
+                          returnTo="document"
+                        />
+                      ) : null}
+                    </div>
+                  </section>
+                ) : null}
               </aside>
             </div>
           </>
