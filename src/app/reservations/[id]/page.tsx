@@ -1106,11 +1106,11 @@ function getAdopterJourneySteps({
         ? "Chargement des documents à vérifier."
         : mainDocumentsSent
           ? "Certificat d’engagement et contrat de réservation envoyés ou signés."
-          : hasReservationDocuments
-            ? "Les deux documents de réservation sont liés, envoi groupé non confirmé."
-            : hasDocuments
-              ? "Lot incomplet : certificat d’engagement et contrat de réservation à vérifier."
-            : "Aucun document lié au dossier.",
+        : hasReservationDocuments
+          ? "Les deux documents de réservation sont liés, envoi groupé non confirmé."
+        : hasDocuments
+          ? "Documents de réservation à initialiser."
+        : "Aucun document lié au dossier.",
     },
     {
       label: "Documents reçus signés — arrhes réglées",
@@ -1870,6 +1870,10 @@ export default async function ReservationDetailPage({
     commitmentDocument ? null : "certificat d’engagement",
     reservationContractDocument ? null : "contrat de réservation",
   ].filter((label): label is string => Boolean(label));
+  const missingReservationDocumentsSummary =
+    missingReservationDocumentLabels.length > 0
+      ? `Document${missingReservationDocumentLabels.length > 1 ? "s" : ""} à rattacher : ${missingReservationDocumentLabels.join(", ")}.`
+      : null;
   const reservationDocumentsBundleStatusSummary =
     commitmentDocument && reservationContractDocument
       ? [
@@ -1882,9 +1886,7 @@ export default async function ReservationDetailPage({
             reservationContractDocument.document_type,
           )}`,
         ].join(" · ")
-      : `Lot incomplet : ${missingReservationDocumentLabels.join(", ")} manquant${
-          missingReservationDocumentLabels.length > 1 ? "s" : ""
-        }.`;
+      : "Documents de réservation à initialiser.";
   const firstDepositLabel = getPreReservationDepositLabel(
     preReservationDepositState,
   );
@@ -1969,7 +1971,7 @@ export default async function ReservationDetailPage({
   } else if (totalDocs === 0) {
     docsSummaryText = "Aucun document lié";
   } else if (!hasReservationDocumentsBundle) {
-    docsSummaryText = "Documents de réservation incomplets";
+    docsSummaryText = "Documents de réservation à initialiser";
   } else if (reservationDocumentsBundleSigned) {
     docsSummaryText = "Documents de réservation reçus signés";
   } else if (reservationDocumentsBundleSent) {
@@ -2035,8 +2037,8 @@ export default async function ReservationDetailPage({
           saleCertificateDocument
             ? `Attestation : ${getDocumentStatusLabel(saleCertificateDocument.status, saleCertificateDocument.document_type)}`
             : null,
-          missingReservationDocumentLabels.length > 0
-            ? `À vérifier : ${missingReservationDocumentLabels.join(", ")}`
+          missingReservationDocumentsSummary
+            ? missingReservationDocumentsSummary
             : null,
         ]
           .filter(Boolean)
@@ -3514,14 +3516,21 @@ export default async function ReservationDetailPage({
                         Impossible de charger les documents de réservation.
                       </p>
                     ) : !hasReservationDocumentsBundle ? (
-                      <p
-                        role="alert"
-                        className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-                      >
-                        {reservationDocumentsBundleStatusSummary} Initialisez ou
-                        rattachez les deux documents avant de valider une action
-                        groupée.
-                      </p>
+                      <div className="mt-4 rounded-lg border border-border bg-muted-soft px-3 py-2 text-sm text-muted">
+                        <p className="font-medium text-foreground">
+                          {reservationDocumentsBundleStatusSummary}
+                        </p>
+                        <p className="mt-1">
+                          Le certificat d’engagement et le contrat de réservation
+                          devront être présents pour utiliser les actions
+                          groupées.
+                        </p>
+                        {missingReservationDocumentsSummary ? (
+                          <p className="mt-1">
+                            {missingReservationDocumentsSummary}
+                          </p>
+                        ) : null}
+                      </div>
                     ) : (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
                         {reservationBundleDocuments.map((document) => (
