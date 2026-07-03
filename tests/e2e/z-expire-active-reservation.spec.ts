@@ -7,6 +7,7 @@ import {
   expectSupabaseData,
   type SupabaseTestClient,
 } from "./helpers/supabase";
+import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 
@@ -202,12 +203,12 @@ test("expires an active reservation manually without side effects", async ({
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Marquer comme expirée" }).click();
-  await expect(
+  await openDialog(
+    page.getByRole("button", { name: "Marquer comme expirée" }),
     page.getByRole("heading", {
       name: "Confirmer l’expiration de cette réservation ?",
     }),
-  ).toBeVisible();
+  );
   await expect(
     page.getByText(
       "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",

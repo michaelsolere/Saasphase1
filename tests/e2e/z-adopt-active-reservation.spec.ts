@@ -7,6 +7,7 @@ import {
   expectSupabaseData,
   type SupabaseTestClient,
 } from "./helpers/supabase";
+import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 
@@ -229,15 +230,10 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   await expect(
     page.getByRole("button", { name: "Finaliser l’adoption" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByText(
-      "La finalisation sera disponible après attribution d’un animal.",
-    ),
-  ).toBeVisible();
 
-  const quickActions = page.locator("#quick-actions");
-  await quickActions.locator('select[name="animal_id"]').selectOption(animalId);
-  await quickActions.getByRole("button", { name: "Attribuer cet animal" }).click();
+  const scopeAndAnimal = page.locator("#scope-and-animal");
+  await scopeAndAnimal.locator('select[name="animal_id"]').selectOption(animalId);
+  await scopeAndAnimal.getByRole("button", { name: "Attribuer l’animal" }).click();
   await expect(page).toHaveURL(/animal_assign_status=success/);
   await expect(page.getByText("L’animal a été attribué à la réservation.")).toBeVisible();
   await expect(
@@ -272,8 +268,14 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   await expect(
     adoptionPreparation.getByText("Complément 2/2 — 250 €"),
   ).toBeVisible();
-  await expect(adoptionPreparation.getByText("Documents clés")).toBeVisible();
-  await expect(adoptionPreparation.getByText("Certificat de vente")).toBeVisible();
+  await expect(
+    adoptionPreparation.getByRole("heading", { name: "Documents à vérifier" }),
+  ).toBeVisible();
+  await expect(
+    adoptionPreparation.getByText(
+      "Documents à vérifier : certificat d’engagement, contrat de réservation.",
+    ),
+  ).toBeVisible();
   await expect(adoptionPreparation.getByText("Points à vérifier manuellement")).toBeVisible();
   await expect(page.getByRole("button", { name: "Finaliser l’adoption" }).first()).toBeVisible();
   await expect(
@@ -282,10 +284,13 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
     ),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Finaliser l’adoption" }).first().click();
+  await openDialog(
+    page.getByRole("button", { name: "Finaliser l’adoption" }).first(),
+    page.getByRole("heading", { name: "Finaliser l’adoption ?" }),
+  );
   await expect(
     page.getByText(
-      "Finaliser l’adoption ? Cette action marque la réservation comme adoptée et l’animal comme adopté. Elle ne crée aucun paiement, document, email, facture ou signature. Vérifiez manuellement que le solde, les documents et la date de départ sont corrects.",
+      "Cette action marque la réservation comme adoptée et l’animal comme adopté. Elle ne crée aucun paiement, document, email, facture ou signature. Vérifiez manuellement que le solde, les documents et la date de départ sont corrects.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Confirmer la finalisation" }).click();

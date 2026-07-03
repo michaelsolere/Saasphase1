@@ -7,6 +7,7 @@ import {
   expectSupabaseData,
   type SupabaseTestClient,
 } from "./helpers/supabase";
+import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 
@@ -537,11 +538,17 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
   await expect(
     page.getByRole("heading", { name: "Paiement de pré-réservation demandé" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Marquer payé" }).click();
+  await openDialog(
+    page.getByRole("button", { name: "Marquer payé" }),
+    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
+  );
   await page.getByRole("button", { name: "Confirmer le paiement" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
   await expect(
-    page.getByRole("heading", { name: "Pré-réservation réglée" }),
+    page.getByRole("heading", {
+      name: "Pré-réservation réglée",
+      exact: true,
+    }),
   ).toBeVisible();
 
   const updatedReservation = await readReservation(supabase, reservationId);
@@ -583,13 +590,15 @@ test("creates the second 250 euro deposit request only after confirmation", asyn
   });
 
   await page.goto(`/reservations/${reservationId}`);
-  await page
-    .locator("#reservation-details")
-    .getByRole("button", { name: "Demander le complément 2/2 — 250 €" })
-    .click();
+  await openDialog(
+    page
+      .locator("#reservation-details")
+      .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+    page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+  );
   await expect(
     page.getByText(
-      "Créer le complément 2/2 — 250 € ? Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
+      "Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
     ),
   ).toBeVisible();
   await page.getByRole("button", { name: "Confirmer la demande" }).click();
@@ -683,10 +692,12 @@ test("can request the second deposit when only an old second request was cancell
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await page
-    .locator("#reservation-details")
-    .getByRole("button", { name: "Demander le complément 2/2 — 250 €" })
-    .click();
+  await openDialog(
+    page
+      .locator("#reservation-details")
+      .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+    page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+  );
   await page.getByRole("button", { name: "Confirmer la demande" }).click();
   await expect(page).toHaveURL(/balance_request_status=success/);
 
