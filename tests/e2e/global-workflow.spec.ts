@@ -109,12 +109,12 @@ test("validates the global application to reservation to payment to animal workf
   ).toBeVisible();
 
   await page
-    .getByRole("button", { name: "Créer une réservation brouillon" })
+    .getByRole("button", { name: "Créer une demande de pré-réservation" })
     .click();
   await expect(page).toHaveURL(/reservation_status=created/);
   await expect(
     page.getByText(
-      "La réservation brouillon a bien été créée. Elle apparaît maintenant dans la section Réservations liées.",
+      "La demande de pré-réservation a bien été créée. Elle apparaît maintenant dans la section Réservations liées.",
     ),
   ).toBeVisible();
 
@@ -163,7 +163,7 @@ test("validates the global application to reservation to payment to animal workf
   await expect(
     page.getByRole("heading", { name: "Réservation de Claire Bernard" }),
   ).toBeVisible();
-  await expect(page.getByText("Brouillon", { exact: true })).toBeVisible();
+  await expect(page.getByText("Demande de pré-réservation", { exact: true })).toBeVisible();
 
   await page.getByLabel("Tarif convenu").fill("1850.00");
   await page.getByRole("button", { name: "Enregistrer le tarif" }).click();

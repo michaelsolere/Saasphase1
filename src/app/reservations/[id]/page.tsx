@@ -1887,10 +1887,10 @@ export default async function ReservationDetailPage({
     paymentsSummaryText = "Arrhes complètes (500 € payés)";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasFirstPaid || paidCents > 0) {
-    paymentsSummaryText = `Arrhes partielles (${formatPrice(paidCents, currency)} payés)`;
+    paymentsSummaryText = `Versement de pré-réservation (${formatPrice(paidCents, currency)} payé)`;
     paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
   } else {
-    paymentsSummaryText = "En attente de paiement / d'arrhes";
+    paymentsSummaryText = "En attente de paiement";
     paymentsSummaryColor = "text-muted bg-muted-soft border-border";
   }
 
@@ -2140,7 +2140,7 @@ export default async function ReservationDetailPage({
                   badgeClassName={paymentsSummaryColor}
                 />
                 <SummaryIndicator
-                  label="Arrhes 1/2"
+                  label="Paiement 250 €"
                   value={getPreReservationDepositLabel(
                     preReservationDepositState,
                   )}
@@ -2294,11 +2294,11 @@ export default async function ReservationDetailPage({
 
                   <div className="mt-6 rounded-xl border bg-background p-4">
                     <h3 className="text-sm font-semibold text-foreground">
-                      Arrhes
+                      Versements de réservation
                     </h3>
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
                       <DetailItem
-                        label="Arrhes 1/2 — 250 €"
+                        label="Versement de pré-réservation — 250 €"
                         value={firstDepositLabel}
                       />
                       <DetailItem
@@ -2306,7 +2306,7 @@ export default async function ReservationDetailPage({
                         value={secondDepositLabel}
                       />
                       <DetailItem
-                        label="État global des arrhes"
+                        label="État global"
                         value={depositSummaryLabel}
                       />
                     </div>
@@ -2399,10 +2399,10 @@ export default async function ReservationDetailPage({
                   {reservation.status === "pre_reservation_requested" ? (
                     <div className="mt-8 rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-4">
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-800">
-                        Pré-réservation demandée
+                        Paiement de pré-réservation demandé
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-amber-950">
-                        La campagne de pré-réservation a été lancée. Le dossier est en attente du premier paiement de 250 €.
+                        La campagne de pré-réservation a été lancée. Le dossier est en attente du paiement de pré-réservation de 250 €.
                       </p>
                     </div>
                   ) : null}
@@ -2412,7 +2412,7 @@ export default async function ReservationDetailPage({
                       {hasSecondPaid ? (
                         <>
                           <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                            Dossier en pré-réservation payée — Arrhes complètes
+                            Dossier en pré-réservation réglée — arrhes complètes
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
                             Arrhes complètes : 500 € / 500 € payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
@@ -2421,10 +2421,10 @@ export default async function ReservationDetailPage({
                       ) : (
                         <>
                           <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
-                            Dossier en pré-réservation payée
+                            Dossier en pré-réservation réglée
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Le premier paiement de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — 250 € n’est demandé automatiquement à ce stade.
+                            Le paiement de pré-réservation de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — 250 € n’est demandé automatiquement à ce stade.
                           </p>
                         </>
                       )}
@@ -2614,7 +2614,7 @@ export default async function ReservationDetailPage({
                                 value={id}
                               />
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Le premier versement des arrhes est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                                Le versement de pré-réservation de 250 € est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
                               </p>
                               <button
                                 type="submit"
@@ -3222,7 +3222,7 @@ export default async function ReservationDetailPage({
                       value={balanceValue}
                     />
                     <DetailItem
-                      label="Demande 1/2 — 250 €"
+                      label="Paiement de pré-réservation — 250 €"
                       value={
                         <span
                           className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(

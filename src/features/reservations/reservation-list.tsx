@@ -39,7 +39,7 @@ export function ReservationList({
               <th className="px-5 py-4">Portée / Groupe</th>
               <th className="px-5 py-4">Préférence</th>
               <th className="px-5 py-4">Statut</th>
-              <th className="px-5 py-4">Demande 1/2</th>
+              <th className="px-5 py-4">Paiement 250 €</th>
               <th className="px-5 py-4">Tarif</th>
               <th className="px-5 py-4">Animal</th>
               <th className="px-5 py-4">Date de création</th>

@@ -43,9 +43,9 @@ export function PaymentConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Confirmer le paiement reçu</AlertDialogTitle>
           <AlertDialogDescription>
-            Cette action marquera ce paiement comme payé aujourd’hui. Pour une
-            demande d’arrhes de 250 € liée à une pré-réservation demandée, le
-            dossier passera en pré-réservation payée.
+            Cette action marquera ce paiement comme payé aujourd’hui. Pour un
+            versement de pré-réservation de 250 €, le dossier passera en
+            pré-réservation réglée.
           </AlertDialogDescription>
         </AlertDialogHeader>
 

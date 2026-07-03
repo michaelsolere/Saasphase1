@@ -171,7 +171,7 @@ async function createDraftReservation(
 ) {
   await page.goto(`/candidatures/${applicationId}`);
   await page
-    .getByRole("button", { name: "Créer une réservation brouillon" })
+    .getByRole("button", { name: "Créer une demande de pré-réservation" })
     .click();
   await expect(page).toHaveURL(/\/reservations\/[0-9a-f-]+|reservation_status=created/);
 
@@ -267,7 +267,7 @@ test("adopts an animal-assigned reservation manually without side effects", asyn
   const adoptionPreparation = page.locator("#adoption-preparation");
   await expect(adoptionPreparation.getByText("Animal attribué")).toBeVisible();
   await expect(
-    adoptionPreparation.getByText("Arrhes 1/2 — 250 €"),
+    adoptionPreparation.getByText("Versement de pré-réservation — 250 €"),
   ).toBeVisible();
   await expect(
     adoptionPreparation.getByText("Complément 2/2 — 250 €"),

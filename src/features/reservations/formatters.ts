@@ -1,8 +1,8 @@
 const statusLabels: Record<string, string> = {
-  draft: "Brouillon",
+  draft: "Demande de pré-réservation",
   pending_positioning: "Positionnement en cours",
-  pre_reservation_requested: "Pré-réservation demandée",
-  pre_reservation_paid: "Pré-réservation payée",
+  pre_reservation_requested: "Paiement de pré-réservation demandé",
+  pre_reservation_paid: "Pré-réservation réglée",
   active: "Active",
   confirmed_after_birth: "Confirmée après naissance",
   waiting_for_available_sex: "En attente de sexe",
@@ -44,14 +44,14 @@ export function getPreReservationDepositLabel(
   state: PreReservationDepositState,
 ) {
   if (state === "paid") {
-    return "Pré-réservation payée";
+    return "Pré-réservation réglée";
   }
 
   if (state === "requested") {
-    return "Demande 1/2 — 250 € demandée";
+    return "Paiement 250 € demandé";
   }
 
-  return "Demande 1/2 — 250 € absente";
+  return "Paiement 250 € absent";
 }
 
 export function getPreReservationDepositBadgeClassName(

@@ -1,6 +1,6 @@
 const typeLabels: Record<string, string> = {
   pre_reservation_deposit_refundable: "Acompte remboursable",
-  arrhes: "Arrhes",
+  arrhes: "Versement de réservation",
   balance: "Solde",
   refund: "Remboursement",
   partial_refund: "Remboursement partiel",

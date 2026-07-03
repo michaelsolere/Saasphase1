@@ -75,7 +75,7 @@ export function ReservationPaymentForm({
             onChange={(e) => setPaymentType(e.target.value)}
             className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
           >
-            <option value="arrhes">Arrhes</option>
+            <option value="arrhes">Versement de réservation</option>
             <option value="balance">Solde</option>
           </select>
         </div>

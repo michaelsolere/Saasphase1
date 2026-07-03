@@ -125,7 +125,7 @@ async function createDraftReservation(
 ) {
   await page.goto(`/candidatures/${applicationId}`);
   await page
-    .getByRole("button", { name: "Créer une réservation brouillon" })
+    .getByRole("button", { name: "Créer une demande de pré-réservation" })
     .click();
   await expect(page).toHaveURL(
     /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,

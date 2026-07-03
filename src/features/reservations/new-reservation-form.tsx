@@ -784,8 +784,8 @@ export function NewReservationForm({
           4. Informations minimales de réservation
         </h2>
         <p className="mt-1 text-sm text-muted">
-          La réservation est créée en statut brouillon. Vous pourrez tout
-          compléter ensuite depuis la fiche réservation.
+          La demande de pré-réservation est créée sans paiement initial. Vous
+          pourrez compléter ensuite depuis la fiche réservation.
         </p>
 
         <div className="mt-5 grid gap-5 sm:grid-cols-2">
