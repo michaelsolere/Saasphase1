@@ -168,7 +168,7 @@ export function PublicApplicationForm({
   if (isSubmitted) {
     return (
       <SuccessState
-        message="Merci, votre candidature a bien été enregistrée."
+        message="Votre candidature a bien été transmise. Vous pouvez maintenant fermer cette page. À très bientôt!"
         publicReference={publicReference}
       />
     );
@@ -610,12 +610,6 @@ function SuccessState({
             <span className="font-mono">{publicReference}</span>
           </p>
         ) : null}
-        <Link
-          className="mt-8 inline-flex min-h-11 items-center justify-center rounded-xl border px-5 font-medium transition hover:border-accent/40 hover:bg-accent-soft"
-          href="/"
-        >
-          Revenir à l’accueil
-        </Link>
       </div>
     </main>
   );
