@@ -38,7 +38,7 @@ export function ReservationList({
       </p>
       <div className="overflow-hidden rounded-2xl border bg-surface">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1020px] border-collapse text-left text-sm">
             <thead className="border-b bg-background text-xs font-semibold uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-5 py-4">Client</th>
@@ -49,9 +49,6 @@ export function ReservationList({
                 <th className="px-5 py-4">Tarif</th>
                 <th className="px-5 py-4">Animal</th>
                 <th className="px-5 py-4">Date de création</th>
-                <th className="px-5 py-4">
-                  <span className="sr-only">Ouvrir</span>
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -62,16 +59,29 @@ export function ReservationList({
                 return (
                   <tr key={res.id ?? index}>
                     <td className="px-5 py-5 align-top font-medium">
-                      {res.contact_id ? (
-                        <Link
-                          href={`/contacts/${res.contact_id}`}
-                          className="text-accent hover:underline"
-                        >
-                          {res.contact_display_name ?? "Client anonyme"}
-                        </Link>
-                      ) : (
-                        res.contact_display_name ?? "Client anonyme"
-                      )}
+                      <div className="flex flex-col items-start gap-2">
+                        {res.contact_id ? (
+                          <Link
+                            href={`/contacts/${res.contact_id}`}
+                            className="text-accent hover:underline"
+                          >
+                            {res.contact_display_name ?? "Client anonyme"}
+                          </Link>
+                        ) : (
+                          <span>{res.contact_display_name ?? "Client anonyme"}</span>
+                        )}
+                        {res.id ? (
+                          <Link
+                            href={`/reservations/${res.id}`}
+                            aria-label={`Ouvrir le parcours adoptant ${
+                              res.contact_display_name ?? ""
+                            }`}
+                            className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                          >
+                            Parcours
+                          </Link>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="px-5 py-5 align-top">
                       {targetLitter}
@@ -148,19 +158,6 @@ export function ReservationList({
                     </td>
                     <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
                       {formatApplicationDate(res.created_at)}
-                    </td>
-                    <td className="px-5 py-5 text-right align-top">
-                      {res.id ? (
-                        <Link
-                          href={`/reservations/${res.id}`}
-                          aria-label={`Ouvrir la réservation ${
-                            res.contact_display_name ?? ""
-                          }`}
-                          className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                        >
-                          Consulter
-                        </Link>
-                      ) : null}
                     </td>
                   </tr>
                 );
