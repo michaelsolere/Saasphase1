@@ -290,11 +290,11 @@ export default async function Home() {
       {/* Grid of Dashboard Flow Cards */}
       <section className="py-8">
         <div className="grid gap-6 md:grid-cols-2">
-          {/* 1. Candidatures à relire */}
+          {/* 1. Candidats à suivre */}
           <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Candidatures à relire</h2>
+                <h2 className="text-lg font-semibold text-foreground">Candidats à suivre</h2>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   applicationsNeedReview.length > 0
                     ? "bg-amber-50 text-amber-700 border border-amber-200"
@@ -306,14 +306,14 @@ export default async function Home() {
 
               <div className="mt-4 space-y-3">
                 {applicationsNeedReview.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucune candidature à relire pour l’instant.</p>
+                  <p className="text-sm text-muted py-2">Aucun candidat à relire pour l’instant.</p>
                 ) : (
                   applicationsNeedReview.slice(0, 5).map((app) => (
-                    <div key={app.id} className="flex items-center justify-between text-sm py-1">
-                      <div>
+                    <div key={app.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
                         <Link
                           href={`/candidatures/${app.id}`}
-                          className="font-semibold text-accent hover:underline block"
+                          className="block font-semibold text-accent hover:underline"
                         >
                           {app.contact_display_name ?? "Candidat anonyme"}
                         </Link>
@@ -321,7 +321,7 @@ export default async function Home() {
                           {app.breed ?? "Race non spécifiée"} · {getSexPreferenceLabel(app.desired_sex_preference)}
                         </span>
                       </div>
-                      <span className="text-xs text-muted">
+                      <span className="shrink-0 text-xs text-muted sm:text-right">
                         {app.submitted_at || app.created_at ? formatLitterDate(app.submitted_at || app.created_at) : ""}
                       </span>
                     </div>
@@ -335,7 +335,7 @@ export default async function Home() {
                 href="/candidatures"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir toutes les candidatures ({applicationsNeedReview.length}) →
+                Voir les candidats ({applicationsNeedReview.length}) →
               </Link>
             </div>
           </div>
@@ -361,19 +361,19 @@ export default async function Home() {
                   paymentsNeedAttention.slice(0, 5).map((pay) => {
                     const contactName = pay.contact_id ? contactMap[pay.contact_id] : null;
                     return (
-                      <div key={pay.id} className="flex items-center justify-between text-sm py-1">
-                        <div>
+                      <div key={pay.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <Link
                             href={`/payments/${pay.id}`}
-                            className="font-semibold text-accent hover:underline block"
+                            className="block font-semibold text-accent hover:underline"
                           >
                             {formatPrice(pay.amount_cents, pay.currency)} — {getPaymentTypeLabel(pay.payment_type)}
                           </Link>
                           <span className="text-xs text-muted">
-                            {contactName ? `Client : ${contactName}` : "Client non chargé"}
+                            {contactName ? `Contact : ${contactName}` : "Contact non chargé"}
                           </span>
                         </div>
-                        <span className="text-xs text-muted font-medium">
+                        <span className="shrink-0 text-xs font-medium text-muted sm:text-right">
                           {pay.due_date ? `Échéance : ${formatLitterDate(pay.due_date)}` : "Sans échéance"}
                         </span>
                       </div>
@@ -388,7 +388,7 @@ export default async function Home() {
                 href="/payments"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir tous les paiements ({paymentsNeedAttention.length}) →
+                Voir les paiements attendus ({paymentsNeedAttention.length}) →
               </Link>
             </div>
           </div>
@@ -414,19 +414,19 @@ export default async function Home() {
                   documentsNeedAttention.slice(0, 5).map((doc) => {
                     const contactName = doc.contact_id ? contactMap[doc.contact_id] : null;
                     return (
-                      <div key={doc.id} className="flex items-center justify-between text-sm py-1">
-                        <div>
+                      <div key={doc.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <Link
                             href={`/documents/${doc.id}`}
-                            className="font-semibold text-accent hover:underline block"
+                            className="block font-semibold text-accent hover:underline"
                           >
                             {doc.title || getDocumentTypeLabel(doc.document_type)}
                           </Link>
                           <span className="text-xs text-muted">
-                            {contactName ? `Client : ${contactName}` : "Client non chargé"}
+                            {contactName ? `Contact : ${contactName}` : "Contact non chargé"}
                           </span>
                         </div>
-                        <span className="text-xs font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 text-[11px] h-fit">
+                        <span className="h-fit self-start rounded border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 sm:self-center sm:text-right">
                           {getDocumentStatusLabel(doc.status, doc.document_type)}
                         </span>
                       </div>
@@ -462,7 +462,7 @@ export default async function Home() {
 
               <div className="mt-4 space-y-3">
                 {reservationsNeedAttention.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucune réservation demandant attention.</p>
+                  <p className="text-sm text-muted py-2">Aucun parcours adoptant à suivre pour l’instant.</p>
                 ) : (
                   reservationsNeedAttention.slice(0, 5).map((res) => {
                     const isArrhesCompleteNoAnimal =
@@ -481,19 +481,19 @@ export default async function Home() {
                         : "Dossier en pré-réservation payée";
                     }
                     return (
-                      <div key={res.id} className="flex items-center justify-between text-sm py-1">
-                        <div>
+                      <div key={res.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <Link
                             href={`/reservations/${res.id}`}
-                            className="font-semibold text-accent hover:underline block"
+                            className="block font-semibold text-accent hover:underline"
                           >
-                            Dossier {res.contact_display_name ?? "Client anonyme"}
+                            {res.contact_display_name ?? "Contact anonyme"}
                           </Link>
                           <span className="text-xs text-muted font-normal">
                             {res.litter_name || res.litter_group_name || "Aucune portée liée"}
                           </span>
                         </div>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded border text-[11px] h-fit whitespace-normal max-w-[150px] text-right ${
+                        <span className={`h-fit max-w-full self-start whitespace-normal rounded border px-2 py-0.5 text-left text-[11px] font-medium sm:max-w-[170px] sm:self-center sm:text-right ${
                           isArrhesCompleteNoAnimal
                             ? "text-emerald-700 bg-emerald-50 border-emerald-200/60"
                             : "text-amber-700 bg-amber-50 border-amber-200/60"
@@ -512,7 +512,7 @@ export default async function Home() {
                 href="/reservations"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir tous les parcours adoptants ({reservationsNeedAttention.length}) →
+                Voir les parcours adoptants à suivre ({reservationsNeedAttention.length}) →
               </Link>
             </div>
           </div>
@@ -547,11 +547,11 @@ export default async function Home() {
                       ? lit.expected_birth_date
                       : lit.mating_date;
                     return (
-                      <div key={lit.id} className="flex items-center justify-between text-sm py-1">
-                        <div>
+                      <div key={lit.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
                           <Link
                             href={`/litters/${lit.id}`}
-                            className="font-semibold text-accent hover:underline block"
+                            className="block font-semibold text-accent hover:underline"
                           >
                             {lit.name || `Portée ${lit.id.slice(0, 8)}`}
                           </Link>
@@ -559,7 +559,7 @@ export default async function Home() {
                             {dateLabel} {dateValue ? formatLitterDate(dateValue) : "Non précisée"}
                           </span>
                         </div>
-                        <span className="text-xs font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/60 text-[11px] h-fit">
+                        <span className="h-fit self-start rounded border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 sm:self-center sm:text-right">
                           {getLitterStatusLabel(lit.status)}
                         </span>
                       </div>
