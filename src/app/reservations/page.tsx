@@ -7,6 +7,26 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+type ReservationsSearchParams = {
+  litter_group_id?: string;
+  litter_id?: string;
+};
+
+type LitterFilterOption = {
+  id: string;
+  name: string | null;
+  litter_group_name: string | null;
+};
+
+type LitterGroupFilterOption = {
+  id: string;
+  name: string | null;
+};
+
+function normalizeFilterParam(value: string | undefined) {
+  return value?.trim() || null;
+}
+
 function ErrorMessage() {
   return (
     <div
@@ -21,7 +41,14 @@ function ErrorMessage() {
   );
 }
 
-export default async function ReservationsPage() {
+export default async function ReservationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<ReservationsSearchParams>;
+}) {
+  const params = await searchParams;
+  const selectedLitterGroupId = normalizeFilterParam(params.litter_group_id);
+  const selectedLitterId = normalizeFilterParam(params.litter_id);
   const supabase = await createClient();
 
   const {
@@ -34,17 +61,49 @@ export default async function ReservationsPage() {
   }
 
   let reservations = null;
+  let litterGroups: LitterGroupFilterOption[] = [];
+  let litters: LitterFilterOption[] = [];
   let hasLoadingError = Boolean(authError);
 
-  const result = await supabase
+  let reservationQuery = supabase
     .from("reservation_overview")
     .select(
-      "id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_display_name, created_at"
+      "id, contact_id, contact_display_name, status, reserved_sex_preference, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_display_name, created_at"
     )
     .order("created_at", { ascending: false });
 
+  if (selectedLitterGroupId) {
+    reservationQuery = reservationQuery.eq(
+      "litter_group_id",
+      selectedLitterGroupId,
+    );
+  }
+
+  if (selectedLitterId) {
+    reservationQuery = reservationQuery.eq("litter_id", selectedLitterId);
+  }
+
+  const [result, litterGroupsResult, littersResult] = await Promise.all([
+    reservationQuery,
+    supabase
+      .from("litter_groups")
+      .select("id, name")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("litter_overview")
+      .select("id, name, litter_group_name")
+      .order("created_at", { ascending: false }),
+  ]);
+
   reservations = result.data as ReservationOverview[] | null;
-  hasLoadingError = hasLoadingError || Boolean(result.error);
+  litterGroups = (litterGroupsResult.data ?? []) as LitterGroupFilterOption[];
+  litters = (littersResult.data ?? []) as LitterFilterOption[];
+  hasLoadingError =
+    hasLoadingError ||
+    Boolean(result.error) ||
+    Boolean(litterGroupsResult.error) ||
+    Boolean(littersResult.error);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -79,7 +138,81 @@ export default async function ReservationsPage() {
         {hasLoadingError || !reservations ? (
           <ErrorMessage />
         ) : (
-          <ReservationList reservations={reservations} />
+          <>
+            <form
+              key={`${selectedLitterGroupId ?? "all"}-${selectedLitterId ?? "all"}`}
+              action="/reservations"
+              className="mb-5 rounded-2xl border bg-surface p-5"
+            >
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+                <div>
+                  <label
+                    htmlFor="litter-group-filter"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted"
+                  >
+                    Groupe de portées
+                  </label>
+                  <select
+                    id="litter-group-filter"
+                    name="litter_group_id"
+                    defaultValue={selectedLitterGroupId ?? ""}
+                    className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                  >
+                    <option value="">Tous les groupes</option>
+                    {litterGroups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="litter-filter"
+                    className="text-xs font-semibold uppercase tracking-wide text-muted"
+                  >
+                    Portée
+                  </label>
+                  <select
+                    id="litter-filter"
+                    name="litter_id"
+                    defaultValue={selectedLitterId ?? ""}
+                    className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                  >
+                    <option value="">Toutes les portées</option>
+                    {litters.map((litter) => (
+                      <option key={litter.id} value={litter.id}>
+                        {[
+                          litter.name ?? `Portée ${litter.id.slice(0, 8)}`,
+                          litter.litter_group_name,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="submit"
+                    className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    Filtrer
+                  </button>
+                  <Link
+                    href="/reservations"
+                    className="rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Réinitialiser
+                  </Link>
+                </div>
+              </div>
+            </form>
+
+            <ReservationList reservations={reservations} />
+          </>
         )}
       </section>
     </main>
