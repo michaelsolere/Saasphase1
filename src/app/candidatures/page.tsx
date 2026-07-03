@@ -36,6 +36,21 @@ const filters = [
 
 const toValidateStatuses = ["new", "to_review", "to_call"];
 
+function getDecisionPreview(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const reasonMatch = value.match(/Raison\s*:\s*([\s\S]+)/);
+  const decision = (reasonMatch?.[1] ?? value).replace(/\s+/g, " ").trim();
+
+  if (!decision) {
+    return null;
+  }
+
+  return decision.length > 110 ? `${decision.slice(0, 107).trimEnd()}…` : decision;
+}
+
 function getApplicationFilter(value: string | undefined): ApplicationFilter {
   if (value === "validees") {
     return "validated";
@@ -110,6 +125,47 @@ export default async function ApplicationsPage({
   const result = await query;
   applications = result.data;
   hasLoadingError = hasLoadingError || Boolean(result.error);
+
+  if (applications && applications.length > 0) {
+    const applicationIds = applications
+      .map((application) => application.id)
+      .filter((id): id is string => Boolean(id));
+
+    if (applicationIds.length > 0) {
+      const { data: decisionNotes, error: decisionNotesError } = await supabase
+        .from("notes")
+        .select("application_id, body, created_at")
+        .in("application_id", applicationIds)
+        .eq("note_type", "decision")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      hasLoadingError = hasLoadingError || Boolean(decisionNotesError);
+
+      if (decisionNotes) {
+        const decisionPreviewByApplication = new Map<string, string>();
+
+        decisionNotes.forEach((note) => {
+          if (!note.application_id || decisionPreviewByApplication.has(note.application_id)) {
+            return;
+          }
+
+          const preview = getDecisionPreview(note.body);
+
+          if (preview) {
+            decisionPreviewByApplication.set(note.application_id, preview);
+          }
+        });
+
+        applications = applications.map((application) => ({
+          ...application,
+          decision_note_preview: application.id
+            ? decisionPreviewByApplication.get(application.id) ?? null
+            : null,
+        }));
+      }
+    }
+  }
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">

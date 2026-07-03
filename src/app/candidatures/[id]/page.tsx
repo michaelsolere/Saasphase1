@@ -52,6 +52,15 @@ type RelatedEvent = {
   created_at: string;
 };
 
+type ApplicationNote = {
+  id: string;
+  body: string;
+  created_at: string;
+  created_by: string | null;
+  note_type: string;
+  profiles: { display_name: string | null } | null;
+};
+
 function getUsefulDocumentDate(document: RelatedDocument) {
   if (document.signed_at) {
     return { label: "Signé le", value: document.signed_at };
@@ -78,6 +87,11 @@ function getUsefulEventDate(event: RelatedEvent) {
 
 function getEventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getDecisionBody(value: string) {
+  const reasonMatch = value.match(/Raison\s*:\s*([\s\S]+)/);
+  return (reasonMatch?.[1] ?? value).trim();
 }
 
 function NotFoundOrUnauthorized() {
@@ -209,10 +223,15 @@ export default async function ApplicationDetailPage({
   const { data: notes, error: notesError } = applicationId
     ? await supabase
         .from("notes")
-        .select("id, body, created_at, created_by, profiles!created_by ( display_name )")
+        .select("id, body, created_at, created_by, note_type, profiles!created_by ( display_name )")
         .eq("application_id", applicationId)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
     : { data: null };
+
+  const applicationNotes = notes as ApplicationNote[] | null;
+  const latestDecisionNote =
+    applicationNotes?.find((note) => note.note_type === "decision") ?? null;
 
   // Fetch reservations
   const { data: rawReservations, error: reservationsError } = applicationId
@@ -463,6 +482,18 @@ export default async function ApplicationDetailPage({
                     status={application.status}
                   />
                 </div>
+                {latestDecisionNote ? (
+                  <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                    <p className="font-semibold">Dernière raison / décision</p>
+                    <p className="mt-2 whitespace-pre-wrap leading-6">
+                      {getDecisionBody(latestDecisionNote.body)}
+                    </p>
+                    <p className="mt-2 text-xs">
+                      Ajoutée le{" "}
+                      {formatApplicationDate(latestDecisionNote.created_at)}
+                    </p>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 
@@ -747,20 +778,21 @@ export default async function ApplicationDetailPage({
                       <p role="alert" className="text-sm text-amber-800">
                         Impossible de charger les notes internes.
                       </p>
-                    ) : notes && notes.length > 0 ? (
+                    ) : applicationNotes && applicationNotes.length > 0 ? (
                       <div className="divide-y divide-border">
-                        {notes.map((note) => {
+                        {applicationNotes.map((note) => {
                           const authorName =
-                            (
-                              note.profiles as
-                                | { display_name: string | null }
-                                | null
-                            )?.display_name || "Auteur inconnu";
+                            note.profiles?.display_name || "Auteur inconnu";
                           return (
                             <div
                               key={note.id}
                               className="py-4 first:pt-0 last:pb-0"
                             >
+                              {note.note_type === "decision" ? (
+                                <span className="mb-2 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950">
+                                  Décision
+                                </span>
+                              ) : null}
                               <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
                                 {note.body}
                               </p>

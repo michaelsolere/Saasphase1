@@ -18,6 +18,14 @@ function getProjectExcerpt(value: string | null) {
   return value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
 }
 
+function getDecisionExcerpt(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return value.length > 90 ? `${value.slice(0, 87).trimEnd()}…` : value;
+}
+
 function getEmptyMessage(filter: ApplicationFilter) {
   if (filter === "to_validate") {
     return "Aucune candidature à valider";
@@ -67,6 +75,7 @@ export function ApplicationList({
               <th className="px-5 py-4">Coordonnées</th>
               <th className="px-5 py-4">Préférence</th>
               <th className="px-5 py-4">Projet</th>
+              <th className="px-5 py-4">Décision</th>
               <th className="px-5 py-4">Source</th>
               <th className="px-5 py-4">Statut</th>
               <th className="px-5 py-4">
@@ -102,6 +111,15 @@ export function ApplicationList({
                   </td>
                   <td className="max-w-sm px-5 py-5 align-top leading-6 text-muted">
                     {getProjectExcerpt(application.project_description)}
+                  </td>
+                  <td className="max-w-xs px-5 py-5 align-top">
+                    {application.decision_note_preview ? (
+                      <p className="leading-6 text-muted">
+                        {getDecisionExcerpt(application.decision_note_preview)}
+                      </p>
+                    ) : (
+                      <span className="text-muted">-</span>
+                    )}
                   </td>
                   <td className="px-5 py-5 align-top">
                     {application.public_form_name ??

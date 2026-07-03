@@ -16,7 +16,9 @@ export type ApplicationOverview = Pick<
   | "public_form_slug"
   | "submitted_at"
   | "created_at"
->;
+> & {
+  decision_note_preview?: string | null;
+};
 
 export type ApplicationDetail = Pick<
   ApplicationOverviewRow,
