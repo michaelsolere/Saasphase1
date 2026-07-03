@@ -1795,9 +1795,9 @@ export default async function LitterDetailPage({
                 <p className="mt-2 text-sm text-muted">
                   À la différence de la section « Candidatures liées » ci-dessus
                   (vue de suivi), cette section agit : pour chaque candidature
-                  qualifiée sélectionnée, une demande d&apos;avance sur arrhes
-                  (250 €, échéance J+15) est lancée et une pré-réservation ainsi
-                  qu&apos;une demande de paiement sont créées.
+                  qualifiée sélectionnée, une demande de paiement de
+                  pré-réservation (250 €, échéance J+15) est lancée et le
+                  dossier passe en attente de paiement.
                 </p>
 
                 {qualifiedAppsError ? (

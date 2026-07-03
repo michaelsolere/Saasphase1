@@ -142,7 +142,7 @@ async function getOrCreateDraftReservation(
 ) {
   await page.goto(`/candidatures/${applicationId}`);
   await page
-    .getByRole("button", { name: "Créer une réservation brouillon" })
+    .getByRole("button", { name: "Créer une demande de pré-réservation" })
     .click();
   await expect(page).toHaveURL(/\/reservations\/[0-9a-f-]+/);
 
@@ -262,7 +262,7 @@ async function createPreReservationPaymentFixture(
     payment_method: "bank_transfer",
     requested_at: "2026-04-02T10:00:00+00:00",
     due_date: "2026-04-17",
-    notes: "Demande 1/2 — avance sur arrhes de pré-réservation.",
+    notes: "Paiement de pré-réservation de 250 €.",
     created_by: user.id,
     updated_by: user.id,
   });
@@ -381,7 +381,7 @@ async function createPreReservationBalanceFixture(
       due_date: "2026-04-17",
       paid_at:
         firstPaymentStatus === "paid" ? "2026-04-03T10:00:00+00:00" : null,
-      notes: "Demande 1/2 — avance sur arrhes de pré-réservation.",
+      notes: "Paiement de pré-réservation de 250 €.",
       created_by: user.id,
       updated_by: user.id,
     },
@@ -535,13 +535,13 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
 
   await page.goto(`/reservations/${reservationId}`);
   await expect(
-    page.getByRole("heading", { name: "Pré-réservation demandée" }),
+    page.getByRole("heading", { name: "Paiement de pré-réservation demandé" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Marquer payé" }).click();
   await page.getByRole("button", { name: "Confirmer le paiement" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
   await expect(
-    page.getByRole("heading", { name: "Pré-réservation payée" }),
+    page.getByRole("heading", { name: "Pré-réservation réglée" }),
   ).toBeVisible();
 
   const updatedReservation = await readReservation(supabase, reservationId);

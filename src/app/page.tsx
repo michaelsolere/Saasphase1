@@ -477,8 +477,8 @@ export default async function Home() {
                     }
                     if (res.status === "pre_reservation_paid") {
                       detailText = isArrhesCompleteNoAnimal
-                        ? "Dossier en pré-réservation payée — Arrhes complètes"
-                        : "Dossier en pré-réservation payée";
+                        ? "Dossier en pré-réservation réglée — arrhes complètes"
+                        : "Dossier en pré-réservation réglée";
                     }
                     return (
                       <div key={res.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">

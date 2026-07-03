@@ -388,7 +388,7 @@ export default async function ApplicationDetailPage({
                 role="status"
                 className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
               >
-                La réservation brouillon a bien été créée. Elle apparaît
+                La demande de pré-réservation a bien été créée. Elle apparaît
                 maintenant dans la section Réservations liées.
               </p>
             ) : null}
@@ -408,8 +408,8 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                Seule une candidature qualifiée peut créer une réservation
-                brouillon. Vérifiez d’abord le statut de qualification.
+                Seule une candidature qualifiée peut créer une demande de
+                pré-réservation. Vérifiez d’abord le statut de qualification.
               </p>
             ) : null}
 
@@ -418,8 +418,8 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                La réservation brouillon n’a pas pu être créée. Aucune donnée
-                n’a été modifiée, vous pouvez réessayer.
+                La demande de pré-réservation n’a pas pu être créée. Aucune
+                donnée n’a été modifiée, vous pouvez réessayer.
               </p>
             ) : null}
 
@@ -562,8 +562,8 @@ export default async function ApplicationDetailPage({
                         Réservations liées
                       </h2>
                       <p className="mt-2 text-sm text-muted">
-                        Une candidature qualifiée peut créer une réservation
-                        en statut brouillon. Elle sera ajoutée ici, sans
+                        Une candidature qualifiée peut créer une demande de
+                        pré-réservation. Elle sera ajoutée ici, sans
                         paiement, document ou attribution animal.
                       </p>
                     </div>
@@ -579,7 +579,7 @@ export default async function ApplicationDetailPage({
                           type="submit"
                           className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                         >
-                          Créer une réservation brouillon
+                          Créer une demande de pré-réservation
                         </button>
                       </form>
                     ) : null}

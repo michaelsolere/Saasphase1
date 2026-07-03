@@ -110,9 +110,9 @@ export default async function NewReservationPage({
           Nouvelle réservation
         </h1>
         <p className="mt-3 max-w-2xl leading-7 text-muted">
-          Créez une réservation brouillon pour un contact existant, avec ou sans
-          candidature. Aucun paiement, document ou attribution n’est créé
-          automatiquement.
+          Créez une demande de pré-réservation pour un contact existant, avec
+          ou sans candidature. Aucun paiement, document ou attribution n’est
+          créé automatiquement.
         </p>
       </header>
 
