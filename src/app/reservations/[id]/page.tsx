@@ -24,7 +24,6 @@ import {
 } from "@/features/payments/formatters";
 import {
   updateReservationInternalComment,
-  updateReservationPreReservationDeadline,
   updateReservationPrice,
   activateReservation,
   assignAnimalToReservation,
@@ -187,14 +186,6 @@ type ReservationPreReservationDeadline = {
 
 function getUsefulPostAdoptionEventDate(event: RelatedPostAdoptionEvent) {
   return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
-}
-
-function getUsefulReservationEventDate(event: RelatedReservationEvent) {
-  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
-}
-
-function formatEventType(value: string) {
-  return value.replaceAll("_", " ");
 }
 
 function getAppointmentStatusLabel(status: ReservationAppointmentSummary["status"]) {
@@ -884,14 +875,6 @@ function formatPriceInputValue(priceCents: number | null) {
   return (priceCents / 100).toFixed(2);
 }
 
-function formatDateInputValue(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  return value.slice(0, 10);
-}
-
 function FinancialBalanceNotice({
   priceCents,
   paidCents,
@@ -1498,7 +1481,7 @@ export default async function ReservationDetailPage({
 
   // Fetch planning fields directly because reservation_overview does not expose
   // every appointment-oriented reservation field.
-  const { data: rawPreReservationDeadline, error: preReservationDeadlineError } =
+  const { data: rawPreReservationDeadline } =
     reservation?.id
       ? await supabase
           .from("reservations")
@@ -1506,7 +1489,7 @@ export default async function ReservationDetailPage({
           .eq("id", reservation.id)
           .is("deleted_at", null)
           .maybeSingle()
-      : { data: null, error: null };
+      : { data: null };
 
   const reservationPreReservationDeadline =
     rawPreReservationDeadline as ReservationPreReservationDeadline | null;
@@ -1842,6 +1825,49 @@ export default async function ReservationDetailPage({
       : null,
   ].filter((warning): warning is string => Boolean(warning));
 
+  const contactSummaryDetail = contactDetailsError
+    ? "Coordonnées partiellement indisponibles."
+    : contactDetails
+      ? [
+          contactDetails.email,
+          contactDetails.phone,
+          [contactDetails.postal_code, contactDetails.city]
+            .filter(Boolean)
+            .join(" "),
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Coordonnées à compléter sur la fiche contact."
+      : "Coordonnées non renseignées.";
+  const contactRoleSummary =
+    contactRoles && contactRoles.length > 0
+      ? contactRoles.map((role) => getContactRoleLabel(role.role)).join(", ")
+      : null;
+  const applicationSummaryValue = reservation?.application_id
+    ? applicationDetails?.status === "qualified"
+      ? "Candidature qualifiée"
+      : "Candidature liée"
+    : "Aucune candidature liée";
+  const applicationSummaryDetail = applicationDetailsError
+    ? "Candidature partiellement indisponible."
+    : applicationDetails
+      ? [
+          getSexPreferenceLabel(applicationDetails.desired_sex_preference),
+          applicationDetails.project_description ? "Projet renseigné" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ") || "Projet à compléter sur la candidature."
+      : "Aucune candidature liée à cette réservation.";
+  const rankSummaryDetail = [
+    reservation?.rank_initial !== null && reservation?.rank_initial !== undefined
+      ? `Rang initial : ${reservation.rank_initial}`
+      : null,
+    reservation?.rank_active !== null && reservation?.rank_active !== undefined
+      ? `Rang actif : ${reservation.rank_active}`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   let docsSummaryText = "";
   if (totalDocs === 0) {
     docsSummaryText = "Aucun document lié";
@@ -1986,10 +2012,7 @@ export default async function ReservationDetailPage({
     { href: "#appointments", label: "Créneaux RV" },
     { href: "#adoption-preparation", label: "Préparation départ" },
     { href: "#notes", label: "Notes internes" },
-    { href: "#contact-details", label: "Dossier adoptant" },
-    { href: "#application-details", label: "Candidature / projet" },
     { href: "#reservation-details", label: "Réservation" },
-    { href: "#history", label: "Historique" },
   ];
 
   return (
@@ -2042,6 +2065,11 @@ export default async function ReservationDetailPage({
                   <SummaryMetric
                     label="Adoptant"
                     value={reservation.contact_display_name ?? "Client associé"}
+                    detail={
+                      contactRoleSummary
+                        ? `${contactSummaryDetail} · ${contactRoleSummary}`
+                        : contactSummaryDetail
+                    }
                     href={
                       reservation.contact_id
                         ? `/contacts/${reservation.contact_id}`
@@ -2068,6 +2096,16 @@ export default async function ReservationDetailPage({
                     href={
                       reservation.animal_id
                         ? `/animals/${reservation.animal_id}`
+                        : undefined
+                    }
+                  />
+                  <SummaryMetric
+                    label="Candidature"
+                    value={applicationSummaryValue}
+                    detail={applicationSummaryDetail}
+                    href={
+                      reservation.application_id
+                        ? `/candidatures/${reservation.application_id}`
                         : undefined
                     }
                   />
@@ -2120,8 +2158,8 @@ export default async function ReservationDetailPage({
                   label="Portée"
                   value={scopeSummaryValue}
                   detail={
-                    reservation.rank_active
-                      ? `${scopeSummaryDetail} (Rang : ${reservation.rank_active})`
+                    rankSummaryDetail
+                      ? `${scopeSummaryDetail} · ${rankSummaryDetail}`
                       : scopeSummaryDetail
                   }
                   href={
@@ -2148,7 +2186,7 @@ export default async function ReservationDetailPage({
               </nav>
             </section>
 
-            <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
+            <div className="py-8">
               <div className="flex min-w-0 flex-col gap-6">
                 <section id="appointments" className="order-[35] rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
                   <div className="flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-start">
@@ -2321,174 +2359,6 @@ export default async function ReservationDetailPage({
                       />
                     </div>
                   ) : null}
-                </section>
-
-                {/* 3. Section Dossier Adoptant */}
-                <section id="contact-details" className="order-[80] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
-                    <div>
-                      <h2 className="text-xl font-semibold text-foreground">Dossier adoptant</h2>
-                      <p className="mt-2 text-sm leading-6 text-muted">
-                        Coordonnées et informations du contact associé.
-                      </p>
-                    </div>
-                    {reservation.contact_id && (
-                      <Link
-                        href={`/contacts/${reservation.contact_id}`}
-                        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la fiche contact
-                      </Link>
-                    )}
-                  </div>
-
-                  {contactDetailsError ? (
-                    <p role="alert" className="text-sm text-amber-850">
-                      Impossible de charger les détails du contact.
-                    </p>
-                  ) : contactDetails ? (
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      <DetailItem
-                        label="Nom complet"
-                        value={`${contactDetails.first_name || ""} ${contactDetails.last_name || ""}`.trim() || contactDetails.display_name || "Non renseigné"}
-                      />
-                      <DetailItem
-                        label="E-mail"
-                        value={
-                          contactDetails.email ? (
-                            <a href={`mailto:${contactDetails.email}`} className="text-accent hover:underline">
-                              {contactDetails.email}
-                            </a>
-                          ) : (
-                            <span className="text-muted/60 italic">Non renseigné</span>
-                          )
-                        }
-                      />
-                      <DetailItem
-                        label="Téléphone principal"
-                        value={contactDetails.phone || <span className="text-muted/60 italic">Non renseigné</span>}
-                      />
-                      <DetailItem
-                        label="Téléphone secondaire"
-                        value={contactDetails.secondary_phone || <span className="text-muted/60 italic">Non renseigné</span>}
-                      />
-                      <div className="sm:col-span-2">
-                        <DetailItem
-                          label="Adresse postale"
-                          value={
-                            [
-                              contactDetails.address_line1,
-                              contactDetails.address_line2,
-                              [contactDetails.postal_code, contactDetails.city].filter(Boolean).join(" "),
-                              contactDetails.country,
-                            ]
-                              .filter(Boolean)
-                              .join(", ") || <span className="text-muted/60 italic">Aucune adresse renseignée</span>
-                          }
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                          Rôles associés
-                        </dt>
-                        <dd className="mt-2 flex flex-wrap gap-2">
-                          {contactRoles && contactRoles.length > 0 ? (
-                            contactRoles.map((cr) => (
-                              <span
-                                key={cr.role}
-                                className="inline-flex items-center rounded-full border bg-background px-2.5 py-1 text-xs font-semibold text-foreground"
-                              >
-                                {getContactRoleLabel(cr.role)}
-                              </span>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted/60 italic">Aucun rôle spécifique</span>
-                          )}
-                        </dd>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucun contact lié ou coordonnées indisponibles.
-                    </p>
-                  )}
-                </section>
-
-                {/* 3. Section Candidature / Projet */}
-                <section id="application-details" className="order-[81] rounded-2xl border bg-surface p-6 sm:p-8 shadow-sm">
-                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start border-b pb-4 mb-6">
-                    <div>
-                      <h2 className="text-xl font-semibold text-foreground">Candidature / Projet</h2>
-                      <p className="mt-2 text-sm leading-6 text-muted">
-                        Projet d&apos;adoption et qualification de la candidature.
-                      </p>
-                    </div>
-                    {reservation.application_id && (
-                      <Link
-                        href={`/candidatures/${reservation.application_id}`}
-                        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la candidature
-                      </Link>
-                    )}
-                  </div>
-
-                  {applicationDetailsError ? (
-                    <p role="alert" className="text-sm text-amber-850">
-                      Impossible de charger les détails de la candidature.
-                    </p>
-                  ) : applicationDetails ? (
-                    <div className="grid gap-6 sm:grid-cols-2">
-                      <DetailItem
-                        label="Espèce souhaitée"
-                        value={applicationDetails.species === "dog" ? "Chien" : applicationDetails.species === "cat" ? "Chat" : applicationDetails.species || "Non renseignée"}
-                      />
-                      <DetailItem
-                        label="Race souhaitée"
-                        value={applicationDetails.breed || "Golden Retriever"}
-                      />
-                      <DetailItem
-                        label="Préférence de sexe (candidature)"
-                        value={getSexPreferenceLabel(applicationDetails.desired_sex_preference)}
-                      />
-                      <DetailItem
-                        label="Statut de qualification"
-                        value={
-                          <span className="inline-flex rounded-full border bg-background px-2.5 py-1 text-xs font-semibold">
-                            {applicationDetails.status === "qualified" ? "Qualifié" : applicationDetails.status}
-                          </span>
-                        }
-                      />
-                      <div className="sm:col-span-2">
-                        <DetailItem
-                          label="Description du projet d&apos;adoption"
-                          value={
-                            <div className="whitespace-pre-wrap text-sm leading-6 text-muted">
-                              {applicationDetails.project_description || (
-                                <span className="text-muted/60 italic">Aucune description de projet renseignée</span>
-                              )}
-                            </div>
-                          }
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <DetailItem
-                          label="Commentaire de qualification (Interne)"
-                          value={
-                            <div className="whitespace-pre-wrap text-sm leading-6 text-muted">
-                              {applicationDetails.internal_comment || (
-                                <span className="text-muted/60 italic">Aucun commentaire de qualification</span>
-                              )}
-                            </div>
-                          }
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucune candidature liée à cette réservation.
-                    </p>
-                  )}
                 </section>
 
                 <section id="reservation-details" className="order-[71] rounded-2xl border bg-surface p-6 sm:p-8">
@@ -2808,53 +2678,6 @@ export default async function ReservationDetailPage({
                       </div>
                     </form>
                   ) : null}
-
-                  <div className="mt-8 border-t pt-6">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      Commentaire interne de réservation
-                    </h3>
-                    {internalCommentError ? (
-                      <p className="mt-3 text-sm text-muted">
-                        Le commentaire interne n’est pas disponible pour le
-                        moment.
-                      </p>
-                    ) : !reservationIsFinal ? (
-                      <form
-                        action={updateReservationInternalComment}
-                        className="mt-3"
-                      >
-                        <input
-                          type="hidden"
-                          name="reservation_id"
-                          value={id}
-                        />
-                        <textarea
-                          name="internal_comment"
-                          rows={4}
-                          maxLength={2000}
-                          defaultValue={
-                            reservationInternalComment?.internal_comment ?? ""
-                          }
-                          className="w-full rounded-xl border bg-background px-4 py-3 text-sm leading-6 outline-none transition focus:border-accent"
-                        />
-                        <p className="mt-2 text-xs leading-5 text-muted">
-                          Commentaire synthétique interne lié à cette
-                          réservation. Pour un historique daté, utiliser plus
-                          tard les notes internes.
-                        </p>
-                        <button
-                          type="submit"
-                          className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                        >
-                          Enregistrer le commentaire
-                        </button>
-                      </form>
-                    ) : (
-                      <p className="mt-3 text-sm text-muted">
-                        Les modifications du commentaire sont masquées car le statut est final.
-                      </p>
-                    )}
-                  </div>
                 </section>
 
                 <section id="scope-and-animal" className="order-[30] rounded-2xl border bg-surface p-6 sm:p-8">
@@ -3186,75 +3009,6 @@ export default async function ReservationDetailPage({
                   </div>
                 </section>
 
-                <section className="order-[72] rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">Priorité et suivi</h2>
-                  <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                    <DetailItem
-                      label="Rang initial"
-                      value={reservation.rank_initial !== null ? String(reservation.rank_initial) : null}
-                    />
-                    <DetailItem
-                      label="Rang actif"
-                      value={reservation.rank_active !== null ? String(reservation.rank_active) : null}
-                    />
-                    <DetailItem
-                      label="Dernière mise à jour"
-                      value={formatApplicationDate(reservation.updated_at)}
-                    />
-                  </dl>
-
-                  <div className="mt-8 border-t pt-6">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      Échéance de pré-réservation
-                    </h3>
-                    {preReservationDeadlineError ? (
-                      <p className="mt-3 text-sm text-muted">
-                        L’échéance de pré-réservation n’est pas disponible pour
-                        le moment.
-                      </p>
-                    ) : !reservationIsFinal ? (
-                      <form
-                        action={updateReservationPreReservationDeadline}
-                        className="mt-3"
-                      >
-                        <input
-                          type="hidden"
-                          name="reservation_id"
-                          value={id}
-                        />
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                          <div className="max-w-xs flex-1">
-                            <input
-                              name="pre_reservation_deadline"
-                              type="date"
-                              defaultValue={formatDateInputValue(
-                                reservationPreReservationDeadline
-                                  ?.pre_reservation_deadline ?? null,
-                              )}
-                              className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                            />
-                            <p className="mt-2 text-xs leading-5 text-muted">
-                              Date limite de suivi de la pré-réservation. Cette
-                              date ne confirme pas la réservation et ne change
-                              pas son statut.
-                            </p>
-                          </div>
-                          <button
-                            type="submit"
-                            className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                          >
-                            Enregistrer l’échéance
-                          </button>
-                        </div>
-                      </form>
-                    ) : (
-                      <p className="mt-3 text-sm text-muted">
-                        L’échéance reste consultable, mais sa modification est masquée car le statut est final.
-                      </p>
-                    )}
-                  </div>
-                </section>
-
                 {reservation.status === "adopted" ? (
                   <section className="order-[41] rounded-2xl border bg-surface p-6 sm:p-8">
                     <h2 className="text-xl font-semibold">
@@ -3342,6 +3096,57 @@ export default async function ReservationDetailPage({
                     </span>
                   </div>
 
+                  <div className="mt-6 rounded-xl border bg-background p-4">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      Commentaire principal
+                    </h3>
+                    {internalCommentError ? (
+                      <p className="mt-3 text-sm text-muted">
+                        Le commentaire principal n’est pas disponible pour le
+                        moment.
+                      </p>
+                    ) : !reservationIsFinal ? (
+                      <form
+                        action={updateReservationInternalComment}
+                        className="mt-3"
+                      >
+                        <input
+                          type="hidden"
+                          name="reservation_id"
+                          value={id}
+                        />
+                        <textarea
+                          name="internal_comment"
+                          rows={4}
+                          maxLength={2000}
+                          defaultValue={
+                            reservationInternalComment?.internal_comment ?? ""
+                          }
+                          className="w-full rounded-xl border bg-surface px-4 py-3 text-sm leading-6 outline-none transition focus:border-accent"
+                        />
+                        <p className="mt-2 text-xs leading-5 text-muted">
+                          Commentaire synthétique interne lié à cette
+                          réservation. Les notes ci-dessous conservent
+                          l’historique daté.
+                        </p>
+                        <button
+                          type="submit"
+                          className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                        >
+                          Enregistrer le commentaire
+                        </button>
+                      </form>
+                    ) : reservationInternalComment?.internal_comment ? (
+                      <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted">
+                        {reservationInternalComment.internal_comment}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm text-muted">
+                        Aucun commentaire principal renseigné.
+                      </p>
+                    )}
+                  </div>
+
                   {reservationNotesError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
                       Impossible de charger les notes internes liées à la réservation.
@@ -3396,65 +3201,6 @@ export default async function ReservationDetailPage({
                       }
                     />
                   </div>
-                </section>
-
-                <section id="history" className="order-[90] rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">
-                    Événements liés
-                  </h2>
-
-                  {reservationEventsError ? (
-                    <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger les événements liés.
-                    </p>
-                  ) : reservationEvents && reservationEvents.length > 0 ? (
-                    <div className="mt-5 divide-y divide-border">
-                      {reservationEvents.map((event) => {
-                        const dateText = formatApplicationDate(
-                          getUsefulReservationEventDate(event),
-                        );
-
-                        return (
-                          <div
-                            key={event.id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <span className="font-semibold text-foreground text-sm">
-                                  {event.title || formatEventType(event.event_type)}
-                                </span>
-                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                  {event.status}
-                                </span>
-                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                  Priorité : {event.priority}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
-                                <span>Type : {formatEventType(event.event_type)}</span>
-                                <span aria-hidden="true">•</span>
-                                <span>Date : {dateText}</span>
-                                <span aria-hidden="true">•</span>
-                                <span>
-                                  Créé le {formatApplicationDate(event.created_at)}
-                                </span>
-                              </div>
-                              {event.description ? (
-                                <p className="text-sm leading-6 text-muted">
-                                  {event.description}
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
-                      Aucun événement général lié à cette réservation.
-                    </p>
-                  )}
                 </section>
 
                 <section id="payments" className="order-[10] rounded-2xl border bg-surface p-6 sm:p-8">
@@ -3773,53 +3519,6 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
               </div>
-
-              <aside className="h-fit rounded-2xl border bg-surface p-6">
-                <div>
-                  <h2 className="text-lg font-semibold">Liens utiles</h2>
-                  <p className="mt-2 text-xs leading-5 text-muted">
-                    Accès rapides aux fiches sources liées au dossier.
-                  </p>
-                </div>
-
-                <div className="mt-5 grid gap-2">
-                  {reservation.contact_id ? (
-                    <Link
-                      href={`/contacts/${reservation.contact_id}`}
-                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Fiche contact
-                    </Link>
-                  ) : null}
-
-                  {reservation.application_id ? (
-                    <Link
-                      href={`/candidatures/${reservation.application_id}`}
-                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Candidature
-                    </Link>
-                  ) : null}
-
-                  {reservation.animal_id ? (
-                    <Link
-                      href={`/animals/${reservation.animal_id}`}
-                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Animal attribué
-                    </Link>
-                  ) : null}
-
-                  {reservation.litter_id ? (
-                    <Link
-                      href={`/litters/${reservation.litter_id}`}
-                      className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Portée
-                    </Link>
-                  ) : null}
-                </div>
-              </aside>
             </div>
           </>
         )}
