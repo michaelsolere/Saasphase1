@@ -2006,7 +2006,7 @@ export default async function ReservationDetailPage({
     : [];
 
   const sectionNavItems = [
-    { href: "#payments", label: "Finances" },
+    { href: "#payments", label: "Paiements" },
     { href: "#documents", label: "Documents" },
     { href: "#scope-and-animal", label: "Animal attribué" },
     { href: "#appointments", label: "Créneaux RV" },
@@ -2134,7 +2134,7 @@ export default async function ReservationDetailPage({
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 <SummaryIndicator
-                  label="Finances"
+                  label="Paiements"
                   value={paymentsSummaryText}
                   detail={financialSummaryDetail}
                   badgeClassName={paymentsSummaryColor}
