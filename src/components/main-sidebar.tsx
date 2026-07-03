@@ -132,7 +132,25 @@ function normalizeQuery(query: string) {
   return params.toString();
 }
 
-function isDirectHrefActive(pathname: string, search: string, href?: string) {
+function queryIncludes(search: string, query: string) {
+  const currentParams = new URLSearchParams(search);
+  const hrefParams = new URLSearchParams(query);
+
+  for (const [key, value] of hrefParams.entries()) {
+    if (currentParams.get(key) !== value) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function isDirectHrefActive(
+  pathname: string,
+  search: string,
+  href?: string,
+  options: { ignoreSearchForPath?: boolean } = {},
+) {
   if (!href) {
     return false;
   }
@@ -144,15 +162,35 @@ function isDirectHrefActive(pathname: string, search: string, href?: string) {
   }
 
   if (hasQuery) {
-    return pathname === path && search === query;
+    return pathname === path && queryIncludes(search, query);
   }
 
-  return !search && (pathname === path || pathname.startsWith(`${path}/`));
+  return (
+    (options.ignoreSearchForPath || !search) &&
+    (pathname === path || pathname.startsWith(`${path}/`))
+  );
+}
+
+function getHrefActiveScore(
+  pathname: string,
+  search: string,
+  href?: string,
+  options: { ignoreSearchForPath?: boolean } = {},
+) {
+  if (!isDirectHrefActive(pathname, search, href, options) || !href) {
+    return -1;
+  }
+
+  const { path, query, hasQuery } = getHrefParts(href);
+
+  return path.length + (hasQuery ? 1_000 + query.length : 0);
 }
 
 function isItemActive(pathname: string, search: string, item: SidebarItem) {
   return (
-    isDirectHrefActive(pathname, search, item.href) ||
+    isDirectHrefActive(pathname, search, item.href, {
+      ignoreSearchForPath: true,
+    }) ||
     Boolean(
       item.activeHrefs?.some((activeHref) =>
         isDirectHrefActive(pathname, search, activeHref),
@@ -166,31 +204,33 @@ function getActiveItemIndex(
   search: string,
   items: SidebarItem[] = [],
 ) {
-  const seenMatchingHrefs = new Set<string>();
+  let bestMatch = {
+    index: -1,
+    score: -1,
+  };
 
   for (const [index, item] of items.entries()) {
     if (!item.href || !isItemActive(pathname, search, item)) {
       continue;
     }
 
-    const normalizedHref = normalizeItemHref(item.href);
+    const directScore = getHrefActiveScore(pathname, search, item.href, {
+      ignoreSearchForPath: true,
+    });
+    const aliasScore = Math.max(
+      -1,
+      ...(item.activeHrefs?.map((activeHref) =>
+        getHrefActiveScore(pathname, search, activeHref),
+      ) ?? []),
+    );
+    const score = Math.max(directScore, aliasScore);
 
-    if (seenMatchingHrefs.has(normalizedHref)) {
-      continue;
+    if (score > bestMatch.score) {
+      bestMatch = { index, score };
     }
-
-    seenMatchingHrefs.add(normalizedHref);
-
-    return index;
   }
 
-  return -1;
-}
-
-function normalizeItemHref(href: string) {
-  const { path, query, hasQuery } = getHrefParts(href);
-
-  return hasQuery && query ? `${path}?${query}` : path;
+  return bestMatch.index;
 }
 
 function sectionHasActiveItem(
@@ -445,7 +485,8 @@ export function MainSidebar({
               currentSearch,
               section,
             );
-            const sectionOpen = !collapsed && openSections.has(section.label);
+            const sectionOpen =
+              !collapsed && (active || openSections.has(section.label));
 
             if (section.href) {
               return (

@@ -5,15 +5,44 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-export function EmailTemplateCopyButton({ text }: { text: string }) {
+function getFieldValue(id?: string) {
+  if (!id) {
+    return null;
+  }
+
+  const field = document.getElementById(id);
+
+  if (
+    field instanceof HTMLInputElement ||
+    field instanceof HTMLTextAreaElement
+  ) {
+    return field.value;
+  }
+
+  return null;
+}
+
+export function EmailTemplateCopyButton({
+  bodyFieldId,
+  subjectFieldId,
+  text,
+}: {
+  bodyFieldId?: string;
+  subjectFieldId?: string;
+  text: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   async function copyText() {
     let copySucceeded = false;
+    const subject = getFieldValue(subjectFieldId);
+    const body = getFieldValue(bodyFieldId);
+    const textToCopy =
+      subject !== null && body !== null ? `Objet : ${subject}\n\n${body}` : text;
 
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(textToCopy);
         copySucceeded = true;
       }
     } catch {
@@ -22,7 +51,7 @@ export function EmailTemplateCopyButton({ text }: { text: string }) {
 
     if (!copySucceeded) {
       const textarea = document.createElement("textarea");
-      textarea.value = text;
+      textarea.value = textToCopy;
       textarea.setAttribute("readonly", "");
       textarea.style.position = "fixed";
       textarea.style.left = "-9999px";

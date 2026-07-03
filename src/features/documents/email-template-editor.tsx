@@ -15,6 +15,8 @@ export function EmailTemplateEditor({
 }: {
   template: EmailTemplateRecord;
 }) {
+  const subjectFieldId = `${template.templateKey}-subject`;
+  const bodyFieldId = `${template.templateKey}-body`;
   const copyText = buildEmailBodyWithSubject({
     subject: template.subject,
     body: template.body,
@@ -39,7 +41,11 @@ export function EmailTemplateEditor({
             {template.context}
           </p>
         </div>
-        <EmailTemplateCopyButton text={copyText} />
+        <EmailTemplateCopyButton
+          bodyFieldId={bodyFieldId}
+          subjectFieldId={subjectFieldId}
+          text={copyText}
+        />
       </div>
 
       <form action={updateEmailTemplate} className="mt-5 space-y-4">
@@ -50,13 +56,13 @@ export function EmailTemplateEditor({
         />
         <div>
           <label
-            htmlFor={`${template.templateKey}-subject`}
+            htmlFor={subjectFieldId}
             className="text-sm font-semibold"
           >
             Sujet
           </label>
           <input
-            id={`${template.templateKey}-subject`}
+            id={subjectFieldId}
             name="subject"
             type="text"
             maxLength={255}
@@ -67,13 +73,13 @@ export function EmailTemplateEditor({
         </div>
         <div>
           <label
-            htmlFor={`${template.templateKey}-body`}
+            htmlFor={bodyFieldId}
             className="text-sm font-semibold"
           >
             Corps
           </label>
           <textarea
-            id={`${template.templateKey}-body`}
+            id={bodyFieldId}
             name="body"
             required
             defaultValue={template.body}

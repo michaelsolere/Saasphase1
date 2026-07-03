@@ -103,5 +103,30 @@ a {
 
   .private-sidebar-desktop {
     display: block;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .private-sidebar-desktop > .sticky {
+    position: static !important;
+    height: auto !important;
+  }
+
+  .private-sidebar-desktop aside {
+    height: auto !important;
+    min-height: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .private-sidebar-desktop aside > div:first-child {
+    padding: 0.75rem 1rem;
+  }
+
+  .private-sidebar-desktop nav,
+  .private-sidebar-desktop aside > div:first-child button,
+  .private-sidebar-desktop aside > div:last-child {
+    display: none;
   }
 }
