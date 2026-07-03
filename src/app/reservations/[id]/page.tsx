@@ -793,11 +793,11 @@ function SummaryMetric({
   badgeClassName?: string;
 }) {
   const content = href ? (
-    <Link href={href} className="block min-w-0 truncate font-semibold text-accent hover:underline">
+    <Link href={href} className="block min-w-0 break-words font-semibold text-accent hover:underline">
       {value}
     </Link>
   ) : (
-    <span className="block min-w-0 truncate font-semibold text-foreground">{value}</span>
+    <span className="block min-w-0 break-words font-semibold text-foreground">{value}</span>
   );
 
   return (
@@ -809,13 +809,13 @@ function SummaryMetric({
         <div className="min-w-0">
           {badgeClassName ? (
             <span className={`inline-flex max-w-full rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassName}`}>
-              <span className="truncate">{content}</span>
+              <span className="min-w-0 break-words">{content}</span>
             </span>
           ) : (
             content
           )}
           {detail ? (
-            <p className="mt-1 truncate text-xs text-muted">{detail}</p>
+            <p className="mt-1 break-words text-xs text-muted">{detail}</p>
           ) : null}
         </div>
       </dd>
@@ -837,11 +837,11 @@ function SummaryIndicator({
   badgeClassName?: string;
 }) {
   const content = href ? (
-    <Link href={href} className="block min-w-0 truncate font-semibold text-accent hover:underline">
+    <Link href={href} className="block min-w-0 break-words font-semibold text-accent hover:underline">
       {value}
     </Link>
   ) : (
-    <span className="block min-w-0 truncate font-semibold">{value}</span>
+    <span className="block min-w-0 break-words font-semibold">{value}</span>
   );
 
   return (
@@ -855,11 +855,11 @@ function SummaryIndicator({
             badgeClassName ?? "border-border bg-surface text-foreground"
           }`}
         >
-          <span className="truncate">{content}</span>
+          <span className="min-w-0 break-words">{content}</span>
         </span>
       </div>
       {detail ? (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted">
+        <p className="mt-1.5 line-clamp-2 break-words text-xs leading-5 text-muted">
           {detail}
         </p>
       ) : null}
@@ -1105,7 +1105,13 @@ function getAdopterJourneySteps({
           ? "Documents indisponibles pour confirmer l'étape."
           : mainDocumentsSigned && hasCompleteDeposit
             ? "Documents principaux signés et arrhes complètes."
-            : "Signature des documents principaux ou arrhes à vérifier.",
+            : mainDocumentsSigned
+              ? "Documents principaux signés, arrhes complètes non visibles."
+              : hasCompleteDeposit
+                ? "Arrhes complètes visibles, signatures des documents principaux à vérifier."
+                : hasDocuments
+                  ? "Documents liés, signatures et arrhes complètes à vérifier."
+                  : "Documents principaux et arrhes complètes non confirmés.",
     },
     {
       label: "Créneaux RV proposés",
@@ -1519,25 +1525,48 @@ export default async function ReservationDetailPage({
 
   const reservationPayments = rawPayments as RelatedPayment[] | null;
 
+  const preReservationDepositPayments = reservationPayments?.filter(
+    (p) =>
+      p.amount_cents === 25000 &&
+      (p.payment_type === "pre_reservation_deposit_refundable" ||
+        p.payment_type === "arrhes"),
+  ) || [];
   const arrhesPayments = reservationPayments?.filter(
     (p) => p.payment_type === "arrhes" && p.amount_cents === 25000
   ) || [];
   const activeArrhesPayments = arrhesPayments.filter(
     (p) => p.status === "requested" || p.status === "paid",
   );
+  const hasSeparatePreReservationDeposit = preReservationDepositPayments.some(
+    (p) => p.payment_type === "pre_reservation_deposit_refundable",
+  );
   const paidArrhesPaymentCount = activeArrhesPayments.filter(
     (p) => p.status === "paid",
   ).length;
-  const hasSecondPayment = activeArrhesPayments.length >= 2;
-  const hasSecondPaid = paidArrhesPaymentCount >= 2;
-  const hasFirstPaid = paidArrhesPaymentCount >= 1;
+  const hasSecondPayment = hasSeparatePreReservationDeposit
+    ? activeArrhesPayments.length >= 1
+    : activeArrhesPayments.length >= 2;
+  const hasSecondPaid = hasSeparatePreReservationDeposit
+    ? paidArrhesPaymentCount >= 1
+    : paidArrhesPaymentCount >= 2;
+  const hasFirstPaid =
+    preReservationDepositPayments.some((p) => p.status === "paid") ||
+    reservation?.status === "pre_reservation_paid";
   const canRequestPreReservationBalance =
     reservation?.status === "pre_reservation_paid" &&
     activeArrhesPayments.length === 1 &&
     paidArrhesPaymentCount === 1;
-  const hasRequestedFirstDeposit = arrhesPayments.some(
-    (p) => p.status === "requested" || p.status === "pending",
-  );
+  const hasRequestedFirstDeposit =
+    reservation?.status === "pre_reservation_requested" ||
+    preReservationDepositPayments.some(
+      (p) =>
+        p.payment_type === "pre_reservation_deposit_refundable" &&
+        (p.status === "requested" || p.status === "pending"),
+    ) ||
+    (!hasFirstPaid &&
+      arrhesPayments.some(
+        (p) => p.status === "requested" || p.status === "pending",
+      ));
   const preReservationDepositState: PreReservationDepositState =
     hasFirstPaid || reservation?.status === "pre_reservation_paid"
       ? "paid"
@@ -1801,10 +1830,10 @@ export default async function ReservationDetailPage({
   const depositSummaryLabel = hasCompleteDeposit
     ? "Arrhes complètes"
     : hasFirstPaid
-      ? "Arrhes partielles"
+      ? "Pré-réservation réglée"
       : hasRequestedFirstDeposit
-        ? "Arrhes demandées"
-        : "Aucune arrhe visible";
+        ? "Paiement de pré-réservation demandé"
+        : "Aucun paiement de pré-réservation visible";
   const adoptionDateLabel = reservation?.adoption_completed_at
     ? `Effective : ${formatApplicationDate(reservation.adoption_completed_at)}`
     : reservation?.adoption_planned_at
@@ -1886,8 +1915,11 @@ export default async function ReservationDetailPage({
   } else if (hasCompleteDeposit) {
     paymentsSummaryText = "Arrhes complètes (500 € payés)";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-  } else if (hasFirstPaid || paidCents > 0) {
+  } else if (hasFirstPaid) {
     paymentsSummaryText = `Versement de pré-réservation (${formatPrice(paidCents, currency)} payé)`;
+    paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
+  } else if (paidCents > 0) {
+    paymentsSummaryText = `${formatPrice(paidCents, currency)} payé hors pré-réservation`;
     paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
   } else {
     paymentsSummaryText = "En attente de paiement";
