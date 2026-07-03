@@ -90,7 +90,7 @@ export function ReservationAppointmentForm({
             htmlFor={`${appointment.kind}-actual-at`}
             className="text-sm font-semibold text-foreground"
           >
-            Date de validation adoptant
+            Date de confirmation du créneau
           </label>
           <input
             id={`${appointment.kind}-actual-at`}
@@ -109,7 +109,7 @@ export function ReservationAppointmentForm({
           htmlFor={`${appointment.kind}-status`}
           className="text-sm font-semibold text-foreground"
         >
-          Validation adoptant
+          Confirmation du créneau
         </label>
         <select
           id={`${appointment.kind}-status`}
@@ -118,7 +118,7 @@ export function ReservationAppointmentForm({
           className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent"
         >
           <option value="planned">Proposé</option>
-          <option value="done">Validé par l’adoptant</option>
+          <option value="done">Confirmé par l’adoptant</option>
           <option value="postponed">À modifier</option>
         </select>
       </div>

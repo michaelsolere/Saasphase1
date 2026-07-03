@@ -199,7 +199,7 @@ function formatEventType(value: string) {
 
 function getAppointmentStatusLabel(status: ReservationAppointmentSummary["status"]) {
   if (status === "done") {
-    return "Validé par l’adoptant";
+    return "Créneau confirmé par l’adoptant";
   }
 
   if (status === "postponed") {
@@ -321,7 +321,12 @@ function AppointmentSummaryCard({
   reservationId: string;
   appointment: ReservationAppointmentSummary;
 }) {
-  const triggerLabel = appointment.eventId ? "Modifier" : "Renseigner";
+  const hasAppointmentDetails =
+    Boolean(appointment.eventId) ||
+    Boolean(appointment.plannedAt) ||
+    Boolean(appointment.actualAt) ||
+    Boolean(appointment.description);
+  const triggerLabel = hasAppointmentDetails ? "Modifier" : "Renseigner";
 
   return (
     <div className="rounded-xl border bg-background p-4">
@@ -338,7 +343,7 @@ function AppointmentSummaryCard({
         </div>
         <ReservationAppointmentDialog
           title={appointment.label}
-          description="Renseignez manuellement le créneau proposé, la validation adoptant et un commentaire court."
+          description="Renseignez manuellement le créneau proposé, sa confirmation par l’adoptant et un commentaire court."
           triggerLabel={triggerLabel}
           appointmentForm={
             <ReservationAppointmentForm
@@ -355,7 +360,7 @@ function AppointmentSummaryCard({
           value={formatApplicationDate(appointment.plannedAt)}
         />
         <DetailItem
-          label="Date de validation adoptant"
+          label="Confirmation du créneau"
           value={formatApplicationDate(appointment.actualAt)}
         />
       </dl>
@@ -797,11 +802,11 @@ function SummaryMetric({
   badgeClassName?: string;
 }) {
   const content = href ? (
-    <Link href={href} className="font-semibold text-accent hover:underline">
+    <Link href={href} className="block min-w-0 truncate font-semibold text-accent hover:underline">
       {value}
     </Link>
   ) : (
-    <span className="font-semibold text-foreground">{value}</span>
+    <span className="block min-w-0 truncate font-semibold text-foreground">{value}</span>
   );
 
   return (
@@ -841,11 +846,11 @@ function SummaryIndicator({
   badgeClassName?: string;
 }) {
   const content = href ? (
-    <Link href={href} className="font-semibold text-accent hover:underline">
+    <Link href={href} className="block min-w-0 truncate font-semibold text-accent hover:underline">
       {value}
     </Link>
   ) : (
-    <span className="font-semibold">{value}</span>
+    <span className="block min-w-0 truncate font-semibold">{value}</span>
   );
 
   return (
@@ -1137,7 +1142,7 @@ function getAdopterJourneySteps({
             : "Aucun créneau RV dédié n'est disponible.",
     },
     {
-      label: "Créneaux RV validés",
+      label: "Créneaux RV confirmés",
       state: reservationEventsError
         ? "needs_check"
         : hasBothValidatedAppointments
@@ -1148,10 +1153,10 @@ function getAdopterJourneySteps({
       detail: reservationEventsError
         ? "Événements liés indisponibles."
         : hasBothValidatedAppointments
-          ? "Les deux rendez-vous sont validés par l'adoptant."
+          ? "Les deux rendez-vous sont confirmés par l'adoptant."
           : hasAnyAppointmentProposal || hasAnyValidatedAppointment
-            ? "Validation partielle ou à confirmer."
-            : "Aucune validation de créneau visible.",
+            ? "Confirmation partielle ou à vérifier."
+            : "Aucune confirmation de créneau visible.",
     },
     {
       label: "Solde réglé — adoption effective",
@@ -1988,7 +1993,7 @@ export default async function ReservationDetailPage({
   ];
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
+    <main className="mx-auto min-h-screen w-full min-w-0 max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div>
         {readError ? (
           <ErrorMessage />
@@ -2144,7 +2149,7 @@ export default async function ReservationDetailPage({
             </section>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="flex flex-col gap-6">
+              <div className="flex min-w-0 flex-col gap-6">
                 <section id="appointments" className="order-[35] rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
                   <div className="flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-start">
                     <div>
@@ -3577,6 +3582,7 @@ export default async function ReservationDetailPage({
 
                   {!reservationIsFinal ? (
                     <ReservationFinanceDialogs
+                      buttonClassName="w-full justify-center whitespace-normal text-center sm:w-auto"
                       paymentForm={
                         <div className="space-y-6">
                           <FinancialBalanceNotice
