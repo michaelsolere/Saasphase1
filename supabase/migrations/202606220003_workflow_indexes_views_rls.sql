@@ -261,20 +261,40 @@ declare
   v_email_matches uuid[];
   v_phone_matches uuid[];
   v_internal_status text;
+  v_first_name text := nullif(btrim(p_first_name), '');
+  v_last_name text := nullif(btrim(p_last_name), '');
   v_email text := nullif(lower(btrim(p_email)), '');
   v_phone text := nullif(regexp_replace(coalesce(p_phone, ''), '[^0-9+]', '', 'g'), '');
+  v_raw_phone text := nullif(btrim(p_phone), '');
+  v_address_line1 text := nullif(btrim(p_address_line1), '');
+  v_postal_code text := nullif(btrim(p_postal_code), '');
+  v_city text := nullif(btrim(p_city), '');
+  v_project_description text := nullif(btrim(p_project_description), '');
   v_display_name text;
 begin
-  if not p_consent_data_processing then
-    raise exception 'Data processing consent is required'
-      using errcode = '23514';
-  end if;
-
-  if p_desired_sex_preference not in (
-    'male_only', 'female_only', 'male_preferred_female_possible',
-    'female_preferred_male_possible', 'no_preference', 'unknown'
-  ) then
-    raise exception 'Invalid desired_sex_preference'
+  if v_first_name is null
+    or v_last_name is null
+    or v_email is null
+    or v_email !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+    or v_raw_phone is null
+    or v_raw_phone !~ '^[+()0-9 .-]{8,25}$'
+    or v_phone is null
+    or length(v_phone) < 8
+    or length(v_phone) > 25
+    or v_address_line1 is null
+    or v_postal_code is null
+    or v_city is null
+    or p_desired_sex_preference is null
+    or p_desired_sex_preference not in (
+      'male_only', 'female_only', 'male_preferred_female_possible',
+      'female_preferred_male_possible'
+    )
+    or v_project_description is null
+    or char_length(v_project_description) < 20
+    or not coalesce(p_consent_data_processing, false)
+    or not coalesce(p_consent_contact, false)
+  then
+    raise exception 'Invalid public application submission'
       using errcode = '23514';
   end if;
 

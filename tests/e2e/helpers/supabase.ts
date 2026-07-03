@@ -47,6 +47,13 @@ function requiredEnv(name: string) {
 
 export type SupabaseTestClient = SupabaseClient<Database>;
 
+export function createAnonymousSupabaseClient() {
+  return createClient<Database>(
+    requiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requiredEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+  );
+}
+
 export async function createAuthenticatedSupabaseClient() {
   const supabase = createClient<Database>(
     requiredEnv("NEXT_PUBLIC_SUPABASE_URL"),
