@@ -645,7 +645,7 @@ values (
   '60000000-0000-4000-8000-000000000001',
   '20000000-0000-4000-8000-000000000001',
   'Candidature Golden Retriever',
-  'golden-retriever',
+  'golden-retriever-2026',
   'adoption_application',
   'dog',
   'Golden Retriever',
