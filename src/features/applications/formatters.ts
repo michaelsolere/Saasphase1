@@ -5,7 +5,7 @@ const statusLabels: Record<string, string> = {
   qualified: "Qualifiée",
   waiting_litter: "En attente de portée",
   rejected: "Refusée",
-  withdrawn: "Retirée",
+  withdrawn: "Non aboutie",
   archived: "Archivée",
 };
 

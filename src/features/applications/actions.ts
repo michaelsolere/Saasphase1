@@ -41,6 +41,13 @@ function detailUrl(applicationId: string, outcome: "success" | "error") {
   return `/candidatures/${applicationId}?action=${outcome}`;
 }
 
+function detailUrlWithNoteStatus(
+  applicationId: string,
+  noteOutcome: "success" | "error",
+) {
+  return `/candidatures/${applicationId}?action=success&note_status=${noteOutcome}`;
+}
+
 function reservationUrl(
   applicationId: string,
   outcome: "created" | "already_exists" | "not_qualified" | "error",
@@ -203,6 +210,10 @@ export async function createApplicationForContact(formData: FormData) {
 export async function updateApplicationStatus(formData: FormData) {
   const applicationId = formData.get("application_id");
   const requestedAction = formData.get("qualification_action");
+  const statusReason = normalizeOptionalText(
+    formData.get("status_reason"),
+    500,
+  );
 
   if (
     typeof applicationId !== "string" ||
@@ -223,7 +234,7 @@ export async function updateApplicationStatus(formData: FormData) {
 
   const { data: application, error: readError } = await supabase
     .from("applications")
-    .select("id, status")
+    .select("id, organization_id, status")
     .eq("id", applicationId)
     .maybeSingle();
 
@@ -269,6 +280,25 @@ export async function updateApplicationStatus(formData: FormData) {
 
   revalidatePath("/candidatures");
   revalidatePath(`/candidatures/${applicationId}`);
+
+  if (statusReason) {
+    const { error: noteError } = await supabase.from("notes").insert({
+      application_id: applicationId,
+      organization_id: application.organization_id,
+      body: `Changement de statut : ${application.status} → ${nextStatus}\nRaison : ${statusReason}`,
+      note_type: "decision",
+      visibility: "internal",
+      created_by: user.id,
+      updated_by: user.id,
+    });
+
+    if (noteError) {
+      redirect(detailUrlWithNoteStatus(applicationId, "error"));
+    }
+
+    redirect(detailUrlWithNoteStatus(applicationId, "success"));
+  }
+
   redirect(detailUrl(applicationId, "success"));
 }
 

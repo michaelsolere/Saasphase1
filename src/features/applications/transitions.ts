@@ -1,6 +1,8 @@
 export const actionTargets = {
   archive: "archived",
+  mark_unsuccessful: "withdrawn",
   qualify: "qualified",
+  reactivate: "to_review",
   reject: "rejected",
   to_call: "to_call",
 } as const;
@@ -11,9 +13,9 @@ export const transitions: Record<string, QualificationAction[]> = {
   new: ["to_call", "qualify", "reject", "archive"],
   to_review: ["to_call", "qualify", "reject", "archive"],
   to_call: ["qualify", "reject", "archive"],
-  qualified: ["archive"],
-  waiting_litter: ["archive"],
-  rejected: ["archive"],
-  withdrawn: ["archive"],
-  archived: [],
+  qualified: ["mark_unsuccessful", "archive"],
+  waiting_litter: ["mark_unsuccessful", "archive"],
+  rejected: ["reactivate", "archive"],
+  withdrawn: ["reactivate", "archive"],
+  archived: ["reactivate"],
 };

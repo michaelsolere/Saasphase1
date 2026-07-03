@@ -139,6 +139,38 @@ function DetailItem({
   );
 }
 
+function getApplicationStatusClassName(status: string | null) {
+  if (status === "new" || status === "to_review" || status === "to_call") {
+    return "w-fit rounded-full bg-accent px-3 py-1.5 text-sm font-semibold text-white";
+  }
+
+  if (status === "qualified" || status === "waiting_litter") {
+    return "w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-semibold text-emerald-950";
+  }
+
+  if (status === "rejected" || status === "withdrawn" || status === "archived") {
+    return "w-fit rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-950";
+  }
+
+  return "w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted";
+}
+
+function getApplicationStatusHint(status: string | null) {
+  if (status === "qualified" || status === "waiting_litter") {
+    return "Candidature validée : elle peut rester active ou être marquée non aboutie si le dossier s’arrête.";
+  }
+
+  if (status === "rejected" || status === "withdrawn" || status === "archived") {
+    return "Candidature non aboutie : elle peut être réactivée vers À valider si le dossier reprend.";
+  }
+
+  if (status === "new" || status === "to_review" || status === "to_call") {
+    return "Candidature à valider : choisissez la prochaine étape après relecture.";
+  }
+
+  return "Statut actuel de la candidature.";
+}
+
 export default async function ApplicationDetailPage({
   params,
   searchParams,
@@ -393,7 +425,7 @@ export default async function ApplicationDetailPage({
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Candidature · Lecture seule
+                  Candidature · Cycle de vie
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
                   {application.contact_display_name ??
@@ -407,11 +439,7 @@ export default async function ApplicationDetailPage({
                 </p>
               </div>
               <span
-                className={
-                  application.status === "to_review"
-                    ? "w-fit rounded-full bg-accent px-3 py-1.5 text-sm font-semibold text-white"
-                    : "w-fit rounded-full border bg-surface px-3 py-1.5 text-sm font-semibold text-muted"
-                }
+                className={getApplicationStatusClassName(application.status)}
               >
                 {getApplicationStatusLabel(application.status)}
               </span>
@@ -423,7 +451,11 @@ export default async function ApplicationDetailPage({
                   <div>
                     <h2 className="font-semibold">Qualification</h2>
                     <p className="mt-1 text-sm text-muted">
-                      Choisissez la prochaine étape de cette candidature.
+                      État actuel :{" "}
+                      <span className="font-semibold text-foreground">
+                        {getApplicationStatusLabel(application.status)}
+                      </span>
+                      . {getApplicationStatusHint(application.status)}
                     </p>
                   </div>
                   <QualificationActions
