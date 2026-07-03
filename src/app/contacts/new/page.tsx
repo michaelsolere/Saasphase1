@@ -42,7 +42,6 @@ function Field({
 }
 
 const initialRoleOptions = [
-  ["prospect", "Candidat"],
   ["candidate", "Candidat"],
   ["pre_reservation_holder", "Titulaire de pré-réservation"],
   ["reservation_holder", "Titulaire de réservation"],
@@ -206,6 +205,9 @@ export default async function NewContactPage({
                 </option>
               ))}
             </select>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Ce rôle qualifie la fiche contact. Il ne crée pas de candidature.
+            </p>
           </div>
         </div>
 
