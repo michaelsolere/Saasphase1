@@ -246,14 +246,14 @@ function sectionHasActiveItem(
 
 function parseStoredOpenSections(value: string | null) {
   if (!value) {
-    return new Set<string>();
+    return null;
   }
 
   try {
     const parsed = JSON.parse(value);
 
     if (!Array.isArray(parsed)) {
-      return new Set<string>();
+      return null;
     }
 
     return new Set(
@@ -263,8 +263,16 @@ function parseStoredOpenSections(value: string | null) {
       ),
     );
   } catch {
-    return new Set<string>();
+    return null;
   }
+}
+
+function getDefaultOpenSections(pathname: string, search: string) {
+  return new Set(
+    sections
+      .filter((section) => section.items && sectionHasActiveItem(pathname, search, section))
+      .map((section) => section.label),
+  );
 }
 
 function SidebarLink({
@@ -341,16 +349,18 @@ export function MainSidebar({
   const navRef = useRef<HTMLElement | null>(null);
   const [logoutPending, startLogoutTransition] = useTransition();
   const [openSections, setOpenSections] = useState<Set<string>>(
-    () => new Set(),
+    () => getDefaultOpenSections(pathname, currentSearch),
   );
 
   useEffect(() => {
     window.requestAnimationFrame(() => {
-      setOpenSections(
-        parseStoredOpenSections(
-          window.sessionStorage.getItem(openSectionsStorageKey),
-        ),
+      const storedOpenSections = parseStoredOpenSections(
+        window.sessionStorage.getItem(openSectionsStorageKey),
       );
+
+      if (storedOpenSections) {
+        setOpenSections(storedOpenSections);
+      }
     });
   }, []);
 
@@ -486,7 +496,7 @@ export function MainSidebar({
               section,
             );
             const sectionOpen =
-              !collapsed && (active || openSections.has(section.label));
+              !collapsed && openSections.has(section.label);
 
             if (section.href) {
               return (
