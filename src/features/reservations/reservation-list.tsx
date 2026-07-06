@@ -106,25 +106,25 @@ export function ReservationList({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <p className="text-sm font-medium text-muted">
         {reservations.length} parcours adoptant
         {reservations.length > 1 ? "s" : ""} affiché
         {reservations.length > 1 ? "s" : ""}
       </p>
-      <div className="overflow-hidden rounded-2xl border bg-surface">
+      <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
-            <thead className="border-b bg-background text-xs font-semibold uppercase tracking-wide text-muted">
+          <table className="w-full min-w-[1080px] border-collapse text-left text-sm text-foreground">
+            <thead className="border-b border-border text-xs font-semibold uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-5 py-4">Adoptant</th>
-                <th className="px-5 py-4">Portée / Groupe</th>
-                <th className="px-5 py-4">Préférence</th>
-                <th className="px-5 py-4">Statut</th>
-                <th className="px-5 py-4">Rang</th>
-                <th className="px-5 py-4">Tarif</th>
-                <th className="px-5 py-4">Paiements</th>
-                <th className="px-5 py-4">Animal</th>
+                <th className="bg-background px-4 py-3">Adoptant</th>
+                <th className="bg-background px-4 py-3">Portée / Groupe</th>
+                <th className="bg-background px-4 py-3">Préférence</th>
+                <th className="bg-background px-4 py-3">Statut</th>
+                <th className="bg-background px-4 py-3">Rang</th>
+                <th className="bg-background px-4 py-3">Tarif</th>
+                <th className="bg-background px-4 py-3">Paiements</th>
+                <th className="bg-background px-4 py-3">Animal</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -132,9 +132,12 @@ export function ReservationList({
                 const targetLitter = res.litter_name || res.litter_group_name || "Non précisée";
                 const paymentSummary = getPaymentSummary(res);
                 return (
-                  <tr key={res.id ?? index}>
-                    <td className="px-5 py-5 align-top font-medium">
-                      <div className="flex flex-col items-start gap-2">
+                  <tr
+                    key={res.id ?? index}
+                    className="transition-colors hover:bg-background"
+                  >
+                    <td className="px-4 py-3 align-top font-medium">
+                      <div className="flex flex-col items-start gap-1.5">
                         {res.contact_id ? (
                           <Link
                             href={`/contacts/${res.contact_id}`}
@@ -151,46 +154,46 @@ export function ReservationList({
                             aria-label={`Ouvrir le parcours adoptant ${
                               res.contact_display_name ?? ""
                             }`}
-                            className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                            className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
                           >
                             Parcours
                           </Link>
                         ) : null}
                       </div>
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       {targetLitter}
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       {getSexPreferenceLabel(res.reserved_sex_preference)}
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       <span
                         className={
                           res.status === "active" || res.status === "confirmed_after_birth" || res.status === "animal_assigned"
-                            ? "inline-flex rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-white"
-                            : "inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold text-muted"
+                            ? "inline-flex rounded-full border border-border bg-accent-soft px-2.5 py-0.5 text-xs font-semibold text-accent"
+                            : "inline-flex rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-semibold text-muted"
                         }
                       >
                         {getReservationStatusLabel(res.status)}
                       </span>
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       <div>{formatRankLabel(res.rank_active)}</div>
                       {res.rank_initial && res.rank_initial !== res.rank_active ? (
-                        <div className="mt-1 text-xs text-muted">
+                        <div className="mt-0.5 text-xs text-muted">
                           Initial : #{res.rank_initial}
                         </div>
                       ) : res.rank_initial ? (
-                        <div className="mt-1 text-xs text-muted">
+                        <div className="mt-0.5 text-xs text-muted">
                           Initial conservé
                         </div>
                       ) : null}
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       {formatPrice(res.price_cents, res.currency)}
                     </td>
-                    <td className="px-5 py-5 align-top">
+                    <td className="px-4 py-3 align-top">
                       <div
                         className={`font-medium ${getPaymentToneClassName(
                           paymentSummary.tone,
@@ -198,11 +201,11 @@ export function ReservationList({
                       >
                         {paymentSummary.primary}
                       </div>
-                      <div className="mt-1 text-xs text-muted">
+                      <div className="mt-0.5 text-xs text-muted">
                         {paymentSummary.secondary}
                       </div>
                     </td>
-                    <td className="px-5 py-5 align-top text-muted">
+                    <td className="px-4 py-3 align-top text-muted">
                       {res.animal_display_name ?? "Non attribué"}
                     </td>
                   </tr>
