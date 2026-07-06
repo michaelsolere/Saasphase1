@@ -1,17 +1,93 @@
 import Link from "next/link";
 
-import {
-  formatApplicationDate,
-  getSexPreferenceLabel,
-} from "@/features/applications/formatters";
+import { getSexPreferenceLabel } from "@/features/applications/formatters";
 import {
   formatPrice,
-  getPreReservationDepositBadgeClassName,
-  getPreReservationDepositLabel,
-  getPreReservationDepositStateFromStatus,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
+
+function formatRankLabel(rank: number | null) {
+  return rank ? `#${rank}` : "Non défini";
+}
+
+function getPaymentSummary(reservation: ReservationOverview) {
+  const paidCents = reservation.paid_cents ?? 0;
+  const refundedCents = reservation.refunded_cents ?? 0;
+  const priceCents = reservation.price_cents;
+  const currency = reservation.currency;
+
+  if (priceCents === null || priceCents === undefined) {
+    return {
+      primary:
+        paidCents > 0
+          ? `Payé : ${formatPrice(paidCents, currency)}`
+          : "Aucun paiement",
+      secondary:
+        refundedCents > 0
+          ? `Remboursé : ${formatPrice(refundedCents, currency)}`
+          : "Solde non déterminé",
+      tone: "muted",
+    };
+  }
+
+  const remainingBalanceCents = priceCents - paidCents + refundedCents;
+
+  if (remainingBalanceCents > 0) {
+    return {
+      primary:
+        paidCents > 0
+          ? `Payé : ${formatPrice(paidCents, currency)}`
+          : reservation.status === "pre_reservation_requested"
+            ? "Paiement demandé"
+            : "Aucun paiement",
+      secondary: `Reste à régler : ${formatPrice(
+        remainingBalanceCents,
+        currency,
+      )}`,
+      tone: "warning",
+    };
+  }
+
+  if (remainingBalanceCents === 0) {
+    return {
+      primary: "Soldé",
+      secondary:
+        paidCents > 0
+          ? `Payé : ${formatPrice(paidCents, currency)}`
+          : "Aucun paiement attendu",
+      tone: "success",
+    };
+  }
+
+  return {
+    primary: `Trop-perçu : ${formatPrice(
+      Math.abs(remainingBalanceCents),
+      currency,
+    )}`,
+    secondary:
+      refundedCents > 0
+        ? `Remboursé : ${formatPrice(refundedCents, currency)}`
+        : `Payé : ${formatPrice(paidCents, currency)}`,
+    tone: "danger",
+  };
+}
+
+function getPaymentToneClassName(tone: string) {
+  if (tone === "success") {
+    return "text-emerald-700";
+  }
+
+  if (tone === "warning") {
+    return "text-amber-700";
+  }
+
+  if (tone === "danger") {
+    return "text-rose-700";
+  }
+
+  return "text-muted";
+}
 
 export function ReservationList({
   reservations,
@@ -38,24 +114,23 @@ export function ReservationList({
       </p>
       <div className="overflow-hidden rounded-2xl border bg-surface">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1020px] border-collapse text-left text-sm">
+          <table className="w-full min-w-[1080px] border-collapse text-left text-sm">
             <thead className="border-b bg-background text-xs font-semibold uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-5 py-4">Client</th>
+                <th className="px-5 py-4">Adoptant</th>
                 <th className="px-5 py-4">Portée / Groupe</th>
                 <th className="px-5 py-4">Préférence</th>
                 <th className="px-5 py-4">Statut</th>
-                <th className="px-5 py-4">Paiement 250 €</th>
+                <th className="px-5 py-4">Rang</th>
                 <th className="px-5 py-4">Tarif</th>
+                <th className="px-5 py-4">Paiements</th>
                 <th className="px-5 py-4">Animal</th>
-                <th className="px-5 py-4">Date de création</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {reservations.map((res, index) => {
                 const targetLitter = res.litter_name || res.litter_group_name || "Non précisée";
-                const preReservationDepositState =
-                  getPreReservationDepositStateFromStatus(res.status);
+                const paymentSummary = getPaymentSummary(res);
                 return (
                   <tr key={res.id ?? index}>
                     <td className="px-5 py-5 align-top font-medium">
@@ -101,63 +176,34 @@ export function ReservationList({
                       </span>
                     </td>
                     <td className="px-5 py-5 align-top">
-                      <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
-                          preReservationDepositState,
-                        )}`}
-                      >
-                        {getPreReservationDepositLabel(
-                          preReservationDepositState,
-                        )}
-                      </span>
-                    </td>
-                    <td className="px-5 py-5 align-top">
-                      <div>{formatPrice(res.price_cents, res.currency)}</div>
-                      {res.paid_cents !== null && res.paid_cents !== undefined && res.paid_cents > 0 ? (
-                        <div className="mt-1 text-xs text-emerald-700">
-                          Payé : {formatPrice(res.paid_cents, res.currency)}
+                      <div>{formatRankLabel(res.rank_active)}</div>
+                      {res.rank_initial && res.rank_initial !== res.rank_active ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Initial : #{res.rank_initial}
+                        </div>
+                      ) : res.rank_initial ? (
+                        <div className="mt-1 text-xs text-muted">
+                          Initial conservé
                         </div>
                       ) : null}
-                      {(() => {
-                        const priceCents = res.price_cents;
-                        const paidCents = res.paid_cents ?? 0;
-                        const refundedCents = res.refunded_cents ?? 0;
-
-                        if (priceCents === null) {
-                          return (
-                            <div className="mt-1 text-xs text-muted/60">
-                              Solde non déterminé
-                            </div>
-                          );
-                        }
-
-                        const remainingBalanceCents = priceCents - paidCents + refundedCents;
-                        if (remainingBalanceCents > 0) {
-                          return (
-                            <div className="mt-1 text-xs text-amber-700">
-                              Reste à régler : {formatPrice(remainingBalanceCents, res.currency)}
-                            </div>
-                          );
-                        } else if (remainingBalanceCents === 0) {
-                          return (
-                            <div className="mt-1 text-xs text-emerald-700 font-medium">
-                              Soldé
-                            </div>
-                          );
-                        } else {
-                          return (
-                            <div className="mt-1 text-xs text-rose-700">
-                              Trop-perçu : {formatPrice(Math.abs(remainingBalanceCents), res.currency)}
-                            </div>
-                          );
-                        }
-                      })()}
+                    </td>
+                    <td className="px-5 py-5 align-top">
+                      {formatPrice(res.price_cents, res.currency)}
+                    </td>
+                    <td className="px-5 py-5 align-top">
+                      <div
+                        className={`font-medium ${getPaymentToneClassName(
+                          paymentSummary.tone,
+                        )}`}
+                      >
+                        {paymentSummary.primary}
+                      </div>
+                      <div className="mt-1 text-xs text-muted">
+                        {paymentSummary.secondary}
+                      </div>
                     </td>
                     <td className="px-5 py-5 align-top text-muted">
                       {res.animal_display_name ?? "Non attribué"}
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
-                      {formatApplicationDate(res.created_at)}
                     </td>
                   </tr>
                 );
