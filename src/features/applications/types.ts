@@ -6,6 +6,7 @@ type ApplicationOverviewRow =
 export type ApplicationOverview = Pick<
   ApplicationOverviewRow,
   | "id"
+  | "contact_id"
   | "contact_display_name"
   | "contact_email"
   | "contact_phone"

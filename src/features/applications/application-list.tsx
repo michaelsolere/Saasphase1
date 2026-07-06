@@ -70,41 +70,66 @@ export function ApplicationList({
         <table className="w-full min-w-[980px] border-collapse text-left text-sm">
           <thead className="border-b bg-background text-xs font-semibold uppercase tracking-wide text-muted">
             <tr>
-              <th className="px-5 py-4">Reçue le</th>
-              <th className="px-5 py-4">Contact</th>
+              <th className="px-5 py-4">Candidat</th>
               <th className="px-5 py-4">Coordonnées</th>
+              <th className="px-5 py-4">Statut</th>
               <th className="px-5 py-4">Préférence</th>
               <th className="px-5 py-4">Projet</th>
               <th className="px-5 py-4">Décision</th>
+              <th className="px-5 py-4">Reçue le</th>
               <th className="px-5 py-4">Source</th>
-              <th className="px-5 py-4">Statut</th>
-              <th className="px-5 py-4">
-                <span className="sr-only">Ouvrir</span>
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {applications.map((application) => {
               const isToValidate = isToValidateStatus(application.status);
+              const candidateName =
+                application.contact_display_name ?? "Nom non disponible";
 
               return (
                 <tr
                   key={application.id}
                   className={isToValidate ? "bg-accent-soft/35" : undefined}
                 >
-                  <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
-                    {formatApplicationDate(
-                      application.submitted_at ?? application.created_at,
-                    )}
-                  </td>
                   <td className="px-5 py-5 align-top font-medium">
-                    {application.contact_display_name ?? "Nom non disponible"}
+                    <div className="flex flex-col items-start gap-2">
+                      {application.contact_id ? (
+                        <Link
+                          href={`/contacts/${application.contact_id}`}
+                          className="text-accent hover:underline"
+                        >
+                          {candidateName}
+                        </Link>
+                      ) : (
+                        <span>{candidateName}</span>
+                      )}
+                      {application.id ? (
+                        <Link
+                          href={`/candidatures/${application.id}`}
+                          aria-label={`Ouvrir la candidature de ${candidateName}`}
+                          className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        >
+                          Candidature
+                        </Link>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-5 py-5 align-top">
                     <div>{application.contact_email ?? "Email non renseigné"}</div>
                     <div className="mt-1 text-muted">
                       {application.contact_phone ?? "Téléphone non renseigné"}
                     </div>
+                  </td>
+                  <td className="px-5 py-5 align-top">
+                    <span
+                      className={
+                        isToValidate
+                          ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+                          : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
+                      }
+                    >
+                      {getApplicationStatusLabel(application.status)}
+                    </span>
                   </td>
                   <td className="px-5 py-5 align-top">
                     {getSexPreferenceLabel(application.desired_sex_preference)}
@@ -121,35 +146,15 @@ export function ApplicationList({
                       <span className="text-muted">-</span>
                     )}
                   </td>
+                  <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
+                    {formatApplicationDate(
+                      application.submitted_at ?? application.created_at,
+                    )}
+                  </td>
                   <td className="px-5 py-5 align-top">
                     {application.public_form_name ??
                       application.public_form_slug ??
                       "Source non précisée"}
-                  </td>
-                  <td className="px-5 py-5 align-top">
-                    <span
-                      className={
-                        isToValidate
-                          ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
-                          : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
-                      }
-                    >
-                      {getApplicationStatusLabel(application.status)}
-                    </span>
-                  </td>
-                  <td className="px-5 py-5 text-right align-top">
-                    {application.id ? (
-                      <Link
-                        href={`/candidatures/${application.id}`}
-                        aria-label={`Ouvrir la candidature de ${
-                          application.contact_display_name ??
-                          "ce contact"
-                        }`}
-                        className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
                   </td>
                 </tr>
               );
