@@ -447,7 +447,7 @@ export default async function ApplicationDetailPage({
                 role="alert"
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
-                Seule une candidature qualifiée peut créer une demande de
+                Seule une candidature validée peut créer une demande de
                 pré-réservation. Vérifiez d’abord le statut de qualification.
               </p>
             ) : null}
@@ -515,7 +515,7 @@ export default async function ApplicationDetailPage({
               <section className="border-b py-6">
                 <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
                   <div>
-                    <h2 className="font-semibold">Qualification</h2>
+                    <h2 className="font-semibold">Statut de la candidature</h2>
                     <p className="mt-1 text-sm text-muted">
                       État actuel :{" "}
                       <span className="font-semibold text-foreground">
@@ -609,7 +609,7 @@ export default async function ApplicationDetailPage({
                         Réservations liées
                       </h2>
                       <p className="mt-2 text-sm text-muted">
-                        Une candidature qualifiée peut créer une demande de
+                        Une candidature validée peut créer une demande de
                         pré-réservation. Elle sera ajoutée ici, sans
                         paiement, document ou attribution animal.
                       </p>

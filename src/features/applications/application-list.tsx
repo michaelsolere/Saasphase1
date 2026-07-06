@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { ApplicationProjectDialog } from "@/features/applications/application-project-dialog";
+import { ApplicationStatusActionDialog } from "@/features/applications/application-status-action-dialog";
 import {
   formatApplicationDate,
   getApplicationStatusLabel,
@@ -9,22 +11,6 @@ import type {
   ApplicationFilter,
   ApplicationOverview,
 } from "@/features/applications/types";
-
-function getProjectExcerpt(value: string | null) {
-  if (!value) {
-    return "Projet non renseigné";
-  }
-
-  return value.length > 180 ? `${value.slice(0, 177).trimEnd()}…` : value;
-}
-
-function getDecisionExcerpt(value: string | null | undefined) {
-  if (!value) {
-    return null;
-  }
-
-  return value.length > 90 ? `${value.slice(0, 87).trimEnd()}…` : value;
-}
 
 function getEmptyMessage(filter: ApplicationFilter) {
   if (filter === "to_validate") {
@@ -44,6 +30,22 @@ function getEmptyMessage(filter: ApplicationFilter) {
 
 function isToValidateStatus(status: string | null) {
   return status === "new" || status === "to_review" || status === "to_call";
+}
+
+function getReturnPath(filter: ApplicationFilter) {
+  if (filter === "validated") {
+    return "/candidatures?filtre=validees";
+  }
+
+  if (filter === "unsuccessful") {
+    return "/candidatures?filtre=non-abouties";
+  }
+
+  if (filter === "all") {
+    return "/candidatures?filtre=toutes";
+  }
+
+  return "/candidatures";
 }
 
 export function ApplicationList({
@@ -67,7 +69,7 @@ export function ApplicationList({
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-surface">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[980px] border-collapse text-left text-sm text-foreground">
+        <table className="w-full min-w-[900px] border-collapse text-left text-sm text-foreground">
           <thead className="border-b border-border text-xs font-semibold uppercase tracking-wide text-muted">
             <tr>
               <th className="bg-background px-4 py-3">Candidat</th>
@@ -75,7 +77,6 @@ export function ApplicationList({
               <th className="bg-background px-4 py-3">Statut</th>
               <th className="bg-background px-4 py-3">Préférence</th>
               <th className="bg-background px-4 py-3">Projet</th>
-              <th className="bg-background px-4 py-3">Décision</th>
               <th className="bg-background px-4 py-3">Reçue le</th>
               <th className="bg-background px-4 py-3">Source</th>
             </tr>
@@ -121,30 +122,32 @@ export function ApplicationList({
                     </div>
                   </td>
                   <td className="px-4 py-3 align-top">
-                    <span
-                      className={
-                        isToValidate
-                          ? "inline-flex rounded-full border border-border bg-accent-soft px-2.5 py-0.5 text-xs font-semibold text-accent"
-                          : "inline-flex rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-semibold text-muted"
-                      }
-                    >
-                      {getApplicationStatusLabel(application.status)}
-                    </span>
+                    <div className="flex max-w-[220px] flex-col items-start gap-1.5">
+                      <span
+                        className={
+                          isToValidate
+                            ? "inline-flex rounded-full border border-border bg-accent-soft px-2.5 py-0.5 text-xs font-semibold text-accent"
+                            : "inline-flex rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs font-semibold text-muted"
+                        }
+                      >
+                        {getApplicationStatusLabel(application.status)}
+                      </span>
+                      {isToValidate && application.id ? (
+                        <ApplicationStatusActionDialog
+                          applicationId={application.id}
+                          returnPath={getReturnPath(filter)}
+                        />
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-4 py-3 align-top">
                     {getSexPreferenceLabel(application.desired_sex_preference)}
                   </td>
-                  <td className="max-w-sm px-4 py-3 align-top text-xs leading-5 text-muted">
-                    {getProjectExcerpt(application.project_description)}
-                  </td>
-                  <td className="max-w-xs px-4 py-3 align-top text-xs">
-                    {application.decision_note_preview ? (
-                      <p className="leading-5 text-muted">
-                        {getDecisionExcerpt(application.decision_note_preview)}
-                      </p>
-                    ) : (
-                      <span className="text-muted">-</span>
-                    )}
+                  <td className="px-4 py-3 align-top">
+                    <ApplicationProjectDialog
+                      candidateName={candidateName}
+                      projectDescription={application.project_description}
+                    />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 align-top text-muted">
                     {formatApplicationDate(

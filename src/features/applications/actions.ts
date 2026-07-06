@@ -48,6 +48,39 @@ function detailUrlWithNoteStatus(
   return `/candidatures/${applicationId}?action=success&note_status=${noteOutcome}`;
 }
 
+function normalizeApplicationReturnPath(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  if (value === "/candidatures" || value.startsWith("/candidatures?")) {
+    return value;
+  }
+
+  return null;
+}
+
+function applicationStatusRedirectUrl({
+  applicationId,
+  noteOutcome,
+  returnPath,
+}: {
+  applicationId: string;
+  noteOutcome?: "success" | "error";
+  returnPath: string | null;
+}) {
+  if (!returnPath) {
+    return noteOutcome
+      ? detailUrlWithNoteStatus(applicationId, noteOutcome)
+      : detailUrl(applicationId, "success");
+  }
+
+  const separator = returnPath.includes("?") ? "&" : "?";
+  const noteParam = noteOutcome ? `&note_status=${noteOutcome}` : "";
+
+  return `${returnPath}${separator}action=success${noteParam}`;
+}
+
 function reservationUrl(
   applicationId: string,
   outcome: "created" | "already_exists" | "not_qualified" | "error",
@@ -214,6 +247,7 @@ export async function updateApplicationStatus(formData: FormData) {
     formData.get("status_reason"),
     500,
   );
+  const returnPath = normalizeApplicationReturnPath(formData.get("return_path"));
 
   if (
     typeof applicationId !== "string" ||
@@ -293,13 +327,25 @@ export async function updateApplicationStatus(formData: FormData) {
     });
 
     if (noteError) {
-      redirect(detailUrlWithNoteStatus(applicationId, "error"));
+      redirect(
+        applicationStatusRedirectUrl({
+          applicationId,
+          noteOutcome: "error",
+          returnPath,
+        }),
+      );
     }
 
-    redirect(detailUrlWithNoteStatus(applicationId, "success"));
+    redirect(
+      applicationStatusRedirectUrl({
+        applicationId,
+        noteOutcome: "success",
+        returnPath,
+      }),
+    );
   }
 
-  redirect(detailUrl(applicationId, "success"));
+  redirect(applicationStatusRedirectUrl({ applicationId, returnPath }));
 }
 
 export async function createReservationFromApplication(formData: FormData) {

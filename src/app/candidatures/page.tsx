@@ -85,9 +85,11 @@ export default async function ApplicationsPage({
   searchParams,
 }: {
   searchParams: Promise<{
+    action?: string;
     connexion?: string;
     erreur?: string;
     filtre?: string;
+    note_status?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -197,6 +199,28 @@ export default async function ApplicationsPage({
             className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
           >
             Connexion réussie.
+          </p>
+        ) : null}
+
+        {params.action === "success" ? (
+          <p
+            role="status"
+            className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+          >
+            Le statut de la candidature a bien été mis à jour.
+            {params.note_status === "success"
+              ? " La note interne a bien été ajoutée."
+              : null}
+          </p>
+        ) : null}
+
+        {params.note_status === "error" ? (
+          <p
+            role="alert"
+            className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          >
+            Le statut a été mis à jour, mais la note interne n’a pas pu être
+            ajoutée.
           </p>
         ) : null}
 
