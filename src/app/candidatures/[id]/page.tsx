@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { JourneyTimeline, type JourneyStep } from "@/components/journey-timeline";
 import {
   formatApplicationDate,
   getApplicationStatusLabel,
@@ -185,6 +186,41 @@ function getApplicationStatusHint(status: string | null) {
   return "Statut actuel de la candidature.";
 }
 
+function getCandidateJourneySteps(application: ApplicationDetail): JourneyStep[] {
+  const hasLinkedContact = Boolean(application.contact_id);
+  const isQualified =
+    application.status === "qualified" || application.status === "waiting_litter";
+
+  return [
+    {
+      label: "Contact créé",
+      state: hasLinkedContact ? "done" : "unknown",
+      detail: hasLinkedContact
+        ? "La candidature est reliée à une fiche contact."
+        : "Aucun contact lié n'est visible sur cette candidature.",
+    },
+    {
+      label: "Candidature validée",
+      state: isQualified ? "done" : "unknown",
+      detail: isQualified
+        ? "Le statut de candidature permet la suite du parcours."
+        : "Validation en attente de qualification éleveur.",
+    },
+    {
+      label: "Email confirmation de saillie",
+      state: "upcoming",
+      stateLabel: "À suivre",
+      detail: "Jalon affiché sans automatisation ni trace d'envoi.",
+    },
+    {
+      label: "Email confirmation de gestation envoyé",
+      state: "upcoming",
+      stateLabel: "À suivre",
+      detail: "Jalon affiché sans automatisation ni trace d'envoi.",
+    },
+  ];
+}
+
 export default async function ApplicationDetailPage({
   params,
   searchParams,
@@ -317,6 +353,9 @@ export default async function ApplicationDetailPage({
     []) as ApplicationLitter[];
   const desiredScopeGroups = (availableGroups ??
     []) as ApplicationLitterGroup[];
+  const candidateJourneySteps = application
+    ? getCandidateJourneySteps(application)
+    : [];
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -463,6 +502,14 @@ export default async function ApplicationDetailPage({
                 {getApplicationStatusLabel(application.status)}
               </span>
             </header>
+
+            <JourneyTimeline
+              description="Synthèse indicative des grandes étapes avant entrée dans le parcours adoptant."
+              footer="La suite du dossier se poursuit dans le Parcours adoptant après pré-réservation réglée."
+              steps={candidateJourneySteps}
+              title="Parcours candidat"
+              titleId="candidate-journey-progress-title"
+            />
 
             {application.id ? (
               <section className="border-b py-6">
