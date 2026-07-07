@@ -18,6 +18,8 @@ export function EmailTemplateEditor({
 }) {
   const subjectFieldId = `${template.templateKey}-subject`;
   const bodyFieldId = `${template.templateKey}-body`;
+  const titleFieldId = `${template.templateKey}-title`;
+  const categoryFieldId = `${template.templateKey}-category`;
   const copyText = buildEmailBodyWithSubject({
     subject: template.subject,
     body: template.body,
@@ -55,6 +57,44 @@ export function EmailTemplateEditor({
           name="template_key"
           value={template.templateKey}
         />
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.45fr)]">
+          <div>
+            <label
+              htmlFor={titleFieldId}
+              className="text-sm font-semibold"
+            >
+              Nom du modèle
+            </label>
+            <input
+              id={titleFieldId}
+              name="title"
+              type="text"
+              maxLength={120}
+              required
+              defaultValue={template.title}
+              className="mt-2 min-h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label
+              htmlFor={categoryFieldId}
+              className="text-sm font-semibold"
+            >
+              Catégorie
+            </label>
+            <select
+              id={categoryFieldId}
+              name="category"
+              required
+              defaultValue={template.category}
+              className="mt-2 min-h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
+            >
+              <option value="candidate_journey">Parcours candidat</option>
+              <option value="adopter_journey">Parcours adoptant</option>
+              <option value="post_adoption">Suivi post-adoption</option>
+            </select>
+          </div>
+        </div>
         <div>
           <label
             htmlFor={subjectFieldId}
@@ -95,7 +135,7 @@ export function EmailTemplateEditor({
               : "Modèle par défaut prêt à enregistrer."}
           </p>
           <Button type="submit" size="sm">
-            Enregistrer
+            Enregistrer les modifications
           </Button>
         </div>
       </form>

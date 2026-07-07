@@ -218,10 +218,12 @@ export async function getEmailTemplatesForCurrentOrganization() {
 
 export async function updateEmailTemplate(formData: FormData) {
   const templateKey = normalizeRequiredText(formData.get("template_key"), 80);
+  const title = normalizeRequiredText(formData.get("title"), 120);
+  const category = formData.get("category");
   const subject = normalizeRequiredText(formData.get("subject"), 255);
   const body = normalizeRequiredText(formData.get("body"), 20_000);
 
-  if (!templateKey || !subject || !body) {
+  if (!templateKey || !title || !isEmailTemplateCategory(category) || !subject || !body) {
     redirect(statusUrl("error"));
   }
 
@@ -244,6 +246,8 @@ export async function updateEmailTemplate(formData: FormData) {
   const { error } = await supabase
     .from("email_templates")
     .update({
+      title,
+      category,
       subject,
       body,
       updated_by: userId,
