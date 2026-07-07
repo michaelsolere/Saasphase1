@@ -17,6 +17,7 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
+import { COMPLETE_DEPOSIT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
 import {
   formatPrice,
   getReservationStatusLabel,
@@ -353,8 +354,26 @@ function getEventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
 }
 
-function getFinancialStatus(priceCents: number | null, paidCents: number | null, refundedCents: number | null) {
-  if (paidCents === null && priceCents === null) return "État non calculable";
+function getPaidArrhesTotalCents(payments: RelatedPayment[]) {
+  return payments
+    .filter((payment) => payment.payment_type === "arrhes" && payment.status === "paid")
+    .reduce((total, payment) => total + payment.amount_cents, 0);
+}
+
+function getFinancialStatus({
+  priceCents,
+  paidCents,
+  refundedCents,
+  paidArrhesCents,
+}: {
+  priceCents: number | null;
+  paidCents: number | null;
+  refundedCents: number | null;
+  paidArrhesCents: number;
+}) {
+  if (paidCents === null && priceCents === null && paidArrhesCents === 0) {
+    return "État non calculable";
+  }
 
   const paid = paidCents ?? 0;
   const refunded = refundedCents ?? 0;
@@ -369,13 +388,16 @@ function getFinancialStatus(priceCents: number | null, paidCents: number | null,
     return "Paiement intégral";
   }
 
-  // 500 € = 50000 cents
-  if (netPaid >= 50000) {
+  if (paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS) {
     return "Arrhes complètes";
   }
 
-  if (netPaid > 0 && netPaid < 50000) {
+  if (paidArrhesCents > 0) {
     return "Arrhes partielles";
+  }
+
+  if (netPaid > 0) {
+    return "Paiement hors arrhes";
   }
 
   return "Reste dû";
@@ -866,10 +888,16 @@ function ReservationContractPreview({
   const priceCents = relatedReservation?.price_cents ?? null;
   const paidCents = relatedReservation?.paid_cents ?? null;
   const refundedCents = relatedReservation?.refunded_cents ?? null;
+  const paidArrhesCents = getPaidArrhesTotalCents(relatedPayments);
   const netPaidCents = getNetPaidCents(paidCents, refundedCents);
   const remainingCents =
     priceCents === null ? null : Math.max(0, priceCents - netPaidCents);
-  const financialStatus = getFinancialStatus(priceCents, paidCents, refundedCents);
+  const financialStatus = getFinancialStatus({
+    priceCents,
+    paidCents,
+    refundedCents,
+    paidArrhesCents,
+  });
   const species = relatedLitter?.species || relatedApplication?.species;
   const breed =
     relatedAnimal?.breed || relatedLitter?.breed || relatedApplication?.breed;
@@ -1992,6 +2020,8 @@ export default async function DocumentDetailPage({
     }
   }
 
+  const paidArrhesTotalCents = getPaidArrhesTotalCents(relatedPayments);
+
   // 9. Other documents
   let otherRelatedDocuments: OtherRelatedDocument[] = [];
   if (document?.reservation_id) {
@@ -2819,11 +2849,12 @@ export default async function DocumentDetailPage({
                         label="État financier du dossier"
                         value={
                           <span className="font-semibold text-accent">
-                            {getFinancialStatus(
-                              relatedReservation.price_cents,
-                              relatedReservation.paid_cents,
-                              relatedReservation.refunded_cents,
-                            )}
+                            {getFinancialStatus({
+                              priceCents: relatedReservation.price_cents,
+                              paidCents: relatedReservation.paid_cents,
+                              refundedCents: relatedReservation.refunded_cents,
+                              paidArrhesCents: paidArrhesTotalCents,
+                            })}
                           </span>
                         }
                       />

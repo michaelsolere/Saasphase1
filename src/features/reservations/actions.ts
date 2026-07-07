@@ -58,10 +58,6 @@ function activationUrl(
   return `/reservations/${reservationId}?activation_status=${outcome}#reservation-details`;
 }
 
-function activationRoleUrl(reservationId: string) {
-  return `/reservations/${reservationId}?activation_status=success&role_status=error#reservation-details`;
-}
-
 function adoptionUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
@@ -602,26 +598,6 @@ export async function activateReservation(formData: FormData) {
     redirect(activationUrl(reservationId, "invalid_state"));
   }
 
-  const roleNow = new Date().toISOString();
-  const holderRoleResult = await promoteContactJourneyRole({
-    supabase,
-    organizationId: reservation.organization_id,
-    contactId: reservation.contact_id,
-    role: "reservation_holder",
-    userId: user.id,
-    now: roleNow,
-  });
-
-  if (holderRoleResult.error || holderRoleResult.deactivationError) {
-    revalidatePath("/contacts");
-    revalidatePath(`/contacts/${reservation.contact_id}`);
-    revalidatePath("/reservations");
-    revalidatePath(`/reservations/${reservationId}`);
-    redirect(activationRoleUrl(reservationId));
-  }
-
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${reservation.contact_id}`);
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(activationUrl(reservationId, "success"));

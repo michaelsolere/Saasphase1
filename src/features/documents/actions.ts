@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+
+import { PRE_RESERVATION_PAYMENT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 
 const actionableReservationDocumentTypes = [
@@ -120,21 +122,25 @@ export async function initializeReservationDocuments(formData: FormData) {
     redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
-  // 3. Server-side validation of completed deposit (arrhes)
+  // 3. Server-side validation of paid pre-reservation arrhes.
   const { data: payments, error: paymentsError } = await supabase
     .from("payments")
-    .select("id, status")
+    .select("amount_cents")
     .eq("reservation_id", reservationId)
     .eq("payment_type", "arrhes")
-    .eq("amount_cents", 25000)
+    .eq("status", "paid")
     .is("deleted_at", null);
 
   if (paymentsError || !payments) {
     redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
-  const paidPayments = payments.filter((p) => p.status === "paid");
-  if (paidPayments.length < 1) {
+  const paidArrhesTotalCents = payments.reduce(
+    (total, payment) => total + payment.amount_cents,
+    0,
+  );
+
+  if (paidArrhesTotalCents < PRE_RESERVATION_PAYMENT_AMOUNT_CENTS) {
     redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 
