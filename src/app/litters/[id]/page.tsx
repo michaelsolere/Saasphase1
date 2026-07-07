@@ -336,22 +336,22 @@ function getPrimaryBirthDate(litter: DBLitter) {
   return { label: "Naissance", value: "Non renseignée" };
 }
 
-function getBirthCountSummary(litter: DBLitter) {
+function getBirthCountSummary(litter: DBLitter, hasSexBreakdown: boolean) {
   const parts = [];
 
   if (litter.expected_puppy_count !== null) {
     parts.push(`${formatLitterCount(litter.expected_puppy_count)} attendu(s)`);
   }
 
-  if (litter.born_total_count !== null) {
+  if (!hasSexBreakdown && litter.born_total_count !== null) {
     parts.push(`${formatLitterCount(litter.born_total_count)} né(s)`);
   }
 
-  if (litter.alive_count !== null) {
+  if (!hasSexBreakdown && litter.alive_count !== null) {
     parts.push(`${formatLitterCount(litter.alive_count)} vivant(s)`);
   }
 
-  return parts.length > 0 ? parts.join(" · ") : "Non renseigné";
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 function formatKnownParts(parts: Array<string | null>) {
@@ -395,13 +395,22 @@ function getBirthCounterCards(
     animals && animals.length > 0 ? animals.length : null;
   const totalBornCount =
     litter.born_total_count ?? calculatedTotalFromSex ?? calculatedTotalFromAnimals;
+  const hasSexBreakdown = maleCount !== null && femaleCount !== null;
 
-  return [
-    { label: "Total né", value: totalBornCount },
-    { label: "Vivants", value: litter.alive_count },
-    { label: "Mâles", value: maleCount },
-    { label: "Femelles", value: femaleCount },
-  ].filter((item) => item.value !== null && item.value !== undefined);
+  const cards = hasSexBreakdown
+    ? [
+        { label: "Mâles", value: maleCount },
+        { label: "Femelles", value: femaleCount },
+      ]
+    : [
+        { label: "Total né", value: totalBornCount },
+        { label: "Vivants", value: litter.alive_count },
+      ];
+
+  return {
+    cards: cards.filter((item) => item.value !== null && item.value !== undefined),
+    hasSexBreakdown,
+  };
 }
 
 function SummaryCard({
@@ -412,11 +421,11 @@ function SummaryCard({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border bg-background px-4 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+    <div className="rounded-lg border bg-background px-3 py-2">
+      <dt className="text-[0.65rem] font-semibold uppercase leading-4 tracking-wide text-muted">
         {label}
       </dt>
-      <dd className="mt-1.5 text-sm font-semibold leading-6 text-foreground">
+      <dd className="mt-0.5 text-sm font-semibold leading-5 text-foreground">
         {value || "Non renseigné"}
       </dd>
     </div>
@@ -454,7 +463,11 @@ function LitterTopSummary({
   linkedApplications: LinkedApplication[] | null;
 }) {
   const birthDate = getPrimaryBirthDate(litter);
-  const birthCounterCards = getBirthCounterCards(litter, animals);
+  const birthCounters = getBirthCounterCards(litter, animals);
+  const birthCountSummary = getBirthCountSummary(
+    litter,
+    birthCounters.hasSexBreakdown,
+  );
 
   return (
     <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -487,7 +500,7 @@ function LitterTopSummary({
         ) : null}
       </div>
 
-      <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <dl className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
           label="Mère"
           value={
@@ -519,18 +532,16 @@ function LitterTopSummary({
           }
         />
         <SummaryCard label={birthDate.label} value={birthDate.value} />
-        <SummaryCard label="Portée" value={getBirthCountSummary(litter)} />
-        {birthCounterCards.map((item) => (
+        {birthCountSummary ? (
+          <SummaryCard label="Portée" value={birthCountSummary} />
+        ) : null}
+        {birthCounters.cards.map((item) => (
           <SummaryCard
             key={item.label}
             label={item.label}
             value={formatLitterCount(item.value)}
           />
         ))}
-        <SummaryCard
-          label="Animaux liés"
-          value={formatLitterCount(summary?.animal_count ?? null)}
-        />
         <SummaryCard
           label="Réservations"
           value={formatLitterCount(summary?.reservation_count ?? null)}
