@@ -43,7 +43,7 @@ async function markLinkedPreReservationAsPaidIfNeeded({
 
   const { data: reservation } = await supabase
     .from("reservations")
-    .select("id, status")
+    .select("id, organization_id, contact_id, status")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -52,23 +52,95 @@ async function markLinkedPreReservationAsPaidIfNeeded({
     return;
   }
 
-  const { error: resUpdateError } = await supabase
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+
+  const { data: updatedReservation, error: resUpdateError } = await supabase
     .from("reservations")
     .update({
       status: "pre_reservation_paid",
-      updated_at: new Date().toISOString(),
+      updated_at: now,
       updated_by: userId,
     })
     .eq("id", reservationId)
     .eq("status", "pre_reservation_requested")
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
 
-  if (resUpdateError) {
+  if (resUpdateError || !updatedReservation) {
     console.error(
       "Failed to update reservation status to pre_reservation_paid:",
       resUpdateError,
     );
+    return;
   }
+
+  const { data: existingPreReservationRole, error: existingRoleError } =
+    await supabase
+      .from("contact_roles")
+      .select("id")
+      .eq("organization_id", reservation.organization_id)
+      .eq("contact_id", reservation.contact_id)
+      .eq("role", "pre_reservation_holder")
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+  if (existingRoleError) {
+    console.error(
+      "Failed to read active pre_reservation_holder contact role:",
+      existingRoleError,
+    );
+    return;
+  }
+
+  if (!existingPreReservationRole) {
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: reservation.organization_id,
+        contact_id: reservation.contact_id,
+        role: "pre_reservation_holder",
+        started_at: today,
+        is_active: true,
+        created_by: userId,
+        updated_by: userId,
+      });
+
+    if (roleInsertError && roleInsertError.code !== "23505") {
+      console.error(
+        "Failed to add active pre_reservation_holder contact role:",
+        roleInsertError,
+      );
+      return;
+    }
+  }
+
+  const { error: candidateRoleDeactivateError } = await supabase
+    .from("contact_roles")
+    .update({
+      is_active: false,
+      ended_at: today,
+      updated_at: now,
+      updated_by: userId,
+    })
+    .eq("organization_id", reservation.organization_id)
+    .eq("contact_id", reservation.contact_id)
+    .eq("role", "candidate")
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (candidateRoleDeactivateError) {
+    console.error(
+      "Failed to deactivate active candidate contact role:",
+      candidateRoleDeactivateError,
+    );
+    return;
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${reservation.contact_id}`);
 }
 
 export async function createReservationPayment(formData: FormData) {
