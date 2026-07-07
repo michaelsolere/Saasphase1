@@ -5,7 +5,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   addActiveContactRoleIfAbsent,
+  isContactJourneyRole,
   isContactRole,
+  promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
@@ -215,15 +217,26 @@ export async function addContactRole(formData: FormData) {
     redirect(errorUrl);
   }
 
-  const roleResult = await addActiveContactRoleIfAbsent({
-    supabase,
-    organizationId: contact.organization_id,
-    contactId: contact.id,
-    role,
-    userId: user.id,
-  });
+  const roleResult = isContactJourneyRole(role)
+    ? await promoteContactJourneyRole({
+        supabase,
+        organizationId: contact.organization_id,
+        contactId: contact.id,
+        role,
+        userId: user.id,
+      })
+    : await addActiveContactRoleIfAbsent({
+        supabase,
+        organizationId: contact.organization_id,
+        contactId: contact.id,
+        role,
+        userId: user.id,
+      });
 
-  if (roleResult.error) {
+  if (
+    roleResult.error ||
+    ("deactivationError" in roleResult && roleResult.deactivationError)
+  ) {
     redirect(errorUrl);
   }
 

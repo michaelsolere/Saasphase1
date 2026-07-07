@@ -186,21 +186,60 @@ export async function deactivateActiveContactRoles({
   return { error: null };
 }
 
-export function prepareContactJourneyRolePromotion({
-  from,
-  to,
-}: {
-  from?: ContactJourneyRole | ContactJourneyRole[];
-  to: ContactJourneyRole;
-}) {
-  const rolesToDeactivate = from
-    ? Array.isArray(from)
-      ? from
-      : [from]
-    : [];
+export function prepareContactJourneyRolePromotion(to: ContactJourneyRole) {
+  const rolesToDeactivate = CONTACT_JOURNEY_ROLES.filter(
+    (role) => role !== to,
+  );
 
   return {
     roleToActivate: to,
-    rolesToDeactivate: rolesToDeactivate.filter((role) => role !== to),
+    rolesToDeactivate,
+  };
+}
+
+export async function promoteContactJourneyRole({
+  supabase,
+  organizationId,
+  contactId,
+  role,
+  userId,
+  now = new Date().toISOString(),
+}: {
+  supabase: SupabaseServerClient;
+  organizationId: string;
+  contactId: string;
+  role: ContactJourneyRole;
+  userId: string;
+  now?: string;
+}) {
+  const promotion = prepareContactJourneyRolePromotion(role);
+  const activationResult = await addActiveContactRoleIfAbsent({
+    supabase,
+    organizationId,
+    contactId,
+    role: promotion.roleToActivate,
+    userId,
+    now,
+  });
+
+  if (activationResult.error) {
+    return {
+      ...activationResult,
+      deactivationError: null,
+    };
+  }
+
+  const deactivationResult = await deactivateActiveContactRoles({
+    supabase,
+    organizationId,
+    contactId,
+    roles: promotion.rolesToDeactivate,
+    userId,
+    now,
+  });
+
+  return {
+    ...activationResult,
+    deactivationError: deactivationResult.error,
   };
 }

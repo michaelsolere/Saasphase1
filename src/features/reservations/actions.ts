@@ -8,8 +8,7 @@ import {
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
 import {
-  addActiveContactRoleIfAbsent,
-  deactivateActiveContactRoles,
+  promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -603,7 +602,7 @@ export async function activateReservation(formData: FormData) {
   }
 
   const roleNow = new Date().toISOString();
-  const holderRoleResult = await addActiveContactRoleIfAbsent({
+  const holderRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: reservation.organization_id,
     contactId: reservation.contact_id,
@@ -612,32 +611,12 @@ export async function activateReservation(formData: FormData) {
     now: roleNow,
   });
 
-  if (holderRoleResult.error) {
+  if (holderRoleResult.error || holderRoleResult.deactivationError) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${reservation.contact_id}`);
     revalidatePath("/reservations");
     revalidatePath(`/reservations/${reservationId}`);
     redirect(activationRoleUrl(reservationId));
-  }
-
-  if (holderRoleResult.wasAdded) {
-    const { error: preReservationRoleDeactivateError } =
-      await deactivateActiveContactRoles({
-        supabase,
-        organizationId: reservation.organization_id,
-        contactId: reservation.contact_id,
-        roles: "pre_reservation_holder",
-        userId: user.id,
-        now: roleNow,
-      });
-
-    if (preReservationRoleDeactivateError) {
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${reservation.contact_id}`);
-      revalidatePath("/reservations");
-      revalidatePath(`/reservations/${reservationId}`);
-      redirect(activationRoleUrl(reservationId));
-    }
   }
 
   revalidatePath("/contacts");
@@ -702,7 +681,7 @@ export async function adoptReservation(formData: FormData) {
     redirect(adoptionUrl(reservationId, "invalid_state"));
   }
 
-  const adopterRoleResult = await addActiveContactRoleIfAbsent({
+  const adopterRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: reservation.organization_id,
     contactId: reservation.contact_id,
@@ -711,50 +690,12 @@ export async function adoptReservation(formData: FormData) {
     now,
   });
 
-  if (adopterRoleResult.error) {
+  if (adopterRoleResult.error || adopterRoleResult.deactivationError) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${reservation.contact_id}`);
     revalidatePath("/reservations");
     revalidatePath(`/reservations/${reservationId}`);
     redirect(adoptionRoleUrl(reservationId));
-  }
-
-  if (adopterRoleResult.wasAdded) {
-    const { error: holderRoleDeactivateError } =
-      await deactivateActiveContactRoles({
-        supabase,
-        organizationId: reservation.organization_id,
-        contactId: reservation.contact_id,
-        roles: "reservation_holder",
-        userId: user.id,
-        now,
-      });
-
-    if (holderRoleDeactivateError) {
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${reservation.contact_id}`);
-      revalidatePath("/reservations");
-      revalidatePath(`/reservations/${reservationId}`);
-      redirect(adoptionRoleUrl(reservationId));
-    }
-
-    const { error: candidateRoleDeactivateError } =
-      await deactivateActiveContactRoles({
-        supabase,
-        organizationId: reservation.organization_id,
-        contactId: reservation.contact_id,
-        roles: "candidate",
-        userId: user.id,
-        now,
-      });
-
-    if (candidateRoleDeactivateError) {
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${reservation.contact_id}`);
-      revalidatePath("/reservations");
-      revalidatePath(`/reservations/${reservationId}`);
-      redirect(adoptionRoleUrl(reservationId));
-    }
   }
 
   if (reservation.animal_id) {

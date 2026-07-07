@@ -9,8 +9,8 @@ import {
   type QualificationAction,
 } from "./transitions";
 import {
-  addActiveContactRoleIfAbsent,
   deactivateActiveContactRoles,
+  promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -167,7 +167,7 @@ export async function createApplicationForContact(formData: FormData) {
   }
 
   const now = new Date().toISOString();
-  const candidateRoleResult = await addActiveContactRoleIfAbsent({
+  const candidateRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: contact.organization_id,
     contactId: contact.id,
@@ -176,7 +176,7 @@ export async function createApplicationForContact(formData: FormData) {
     now,
   });
 
-  if (candidateRoleResult.error) {
+  if (candidateRoleResult.error || candidateRoleResult.deactivationError) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${contactId}`);
     revalidatePath("/candidatures");
@@ -393,7 +393,7 @@ export async function createReservationFromApplication(formData: FormData) {
 
   const createdReservationId = createdReservation.id;
 
-  const preReservationRoleResult = await addActiveContactRoleIfAbsent({
+  const preReservationRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: application.organization_id,
     contactId: application.contact_id,
@@ -401,7 +401,10 @@ export async function createReservationFromApplication(formData: FormData) {
     userId: user.id,
   });
 
-  if (preReservationRoleResult.error) {
+  if (
+    preReservationRoleResult.error ||
+    preReservationRoleResult.deactivationError
+  ) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${application.contact_id}`);
     revalidatePath("/candidatures");

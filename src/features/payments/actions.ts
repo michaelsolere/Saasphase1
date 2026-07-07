@@ -4,8 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  addActiveContactRoleIfAbsent,
-  deactivateActiveContactRoles,
+  promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -79,7 +78,7 @@ async function markLinkedPreReservationAsPaidIfNeeded({
     return;
   }
 
-  const preReservationRoleResult = await addActiveContactRoleIfAbsent({
+  const preReservationRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: reservation.organization_id,
     contactId: reservation.contact_id,
@@ -88,28 +87,13 @@ async function markLinkedPreReservationAsPaidIfNeeded({
     now,
   });
 
-  if (preReservationRoleResult.error) {
+  if (
+    preReservationRoleResult.error ||
+    preReservationRoleResult.deactivationError
+  ) {
     console.error(
       "Failed to read active pre_reservation_holder contact role:",
-      preReservationRoleResult.error,
-    );
-    return;
-  }
-
-  const { error: candidateRoleDeactivateError } =
-    await deactivateActiveContactRoles({
-      supabase,
-      organizationId: reservation.organization_id,
-      contactId: reservation.contact_id,
-      roles: "candidate",
-      userId,
-      now,
-    });
-
-  if (candidateRoleDeactivateError) {
-    console.error(
-      "Failed to deactivate active candidate contact role:",
-      candidateRoleDeactivateError,
+      preReservationRoleResult.error ?? preReservationRoleResult.deactivationError,
     );
     return;
   }
@@ -176,7 +160,7 @@ async function markLinkedReservationHolderRoleIfDepositCompleted({
 
   const now = new Date().toISOString();
 
-  const holderRoleResult = await addActiveContactRoleIfAbsent({
+  const holderRoleResult = await promoteContactJourneyRole({
     supabase,
     organizationId: reservation.organization_id,
     contactId: reservation.contact_id,
@@ -185,28 +169,10 @@ async function markLinkedReservationHolderRoleIfDepositCompleted({
     now,
   });
 
-  if (holderRoleResult.error) {
+  if (holderRoleResult.error || holderRoleResult.deactivationError) {
     console.error(
       "Failed to read active reservation_holder contact role:",
-      holderRoleResult.error,
-    );
-    return;
-  }
-
-  const { error: preReservationRoleDeactivateError } =
-    await deactivateActiveContactRoles({
-      supabase,
-      organizationId: reservation.organization_id,
-      contactId: reservation.contact_id,
-      roles: "pre_reservation_holder",
-      userId,
-      now,
-    });
-
-  if (preReservationRoleDeactivateError) {
-    console.error(
-      "Failed to deactivate active pre_reservation_holder contact role:",
-      preReservationRoleDeactivateError,
+      holderRoleResult.error ?? holderRoleResult.deactivationError,
     );
     return;
   }
