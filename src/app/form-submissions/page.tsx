@@ -220,6 +220,12 @@ export default async function FormSubmissionsPage() {
                       <p className="mt-2 text-sm text-muted">
                         Soumise le {formatApplicationDate(submission.submitted_at)}
                       </p>
+                      <Link
+                        href={`/form-submissions/${submission.id}`}
+                        className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline"
+                      >
+                        Consulter la soumission
+                      </Link>
                     </div>
 
                     <div className="rounded-xl border bg-background px-4 py-3 text-sm lg:min-w-72">
