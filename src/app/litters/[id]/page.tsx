@@ -697,6 +697,12 @@ function RelatedReservationsSection({
             const dateText = formatLitterDate(reservation.created_at);
             const preReservationDepositState =
               getPreReservationDepositStateFromStatus(reservation.status);
+            const reservationStatusLabel = getReservationStatusLabel(
+              reservation.status,
+            );
+            const preReservationDepositLabel = getPreReservationDepositLabel(
+              preReservationDepositState,
+            );
 
             return (
               <div
@@ -720,17 +726,17 @@ function RelatedReservationsSection({
                             "Contact non renseigné"
                         )}
                       </span>
-                      <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                        {getReservationStatusLabel(reservation.status)}
-                      </span>
+                      {reservationStatusLabel !== preReservationDepositLabel ? (
+                        <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                          {reservationStatusLabel}
+                        </span>
+                      ) : null}
                       <span
                         className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
                           preReservationDepositState,
                         )}`}
                       >
-                        {getPreReservationDepositLabel(
-                          preReservationDepositState,
-                        )}
+                        {preReservationDepositLabel}
                       </span>
                     </div>
                     <p className="text-xs text-muted">
