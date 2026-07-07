@@ -246,8 +246,23 @@ function DetailItem({
   );
 }
 
-function CountItem({ label, value }: { label: string; value: number | null }) {
-  return <DetailItem label={label} value={formatLitterCount(value)} />;
+function CompactDetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1 border-b py-3 last:border-b-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="text-sm leading-6 text-foreground sm:text-right">
+        {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
 }
 
 function formatBirthOrder(value: number | null) {
@@ -339,6 +354,56 @@ function getBirthCountSummary(litter: DBLitter) {
   return parts.length > 0 ? parts.join(" · ") : "Non renseigné";
 }
 
+function formatKnownParts(parts: Array<string | null>) {
+  const knownParts = parts.filter((part): part is string => Boolean(part));
+
+  return knownParts.length > 0 ? knownParts.join(" · ") : "Non renseigné";
+}
+
+function formatDatePart(label: string, value: string | null) {
+  return value ? `${label} ${formatLitterDate(value)}` : null;
+}
+
+function formatCountPart(label: string, value: number | null) {
+  return value !== null && value !== undefined
+    ? `${label} ${formatLitterCount(value)}`
+    : null;
+}
+
+function countRelatedAnimalsBySex(
+  animals: RelatedAnimal[] | null,
+  sex: "male" | "female",
+) {
+  if (!animals || animals.length === 0) {
+    return null;
+  }
+
+  return animals.filter((animal) => animal.sex === sex).length;
+}
+
+function getBirthCounterCards(
+  litter: DBLitter,
+  animals: RelatedAnimal[] | null,
+) {
+  const animalMaleCount = countRelatedAnimalsBySex(animals, "male");
+  const animalFemaleCount = countRelatedAnimalsBySex(animals, "female");
+  const maleCount = litter.born_male_count ?? animalMaleCount;
+  const femaleCount = litter.born_female_count ?? animalFemaleCount;
+  const calculatedTotalFromSex =
+    maleCount !== null && femaleCount !== null ? maleCount + femaleCount : null;
+  const calculatedTotalFromAnimals =
+    animals && animals.length > 0 ? animals.length : null;
+  const totalBornCount =
+    litter.born_total_count ?? calculatedTotalFromSex ?? calculatedTotalFromAnimals;
+
+  return [
+    { label: "Total né", value: totalBornCount },
+    { label: "Vivants", value: litter.alive_count },
+    { label: "Mâles", value: maleCount },
+    { label: "Femelles", value: femaleCount },
+  ].filter((item) => item.value !== null && item.value !== undefined);
+}
+
 function SummaryCard({
   label,
   value,
@@ -380,13 +445,16 @@ function CollapsibleSection({
 function LitterTopSummary({
   litter,
   summary,
+  animals,
   linkedApplications,
 }: {
   litter: DBLitter;
   summary: LitterSummary | null;
+  animals: RelatedAnimal[] | null;
   linkedApplications: LinkedApplication[] | null;
 }) {
   const birthDate = getPrimaryBirthDate(litter);
+  const birthCounterCards = getBirthCounterCards(litter, animals);
 
   return (
     <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -452,6 +520,13 @@ function LitterTopSummary({
         />
         <SummaryCard label={birthDate.label} value={birthDate.value} />
         <SummaryCard label="Portée" value={getBirthCountSummary(litter)} />
+        {birthCounterCards.map((item) => (
+          <SummaryCard
+            key={item.label}
+            label={item.label}
+            value={formatLitterCount(item.value)}
+          />
+        ))}
         <SummaryCard
           label="Animaux liés"
           value={formatLitterCount(summary?.animal_count ?? null)}
@@ -1641,6 +1716,7 @@ export default async function LitterDetailPage({
               <LitterTopSummary
                 litter={litter}
                 summary={summary}
+                animals={litterAnimals}
                 linkedApplications={linkedApplications}
               />
 
@@ -1648,61 +1724,47 @@ export default async function LitterDetailPage({
                 <h2 className="text-xl font-semibold">
                   Reproduction et gestation
                 </h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Date de saillie principale"
-                    value={formatLitterDate(litter.mating_date)}
+                <dl className="mt-4 divide-y divide-border">
+                  <CompactDetailItem
+                    label="Saillies"
+                    value={formatKnownParts([
+                      formatDatePart("principale", litter.mating_date),
+                      formatDatePart("2e", litter.mating_date_2),
+                    ])}
                   />
-                  <DetailItem
-                    label="Deuxième date de saillie"
-                    value={formatLitterDate(litter.mating_date_2)}
+                  <CompactDetailItem
+                    label="Cycle"
+                    value={formatKnownParts([
+                      formatDatePart(
+                        "ovulation estimée",
+                        litter.estimated_ovulation_date,
+                      ),
+                    ])}
                   />
-                  <DetailItem
-                    label="Ovulation estimée"
-                    value={formatLitterDate(litter.estimated_ovulation_date)}
+                  <CompactDetailItem
+                    label="Gestation"
+                    value={formatKnownParts([
+                      formatDatePart(
+                        "confirmée",
+                        litter.pregnancy_confirmed_at,
+                      ),
+                      litter.pregnancy_confirmation_method
+                        ? `méthode ${litter.pregnancy_confirmation_method}`
+                        : null,
+                    ])}
                   />
-                  <DetailItem
-                    label="Confirmation de gestation"
-                    value={formatLitterDate(litter.pregnancy_confirmed_at)}
+                  <CompactDetailItem
+                    label="Naissance"
+                    value={formatKnownParts([
+                      formatDatePart("prévue", litter.expected_birth_date),
+                      formatDatePart("réelle", litter.actual_birth_date),
+                    ])}
                   />
-                  <DetailItem
-                    label="Méthode de confirmation"
-                    value={litter.pregnancy_confirmation_method}
-                  />
-                </dl>
-              </section>
-
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">
-                  Naissance et compteurs
-                </h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Naissance prévue"
-                    value={formatLitterDate(litter.expected_birth_date)}
-                  />
-                  <DetailItem
-                    label="Naissance réelle"
-                    value={formatLitterDate(litter.actual_birth_date)}
-                  />
-                  <CountItem
-                    label="Nombre attendu"
-                    value={litter.expected_puppy_count}
-                  />
-                  <CountItem
-                    label="Nombre né total"
-                    value={litter.born_total_count}
-                  />
-                  <CountItem label="Mâles" value={litter.born_male_count} />
-                  <CountItem label="Femelles" value={litter.born_female_count} />
-                  <CountItem label="Vivants" value={litter.alive_count} />
-                  <CountItem
-                    label="Nombre d’animaux"
-                    value={summary?.animal_count ?? null}
-                  />
-                  <CountItem
-                    label="Nombre de réservations"
-                    value={summary?.reservation_count ?? null}
+                  <CompactDetailItem
+                    label="Estimation"
+                    value={formatKnownParts([
+                      formatCountPart("attendus", litter.expected_puppy_count),
+                    ])}
                   />
                 </dl>
               </section>
