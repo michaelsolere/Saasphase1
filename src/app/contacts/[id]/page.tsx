@@ -22,11 +22,15 @@ import { formatPrice, getReservationStatusLabel } from "@/features/reservations/
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { addContactRole } from "@/features/contacts/actions";
-import { CONTACT_ROLE_FORM_OPTIONS } from "@/features/contacts/roles";
+import {
+  CONTACT_COMPLEMENTARY_ROLES,
+  CONTACT_JOURNEY_ROLES,
+  isContactComplementaryRole,
+} from "@/features/contacts/roles";
 
 export const dynamic = "force-dynamic";
 
-const contactRoleOptions = CONTACT_ROLE_FORM_OPTIONS;
+const contactRoleOptions = CONTACT_COMPLEMENTARY_ROLES;
 
 type RelatedPayment = {
   id: string;
@@ -260,6 +264,14 @@ export default async function ContactDetailPage({
     : { data: null, error: null };
 
   const contactEvents = rawEvents as RelatedEvent[] | null;
+  const activeRoleValues = contactRoles?.map((contactRole) => contactRole.role) ?? [];
+  const activeJourneyRole =
+    CONTACT_JOURNEY_ROLES.find((role) => activeRoleValues.includes(role)) ??
+    null;
+  const hasActiveProspectRole = activeRoleValues.includes("prospect");
+  const activeComplementaryRoles = activeRoleValues.filter(
+    isContactComplementaryRole,
+  );
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -816,20 +828,44 @@ export default async function ContactDetailPage({
 
               <aside className="h-fit rounded-2xl border bg-surface p-6">
                 <h2 className="text-lg font-semibold">Rôles du contact</h2>
-                {contactRoles && contactRoles.length > 0 ? (
-                  <ul className="mt-6 flex flex-wrap gap-2">
-                    {contactRoles.map((cr, idx) => (
-                      <li
-                        key={idx}
-                        className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent"
-                      >
-                        {getContactRoleLabel(cr.role)}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-6 text-sm text-muted">Non attribué</p>
-                )}
+
+                <section className="mt-6">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Rôle de parcours
+                  </h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {activeJourneyRole ? (
+                      <span className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
+                        {getContactRoleLabel(activeJourneyRole)}
+                      </span>
+                    ) : null}
+                    {!activeJourneyRole || hasActiveProspectRole ? (
+                      <span className="inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold text-muted">
+                        Non attribué
+                      </span>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="mt-6 border-t pt-6">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Rôles complémentaires
+                  </h3>
+                  {activeComplementaryRoles.length > 0 ? (
+                    <ul className="mt-3 flex flex-wrap gap-2">
+                      {activeComplementaryRoles.map((role, idx) => (
+                        <li
+                          key={`${role}-${idx}`}
+                          className="inline-flex items-center rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent"
+                        >
+                          {getContactRoleLabel(role)}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-muted">Aucun rôle complémentaire.</p>
+                  )}
+                </section>
 
                 <form action={addContactRole} className="mt-6 border-t pt-6">
                   <input type="hidden" name="contact_id" value={contact.id} />
@@ -837,7 +873,7 @@ export default async function ContactDetailPage({
                     htmlFor="contact-role"
                     className="text-xs font-semibold uppercase tracking-wide text-muted"
                   >
-                    Ajouter un rôle
+                    Ajouter un rôle complémentaire
                   </label>
                   <select
                     id="contact-role"

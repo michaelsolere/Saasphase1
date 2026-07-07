@@ -5,9 +5,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   addActiveContactRoleIfAbsent,
-  isContactJourneyRole,
+  isContactComplementaryRole,
   isContactRole,
-  promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
@@ -193,7 +192,7 @@ export async function addContactRole(formData: FormData) {
     ? `/contacts/${contactId}?role_status=error`
     : "/contacts?erreur=role";
 
-  if (!contactId || !isContactRole(role)) {
+  if (!contactId || !isContactRole(role) || !isContactComplementaryRole(role)) {
     redirect(errorUrl);
   }
 
@@ -217,26 +216,15 @@ export async function addContactRole(formData: FormData) {
     redirect(errorUrl);
   }
 
-  const roleResult = isContactJourneyRole(role)
-    ? await promoteContactJourneyRole({
-        supabase,
-        organizationId: contact.organization_id,
-        contactId: contact.id,
-        role,
-        userId: user.id,
-      })
-    : await addActiveContactRoleIfAbsent({
-        supabase,
-        organizationId: contact.organization_id,
-        contactId: contact.id,
-        role,
-        userId: user.id,
-      });
+  const roleResult = await addActiveContactRoleIfAbsent({
+    supabase,
+    organizationId: contact.organization_id,
+    contactId: contact.id,
+    role,
+    userId: user.id,
+  });
 
-  if (
-    roleResult.error ||
-    ("deactivationError" in roleResult && roleResult.deactivationError)
-  ) {
+  if (roleResult.error) {
     redirect(errorUrl);
   }
 
