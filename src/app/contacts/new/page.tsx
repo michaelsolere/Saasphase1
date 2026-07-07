@@ -2,6 +2,10 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createContact } from "@/features/contacts/actions";
+import {
+  CONTACT_ROLE_FORM_OPTIONS,
+  CONTACT_ROLE_LABELS,
+} from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -41,19 +45,10 @@ function Field({
   );
 }
 
-const initialRoleOptions = [
-  ["candidate", "Candidat"],
-  ["pre_reservation_holder", "Titulaire de pré-réservation"],
-  ["reservation_holder", "Titulaire de réservation"],
-  ["adopter", "Adoptant"],
-  ["former_adopter", "Ancien adoptant"],
-  ["stud_owner", "Propriétaire d'étalon"],
-  ["veterinarian", "Vétérinaire"],
-  ["partner_breeder", "Éleveur partenaire"],
-  ["mediation_organization", "Organisme de médiation"],
-  ["supplier", "Fournisseur"],
-  ["other", "Autre"],
-] as const;
+const initialRoleOptions = CONTACT_ROLE_FORM_OPTIONS.map((role) => [
+  role,
+  CONTACT_ROLE_LABELS[role],
+] as const);
 
 export default async function NewContactPage({
   searchParams,

@@ -3,22 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  addActiveContactRoleIfAbsent,
+  isContactRole,
+} from "@/features/contacts/roles";
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
-const allowedContactRoles = new Set([
-  "prospect",
-  "candidate",
-  "pre_reservation_holder",
-  "reservation_holder",
-  "adopter",
-  "former_adopter",
-  "stud_owner",
-  "veterinarian",
-  "partner_breeder",
-  "mediation_organization",
-  "supplier",
-  "other",
-]);
 
 function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
   if (typeof value !== "string") {
@@ -103,7 +93,7 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
-  if (initialRole && !allowedContactRoles.has(initialRole)) {
+  if (initialRole && !isContactRole(initialRole)) {
     redirect(contactCreateErrorUrl);
   }
 
@@ -201,7 +191,7 @@ export async function addContactRole(formData: FormData) {
     ? `/contacts/${contactId}?role_status=error`
     : "/contacts?erreur=role";
 
-  if (!contactId || !role || !allowedContactRoles.has(role)) {
+  if (!contactId || !isContactRole(role)) {
     redirect(errorUrl);
   }
 
@@ -225,41 +215,20 @@ export async function addContactRole(formData: FormData) {
     redirect(errorUrl);
   }
 
-  const { data: existingRole, error: existingRoleError } = await supabase
-    .from("contact_roles")
-    .select("id")
-    .eq("organization_id", contact.organization_id)
-    .eq("contact_id", contact.id)
-    .eq("role", role)
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (existingRoleError) {
-    redirect(errorUrl);
-  }
-
-  if (existingRole) {
-    redirect(`/contacts/${contact.id}?role_status=already_exists`);
-  }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const { error: insertError } = await supabase.from("contact_roles").insert({
-    organization_id: contact.organization_id,
-    contact_id: contact.id,
+  const roleResult = await addActiveContactRoleIfAbsent({
+    supabase,
+    organizationId: contact.organization_id,
+    contactId: contact.id,
     role,
-    started_at: today,
-    is_active: true,
-    created_by: user.id,
-    updated_by: user.id,
+    userId: user.id,
   });
 
-  if (insertError) {
-    if (insertError.code === "23505") {
-      redirect(`/contacts/${contact.id}?role_status=already_exists`);
-    }
-
+  if (roleResult.error) {
     redirect(errorUrl);
+  }
+
+  if (roleResult.existingRole || roleResult.duplicateConflict) {
+    redirect(`/contacts/${contact.id}?role_status=already_exists`);
   }
 
   revalidatePath("/contacts");

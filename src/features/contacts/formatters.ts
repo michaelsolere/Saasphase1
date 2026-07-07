@@ -1,22 +1,9 @@
-const roleLabels: Record<string, string> = {
-  prospect: "Non attribué",
-  candidate: "Candidat",
-  pre_reservation_holder: "Titulaire de pré-réservation",
-  reservation_holder: "Titulaire de réservation",
-  adopter: "Adoptant",
-  former_adopter: "Ancien adoptant",
-  stud_owner: "Propriétaire d'étalon",
-  veterinarian: "Vétérinaire",
-  partner_breeder: "Éleveur partenaire",
-  mediation_organization: "Organisme de médiation",
-  supplier: "Fournisseur",
-  other: "Autre",
-};
+import { CONTACT_ROLE_LABELS, isContactRole } from "./roles";
 
 export function getContactRoleLabel(value: string | null) {
   if (!value) {
     return "Non attribué";
   }
 
-  return roleLabels[value] ?? value.replaceAll("_", " ");
+  return isContactRole(value) ? CONTACT_ROLE_LABELS[value] : value.replaceAll("_", " ");
 }

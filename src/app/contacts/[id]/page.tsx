@@ -22,22 +22,11 @@ import { formatPrice, getReservationStatusLabel } from "@/features/reservations/
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { addContactRole } from "@/features/contacts/actions";
+import { CONTACT_ROLE_FORM_OPTIONS } from "@/features/contacts/roles";
 
 export const dynamic = "force-dynamic";
 
-const contactRoleOptions = [
-  "candidate",
-  "pre_reservation_holder",
-  "reservation_holder",
-  "adopter",
-  "former_adopter",
-  "stud_owner",
-  "veterinarian",
-  "partner_breeder",
-  "mediation_organization",
-  "supplier",
-  "other",
-] as const;
+const contactRoleOptions = CONTACT_ROLE_FORM_OPTIONS;
 
 type RelatedPayment = {
   id: string;

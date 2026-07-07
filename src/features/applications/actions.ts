@@ -8,6 +8,10 @@ import {
   transitions,
   type QualificationAction,
 } from "./transitions";
+import {
+  addActiveContactRoleIfAbsent,
+  deactivateActiveContactRoles,
+} from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
 
 const desiredSexPreferences = new Set([
@@ -162,18 +166,17 @@ export async function createApplicationForContact(formData: FormData) {
     redirect(contactApplicationUrl(contactId, "error"));
   }
 
-  const { data: existingCandidateRole, error: existingRoleError } =
-    await supabase
-      .from("contact_roles")
-      .select("id")
-      .eq("organization_id", contact.organization_id)
-      .eq("contact_id", contact.id)
-      .eq("role", "candidate")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle();
+  const now = new Date().toISOString();
+  const candidateRoleResult = await addActiveContactRoleIfAbsent({
+    supabase,
+    organizationId: contact.organization_id,
+    contactId: contact.id,
+    role: "candidate",
+    userId: user.id,
+    now,
+  });
 
-  if (existingRoleError) {
+  if (candidateRoleResult.error) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${contactId}`);
     revalidatePath("/candidatures");
@@ -181,55 +184,23 @@ export async function createApplicationForContact(formData: FormData) {
     redirect(applicationRoleUrl(application.id));
   }
 
-  let candidateRoleWasAdded = false;
-
-  if (!existingCandidateRole) {
-    const now = new Date().toISOString();
-    const today = now.slice(0, 10);
-    const { error: roleInsertError } = await supabase
-      .from("contact_roles")
-      .insert({
-        organization_id: contact.organization_id,
-        contact_id: contact.id,
-        role: "candidate",
-        started_at: today,
-        is_active: true,
-        created_by: user.id,
-        updated_by: user.id,
+  if (candidateRoleResult.wasAdded) {
+    const { error: prospectDeactivateError } =
+      await deactivateActiveContactRoles({
+        supabase,
+        organizationId: contact.organization_id,
+        contactId: contact.id,
+        roles: "prospect",
+        userId: user.id,
+        now,
       });
 
-    if (roleInsertError && roleInsertError.code !== "23505") {
+    if (prospectDeactivateError) {
       revalidatePath("/contacts");
       revalidatePath(`/contacts/${contactId}`);
       revalidatePath("/candidatures");
       revalidatePath(`/candidatures/${application.id}`);
       redirect(applicationRoleUrl(application.id));
-    }
-
-    candidateRoleWasAdded = !roleInsertError;
-
-    if (candidateRoleWasAdded) {
-      const { error: prospectDeactivateError } = await supabase
-        .from("contact_roles")
-        .update({
-          is_active: false,
-          ended_at: today,
-          updated_at: now,
-          updated_by: user.id,
-        })
-        .eq("organization_id", contact.organization_id)
-        .eq("contact_id", contact.id)
-        .eq("role", "prospect")
-        .eq("is_active", true)
-        .is("deleted_at", null);
-
-      if (prospectDeactivateError) {
-        revalidatePath("/contacts");
-        revalidatePath(`/contacts/${contactId}`);
-        revalidatePath("/candidatures");
-        revalidatePath(`/candidatures/${application.id}`);
-        redirect(applicationRoleUrl(application.id));
-      }
     }
   }
 
@@ -422,48 +393,21 @@ export async function createReservationFromApplication(formData: FormData) {
 
   const createdReservationId = createdReservation.id;
 
-  const { data: existingPreReservationRole, error: existingRoleError } =
-    await supabase
-      .from("contact_roles")
-      .select("id")
-      .eq("organization_id", application.organization_id)
-      .eq("contact_id", application.contact_id)
-      .eq("role", "pre_reservation_holder")
-      .eq("is_active", true)
-      .is("deleted_at", null)
-      .maybeSingle();
+  const preReservationRoleResult = await addActiveContactRoleIfAbsent({
+    supabase,
+    organizationId: application.organization_id,
+    contactId: application.contact_id,
+    role: "pre_reservation_holder",
+    userId: user.id,
+  });
 
-  if (existingRoleError) {
+  if (preReservationRoleResult.error) {
     revalidatePath("/contacts");
     revalidatePath(`/contacts/${application.contact_id}`);
     revalidatePath("/candidatures");
     revalidatePath(`/candidatures/${applicationId}`);
     revalidatePath("/reservations");
     redirect(reservationRoleUrl(createdReservationId));
-  }
-
-  if (!existingPreReservationRole) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { error: roleInsertError } = await supabase
-      .from("contact_roles")
-      .insert({
-        organization_id: application.organization_id,
-        contact_id: application.contact_id,
-        role: "pre_reservation_holder",
-        started_at: today,
-        is_active: true,
-        created_by: user.id,
-        updated_by: user.id,
-      });
-
-    if (roleInsertError && roleInsertError.code !== "23505") {
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${application.contact_id}`);
-      revalidatePath("/candidatures");
-      revalidatePath(`/candidatures/${applicationId}`);
-      revalidatePath("/reservations");
-      redirect(reservationRoleUrl(createdReservationId));
-    }
   }
 
   revalidatePath("/contacts");
