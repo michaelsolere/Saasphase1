@@ -700,9 +700,10 @@ function RelatedReservationsSection({
             const reservationStatusLabel = getReservationStatusLabel(
               reservation.status,
             );
-            const preReservationDepositLabel = getPreReservationDepositLabel(
-              preReservationDepositState,
-            );
+            const preReservationDepositLabel =
+              preReservationDepositState === "paid"
+                ? getPreReservationDepositLabel(preReservationDepositState)
+                : "Pré-réservation non réglée";
 
             return (
               <div
