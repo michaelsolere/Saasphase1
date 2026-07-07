@@ -7,6 +7,7 @@ import { EmailTemplateCopyButton } from "./email-template-copy-button";
 
 const categoryLabels = {
   adopter_journey: "Parcours adoptant",
+  candidate_journey: "Parcours candidat",
   post_adoption: "Suivi post-adoption",
 };
 

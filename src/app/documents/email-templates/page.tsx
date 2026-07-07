@@ -1,4 +1,5 @@
 import { getEmailTemplatesForCurrentOrganization } from "@/features/documents/email-template-actions";
+import { EmailTemplateCreateDialog } from "@/features/documents/email-template-create-dialog";
 import { EmailTemplateEditor } from "@/features/documents/email-template-editor";
 
 export const dynamic = "force-dynamic";
@@ -7,14 +8,22 @@ export const metadata = {
   title: "Modèles d’emails - Documents",
 };
 
-type StatusValue = "success" | "error" | undefined;
+type StatusValue = "created" | "duplicate" | "success" | "error" | undefined;
 
 function StatusMessage({ value }: { value: StatusValue }) {
   if (!value) {
     return null;
   }
 
-  const isSuccess = value === "success";
+  const isSuccess = value === "created" || value === "success";
+  const message = {
+    created: "Modèle créé.",
+    duplicate:
+      "Un modèle portant ce nom existe déjà. Choisissez un nom plus précis.",
+    success: "Modèle enregistré.",
+    error:
+      "Impossible d’enregistrer le modèle. Vérifiez les champs obligatoires.",
+  }[value];
 
   return (
     <div
@@ -25,9 +34,7 @@ function StatusMessage({ value }: { value: StatusValue }) {
           : "rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
       }
     >
-      {isSuccess
-        ? "Modèle enregistré."
-        : "Impossible d’enregistrer le modèle. Vérifiez le sujet et le corps."}
+      {message}
     </div>
   );
 }
@@ -59,6 +66,9 @@ export default async function EmailTemplatesPage({
 }) {
   const query = await searchParams;
   const templates = await getEmailTemplatesForCurrentOrganization();
+  const candidateTemplates = templates.filter(
+    (template) => template.category === "candidate_journey",
+  );
   const journeyTemplates = templates.filter(
     (template) => template.category === "adopter_journey",
   );
@@ -83,15 +93,38 @@ export default async function EmailTemplatesPage({
               automatiquement.
             </p>
           </div>
-          <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-            Copie manuelle
-          </span>
+          <div className="flex flex-wrap items-center gap-3">
+            <EmailTemplateCreateDialog />
+            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
+              Copie manuelle
+            </span>
+          </div>
         </div>
       </header>
 
       <section className="space-y-5 border-b py-6" aria-label="Accès rapides">
         <StatusMessage value={query.template_status} />
         <TemplateNav templates={templates} />
+      </section>
+
+      <section className="py-8">
+        <div className="mb-5">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Parcours candidat
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            Modèles à utiliser pendant les premiers échanges et la qualification
+            des candidatures.
+          </p>
+        </div>
+        <div className="space-y-5">
+          {candidateTemplates.map((template) => (
+            <EmailTemplateEditor
+              key={template.templateKey}
+              template={template}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="py-8">

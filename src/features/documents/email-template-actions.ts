@@ -25,7 +25,7 @@ export type EmailTemplateRecord = {
   updatedAt: string;
 };
 
-function statusUrl(outcome: "success" | "error") {
+function statusUrl(outcome: "created" | "duplicate" | "success" | "error") {
   return `${emailTemplatesPath}?template_status=${outcome}`;
 }
 
@@ -43,6 +43,28 @@ function normalizeRequiredText(
   }
 
   return trimmedValue.slice(0, maxLength);
+}
+
+function buildCustomTemplateKey(title: string) {
+  const normalizedTitle = title
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64);
+
+  return `custom_${normalizedTitle || "modele"}`;
+}
+
+function isEmailTemplateCategory(
+  value: FormDataEntryValue | null,
+): value is EmailTemplateCategory {
+  return (
+    value === "adopter_journey" ||
+    value === "post_adoption" ||
+    value === "candidate_journey"
+  );
 }
 
 async function requireWritableOrganization() {
@@ -136,11 +158,10 @@ export async function getEmailTemplatesForCurrentOrganization() {
 
   const { data: emailTemplates, error } = await supabase
     .from("email_templates")
-    .select("id, template_key, title, category, subject, body, updated_at")
+    .select("id, template_key, title, category, subject, body, created_at, updated_at")
     .eq("organization_id", organizationId)
     .eq("is_active", true)
     .is("deleted_at", null)
-    .in("template_key", defaultEmailTemplateKeys)
     .order("created_at", { ascending: true });
 
   if (error || !emailTemplates) {
@@ -151,7 +172,7 @@ export async function getEmailTemplatesForCurrentOrganization() {
     emailTemplates.map((template) => [template.template_key, template]),
   );
 
-  return defaultEmailTemplates.map((defaultTemplate) => {
+  const defaultTemplateRecords = defaultEmailTemplates.map((defaultTemplate) => {
     const template = templateByKey.get(defaultTemplate.templateKey);
 
     if (!template) {
@@ -178,6 +199,21 @@ export async function getEmailTemplatesForCurrentOrganization() {
       updatedAt: template.updated_at,
     };
   }) satisfies EmailTemplateRecord[];
+
+  const customTemplateRecords = emailTemplates
+    .filter((template) => !validTemplateKeys.has(template.template_key))
+    .map((template) => ({
+      id: template.id,
+      templateKey: template.template_key,
+      title: template.title,
+      category: template.category as EmailTemplateCategory,
+      context: "Modèle personnalisé.",
+      subject: template.subject,
+      body: template.body,
+      updatedAt: template.updated_at,
+    })) satisfies EmailTemplateRecord[];
+
+  return [...defaultTemplateRecords, ...customTemplateRecords];
 }
 
 export async function updateEmailTemplate(formData: FormData) {
@@ -185,12 +221,25 @@ export async function updateEmailTemplate(formData: FormData) {
   const subject = normalizeRequiredText(formData.get("subject"), 255);
   const body = normalizeRequiredText(formData.get("body"), 20_000);
 
-  if (!templateKey || !validTemplateKeys.has(templateKey) || !subject || !body) {
+  if (!templateKey || !subject || !body) {
     redirect(statusUrl("error"));
   }
 
   const { organizationId, supabase, userId } = await requireWritableOrganization();
   await ensureDefaultEmailTemplates({ organizationId, supabase, userId });
+
+  const { data: template, error: readError } = await supabase
+    .from("email_templates")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("template_key", templateKey)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !template) {
+    redirect(statusUrl("error"));
+  }
 
   const { error } = await supabase
     .from("email_templates")
@@ -211,4 +260,53 @@ export async function updateEmailTemplate(formData: FormData) {
 
   revalidatePath(emailTemplatesPath);
   redirect(statusUrl("success"));
+}
+
+export async function createEmailTemplate(formData: FormData) {
+  const title = normalizeRequiredText(formData.get("title"), 120);
+  const category = formData.get("category");
+  const subject = normalizeRequiredText(formData.get("subject"), 255);
+  const body = normalizeRequiredText(formData.get("body"), 20_000);
+
+  if (!title || !isEmailTemplateCategory(category) || !subject || !body) {
+    redirect(statusUrl("error"));
+  }
+
+  const templateKey = buildCustomTemplateKey(title);
+  const { organizationId, supabase, userId } = await requireWritableOrganization();
+  await ensureDefaultEmailTemplates({ organizationId, supabase, userId });
+
+  const { data: existingTemplate, error: readError } = await supabase
+    .from("email_templates")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("template_key", templateKey)
+    .maybeSingle();
+
+  if (readError) {
+    redirect(statusUrl("error"));
+  }
+
+  if (existingTemplate) {
+    redirect(statusUrl("duplicate"));
+  }
+
+  const { error } = await supabase.from("email_templates").insert({
+    organization_id: organizationId,
+    template_key: templateKey,
+    title,
+    category,
+    subject,
+    body,
+    is_active: true,
+    created_by: userId,
+    updated_by: userId,
+  });
+
+  if (error) {
+    redirect(statusUrl("error"));
+  }
+
+  revalidatePath(emailTemplatesPath);
+  redirect(`${statusUrl("created")}#${templateKey}`);
 }

@@ -1,4 +1,7 @@
-export type EmailTemplateCategory = "adopter_journey" | "post_adoption";
+export type EmailTemplateCategory =
+  | "adopter_journey"
+  | "post_adoption"
+  | "candidate_journey";
 
 export type DefaultEmailTemplate = {
   templateKey: string;
