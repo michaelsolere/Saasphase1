@@ -26,7 +26,6 @@ import { addContactRole } from "@/features/contacts/actions";
 export const dynamic = "force-dynamic";
 
 const contactRoleOptions = [
-  "prospect",
   "candidate",
   "pre_reservation_holder",
   "reservation_holder",
@@ -840,7 +839,7 @@ export default async function ContactDetailPage({
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-6 text-sm text-muted">Aucun rôle actif.</p>
+                  <p className="mt-6 text-sm text-muted">Non attribué</p>
                 )}
 
                 <form action={addContactRole} className="mt-6 border-t pt-6">

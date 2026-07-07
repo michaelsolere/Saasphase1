@@ -6,7 +6,7 @@ import type { ContactOverview } from "@/features/contacts/types";
 
 function renderRoles(activeRoles: string[] | string | null | undefined) {
   if (!activeRoles) {
-    return <span className="text-xs text-muted">Aucun rôle</span>;
+    return <span className="text-xs text-muted">Non attribué</span>;
   }
 
   const rolesArray = Array.isArray(activeRoles)
@@ -16,7 +16,7 @@ function renderRoles(activeRoles: string[] | string | null | undefined) {
       : [];
 
   if (rolesArray.length === 0) {
-    return <span className="text-xs text-muted">Aucun rôle</span>;
+    return <span className="text-xs text-muted">Non attribué</span>;
   }
 
   return (

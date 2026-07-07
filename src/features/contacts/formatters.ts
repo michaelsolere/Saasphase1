@@ -1,5 +1,5 @@
 const roleLabels: Record<string, string> = {
-  prospect: "Prospect",
+  prospect: "Non attribué",
   candidate: "Candidat",
   pre_reservation_holder: "Titulaire de pré-réservation",
   reservation_holder: "Titulaire de réservation",
@@ -15,7 +15,7 @@ const roleLabels: Record<string, string> = {
 
 export function getContactRoleLabel(value: string | null) {
   if (!value) {
-    return "Aucun rôle";
+    return "Non attribué";
   }
 
   return roleLabels[value] ?? value.replaceAll("_", " ");
