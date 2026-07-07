@@ -358,6 +358,25 @@ function SummaryCard({
   );
 }
 
+function CollapsibleSection({
+  id,
+  title,
+  children,
+}: {
+  id?: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details id={id} className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <summary className="cursor-pointer text-xl font-semibold">
+        {title}
+      </summary>
+      <div className="mt-5">{children}</div>
+    </details>
+  );
+}
+
 function LitterTopSummary({
   litter,
   summary,
@@ -700,21 +719,22 @@ function RelatedEventsSection({
   footer?: React.ReactNode;
 }) {
   return (
-    <section id="evenements-lies" className="rounded-2xl border bg-surface p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Événements liés</h2>
-
+    <CollapsibleSection
+      id="evenements-lies"
+      title="Événements liés et ajout d’événement"
+    >
       {banner}
 
       {hasError ? (
-        <p role="alert" className="mt-5 text-sm text-amber-800">
+        <p role="alert" className="text-sm text-amber-800">
           Impossible de charger les événements liés.
         </p>
       ) : !events || events.length === 0 ? (
-        <p className="mt-5 text-sm text-muted">
+        <p className="text-sm text-muted">
           Aucun événement lié à cette portée.
         </p>
       ) : (
-        <div className="mt-6 divide-y divide-border">
+        <div className="divide-y divide-border">
           {events.map((event) => (
             <div key={event.id} className="py-5 first:pt-0 last:pb-0">
               <div className="space-y-2">
@@ -750,7 +770,7 @@ function RelatedEventsSection({
       )}
 
       {footer}
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -919,19 +939,17 @@ function RelatedNotesSection({
   hasError: boolean;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Notes liées</h2>
-
+    <CollapsibleSection title="Notes liées">
       {hasError ? (
-        <p role="alert" className="mt-5 text-sm text-amber-800">
+        <p role="alert" className="text-sm text-amber-800">
           Impossible de charger les notes liées.
         </p>
       ) : !notes || notes.length === 0 ? (
-        <p className="mt-5 text-sm text-muted">
+        <p className="text-sm text-muted">
           Aucune note liée à cette portée.
         </p>
       ) : (
-        <div className="mt-6 divide-y divide-border">
+        <div className="divide-y divide-border">
           {notes.map((note) => {
             const authorName =
               note.profiles?.display_name || "Auteur inconnu";
@@ -962,7 +980,7 @@ function RelatedNotesSection({
           })}
         </div>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -974,19 +992,17 @@ function RelatedDocumentsSection({
   hasError: boolean;
 }) {
   return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Documents liés</h2>
-
+    <CollapsibleSection title="Documents liés">
       {hasError ? (
-        <p role="alert" className="mt-5 text-sm text-amber-800">
+        <p role="alert" className="text-sm text-amber-800">
           Impossible de charger les documents liés.
         </p>
       ) : !documents || documents.length === 0 ? (
-        <p className="mt-5 text-sm text-muted">
+        <p className="text-sm text-muted">
           Aucun document lié à cette portée.
         </p>
       ) : (
-        <div className="mt-6 divide-y divide-border">
+        <div className="divide-y divide-border">
           {documents.map((document) => {
             const usefulDate = getUsefulDocumentDate(document);
 
@@ -1026,7 +1042,7 @@ function RelatedDocumentsSection({
           })}
         </div>
       )}
-    </section>
+    </CollapsibleSection>
   );
 }
 
@@ -1749,10 +1765,8 @@ export default async function LitterDetailPage({
                 }
               />
 
-              {/* ---- Campagne de pré-réservation ---- */}
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Campagne de pré-réservation</h2>
-                <p className="mt-1 text-sm font-medium text-foreground">
+              <CollapsibleSection title="Campagne de pré-réservation">
+                <p className="text-sm font-medium text-foreground">
                   Action métier : sélectionner des candidatures qualifiées pour
                   préparer une campagne de pré-réservation.
                 </p>
@@ -1829,16 +1843,10 @@ export default async function LitterDetailPage({
                     </div>
                   </form>
                 )}
-              </section>
+              </CollapsibleSection>
 
-              <details
-                id="modifier-portee"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <summary className="cursor-pointer text-xl font-semibold">
-                  Modifier la portée
-                </summary>
-                <p className="mt-3 text-sm text-muted">
+              <CollapsibleSection id="modifier-portee" title="Modifier la portée">
+                <p className="text-sm text-muted">
                   Mettez à jour les informations principales de la portée. Le
                   rattachement à un groupe se gère dans la section dédiée
                   ci-dessous. Aucun animal, réservation ou document n’est créé ou
@@ -1894,16 +1902,10 @@ export default async function LitterDetailPage({
                     </button>
                   </div>
                 </form>
-              </details>
+              </CollapsibleSection>
 
-              <details
-                id="groupe-portees"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <summary className="cursor-pointer text-xl font-semibold">
-                  Groupe de portées
-                </summary>
-                <p className="mt-3 text-sm text-muted">
+              <CollapsibleSection id="groupe-portees" title="Groupe de portées">
+                <p className="text-sm text-muted">
                   Rattachez cette portée à un groupe de portées (période),
                   changez de groupe, ou détachez-la. Le statut de la portée
                   n’est pas modifié et les réservations liées ne sont pas
@@ -1985,7 +1987,7 @@ export default async function LitterDetailPage({
                     Enregistrer le groupe
                   </button>
                 </form>
-              </details>
+              </CollapsibleSection>
 
               <RelatedDocumentsSection
                 documents={litterDocuments}
@@ -2004,20 +2006,14 @@ export default async function LitterDetailPage({
                 hasError={Boolean(notesError)}
               />
 
-              <details className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <summary className="cursor-pointer text-xl font-semibold">
-                  Notes de la portée
-                </summary>
-                <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
+              <CollapsibleSection title="Notes de la portée">
+                <p className="whitespace-pre-wrap leading-7 text-muted">
                   {litter.notes || "Aucune note renseignée."}
                 </p>
-              </details>
+              </CollapsibleSection>
 
-              <details className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <summary className="cursor-pointer text-xl font-semibold">
-                  Dates techniques
-                </summary>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+              <CollapsibleSection title="Dates techniques">
+                <dl className="grid gap-6 sm:grid-cols-2">
                   <DetailItem
                     label="Création"
                     value={formatLitterDate(litter.created_at)}
@@ -2027,7 +2023,7 @@ export default async function LitterDetailPage({
                     value={formatLitterDate(litter.updated_at)}
                   />
                 </dl>
-              </details>
+              </CollapsibleSection>
             </div>
           </>
         )}
