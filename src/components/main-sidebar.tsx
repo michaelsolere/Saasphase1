@@ -48,6 +48,7 @@ const sections: SidebarSection[] = [
     items: [
       { label: "Tous les contacts", href: "/contacts" },
       { label: "Candidats", href: "/candidatures" },
+      { label: "Soumissions à examiner", href: "/form-submissions" },
       { label: "Adoptants", comingSoon: true },
       { label: "Anciens adoptants", comingSoon: true },
       { label: "Partenaires", comingSoon: true },

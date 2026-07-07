@@ -13,6 +13,7 @@ const privateRoutes = [
   "/cheptel",
   "/contacts",
   "/documents",
+  "/form-submissions",
   "/litter-groups",
   "/litters",
   "/payments",
