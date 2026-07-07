@@ -404,7 +404,7 @@ Un contact peut aussi etre cree automatiquement depuis le formulaire public. La 
 
 Lorsqu'une candidature manuelle est creee pour un contact, le role `candidate` est ajoute si absent. Si un role actif `prospect` existe, il peut etre desactive dans ce parcours.
 
-Lorsqu'une reservation est creee depuis une candidature qualifiee, le role `pre_reservation_holder` est ajoute si absent.
+Lorsqu'une reservation est creee depuis une candidature qualifiee, elle reste en `draft` et ne promeut pas le contact en `pre_reservation_holder`. Le role n'est ajoute qu'apres paiement reel de pre-reservation.
 
 Lors du paiement d'une premiere arrhe de 250 euros sur une reservation en `pre_reservation_requested`, le role `pre_reservation_holder` est ajoute si besoin et le role `candidate` est desactive.
 
@@ -510,6 +510,29 @@ Une reservation peut aussi etre creee directement depuis `/reservations/new`, av
 
 La campagne de pre-reservation lancee depuis une fiche portee cree ou reutilise une reservation et cree une demande de paiement de 250 euros en `arrhes`, statut `requested`, echeance J+15. La reservation passe alors de `draft` a `pre_reservation_requested` seulement apres creation effective de la demande de paiement.
 
+#### Workflow pre-reservation, arrhes et documents stabilise en Phase 1
+
+Le jalon Phase 1 stabilise le parcours financier et documentaire sans creer de nouveau workflow automatique :
+
+1. une reservation creee depuis une candidature ou creee directement reste en `draft` tant qu'aucune demande de paiement n'est lancee ;
+2. la campagne de pre-reservation cree une demande 1/2 de 250 euros en `arrhes`, statut `requested`, puis passe la reservation en `pre_reservation_requested` ;
+3. lorsque ce paiement `arrhes` de 250 euros est marque paye, la reservation passe en `pre_reservation_paid` et le contact devient `pre_reservation_holder` ;
+4. les documents de reservation peuvent alors etre initialises si le total des paiements `arrhes` payes atteint le seuil de pre-reservation ;
+5. l'eleveur peut ensuite demander manuellement le complement 2/2 de 250 euros ;
+6. lorsque le total des paiements `arrhes` payes atteint 500 euros, l'etat financier calcule devient "arrhes completes" et le contact devient `reservation_holder` ;
+7. aucune adoption, attribution d'animal, generation PDF/DOCX, signature electronique, upload documentaire ou email reel n'est declenche automatiquement par ces paiements.
+
+Les seuils Phase 1 sont centralises dans `src/features/payments/deposit-thresholds.ts` :
+
+- `PRE_RESERVATION_PAYMENT_AMOUNT_CENTS = 25000` ;
+- `COMPLETE_DEPOSIT_AMOUNT_CENTS = 50000`.
+
+Ces montants sont les valeurs actuelles du prototype. Ils devront devenir parametrables avant un usage multi-eleveurs : certains elevages devront pouvoir modifier les montants, supprimer l'etape de pre-reservation, ou configurer autrement les jalons du parcours candidat/adoptant.
+
+Decision Phase 1 : ne pas creer pour l'instant de statut "reservation consolidee". L'application conserve le statut existant, garde "arrhes completes" comme etat calcule a partir des paiements `arrhes` payes, et reporte la decision de consolidation tant que le workflow multi-eleveurs et le parametrage futur ne sont pas cadres.
+
+Les remboursements restent visibles dans l'historique financier et dans les montants rembourses du dossier. Aucun chantier specifique "arrhes nettes apres remboursement" n'est ouvert en Phase 1 ; ce cas sera traite plus tard si le besoin reel apparait.
+
 La fiche reservation `/reservations/[id]` est le centre operationnel du dossier adoptant. Elle affiche notamment :
 
 - resume du dossier ;
@@ -549,7 +572,7 @@ Le parcours adoptant est bien structure, mais les etapes juridiques, documentair
 
 ### Decide mais non implemente
 
-Il n'existe pas encore de workflow complet "reservation consolidee apres naissance" combinant automatiquement documents signes, complement d'arrhes, attribution et confirmation finale.
+Il n'existe pas encore de workflow complet "reservation consolidee apres naissance" combinant automatiquement documents signes, complement d'arrhes, attribution et confirmation finale. Le choix actuel est de ne pas ajouter de statut dedie tant que les variantes metier multi-eleveurs ne sont pas cadrees.
 
 ## 7. Workflow Paiements
 
@@ -572,7 +595,11 @@ Automatisations reelles :
 - ce meme cas ajoute `pre_reservation_holder` si absent et desactive `candidate` ;
 - si le total des paiements `arrhes` payes atteint au moins 500 euros, le role `reservation_holder` est ajoute et `pre_reservation_holder` est desactive.
 
+Les seuils de 250 euros et 500 euros sont centralises dans `src/features/payments/deposit-thresholds.ts`. Ils representent les valeurs Phase 1 et ne doivent pas etre dupliques en dur dans les workflows futurs.
+
 Un remboursement manuel peut etre cree comme paiement de type `refund`, statut `paid`.
+
+Les remboursements sont conserves comme lignes d'historique financier. En Phase 1, l'etat "arrhes completes" reste calcule depuis les paiements `arrhes` payes, sans chantier specifique d'arrhes nettes apres remboursement.
 
 La vue `reservation_overview` calcule :
 
@@ -603,7 +630,7 @@ Depuis une reservation, l'action `initializeReservationDocuments` cree les docum
 Conditions principales :
 
 - reservation en `pre_reservation_paid` ;
-- au moins un paiement `arrhes` de 250 euros paye ;
+- total des paiements `arrhes` payes au moins egal au seuil de pre-reservation Phase 1, soit 250 euros ;
 - documents non deja presents.
 
 Les documents crees sont en `to_generate` et `signature_required = true`.
@@ -858,7 +885,7 @@ Automatisations constatees :
 
 5. Creation reservation depuis candidature :
    - creation reservation `draft` ;
-   - ajout role `pre_reservation_holder`.
+   - aucun ajout automatique du role `pre_reservation_holder`.
 
 6. Campagne pre-reservation :
    - creation ou reutilisation reservation ;
@@ -871,6 +898,7 @@ Automatisations constatees :
    - desactivation role `candidate`.
 
 8. Arrhes payees au moins 500 euros :
+   - etat financier calcule "arrhes completes" ;
    - ajout role `reservation_holder` ;
    - desactivation role `pre_reservation_holder`.
 
@@ -911,6 +939,7 @@ Automatisations constatees :
 
 - Parcours pre-reservation en deux temps 250 euros puis 500 euros.
 - Documents de reservation apres pre-reservation payee.
+- Pas de statut "reservation consolidee" en Phase 1 : l'etat "arrhes completes" reste calcule et le statut existant est conserve.
 - Attestation de vente et facture cadrees mais non completement implementees.
 - Avoirs, reports, retenues et remboursements avances prevus mais peu exposes.
 - Suivi post-adoption prevu par modeles d'emails, mais sans workflow reel.
@@ -978,14 +1007,14 @@ Les exclusions Phase 1 sont encore respectees dans l'etat constate :
 ### Hypotheses a verifier
 
 - Sens exact attendu pour `prospect`.
-- Statut cible apres paiement complet des 500 euros d'arrhes.
-- Conditions metier exactes de consolidation d'une reservation apres naissance.
+- Conditions metier futures d'une eventuelle consolidation de reservation apres paiement complet des arrhes.
+- Parametrage multi-eleveurs du parcours pre-reservation, y compris suppression possible de cette etape.
 - Regime juridique du versement 250 euros avant contrat de reservation.
 - Role futur du groupe de portees comme axe de priorisation.
 
 ## 20. Priorites fonctionnelles recommandees
 
-1. Clarifier le parcours pre-reservation vers reservation consolidee.
+1. Clarifier le futur parametrage du parcours pre-reservation et des jalons candidat/adoptant.
 2. Clarifier et stabiliser les roles contact, notamment `prospect` / absence de role.
 3. Enrichir la revue des doublons avec recherche libre et future fusion manuelle controlee.
 4. Transformer le dashboard en liste priorisee d'actions a traiter aujourd'hui.
@@ -1005,6 +1034,6 @@ Les exclusions Phase 1 sont encore respectees dans l'etat constate :
 2. Lot technique court : centraliser les constantes de roles, statuts et libelles sans changer le modele SQL.
 3. Lot workflow : extraire la mise a jour des roles contact dans une fonction/service unique.
 4. Lot dashboard : creer une premiere inbox "actions a traiter" basee uniquement sur les donnees existantes.
-5. Lot reservation : cadrer puis implementer les conditions d'une reservation consolidee apres 500 euros et documents signes.
+5. Lot reservation : cadrer plus tard les conditions d'une eventuelle reservation consolidee, sans creer de statut tant que le parametrage multi-eleveurs n'est pas tranche.
 6. Lot doublons avance : ajouter recherche libre et cadrage de fusion manuelle sans automatisme destructeur.
 7. Lot documents : separer clairement aperçu interne, document attendu, document envoye et fichier reel futur.
