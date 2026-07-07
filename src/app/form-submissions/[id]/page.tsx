@@ -234,12 +234,32 @@ function ResolutionAction({
 }: {
   submission: FormSubmissionQueryResult;
 }) {
+  const isPendingDuplicateReview =
+    submission.status === "duplicate_suspected" ||
+    submission.duplicate_resolution === "pending_human_review";
   const isResolvable =
-    submission.status === "duplicate_suspected" &&
-    submission.duplicate_resolution === "pending_human_review" &&
+    isPendingDuplicateReview &&
     !submission.application_id &&
     !submission.contact_id &&
     Boolean(submission.duplicate_candidate_contact_id);
+
+  if (
+    isPendingDuplicateReview &&
+    !submission.application_id &&
+    !submission.contact_id &&
+    !submission.duplicate_candidate_contact_id
+  ) {
+    return (
+      <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+        <p className="text-sm font-semibold">
+          Soumission en attente — aucun contact suggéré
+        </p>
+        <p className="mt-1 text-sm leading-6">
+          Résolution impossible dans cette version : aucun contact suggéré.
+        </p>
+      </div>
+    );
+  }
 
   if (!isResolvable) {
     return (
