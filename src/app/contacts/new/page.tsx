@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { createContact } from "@/features/contacts/actions";
 import {
-  CONTACT_ROLE_FORM_OPTIONS,
+  CONTACT_COMPLEMENTARY_ROLES,
   CONTACT_ROLE_LABELS,
 } from "@/features/contacts/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -45,7 +45,7 @@ function Field({
   );
 }
 
-const initialRoleOptions = CONTACT_ROLE_FORM_OPTIONS.map((role) => [
+const initialRoleOptions = CONTACT_COMPLEMENTARY_ROLES.map((role) => [
   role,
   CONTACT_ROLE_LABELS[role],
 ] as const);

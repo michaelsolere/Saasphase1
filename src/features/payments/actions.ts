@@ -324,6 +324,23 @@ export async function createReservationPayment(formData: FormData) {
     redirect(paymentRedirectUrl(reservationId, "error"));
   }
 
+  if (status === "paid") {
+    await markLinkedPreReservationAsPaidIfNeeded({
+      supabase,
+      reservationId: reservation.id,
+      paymentType,
+      amountCents,
+      userId: user.id,
+    });
+
+    await markLinkedReservationHolderRoleIfDepositCompleted({
+      supabase,
+      reservationId: reservation.id,
+      paymentType,
+      userId: user.id,
+    });
+  }
+
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");
   revalidatePath("/payments");

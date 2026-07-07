@@ -94,7 +94,7 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
-  if (initialRole && !isContactRole(initialRole)) {
+  if (initialRole && !isContactComplementaryRole(initialRole)) {
     redirect(contactCreateErrorUrl);
   }
 
@@ -159,21 +159,16 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
-  if (initialRole) {
-    const today = new Date().toISOString().slice(0, 10);
-    const { error: roleInsertError } = await supabase
-      .from("contact_roles")
-      .insert({
-        organization_id: membership.organization_id,
-        contact_id: contact.id,
-        role: initialRole,
-        started_at: today,
-        is_active: true,
-        created_by: user.id,
-        updated_by: user.id,
-      });
+  if (initialRole && isContactComplementaryRole(initialRole)) {
+    const roleResult = await addActiveContactRoleIfAbsent({
+      supabase,
+      organizationId: membership.organization_id,
+      contactId: contact.id,
+      role: initialRole,
+      userId: user.id,
+    });
 
-    if (roleInsertError) {
+    if (roleResult.error) {
       revalidatePath("/contacts");
       revalidatePath(`/contacts/${contact.id}`);
       redirect(`/contacts/${contact.id}?role_status=error`);
