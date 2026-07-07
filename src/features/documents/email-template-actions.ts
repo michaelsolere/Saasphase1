@@ -60,7 +60,11 @@ function buildCustomTemplateKey(title: string) {
 function isEmailTemplateCategory(
   value: FormDataEntryValue | null,
 ): value is EmailTemplateCategory {
-  return value === "adopter_journey" || value === "post_adoption";
+  return (
+    value === "adopter_journey" ||
+    value === "post_adoption" ||
+    value === "candidate_journey"
+  );
 }
 
 async function requireWritableOrganization() {

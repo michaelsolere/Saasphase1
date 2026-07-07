@@ -66,6 +66,9 @@ export default async function EmailTemplatesPage({
 }) {
   const query = await searchParams;
   const templates = await getEmailTemplatesForCurrentOrganization();
+  const candidateTemplates = templates.filter(
+    (template) => template.category === "candidate_journey",
+  );
   const journeyTemplates = templates.filter(
     (template) => template.category === "adopter_journey",
   );
@@ -102,6 +105,26 @@ export default async function EmailTemplatesPage({
       <section className="space-y-5 border-b py-6" aria-label="Accès rapides">
         <StatusMessage value={query.template_status} />
         <TemplateNav templates={templates} />
+      </section>
+
+      <section className="py-8">
+        <div className="mb-5">
+          <h2 className="text-xl font-semibold tracking-tight">
+            Parcours candidat
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+            Modèles à utiliser pendant les premiers échanges et la qualification
+            des candidatures.
+          </p>
+        </div>
+        <div className="space-y-5">
+          {candidateTemplates.map((template) => (
+            <EmailTemplateEditor
+              key={template.templateKey}
+              template={template}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="py-8">
