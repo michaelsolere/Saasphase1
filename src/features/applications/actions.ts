@@ -100,10 +100,6 @@ function applicationRoleUrl(applicationId: string) {
   return `/candidatures/${applicationId}?role_status=error`;
 }
 
-function reservationRoleUrl(reservationId: string) {
-  return `/reservations/${reservationId}?role_status=error`;
-}
-
 export async function createApplicationForContact(formData: FormData) {
   const contactId = formData.get("contact_id");
 
@@ -392,26 +388,6 @@ export async function createReservationFromApplication(formData: FormData) {
   }
 
   const createdReservationId = createdReservation.id;
-
-  const preReservationRoleResult = await promoteContactJourneyRole({
-    supabase,
-    organizationId: application.organization_id,
-    contactId: application.contact_id,
-    role: "pre_reservation_holder",
-    userId: user.id,
-  });
-
-  if (
-    preReservationRoleResult.error ||
-    preReservationRoleResult.deactivationError
-  ) {
-    revalidatePath("/contacts");
-    revalidatePath(`/contacts/${application.contact_id}`);
-    revalidatePath("/candidatures");
-    revalidatePath(`/candidatures/${applicationId}`);
-    revalidatePath("/reservations");
-    redirect(reservationRoleUrl(createdReservationId));
-  }
 
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${application.contact_id}`);

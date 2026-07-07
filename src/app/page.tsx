@@ -18,6 +18,7 @@ import {
   getLitterStatusLabel,
   formatLitterDate,
 } from "@/features/litters/formatters";
+import { COMPLETE_DEPOSIT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
 
 export const dynamic = "force-dynamic";
 
@@ -201,6 +202,31 @@ export default async function Home() {
     .from("reservation_overview")
     .select("id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
     .order("created_at", { ascending: false });
+  const reservationIds = (rawReservations || [])
+    .map((reservation) => reservation.id)
+    .filter((id): id is string => Boolean(id));
+  const { data: rawPaidArrhesPayments } = reservationIds.length > 0
+    ? await supabase
+        .from("payments")
+        .select("reservation_id, amount_cents")
+        .in("reservation_id", reservationIds)
+        .eq("payment_type", "arrhes")
+        .eq("status", "paid")
+        .is("deleted_at", null)
+    : { data: [] };
+  const paidArrhesCentsByReservationId = new Map<string, number>();
+
+  for (const payment of rawPaidArrhesPayments || []) {
+    if (!payment.reservation_id) {
+      continue;
+    }
+
+    paidArrhesCentsByReservationId.set(
+      payment.reservation_id,
+      (paidArrhesCentsByReservationId.get(payment.reservation_id) ?? 0) +
+        payment.amount_cents,
+    );
+  }
   const reservationStatusById = new Map(
     (rawReservations || []).map((reservation) => [
       reservation.id,
@@ -225,9 +251,11 @@ export default async function Home() {
   const reservationsNeedAttention = (rawReservations || []).filter((r) => {
     const isPreResRequested = r.status === "pre_reservation_requested";
     const isPreResPaid = r.status === "pre_reservation_paid";
+    const paidArrhesCents = r.id
+      ? paidArrhesCentsByReservationId.get(r.id) ?? 0
+      : 0;
     const isArrhesCompleteNoAnimal =
-      r.paid_cents !== null &&
-      r.paid_cents >= 50000 &&
+      paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
       !r.animal_id &&
       r.status !== "animal_assigned" &&
       !isClosedOrNegativeReservationStatus(r.status);
@@ -465,9 +493,11 @@ export default async function Home() {
                   <p className="text-sm text-muted py-2">Aucun parcours adoptant à suivre pour l’instant.</p>
                 ) : (
                   reservationsNeedAttention.slice(0, 5).map((res) => {
+                    const paidArrhesCents = res.id
+                      ? paidArrhesCentsByReservationId.get(res.id) ?? 0
+                      : 0;
                     const isArrhesCompleteNoAnimal =
-                      res.paid_cents !== null &&
-                      res.paid_cents >= 50000 &&
+                      paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
                       !res.animal_id &&
                       res.status !== "animal_assigned" &&
                       !isClosedOrNegativeReservationStatus(res.status);

@@ -119,6 +119,22 @@ async function readReservationPayments(
   );
 }
 
+async function readActiveContactRoles(
+  supabase: SupabaseTestClient,
+  contactId: string,
+) {
+  return expectSupabaseData(
+    await supabase
+      .from("contact_roles")
+      .select("role")
+      .eq("contact_id", contactId)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+      .order("role", { ascending: true }),
+    "read active contact roles",
+  ).map((row) => row.role);
+}
+
 async function countRows(
   supabase: SupabaseTestClient,
   table: "documents" | "notes" | "payments",
@@ -172,6 +188,13 @@ async function getOrCreateDraftReservation(
 
 async function createPreReservationPaymentFixture(
   supabase: SupabaseTestClient,
+  {
+    amountCents = 25000,
+    paymentType = "arrhes",
+  }: {
+    amountCents?: number;
+    paymentType?: "arrhes" | "balance";
+  } = {},
 ) {
   const {
     data: { user },
@@ -256,14 +279,17 @@ async function createPreReservationPaymentFixture(
     organization_id: organizationId,
     contact_id: contactId,
     reservation_id: reservationId,
-    amount_cents: 25000,
+    amount_cents: amountCents,
     currency: "EUR",
-    payment_type: "arrhes",
+    payment_type: paymentType,
     status: "requested",
     payment_method: "bank_transfer",
     requested_at: "2026-04-02T10:00:00+00:00",
     due_date: "2026-04-17",
-    notes: "Paiement de pré-réservation de 250 €.",
+    notes:
+      paymentType === "arrhes"
+        ? "Paiement de pré-réservation."
+        : "Paiement hors arrhes.",
     created_by: user.id,
     updated_by: user.id,
   });
@@ -272,7 +298,7 @@ async function createPreReservationPaymentFixture(
     throw new Error(`create pre-reservation payment: ${paymentError.message}`);
   }
 
-  return { paymentId, reservationId };
+  return { contactId, paymentId, reservationId };
 }
 
 async function createPreReservationBalanceFixture(
@@ -484,6 +510,9 @@ test("confirms a draft reservation manually without side effects", async ({
   expect(paymentCountBefore).toBe(0);
   expect(documentCountBefore).toBe(0);
   expect(noteCountBefore).toBe(0);
+  await expect
+    .poll(async () => readActiveContactRoles(supabase, contactId))
+    .not.toContain("pre_reservation_holder");
 
   await page.goto(`/reservations/${reservationId}`);
   await expect(page.getByRole("button", { name: "Confirmer la réservation" })).toBeVisible();
@@ -553,6 +582,9 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
 
   const updatedReservation = await readReservation(supabase, reservationId);
   expect(updatedReservation.status).toBe("pre_reservation_paid");
+  await expect
+    .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
+    .toContain("pre_reservation_holder");
 
   const updatedPayment = expectSupabaseData(
     await supabase
@@ -564,6 +596,63 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
   );
   expect(updatedPayment.status).toBe("paid");
   expect(updatedPayment.paid_at).not.toBeNull();
+});
+
+test("marks a direct 500 euro arrhes payment as reservation holder without keeping pre-reservation role", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationPaymentFixture(supabase, {
+    amountCents: 50000,
+    paymentType: "arrhes",
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await openDialog(
+    page.getByRole("button", { name: "Marquer payé" }),
+    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
+  );
+  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(/payment_mark_status=success/);
+  await expect(page.getByText("Arrhes complètes", { exact: true })).toBeVisible();
+
+  const updatedReservation = await readReservation(supabase, reservationId);
+  expect(updatedReservation.status).toBe("pre_reservation_paid");
+
+  await expect
+    .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
+    .toEqual(["reservation_holder"]);
+});
+
+test("does not display complete deposit for a paid non-arrhes 500 euro payment", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const { reservationId } = await createPreReservationPaymentFixture(supabase, {
+    amountCents: 50000,
+    paymentType: "balance",
+  });
+
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+
+  await page.goto(`/reservations/${reservationId}`);
+  await openDialog(
+    page.getByRole("button", { name: "Marquer payé" }),
+    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
+  );
+  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(/payment_mark_status=success/);
+  await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
 });
 
 test("creates the second 250 euro deposit request only after confirmation", async ({
