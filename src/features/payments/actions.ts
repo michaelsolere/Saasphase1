@@ -143,6 +143,131 @@ async function markLinkedPreReservationAsPaidIfNeeded({
   revalidatePath(`/contacts/${reservation.contact_id}`);
 }
 
+async function markLinkedReservationHolderRoleIfDepositCompleted({
+  supabase,
+  reservationId,
+  paymentType,
+  userId,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  reservationId: string | null;
+  paymentType: string;
+  userId: string;
+}) {
+  if (!reservationId || paymentType !== "arrhes") {
+    return;
+  }
+
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    console.error(
+      "Failed to read reservation for completed deposit role update:",
+      reservationError,
+    );
+    return;
+  }
+
+  const { data: paidArrhesPayments, error: paymentsError } = await supabase
+    .from("payments")
+    .select("amount_cents")
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservation.id)
+    .eq("payment_type", "arrhes")
+    .eq("status", "paid")
+    .is("deleted_at", null);
+
+  if (paymentsError) {
+    console.error(
+      "Failed to read paid arrhes payments for completed deposit role update:",
+      paymentsError,
+    );
+    return;
+  }
+
+  const paidArrhesTotalCents = (paidArrhesPayments ?? []).reduce(
+    (total, payment) => total + payment.amount_cents,
+    0,
+  );
+
+  if (paidArrhesTotalCents < 50000) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const today = now.slice(0, 10);
+
+  const { data: existingHolderRole, error: existingRoleError } = await supabase
+    .from("contact_roles")
+    .select("id")
+    .eq("organization_id", reservation.organization_id)
+    .eq("contact_id", reservation.contact_id)
+    .eq("role", "reservation_holder")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (existingRoleError) {
+    console.error(
+      "Failed to read active reservation_holder contact role:",
+      existingRoleError,
+    );
+    return;
+  }
+
+  if (!existingHolderRole) {
+    const { error: roleInsertError } = await supabase
+      .from("contact_roles")
+      .insert({
+        organization_id: reservation.organization_id,
+        contact_id: reservation.contact_id,
+        role: "reservation_holder",
+        started_at: today,
+        is_active: true,
+        created_by: userId,
+        updated_by: userId,
+      });
+
+    if (roleInsertError && roleInsertError.code !== "23505") {
+      console.error(
+        "Failed to add active reservation_holder contact role:",
+        roleInsertError,
+      );
+      return;
+    }
+  }
+
+  const { error: preReservationRoleDeactivateError } = await supabase
+    .from("contact_roles")
+    .update({
+      is_active: false,
+      ended_at: today,
+      updated_at: now,
+      updated_by: userId,
+    })
+    .eq("organization_id", reservation.organization_id)
+    .eq("contact_id", reservation.contact_id)
+    .eq("role", "pre_reservation_holder")
+    .eq("is_active", true)
+    .is("deleted_at", null);
+
+  if (preReservationRoleDeactivateError) {
+    console.error(
+      "Failed to deactivate active pre_reservation_holder contact role:",
+      preReservationRoleDeactivateError,
+    );
+    return;
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${reservation.contact_id}`);
+}
+
 export async function createReservationPayment(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
@@ -399,6 +524,13 @@ export async function markPaymentAsPaid(formData: FormData) {
     userId: user.id,
   });
 
+  await markLinkedReservationHolderRoleIfDepositCompleted({
+    supabase,
+    reservationId: payment.reservation_id,
+    paymentType: payment.payment_type,
+    userId: user.id,
+  });
+
   // 8. Revalidation des chemins
   revalidatePath(`/payments/${paymentId}`);
   revalidatePath("/payments");
@@ -489,6 +621,13 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
     reservationId: payment.reservation_id,
     paymentType: payment.payment_type,
     amountCents: payment.amount_cents,
+    userId: user.id,
+  });
+
+  await markLinkedReservationHolderRoleIfDepositCompleted({
+    supabase,
+    reservationId: payment.reservation_id,
+    paymentType: payment.payment_type,
     userId: user.id,
   });
 
