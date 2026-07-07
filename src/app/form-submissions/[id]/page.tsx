@@ -5,6 +5,7 @@ import {
   formatApplicationDate,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { ArchiveSubmissionDialog } from "@/features/form-submissions/archive-submission-dialog";
 import { resolveSuspectFormSubmissionWithExistingContact } from "@/features/form-submissions/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/types/database.types";
@@ -66,6 +67,7 @@ const duplicateResolutionLabels: Record<string, string> = {
   matched_existing_contact: "Contact existant reconnu",
   created_new_contact: "Nouveau contact créé",
   resolved_existing_contact: "Rattachée à un contact existant",
+  archived: "Archivée sans candidature",
 };
 
 const sourceChannelLabels: Record<string, string> = {
@@ -234,18 +236,34 @@ function ResolutionAction({
 }: {
   submission: FormSubmissionQueryResult;
 }) {
+  const isArchived =
+    submission.status === "archived" ||
+    submission.duplicate_resolution === "archived";
   const isPendingDuplicateReview =
-    submission.status === "duplicate_suspected" ||
-    submission.duplicate_resolution === "pending_human_review";
+    !isArchived &&
+    !submission.application_id &&
+    (submission.status === "duplicate_suspected" ||
+      submission.duplicate_resolution === "pending_human_review");
   const isResolvable =
     isPendingDuplicateReview &&
-    !submission.application_id &&
     !submission.contact_id &&
     Boolean(submission.duplicate_candidate_contact_id);
 
+  if (isArchived) {
+    return (
+      <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-slate-950">
+        <p className="text-sm font-semibold">
+          Soumission archivée sans candidature
+        </p>
+        <p className="mt-1 text-sm leading-6">
+          Aucune action de résolution n’est disponible pour cette soumission.
+        </p>
+      </div>
+    );
+  }
+
   if (
     isPendingDuplicateReview &&
-    !submission.application_id &&
     !submission.contact_id &&
     !submission.duplicate_candidate_contact_id
   ) {
@@ -255,8 +273,12 @@ function ResolutionAction({
           Soumission en attente — aucun contact suggéré
         </p>
         <p className="mt-1 text-sm leading-6">
-          Résolution impossible dans cette version : aucun contact suggéré.
+          Aucun contact candidat unique n’a été identifié. Vous pouvez classer
+          cette soumission si elle ne doit pas devenir une candidature.
         </p>
+        <div className="mt-4">
+          <ArchiveSubmissionDialog submissionId={submission.id} />
+        </div>
       </div>
     );
   }
@@ -277,16 +299,7 @@ function ResolutionAction({
   }
 
   return (
-    <form
-      action={resolveSuspectFormSubmissionWithExistingContact}
-      className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
-    >
-      <input type="hidden" name="form_submission_id" value={submission.id} />
-      <input
-        type="hidden"
-        name="contact_id"
-        value={submission.duplicate_candidate_contact.id}
-      />
+    <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
       <p className="text-sm font-semibold">Résoudre le doublon suspect</p>
       <p className="mt-1 text-sm leading-6">
         Cette action rattache la soumission au contact suggéré, crée une
@@ -296,13 +309,24 @@ function ResolutionAction({
       <div className="mt-4 rounded-lg border border-amber-200 bg-white/70 p-3 text-sm">
         <ContactLink contact={submission.duplicate_candidate_contact} />
       </div>
-      <button
-        type="submit"
-        className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
-      >
-        Rattacher au contact suggéré
-      </button>
-    </form>
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+        <form action={resolveSuspectFormSubmissionWithExistingContact}>
+          <input type="hidden" name="form_submission_id" value={submission.id} />
+          <input
+            type="hidden"
+            name="contact_id"
+            value={submission.duplicate_candidate_contact.id}
+          />
+          <button
+            type="submit"
+            className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Rattacher au contact suggéré
+          </button>
+        </form>
+        <ArchiveSubmissionDialog submissionId={submission.id} />
+      </div>
+    </div>
   );
 }
 
@@ -404,8 +428,7 @@ export default async function FormSubmissionDetailPage({
               {getApplicantName(submission)}
             </h1>
             <p className="mt-3 max-w-3xl leading-7 text-muted">
-              Détail complet et résolution limitée par rattachement à un contact
-              existant.
+              Détail complet et actions de revue manuelle pour cette soumission.
             </p>
           </div>
           <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
@@ -420,6 +443,12 @@ export default async function FormSubmissionDetailPage({
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-950">
               Soumission résolue : le contact existant est rattaché et la
               candidature liée a été créée.
+            </div>
+          ) : null}
+          {resolution === "archived" ? (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-950">
+              Soumission archivée sans candidature. Aucun contact, candidature
+              ni rôle n’a été créé.
             </div>
           ) : null}
           {resolution === "error" ? (

@@ -3258,6 +3258,15 @@ export type Database = {
           contact_id: string
         }[]
       }
+      archive_suspect_form_submission_without_application: {
+        Args: {
+          p_form_submission_id: string
+          p_internal_comment?: string | null
+        }
+        Returns: {
+          form_submission_id: string
+        }[]
+      }
       use_credit: {
         Args: {
           p_amount_used_cents: number
