@@ -180,6 +180,11 @@ export default async function Home() {
     .in("status", ["new", "to_review"])
     .order("created_at", { ascending: false });
   const applicationsNeedReview = rawApplications || [];
+  const { count: suspectFormSubmissionsCount } = await supabase
+    .from("form_submissions")
+    .select("id", { count: "exact", head: true })
+    .is("deleted_at", null)
+    .or("status.eq.duplicate_suspected,duplicate_resolution.eq.pending_human_review");
 
   // Load requested/pending payments
   const { data: rawPayments } = await supabase
@@ -356,6 +361,25 @@ export default async function Home() {
                   ))
                 )}
               </div>
+
+              {(suspectFormSubmissionsCount ?? 0) > 0 ? (
+                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                      {suspectFormSubmissionsCount} soumission
+                      {suspectFormSubmissionsCount === 1 ? "" : "s"} publique
+                      {suspectFormSubmissionsCount === 1 ? "" : "s"} suspecte
+                      {suspectFormSubmissionsCount === 1 ? "" : "s"} à examiner.
+                    </p>
+                    <Link
+                      href="/form-submissions"
+                      className="shrink-0 font-semibold text-amber-900 underline-offset-4 hover:underline"
+                    >
+                      Voir les soumissions →
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-6 border-t pt-4">
