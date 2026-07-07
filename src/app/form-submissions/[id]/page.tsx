@@ -5,6 +5,7 @@ import {
   formatApplicationDate,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { resolveSuspectFormSubmissionWithExistingContact } from "@/features/form-submissions/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/types/database.types";
 
@@ -64,6 +65,7 @@ const duplicateResolutionLabels: Record<string, string> = {
   pending_human_review: "Revue humaine en attente",
   matched_existing_contact: "Contact existant reconnu",
   created_new_contact: "Nouveau contact créé",
+  resolved_existing_contact: "Rattachée à un contact existant",
 };
 
 const sourceChannelLabels: Record<string, string> = {
@@ -227,12 +229,72 @@ function ContactLink({ contact }: { contact: LinkedContact }) {
   );
 }
 
+function ResolutionAction({
+  submission,
+}: {
+  submission: FormSubmissionQueryResult;
+}) {
+  const isResolvable =
+    submission.status === "duplicate_suspected" &&
+    submission.duplicate_resolution === "pending_human_review" &&
+    !submission.application_id &&
+    !submission.contact_id &&
+    Boolean(submission.duplicate_candidate_contact_id);
+
+  if (!isResolvable) {
+    return (
+      <div className="mt-6 rounded-xl border bg-background p-4">
+        <p className="text-sm font-semibold">Soumission traitée</p>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Cette soumission n’est plus en attente de résolution manuelle.
+        </p>
+      </div>
+    );
+  }
+
+  if (!submission.duplicate_candidate_contact) {
+    return null;
+  }
+
+  return (
+    <form
+      action={resolveSuspectFormSubmissionWithExistingContact}
+      className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
+    >
+      <input type="hidden" name="form_submission_id" value={submission.id} />
+      <input
+        type="hidden"
+        name="contact_id"
+        value={submission.duplicate_candidate_contact.id}
+      />
+      <p className="text-sm font-semibold">Résoudre le doublon suspect</p>
+      <p className="mt-1 text-sm leading-6">
+        Cette action rattache la soumission au contact suggéré, crée une
+        candidature liée, puis promeut le contact en candidat sans modifier ses
+        coordonnées.
+      </p>
+      <div className="mt-4 rounded-lg border border-amber-200 bg-white/70 p-3 text-sm">
+        <ContactLink contact={submission.duplicate_candidate_contact} />
+      </div>
+      <button
+        type="submit"
+        className="mt-4 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
+      >
+        Rattacher au contact suggéré
+      </button>
+    </form>
+  );
+}
+
 export default async function FormSubmissionDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ resolution?: string }>;
 }) {
   const { id } = await params;
+  const { resolution } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -278,7 +340,6 @@ export default async function FormSubmissionDetailPage({
     )
     .eq("id", id)
     .is("deleted_at", null)
-    .or("status.eq.duplicate_suspected,duplicate_resolution.eq.pending_human_review")
     .maybeSingle();
 
   if (error) {
@@ -323,17 +384,34 @@ export default async function FormSubmissionDetailPage({
               {getApplicantName(submission)}
             </h1>
             <p className="mt-3 max-w-3xl leading-7 text-muted">
-              Détail complet en lecture seule avant toute résolution manuelle.
+              Détail complet et résolution limitée par rattachement à un contact
+              existant.
             </p>
           </div>
           <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-            Lecture seule
+            Revue manuelle
           </span>
         </div>
       </header>
 
       <section className="py-8">
         <article className="rounded-2xl border bg-surface p-6 shadow-sm">
+          {resolution === "success" ? (
+            <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-950">
+              Soumission résolue : le contact existant est rattaché et la
+              candidature liée a été créée.
+            </div>
+          ) : null}
+          {resolution === "error" ? (
+            <div
+              role="alert"
+              className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-950"
+            >
+              La résolution n’a pas pu être appliquée. Vérifiez que la
+              soumission est toujours en attente et que le contact existe dans
+              votre organisation.
+            </div>
+          ) : null}
           <div className="flex flex-col gap-5 border-b pb-6 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-sm text-muted">
@@ -355,6 +433,8 @@ export default async function FormSubmissionDetailPage({
               Retour aux soumissions
             </Link>
           </div>
+
+          <ResolutionAction submission={submission} />
 
           <dl className="mt-6 grid gap-5 sm:grid-cols-2">
             <DetailItem

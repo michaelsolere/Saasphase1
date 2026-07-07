@@ -3248,6 +3248,16 @@ export type Database = {
           status: string
         }[]
       }
+      resolve_suspect_form_submission_existing_contact: {
+        Args: {
+          p_contact_id: string
+          p_form_submission_id: string
+        }
+        Returns: {
+          application_id: string
+          contact_id: string
+        }[]
+      }
       use_credit: {
         Args: {
           p_amount_used_cents: number
@@ -3394,4 +3404,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-
