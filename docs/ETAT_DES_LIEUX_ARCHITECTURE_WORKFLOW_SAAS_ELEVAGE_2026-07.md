@@ -416,7 +416,7 @@ Lors de l'adoption, le role `adopter` est ajoute et les roles `reservation_holde
 
 La mise a jour automatique d'un contact existant depuis une nouvelle soumission publique est limitee. Le systeme rattache au contact existant si email et telephone correspondent exactement, mais ne met pas a jour de facon complete les coordonnees du contact.
 
-La gestion des doublons est detectee mais pas encore resolue par un vrai ecran de fusion.
+La gestion des doublons issus du formulaire public est maintenant traitee par un workflow de revue humaine dedie. Le systeme ne fusionne pas automatiquement les contacts, n'ecrase pas les coordonnees d'un contact existant et conserve toujours la soumission originale.
 
 ### Hypothese a verifier
 
@@ -440,6 +440,36 @@ La RPC :
 8. met a jour la soumission en `application_created`.
 
 En cas de suspicion de doublon, la soumission passe en `duplicate_suspected` et aucune candidature n'est creee.
+
+La reponse publique reste volontairement generique : le candidat recoit seulement un statut accepte et une reference publique. Aucune information sensible sur les contacts existants, la detection de doublon ou la decision interne n'est revelee publiquement.
+
+#### Soumissions publiques suspectes et doublons
+
+Les soumissions suspectes ne sont plus invisibles. Elles sont listees dans `/form-submissions` lorsqu'elles sont en `duplicate_suspected` ou `pending_human_review`, puis consultables dans `/form-submissions/[id]`.
+
+Depuis le detail, l'eleveur garde la decision humaine explicite :
+
+- rattacher la soumission au contact suggere existant ;
+- creer un nouveau contact distinct et une candidature liee ;
+- archiver la soumission sans candidature.
+
+Le rattachement a un contact existant passe par la RPC privee `resolve_suspect_form_submission_existing_contact`. Elle verrouille la soumission, verifie l'organisation, refuse le double traitement, cree une candidature liee, promeut le role `candidate` et ne modifie pas les coordonnees du contact existant.
+
+La creation d'un nouveau contact passe par la RPC privee `resolve_suspect_form_submission_new_contact`. Elle cree uniquement un nouveau contact depuis les donnees de la soumission, cree une candidature liee, promeut ce nouveau contact en `candidate` et ne touche a aucun contact existant.
+
+L'archivage sans candidature passe par la RPC privee `archive_suspect_form_submission_without_application`. Elle est stricte : la soumission doit etre `duplicate_suspected`, avoir `duplicate_resolution = pending_human_review`, ne pas avoir de `contact_id` et ne pas avoir d'`application_id`. Elle ne cree ni contact, ni candidature, ni role, et conserve l'historique via la soumission archivee.
+
+L'integrite est renforcee par un index unique partiel `applications_form_submission_id_unique_idx` sur `applications(form_submission_id)` lorsque `form_submission_id is not null`. Il empeche deux candidatures de pointer vers la meme soumission.
+
+Le champ `applications.source_channel` est harmonise sur les chemins de creation par formulaire public, resolution par contact existant et resolution par nouveau contact.
+
+Les tests e2e cibles dans `tests/e2e/form-submission-integrity.spec.ts` couvrent notamment :
+
+- soumission publique normale avec `source_channel` reporte sur la candidature ;
+- soumission publique ambigue restant suspecte sans exposer de detail au public ;
+- resolution par contact existant et refus du double traitement ;
+- resolution par nouveau contact et refus d'une deuxieme candidature pour la meme soumission ;
+- archivage strict et refus du double archivage.
 
 Les transitions de candidature exposees sont :
 
@@ -468,7 +498,7 @@ Le statut `waiting_litter` existe, mais son usage automatise reste limite.
 
 ### Decide mais non implemente
 
-Le classement, le scoring, la qualification detaillee et la gestion complete des doublons ne sont pas encore implementes.
+Le classement, le scoring, la qualification detaillee et la fusion manuelle avancee de doublons ne sont pas encore implementes.
 
 ## 6. Workflow Reservation / Parcours adoptant
 
@@ -784,7 +814,11 @@ La vue publique `public_form_public_view` expose uniquement les metadonnees mini
 
 La RPC `submit_public_application` est en `security definer` et accordee a `anon` et `authenticated`.
 
+Les RPC privees de resolution des soumissions suspectes et d'archivage sont en `security definer`, utilisent un `search_path` securise, verrouillent la soumission cible et sont accordees uniquement a `authenticated`.
+
 Le modele evite les ENUM PostgreSQL et utilise des colonnes `text` avec contraintes `check`.
+
+Une contrainte d'integrite supplementaire protege le lien formulaire-candidature : l'index unique partiel `applications_form_submission_id_unique_idx` interdit deux candidatures pour une meme `form_submission`.
 
 ### Points sensibles a ne pas casser
 
@@ -805,40 +839,51 @@ Automatisations constatees :
    - creation `form_submissions` ;
    - creation ou rattachement contact ;
    - creation candidature ;
-   - ajout role `candidate`.
+   - ajout role `candidate` ;
+   - en cas de doublon suspect, passage en revue humaine sans exposer le detail au public.
 
-2. Creation candidature manuelle :
+2. Resolution de soumission suspecte :
+   - rattachement explicite au contact suggere ou creation explicite d'un nouveau contact ;
+   - creation candidature liee ;
+   - promotion role `candidate` ;
+   - conservation de la soumission originale.
+
+3. Archivage de soumission suspecte :
+   - archivage sans contact, sans candidature et sans role ;
+   - conservation de l'historique et du commentaire interne facultatif.
+
+4. Creation candidature manuelle :
    - ajout role `candidate` ;
    - desactivation possible de `prospect`.
 
-3. Creation reservation depuis candidature :
+5. Creation reservation depuis candidature :
    - creation reservation `draft` ;
    - ajout role `pre_reservation_holder`.
 
-4. Campagne pre-reservation :
+6. Campagne pre-reservation :
    - creation ou reutilisation reservation ;
    - creation demande paiement 250 euros ;
    - passage `draft` vers `pre_reservation_requested`.
 
-5. Paiement 250 euros :
+7. Paiement 250 euros :
    - passage reservation `pre_reservation_requested` vers `pre_reservation_paid` ;
    - ajout role `pre_reservation_holder` ;
    - desactivation role `candidate`.
 
-6. Arrhes payees au moins 500 euros :
+8. Arrhes payees au moins 500 euros :
    - ajout role `reservation_holder` ;
    - desactivation role `pre_reservation_holder`.
 
-7. Initialisation documentaire :
+9. Initialisation documentaire :
    - creation certificat d'engagement ;
    - creation contrat de reservation.
 
-8. Attribution animal :
+10. Attribution animal :
    - lien reservation-animal ;
    - passage reservation en `animal_assigned` ;
    - passage animal en `reserved` si applicable.
 
-9. Adoption :
+11. Adoption :
    - passage reservation en `adopted` ;
    - ajout role `adopter` ;
    - desactivation roles `reservation_holder` et `candidate` ;
@@ -854,6 +899,9 @@ Automatisations constatees :
 - Valeurs par defaut `dog` et `Golden Retriever`.
 - Formulaire public generique, non tokenise individuellement.
 - Candidature publique qui cree ou rattache contact et candidature.
+- Soumission publique suspecte revue humainement avant toute creation de candidature.
+- Pas de fusion automatique de contact et pas d'ecrasement de contact existant depuis une resolution de doublon.
+- Conservation de la soumission originale comme trace du formulaire public.
 - Chiots/chatons dans `animals`, pas dans une table separee.
 - Documents et notes lies aux objets metier.
 - Paiements avances prevus par le modele SQL.
@@ -880,7 +928,7 @@ Automatisations constatees :
 - Clerk.
 - Synchronisation Google Agenda.
 - Journal de mise-bas offline-first.
-- Fusion de doublons.
+- Recherche libre et fusion avancee de contacts depuis la revue des doublons.
 - Inbox globale "actions du jour".
 - Workflow complet de facture.
 - Workflow complet d'attestation de vente.
@@ -925,6 +973,7 @@ Les exclusions Phase 1 sont encore respectees dans l'etat constate :
 - Transitions de reservation dispersees.
 - Protection des routes privees non totalement centralisee.
 - Couplage fort entre libelles UI, statuts SQL et actions serveur.
+- Logique SQL de soumission publique et resolution de doublons volontairement transactionnelle mais dupliquee entre plusieurs RPC.
 
 ### Hypotheses a verifier
 
@@ -938,7 +987,7 @@ Les exclusions Phase 1 sont encore respectees dans l'etat constate :
 
 1. Clarifier le parcours pre-reservation vers reservation consolidee.
 2. Clarifier et stabiliser les roles contact, notamment `prospect` / absence de role.
-3. Mettre en place une vraie gestion des doublons issus du formulaire public.
+3. Enrichir la revue des doublons avec recherche libre et future fusion manuelle controlee.
 4. Transformer le dashboard en liste priorisee d'actions a traiter aujourd'hui.
 5. Finaliser le cadrage puis le workflow attestation de vente / facture.
 
@@ -957,5 +1006,5 @@ Les exclusions Phase 1 sont encore respectees dans l'etat constate :
 3. Lot workflow : extraire la mise a jour des roles contact dans une fonction/service unique.
 4. Lot dashboard : creer une premiere inbox "actions a traiter" basee uniquement sur les donnees existantes.
 5. Lot reservation : cadrer puis implementer les conditions d'une reservation consolidee apres 500 euros et documents signes.
-6. Lot doublons : concevoir un ecran de revue des `form_submissions` en `duplicate_suspected`.
+6. Lot doublons avance : ajouter recherche libre et cadrage de fusion manuelle sans automatisme destructeur.
 7. Lot documents : separer clairement aperçu interne, document attendu, document envoye et fichier reel futur.
