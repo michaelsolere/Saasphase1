@@ -6,6 +6,10 @@ import { redirect } from "next/navigation";
 import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
+import {
+  COMPLETE_DEPOSIT_AMOUNT_CENTS,
+  PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+} from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 
 function paymentRedirectUrl(
@@ -40,7 +44,11 @@ async function markLinkedPreReservationAsPaidIfNeeded({
   amountCents: number;
   userId: string;
 }) {
-  if (!reservationId || paymentType !== "arrhes" || amountCents !== 25000) {
+  if (
+    !reservationId ||
+    paymentType !== "arrhes" ||
+    amountCents < PRE_RESERVATION_PAYMENT_AMOUNT_CENTS
+  ) {
     return;
   }
 
@@ -119,7 +127,7 @@ async function markLinkedReservationHolderRoleIfDepositCompleted({
 
   const { data: reservation, error: reservationError } = await supabase
     .from("reservations")
-    .select("id, organization_id, contact_id")
+    .select("id, organization_id, contact_id, status")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -154,11 +162,33 @@ async function markLinkedReservationHolderRoleIfDepositCompleted({
     0,
   );
 
-  if (paidArrhesTotalCents < 50000) {
+  if (paidArrhesTotalCents < COMPLETE_DEPOSIT_AMOUNT_CENTS) {
     return;
   }
 
   const now = new Date().toISOString();
+
+  if (reservation.status === "pre_reservation_requested") {
+    const { error: reservationUpdateError } = await supabase
+      .from("reservations")
+      .update({
+        status: "pre_reservation_paid",
+        updated_at: now,
+        updated_by: userId,
+      })
+      .eq("id", reservation.id)
+      .eq("organization_id", reservation.organization_id)
+      .eq("status", "pre_reservation_requested")
+      .is("deleted_at", null);
+
+    if (reservationUpdateError) {
+      console.error(
+        "Failed to align reservation status after completed deposit:",
+        reservationUpdateError,
+      );
+      return;
+    }
+  }
 
   const holderRoleResult = await promoteContactJourneyRole({
     supabase,

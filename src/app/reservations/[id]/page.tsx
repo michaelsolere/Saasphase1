@@ -24,6 +24,10 @@ import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
 import {
+  COMPLETE_DEPOSIT_AMOUNT_CENTS,
+  PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+} from "@/features/payments/deposit-thresholds";
+import {
   updateReservationInternalComment,
   updateReservationPrice,
   activateReservation,
@@ -1433,12 +1437,12 @@ export default async function ReservationDetailPage({
 
   const preReservationDepositPayments = reservationPayments?.filter(
     (p) =>
-      p.amount_cents === 25000 &&
+      p.amount_cents === PRE_RESERVATION_PAYMENT_AMOUNT_CENTS &&
       (p.payment_type === "pre_reservation_deposit_refundable" ||
         p.payment_type === "arrhes"),
   ) || [];
   const arrhesPayments = reservationPayments?.filter(
-    (p) => p.payment_type === "arrhes" && p.amount_cents === 25000
+    (p) => p.payment_type === "arrhes"
   ) || [];
   const activeArrhesPayments = arrhesPayments.filter(
     (p) => p.status === "requested" || p.status === "paid",
@@ -1449,6 +1453,9 @@ export default async function ReservationDetailPage({
   const paidArrhesPaymentCount = activeArrhesPayments.filter(
     (p) => p.status === "paid",
   ).length;
+  const paidArrhesTotalCents = activeArrhesPayments
+    .filter((p) => p.status === "paid")
+    .reduce((total, payment) => total + payment.amount_cents, 0);
   const hasSecondPayment = hasSeparatePreReservationDeposit
     ? activeArrhesPayments.length >= 1
     : activeArrhesPayments.length >= 2;
@@ -1656,7 +1663,8 @@ export default async function ReservationDetailPage({
   const netPaidCents = paidCents - refundedCents;
   const remainingBalanceCents =
     priceCents === null ? null : priceCents - netPaidCents;
-  const hasCompleteDeposit = hasSecondPaid || paidCents >= 50000;
+  const hasCompleteDeposit =
+    paidArrhesTotalCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS;
   const isPaidInFull =
     priceCents !== null && netPaidCents >= priceCents;
 
@@ -1864,10 +1872,10 @@ export default async function ReservationDetailPage({
     paymentsSummaryText = "Paiement intégral / dossier soldé";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasCompleteDeposit) {
-    paymentsSummaryText = "Arrhes complètes (500 € payés)";
+    paymentsSummaryText = `Arrhes complètes (${formatPrice(paidArrhesTotalCents, currency)} payés)`;
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasFirstPaid) {
-    paymentsSummaryText = `Versement de pré-réservation (${formatPrice(paidCents, currency)} payé)`;
+    paymentsSummaryText = `Versement de pré-réservation (${formatPrice(paidArrhesTotalCents, currency)} d’arrhes payé)`;
     paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
   } else if (paidCents > 0) {
     paymentsSummaryText = `${formatPrice(paidCents, currency)} payé hors pré-réservation`;
@@ -2389,20 +2397,20 @@ export default async function ReservationDetailPage({
                         Paiement de pré-réservation demandé
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-amber-950">
-                        La campagne de pré-réservation a été lancée. Le dossier est en attente du paiement de pré-réservation de 250 €.
+                        La campagne de pré-réservation a été lancée. Le dossier est en attente du paiement de pré-réservation de {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)}.
                       </p>
                     </div>
                   ) : null}
 
                   {reservation.status === "pre_reservation_paid" ? (
                     <div className="mt-8 rounded-xl border border-emerald-100 bg-emerald-50/50 px-4 py-4">
-                      {hasSecondPaid ? (
+                      {hasCompleteDeposit ? (
                         <>
                           <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-800">
                             Dossier en pré-réservation réglée — arrhes complètes
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Arrhes complètes : 500 € / 500 € payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
+                            Arrhes complètes : {formatPrice(paidArrhesTotalCents, currency)} / {formatPrice(COMPLETE_DEPOSIT_AMOUNT_CENTS, currency)} payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
                           </p>
                         </>
                       ) : (
@@ -2411,7 +2419,7 @@ export default async function ReservationDetailPage({
                             Dossier en pré-réservation réglée
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Le paiement de pré-réservation de 250 € a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — 250 € n’est demandé automatiquement à ce stade.
+                            Le paiement de pré-réservation de {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)} a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)} n’est demandé automatiquement à ce stade.
                           </p>
                         </>
                       )}

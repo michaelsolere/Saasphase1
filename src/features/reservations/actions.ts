@@ -10,6 +10,7 @@ import {
 import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
+import { PRE_RESERVATION_PAYMENT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -1298,7 +1299,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
         .select("id")
         .eq("reservation_id", reservationId)
         .eq("payment_type", "arrhes")
-        .eq("amount_cents", 25000)
+        .eq("amount_cents", PRE_RESERVATION_PAYMENT_AMOUNT_CENTS)
         .in("status", ["requested", "paid"])
         .is("deleted_at", null)
         .limit(1);
@@ -1324,7 +1325,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
         organization_id: litter.organization_id,
         contact_id: app.contact_id,
         reservation_id: reservationId,
-        amount_cents: 25000, // 250,00 €
+        amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
         currency: "EUR",
         payment_type: "arrhes",
         status: "requested",
@@ -1417,13 +1418,13 @@ export async function requestPreReservationBalance(formData: FormData) {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
-  // 3. Récupérer les paiements actifs de type arrhes et montant 25000
+  // 3. Récupérer les paiements actifs de type arrhes et montant Phase 1.
   const { data: payments, error: paymentsError } = await supabase
     .from("payments")
     .select("id, status")
     .eq("reservation_id", reservationId)
     .eq("payment_type", "arrhes")
-    .eq("amount_cents", 25000)
+    .eq("amount_cents", PRE_RESERVATION_PAYMENT_AMOUNT_CENTS)
     .in("status", ["requested", "paid"])
     .is("deleted_at", null);
 
@@ -1453,7 +1454,7 @@ export async function requestPreReservationBalance(formData: FormData) {
     organization_id: reservation.organization_id,
     contact_id: reservation.contact_id,
     reservation_id: reservation.id,
-    amount_cents: 25000,
+    amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
     currency: "EUR",
     payment_type: "arrhes",
     status: "requested",
