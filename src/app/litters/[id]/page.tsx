@@ -303,6 +303,157 @@ function getEventPriorityLabel(value: string) {
   );
 }
 
+function getPrimaryBirthDate(litter: DBLitter) {
+  if (litter.actual_birth_date) {
+    return {
+      label: "Naissance réelle",
+      value: formatLitterDate(litter.actual_birth_date),
+    };
+  }
+
+  if (litter.expected_birth_date) {
+    return {
+      label: "Naissance prévue",
+      value: formatLitterDate(litter.expected_birth_date),
+    };
+  }
+
+  return { label: "Naissance", value: "Non renseignée" };
+}
+
+function getBirthCountSummary(litter: DBLitter) {
+  const parts = [];
+
+  if (litter.expected_puppy_count !== null) {
+    parts.push(`${formatLitterCount(litter.expected_puppy_count)} attendu(s)`);
+  }
+
+  if (litter.born_total_count !== null) {
+    parts.push(`${formatLitterCount(litter.born_total_count)} né(s)`);
+  }
+
+  if (litter.alive_count !== null) {
+    parts.push(`${formatLitterCount(litter.alive_count)} vivant(s)`);
+  }
+
+  return parts.length > 0 ? parts.join(" · ") : "Non renseigné";
+}
+
+function SummaryCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border bg-background px-4 py-3">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm font-semibold leading-6 text-foreground">
+        {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+function LitterTopSummary({
+  litter,
+  summary,
+  linkedApplications,
+}: {
+  litter: DBLitter;
+  summary: LitterSummary | null;
+  linkedApplications: LinkedApplication[] | null;
+}) {
+  const birthDate = getPrimaryBirthDate(litter);
+
+  return (
+    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+            Résumé
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+            {getLitterDisplayName(litter.name, litter.id)}
+          </h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <span className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold text-muted">
+              {getLitterStatusLabel(litter.status)}
+            </span>
+            <span className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold text-muted">
+              {getSpeciesLabel(litter.species)} ·{" "}
+              {litter.breed || "Race non renseignée"}
+            </span>
+          </div>
+        </div>
+
+        {litter.litter_group_id ? (
+          <Link
+            href={`/litter-groups/${litter.litter_group_id}`}
+            className="inline-flex self-start rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+          >
+            {summary?.litter_group_name ?? "Groupe de portées"}
+          </Link>
+        ) : null}
+      </div>
+
+      <dl className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <SummaryCard
+          label="Mère"
+          value={
+            litter.mother_id ? (
+              <Link
+                href={`/animals/${litter.mother_id}`}
+                className="text-accent hover:underline"
+              >
+                {summary?.mother_display_name ?? "Mère"}
+              </Link>
+            ) : (
+              summary?.mother_display_name ?? null
+            )
+          }
+        />
+        <SummaryCard
+          label="Père"
+          value={
+            litter.father_id ? (
+              <Link
+                href={`/animals/${litter.father_id}`}
+                className="text-accent hover:underline"
+              >
+                {summary?.father_display_name ?? "Père"}
+              </Link>
+            ) : (
+              summary?.father_display_name ?? null
+            )
+          }
+        />
+        <SummaryCard label={birthDate.label} value={birthDate.value} />
+        <SummaryCard label="Portée" value={getBirthCountSummary(litter)} />
+        <SummaryCard
+          label="Animaux liés"
+          value={formatLitterCount(summary?.animal_count ?? null)}
+        />
+        <SummaryCard
+          label="Réservations"
+          value={formatLitterCount(summary?.reservation_count ?? null)}
+        />
+        <SummaryCard
+          label="Candidatures"
+          value={
+            linkedApplications
+              ? formatLitterCount(linkedApplications.length)
+              : "Non renseigné"
+          }
+        />
+      </dl>
+    </section>
+  );
+}
+
 function RelatedAnimalsSection({
   animals,
   hasError,
@@ -605,29 +756,31 @@ function RelatedEventsSection({
 
 function LitterEventCreationForm({ litterId }: { litterId: string }) {
   return (
-    <form action={createLitterEvent} className="mt-8 border-t pt-6">
-      <input type="hidden" name="litter_id" value={litterId} />
-      <h3 className="text-sm font-semibold text-foreground">
+    <details className="mt-6 rounded-xl border bg-background px-4 py-3">
+      <summary className="cursor-pointer text-sm font-semibold text-accent">
         Ajouter un événement
-      </h3>
+      </summary>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div>
-          <label
-            htmlFor="litter-event-title"
-            className="text-xs font-semibold uppercase tracking-wide text-muted"
-          >
-            Titre <span className="text-accent">*</span>
-          </label>
-          <input
-            id="litter-event-title"
-            name="title"
-            type="text"
-            required
-            maxLength={255}
-            className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
-          />
-        </div>
+      <form action={createLitterEvent} className="mt-5 space-y-5">
+        <input type="hidden" name="litter_id" value={litterId} />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label
+              htmlFor="litter-event-title"
+              className="text-xs font-semibold uppercase tracking-wide text-muted"
+            >
+              Titre <span className="text-accent">*</span>
+            </label>
+            <input
+              id="litter-event-title"
+              name="title"
+              type="text"
+              required
+              maxLength={255}
+              className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+            />
+          </div>
 
         <div>
           <label
@@ -753,7 +906,8 @@ function LitterEventCreationForm({ litterId }: { litterId: string }) {
           Ajouter l’événement
         </button>
       </div>
-    </form>
+      </form>
+    </details>
   );
 }
 
@@ -1468,221 +1622,11 @@ export default async function LitterDetailPage({
             )}
 
             <div className="space-y-6 py-8">
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Informations</h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Nom"
-                    value={getLitterDisplayName(litter.name, litter.id)}
-                  />
-                  <DetailItem
-                    label="Groupe de portées"
-                    value={
-                      litter.litter_group_id ? (
-                        <Link
-                          href={`/litter-groups/${litter.litter_group_id}`}
-                          className="font-medium text-accent hover:underline"
-                        >
-                          {summary?.litter_group_name ?? "Groupe de portées"}
-                        </Link>
-                      ) : (
-                        summary?.litter_group_name ?? null
-                      )
-                    }
-                  />
-                  <DetailItem
-                    label="Espèce"
-                    value={getSpeciesLabel(litter.species)}
-                  />
-                  <DetailItem label="Race" value={litter.breed} />
-                  <DetailItem
-                    label="Statut"
-                    value={getLitterStatusLabel(litter.status)}
-                  />
-                  <DetailItem
-                    label="Mère"
-                    value={
-                      litter.mother_id ? (
-                        <Link
-                          href={`/animals/${litter.mother_id}`}
-                          className="font-medium text-accent hover:underline"
-                        >
-                          {summary?.mother_display_name ?? "Mère"}
-                        </Link>
-                      ) : (
-                        summary?.mother_display_name ?? null
-                      )
-                    }
-                  />
-                  <DetailItem
-                    label="Père"
-                    value={
-                      litter.father_id ? (
-                        <Link
-                          href={`/animals/${litter.father_id}`}
-                          className="font-medium text-accent hover:underline"
-                        >
-                          {summary?.father_display_name ?? "Père"}
-                        </Link>
-                      ) : (
-                        summary?.father_display_name ?? null
-                      )
-                    }
-                  />
-                </dl>
-              </section>
-
-              <section
-                id="groupe-portees"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <h2 className="text-xl font-semibold">Groupe de portées</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Rattachez cette portée à un groupe de portées (période),
-                  changez de groupe, ou détachez-la. Le statut de la portée
-                  n’est pas modifié et les réservations liées ne sont pas
-                  déplacées automatiquement.
-                </p>
-
-                {group_assignment_status === "success" ? (
-                  <p
-                    role="status"
-                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-                  >
-                    Le groupe de portées a été mis à jour.
-                  </p>
-                ) : null}
-
-                {group_assignment_status === "invalid_group" ? (
-                  <p
-                    role="alert"
-                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-                  >
-                    Le groupe de portées sélectionné est invalide. Aucune
-                    modification n’a été appliquée.
-                  </p>
-                ) : null}
-
-                {group_assignment_status === "error" ? (
-                  <p
-                    role="alert"
-                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-                  >
-                    Impossible de mettre à jour le groupe pour le moment.
-                  </p>
-                ) : null}
-
-                <p className="mt-4 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
-                  Groupe actuel :{" "}
-                  {litter.litter_group_id ? (
-                    <Link
-                      href={`/litter-groups/${litter.litter_group_id}`}
-                      className="font-medium text-accent hover:underline"
-                    >
-                      {summary?.litter_group_name ?? "Groupe de portées"}
-                    </Link>
-                  ) : (
-                    "Aucun groupe"
-                  )}
-                </p>
-
-                <form
-                  action={updateLitterGroupAssignment}
-                  className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end"
-                >
-                  <input type="hidden" name="litter_id" value={litter.id} />
-                  <div className="flex-1">
-                    <label
-                      htmlFor="litter-group-assignment"
-                      className="text-xs font-semibold uppercase tracking-wide text-muted"
-                    >
-                      Groupe de portées
-                    </label>
-                    <select
-                      id="litter-group-assignment"
-                      name="litter_group_id"
-                      defaultValue={litter.litter_group_id ?? ""}
-                      className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
-                    >
-                      <option value="">Aucun groupe</option>
-                      {groupOptions.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <button
-                    type="submit"
-                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                  >
-                    Enregistrer le groupe
-                  </button>
-                </form>
-              </section>
-
-              <section
-                id="modifier-portee"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <h2 className="text-xl font-semibold">Modifier la portée</h2>
-                <p className="mt-1 text-sm text-muted">
-                  Mettez à jour les informations principales de la portée. Le
-                  rattachement à un groupe se gère dans la section dédiée
-                  ci-dessus. Aucun animal, réservation ou document n’est créé ou
-                  modifié par cette action.
-                </p>
-
-                {detail_status === "success" ? (
-                  <p
-                    role="status"
-                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-                  >
-                    Les informations de la portée ont été mises à jour.
-                  </p>
-                ) : null}
-
-                {detailEditError ? (
-                  <p
-                    role="alert"
-                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-                  >
-                    {detailEditError}
-                  </p>
-                ) : null}
-
-                <form action={updateLitterDetails} className="mt-6">
-                  <input type="hidden" name="litter_id" value={litter.id} />
-                  <LitterFields
-                    idPrefix="litter-edit"
-                    defaults={{
-                      name: litter.name,
-                      species: litter.species,
-                      breed: litter.breed,
-                      status: litter.status,
-                      motherId: litter.mother_id,
-                      fatherId: litter.father_id,
-                      matingDate: litter.mating_date,
-                      matingDate2: litter.mating_date_2,
-                      estimatedOvulationDate: litter.estimated_ovulation_date,
-                      expectedBirthDate: litter.expected_birth_date,
-                      actualBirthDate: litter.actual_birth_date,
-                      notes: litter.notes,
-                    }}
-                    motherOptions={motherOptions}
-                    fatherOptions={fatherOptions}
-                  />
-
-                  <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
-                    <button
-                      type="submit"
-                      className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                    >
-                      Enregistrer la portée
-                    </button>
-                  </div>
-                </form>
-              </section>
+              <LitterTopSummary
+                litter={litter}
+                summary={summary}
+                linkedApplications={linkedApplications}
+              />
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
@@ -1785,6 +1729,26 @@ export default async function LitterDetailPage({
                 }
               />
 
+              <RelatedReservationsSection
+                reservations={litterReservations}
+                hasError={Boolean(reservationsError)}
+                sectionId="reservations-liees"
+                banner={reservationAttachBanner}
+                footer={
+                  <AttachReservationForm
+                    scope={{
+                      kind: "litter",
+                      litterId: litter.id,
+                      label:
+                        "Rattacher une réservation existante à cette portée",
+                      warning:
+                        "Cette action modifiera le rattachement de la réservation vers cette portée et conservera le groupe réel de la portée.",
+                    }}
+                    reservations={attachableReservations}
+                  />
+                }
+              />
+
               {/* ---- Campagne de pré-réservation ---- */}
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Campagne de pré-réservation</h2>
@@ -1867,25 +1831,161 @@ export default async function LitterDetailPage({
                 )}
               </section>
 
-              <RelatedReservationsSection
-                reservations={litterReservations}
-                hasError={Boolean(reservationsError)}
-                sectionId="reservations-liees"
-                banner={reservationAttachBanner}
-                footer={
-                  <AttachReservationForm
-                    scope={{
-                      kind: "litter",
-                      litterId: litter.id,
-                      label:
-                        "Rattacher une réservation existante à cette portée",
-                      warning:
-                        "Cette action modifiera le rattachement de la réservation vers cette portée et conservera le groupe réel de la portée.",
+              <details
+                id="modifier-portee"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <summary className="cursor-pointer text-xl font-semibold">
+                  Modifier la portée
+                </summary>
+                <p className="mt-3 text-sm text-muted">
+                  Mettez à jour les informations principales de la portée. Le
+                  rattachement à un groupe se gère dans la section dédiée
+                  ci-dessous. Aucun animal, réservation ou document n’est créé ou
+                  modifié par cette action.
+                </p>
+
+                {detail_status === "success" ? (
+                  <p
+                    role="status"
+                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                  >
+                    Les informations de la portée ont été mises à jour.
+                  </p>
+                ) : null}
+
+                {detailEditError ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    {detailEditError}
+                  </p>
+                ) : null}
+
+                <form action={updateLitterDetails} className="mt-6">
+                  <input type="hidden" name="litter_id" value={litter.id} />
+                  <LitterFields
+                    idPrefix="litter-edit"
+                    defaults={{
+                      name: litter.name,
+                      species: litter.species,
+                      breed: litter.breed,
+                      status: litter.status,
+                      motherId: litter.mother_id,
+                      fatherId: litter.father_id,
+                      matingDate: litter.mating_date,
+                      matingDate2: litter.mating_date_2,
+                      estimatedOvulationDate: litter.estimated_ovulation_date,
+                      expectedBirthDate: litter.expected_birth_date,
+                      actualBirthDate: litter.actual_birth_date,
+                      notes: litter.notes,
                     }}
-                    reservations={attachableReservations}
+                    motherOptions={motherOptions}
+                    fatherOptions={fatherOptions}
                   />
-                }
-              />
+
+                  <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
+                    <button
+                      type="submit"
+                      className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                    >
+                      Enregistrer la portée
+                    </button>
+                  </div>
+                </form>
+              </details>
+
+              <details
+                id="groupe-portees"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <summary className="cursor-pointer text-xl font-semibold">
+                  Groupe de portées
+                </summary>
+                <p className="mt-3 text-sm text-muted">
+                  Rattachez cette portée à un groupe de portées (période),
+                  changez de groupe, ou détachez-la. Le statut de la portée
+                  n’est pas modifié et les réservations liées ne sont pas
+                  déplacées automatiquement.
+                </p>
+
+                {group_assignment_status === "success" ? (
+                  <p
+                    role="status"
+                    className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+                  >
+                    Le groupe de portées a été mis à jour.
+                  </p>
+                ) : null}
+
+                {group_assignment_status === "invalid_group" ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    Le groupe de portées sélectionné est invalide. Aucune
+                    modification n’a été appliquée.
+                  </p>
+                ) : null}
+
+                {group_assignment_status === "error" ? (
+                  <p
+                    role="alert"
+                    className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  >
+                    Impossible de mettre à jour le groupe pour le moment.
+                  </p>
+                ) : null}
+
+                <p className="mt-4 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
+                  Groupe actuel :{" "}
+                  {litter.litter_group_id ? (
+                    <Link
+                      href={`/litter-groups/${litter.litter_group_id}`}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {summary?.litter_group_name ?? "Groupe de portées"}
+                    </Link>
+                  ) : (
+                    "Aucun groupe"
+                  )}
+                </p>
+
+                <form
+                  action={updateLitterGroupAssignment}
+                  className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-end"
+                >
+                  <input type="hidden" name="litter_id" value={litter.id} />
+                  <div className="flex-1">
+                    <label
+                      htmlFor="litter-group-assignment"
+                      className="text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Groupe de portées
+                    </label>
+                    <select
+                      id="litter-group-assignment"
+                      name="litter_group_id"
+                      defaultValue={litter.litter_group_id ?? ""}
+                      className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
+                    >
+                      <option value="">Aucun groupe</option>
+                      {groupOptions.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    Enregistrer le groupe
+                  </button>
+                </form>
+              </details>
 
               <RelatedDocumentsSection
                 documents={litterDocuments}
@@ -1904,15 +2004,19 @@ export default async function LitterDetailPage({
                 hasError={Boolean(notesError)}
               />
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Notes</h2>
+              <details className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <summary className="cursor-pointer text-xl font-semibold">
+                  Notes de la portée
+                </summary>
                 <p className="mt-5 whitespace-pre-wrap leading-7 text-muted">
                   {litter.notes || "Aucune note renseignée."}
                 </p>
-              </section>
+              </details>
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Dates techniques</h2>
+              <details className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <summary className="cursor-pointer text-xl font-semibold">
+                  Dates techniques
+                </summary>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                   <DetailItem
                     label="Création"
@@ -1923,7 +2027,7 @@ export default async function LitterDetailPage({
                     value={formatLitterDate(litter.updated_at)}
                   />
                 </dl>
-              </section>
+              </details>
             </div>
           </>
         )}
