@@ -57,6 +57,48 @@ export async function resolveSuspectFormSubmissionWithExistingContact(
   redirect(submissionUrl(submissionId, "success"));
 }
 
+export async function resolveSuspectFormSubmissionWithNewContact(
+  formData: FormData,
+) {
+  const submissionId = formData.get("form_submission_id");
+
+  if (typeof submissionId !== "string" || !submissionId) {
+    redirect("/form-submissions?resolution=error");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data, error } = await supabase.rpc(
+    "resolve_suspect_form_submission_new_contact",
+    {
+      p_form_submission_id: submissionId,
+    },
+  );
+
+  if (
+    error ||
+    !data?.[0]?.application_id ||
+    !data?.[0]?.contact_id
+  ) {
+    redirect(submissionUrl(submissionId, "error"));
+  }
+
+  revalidatePath("/form-submissions");
+  revalidatePath(`/form-submissions/${submissionId}`);
+  revalidatePath(`/contacts/${data[0].contact_id}`);
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${data[0].application_id}`);
+
+  redirect(submissionUrl(submissionId, "success"));
+}
+
 export async function archiveSuspectFormSubmissionWithoutApplication(
   formData: FormData,
 ) {
@@ -81,7 +123,7 @@ export async function archiveSuspectFormSubmissionWithoutApplication(
     {
       p_form_submission_id: submissionId,
       p_internal_comment:
-        typeof internalComment === "string" ? internalComment : null,
+        typeof internalComment === "string" ? internalComment : undefined,
     },
   );
 

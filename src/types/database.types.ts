@@ -239,6 +239,7 @@ export type Database = {
           rank_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          source_channel: string | null
           species: string
           specific_project: string | null
           status: string
@@ -277,6 +278,7 @@ export type Database = {
           rank_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          source_channel?: string | null
           species?: string
           specific_project?: string | null
           status?: string
@@ -315,6 +317,7 @@ export type Database = {
           rank_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          source_channel?: string | null
           species?: string
           specific_project?: string | null
           status?: string
@@ -3198,6 +3201,12 @@ export type Database = {
       }
     }
     Functions: {
+      archive_suspect_form_submission_without_application: {
+        Args: { p_form_submission_id: string; p_internal_comment?: string }
+        Returns: {
+          form_submission_id: string
+        }[]
+      }
       build_contact_display_name: {
         Args: {
           fallback?: string
@@ -3216,6 +3225,20 @@ export type Database = {
         Returns: boolean
       }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
+      resolve_suspect_form_submission_existing_contact: {
+        Args: { p_contact_id: string; p_form_submission_id: string }
+        Returns: {
+          application_id: string
+          contact_id: string
+        }[]
+      }
+      resolve_suspect_form_submission_new_contact: {
+        Args: { p_form_submission_id: string }
+        Returns: {
+          application_id: string
+          contact_id: string
+        }[]
+      }
       shares_organization_with: {
         Args: { other_profile_id: string }
         Returns: boolean
@@ -3246,25 +3269,6 @@ export type Database = {
         Returns: {
           public_submission_reference: string
           status: string
-        }[]
-      }
-      resolve_suspect_form_submission_existing_contact: {
-        Args: {
-          p_contact_id: string
-          p_form_submission_id: string
-        }
-        Returns: {
-          application_id: string
-          contact_id: string
-        }[]
-      }
-      archive_suspect_form_submission_without_application: {
-        Args: {
-          p_form_submission_id: string
-          p_internal_comment?: string | null
-        }
-        Returns: {
-          form_submission_id: string
         }[]
       }
       use_credit: {

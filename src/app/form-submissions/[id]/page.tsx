@@ -6,6 +6,7 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import { ArchiveSubmissionDialog } from "@/features/form-submissions/archive-submission-dialog";
+import { CreateNewContactDialog } from "@/features/form-submissions/create-new-contact-dialog";
 import { resolveSuspectFormSubmissionWithExistingContact } from "@/features/form-submissions/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/types/database.types";
@@ -242,12 +243,35 @@ function ResolutionAction({
   const isPendingDuplicateReview =
     !isArchived &&
     !submission.application_id &&
+    !submission.contact_id &&
     (submission.status === "duplicate_suspected" ||
       submission.duplicate_resolution === "pending_human_review");
-  const isResolvable =
-    isPendingDuplicateReview &&
-    !submission.contact_id &&
-    Boolean(submission.duplicate_candidate_contact_id);
+  const newContactPreviewItems = [
+    {
+      label: "Identité",
+      value: getApplicantName(submission),
+    },
+    {
+      label: "Email",
+      value: submission.email,
+    },
+    {
+      label: "Téléphone",
+      value: submission.phone,
+    },
+    {
+      label: "Adresse",
+      value: formatAddress(submission) || null,
+    },
+    {
+      label: "Sexe souhaité",
+      value: getSexPreferenceLabel(submission.desired_sex_preference),
+    },
+    {
+      label: "Projet",
+      value: submission.project_description,
+    },
+  ];
 
   if (isArchived) {
     return (
@@ -262,28 +286,29 @@ function ResolutionAction({
     );
   }
 
-  if (
-    isPendingDuplicateReview &&
-    !submission.contact_id &&
-    !submission.duplicate_candidate_contact_id
-  ) {
+  if (isPendingDuplicateReview && !submission.duplicate_candidate_contact_id) {
     return (
       <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
         <p className="text-sm font-semibold">
           Soumission en attente — aucun contact suggéré
         </p>
         <p className="mt-1 text-sm leading-6">
-          Aucun contact candidat unique n’a été identifié. Vous pouvez classer
-          cette soumission si elle ne doit pas devenir une candidature.
+          Aucun contact candidat unique n’a été identifié. Vous pouvez créer un
+          nouveau contact distinct ou classer cette soumission si elle ne doit
+          pas devenir une candidature.
         </p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <CreateNewContactDialog
+            submissionId={submission.id}
+            previewItems={newContactPreviewItems}
+          />
           <ArchiveSubmissionDialog submissionId={submission.id} />
         </div>
       </div>
     );
   }
 
-  if (!isResolvable) {
+  if (!isPendingDuplicateReview) {
     return (
       <div className="mt-6 rounded-xl border bg-background p-4">
         <p className="text-sm font-semibold">Soumission traitée</p>
@@ -295,16 +320,33 @@ function ResolutionAction({
   }
 
   if (!submission.duplicate_candidate_contact) {
-    return null;
+    return (
+      <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+        <p className="text-sm font-semibold">
+          Soumission en attente — contact suggéré indisponible
+        </p>
+        <p className="mt-1 text-sm leading-6">
+          Le contact suggéré n’est plus accessible. Vous pouvez créer un
+          nouveau contact distinct ou classer cette soumission si elle ne doit
+          pas devenir une candidature.
+        </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+          <CreateNewContactDialog
+            submissionId={submission.id}
+            previewItems={newContactPreviewItems}
+          />
+          <ArchiveSubmissionDialog submissionId={submission.id} />
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
       <p className="text-sm font-semibold">Résoudre le doublon suspect</p>
       <p className="mt-1 text-sm leading-6">
-        Cette action rattache la soumission au contact suggéré, crée une
-        candidature liée, puis promeut le contact en candidat sans modifier ses
-        coordonnées.
+        Choisissez explicitement entre rattacher la soumission au contact
+        suggéré ou créer un contact distinct depuis les données du formulaire.
       </p>
       <div className="mt-4 rounded-lg border border-amber-200 bg-white/70 p-3 text-sm">
         <ContactLink contact={submission.duplicate_candidate_contact} />
@@ -324,6 +366,10 @@ function ResolutionAction({
             Rattacher au contact suggéré
           </button>
         </form>
+        <CreateNewContactDialog
+          submissionId={submission.id}
+          previewItems={newContactPreviewItems}
+        />
         <ArchiveSubmissionDialog submissionId={submission.id} />
       </div>
     </div>
@@ -441,8 +487,8 @@ export default async function FormSubmissionDetailPage({
         <article className="rounded-2xl border bg-surface p-6 shadow-sm">
           {resolution === "success" ? (
             <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-950">
-              Soumission résolue : le contact existant est rattaché et la
-              candidature liée a été créée.
+              Soumission résolue : le contact et la candidature liée ont été
+              enregistrés.
             </div>
           ) : null}
           {resolution === "archived" ? (
