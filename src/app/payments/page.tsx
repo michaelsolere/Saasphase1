@@ -1,11 +1,21 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { PaymentList } from "@/features/payments/payment-list";
 import type { PaymentListItem } from "@/features/payments/payment-list";
 import type { DBPayment } from "@/features/payments/types";
+import { isActionableLinkedReservation } from "@/features/reservations/linked-reservation";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+type PaymentsSearchParams = {
+  filter?: string;
+};
+
+function normalizeFilterParam(value: string | undefined) {
+  return value?.trim() || null;
+}
 
 function ErrorMessage() {
   return (
@@ -21,7 +31,14 @@ function ErrorMessage() {
   );
 }
 
-export default async function PaymentsPage() {
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<PaymentsSearchParams>;
+}) {
+  const params = await searchParams;
+  const selectedFilter = normalizeFilterParam(params.filter);
+  const isExpectedFilter = selectedFilter === "expected";
   const supabase = await createClient();
 
   const {
@@ -36,14 +53,57 @@ export default async function PaymentsPage() {
   let payments = null;
   let hasLoadingError = Boolean(authError);
 
-  const result = await supabase
+  let paymentsQuery = supabase
     .from("payments")
     .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, contact_id, reservation_id")
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
+  if (isExpectedFilter) {
+    paymentsQuery = paymentsQuery.in("status", [
+      "requested",
+      "pending",
+      "partially_paid",
+    ]);
+  }
+
+  const result = await paymentsQuery;
+
   payments = result.data as DBPayment[] | null;
   hasLoadingError = hasLoadingError || Boolean(result.error);
+
+  if (isExpectedFilter && payments) {
+    const reservationIds = Array.from(
+      new Set(
+        payments
+          .map((payment) => payment.reservation_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const reservationStatusById = new Map<string, string | null | undefined>();
+
+    if (reservationIds.length > 0) {
+      const { data: reservations, error: reservationsError } = await supabase
+        .from("reservation_overview")
+        .select("id, status")
+        .in("id", reservationIds);
+
+      hasLoadingError = hasLoadingError || Boolean(reservationsError);
+
+      reservations?.forEach((reservation) => {
+        if (reservation.id) {
+          reservationStatusById.set(reservation.id, reservation.status);
+        }
+      });
+    }
+
+    payments = payments.filter((payment) =>
+      isActionableLinkedReservation(
+        payment.reservation_id,
+        reservationStatusById,
+      ),
+    );
+  }
 
   let paymentListItems: PaymentListItem[] | null = null;
 
@@ -97,7 +157,20 @@ export default async function PaymentsPage() {
         {hasLoadingError || !paymentListItems ? (
           <ErrorMessage />
         ) : (
-          <PaymentList payments={paymentListItems} />
+          <>
+            {isExpectedFilter ? (
+              <div className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-medium">Filtre : paiements attendus</p>
+                <Link
+                  href="/payments"
+                  className="font-semibold text-amber-950 underline-offset-4 hover:underline"
+                >
+                  Voir tous les paiements
+                </Link>
+              </div>
+            ) : null}
+            <PaymentList payments={paymentListItems} />
+          </>
         )}
       </section>
     </main>

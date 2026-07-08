@@ -1,9 +1,19 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { DocumentList, type DocumentWithContact } from "@/features/documents/document-list";
+import { isActionableLinkedReservation } from "@/features/reservations/linked-reservation";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+type DocumentsSearchParams = {
+  filter?: string;
+};
+
+function normalizeFilterParam(value: string | undefined) {
+  return value?.trim() || null;
+}
 
 function ErrorMessage() {
   return (
@@ -19,7 +29,14 @@ function ErrorMessage() {
   );
 }
 
-export default async function DocumentsPage() {
+export default async function DocumentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<DocumentsSearchParams>;
+}) {
+  const params = await searchParams;
+  const selectedFilter = normalizeFilterParam(params.filter);
+  const isToProcessFilter = selectedFilter === "to_process";
   const supabase = await createClient();
 
   const {
@@ -34,14 +51,53 @@ export default async function DocumentsPage() {
   let documents: DocumentWithContact[] | null = null;
   let hasLoadingError = Boolean(authError);
 
-  const result = await supabase
+  let documentsQuery = supabase
     .from("documents")
     .select("*")
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
 
-  const rawDocuments = result.data || [];
+  if (isToProcessFilter) {
+    documentsQuery = documentsQuery.in("status", ["to_generate", "sent"]);
+  }
+
+  const result = await documentsQuery;
+
+  let rawDocuments = result.data || [];
   hasLoadingError = hasLoadingError || Boolean(result.error);
+
+  if (isToProcessFilter && rawDocuments.length > 0) {
+    const reservationIds = Array.from(
+      new Set(
+        rawDocuments
+          .map((document) => document.reservation_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const reservationStatusById = new Map<string, string | null | undefined>();
+
+    if (reservationIds.length > 0) {
+      const { data: reservations, error: reservationsError } = await supabase
+        .from("reservation_overview")
+        .select("id, status")
+        .in("id", reservationIds);
+
+      hasLoadingError = hasLoadingError || Boolean(reservationsError);
+
+      reservations?.forEach((reservation) => {
+        if (reservation.id) {
+          reservationStatusById.set(reservation.id, reservation.status);
+        }
+      });
+    }
+
+    rawDocuments = rawDocuments.filter((document) =>
+      isActionableLinkedReservation(
+        document.reservation_id,
+        reservationStatusById,
+      ),
+    );
+  }
 
   const contactsMap = new Map<string, { first_name: string | null; last_name: string | null; display_name: string | null; email: string | null }>();
 
@@ -101,7 +157,20 @@ export default async function DocumentsPage() {
         {hasLoadingError || !documents ? (
           <ErrorMessage />
         ) : (
-          <DocumentList documents={documents} />
+          <>
+            {isToProcessFilter ? (
+              <div className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-medium">Filtre : documents à traiter</p>
+                <Link
+                  href="/documents"
+                  className="font-semibold text-amber-950 underline-offset-4 hover:underline"
+                >
+                  Voir tous les documents
+                </Link>
+              </div>
+            ) : null}
+            <DocumentList documents={documents} />
+          </>
         )}
       </section>
     </main>

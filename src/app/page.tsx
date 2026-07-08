@@ -8,6 +8,7 @@ import {
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import { reservationNeedsAttention } from "@/features/reservations/attention";
+import { isActionableLinkedReservation } from "@/features/reservations/linked-reservation";
 import { isFinalReservationStatus } from "@/features/reservations/statuses";
 import {
   getPaymentTypeLabel,
@@ -222,24 +223,17 @@ export default async function Home() {
         payment.amount_cents,
     );
   }
-  const reservationStatusById = new Map(
-    (rawReservations || []).map((reservation) => [
-      reservation.id,
-      reservation.status,
-    ]),
-  );
-  const isActionableLinkedReservation = (reservationId: string | null) => {
-    if (!reservationId) {
-      return true;
+  const reservationStatusById = new Map<string, string | null | undefined>();
+  for (const reservation of rawReservations || []) {
+    if (reservation.id) {
+      reservationStatusById.set(reservation.id, reservation.status);
     }
-
-    return !isFinalReservationStatus(reservationStatusById.get(reservationId));
-  };
+  }
   const paymentsNeedAttention = (rawPayments || []).filter((payment) =>
-    isActionableLinkedReservation(payment.reservation_id),
+    isActionableLinkedReservation(payment.reservation_id, reservationStatusById),
   );
   const documentsNeedAttention = (rawDocuments || []).filter((document) =>
-    isActionableLinkedReservation(document.reservation_id),
+    isActionableLinkedReservation(document.reservation_id, reservationStatusById),
   );
   const reservationsNeedAttention = (rawReservations || []).filter((r) => {
     const paidArrhesCents = r.id
@@ -418,7 +412,7 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/payments"
+                href="/payments?filter=expected"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
                 Voir les paiements attendus ({paymentsNeedAttention.length}) →
@@ -471,10 +465,10 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/documents"
+                href="/documents?filter=to_process"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir tous les documents ({documentsNeedAttention.length}) →
+                Voir les documents à traiter ({documentsNeedAttention.length}) →
               </Link>
             </div>
           </div>
