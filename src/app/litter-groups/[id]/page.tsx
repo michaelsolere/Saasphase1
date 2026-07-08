@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  getSexPreferenceLabel,
+} from "@/features/applications/formatters";
+import {
   AttachApplicationForm,
   AttachReservationForm,
   LinkedApplicationsSection,
@@ -23,6 +26,7 @@ import {
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import { updateLitterGroupDetails } from "@/features/litters/actions";
+import { launchGroupPreReservationCampaign } from "@/features/reservations/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -62,6 +66,19 @@ type GroupReservation = Pick<
   | "animal_id"
   | "animal_display_name"
 >;
+type GroupQualifiedApplication = Pick<
+  Database["public"]["Tables"]["applications"]["Row"],
+  | "id"
+  | "contact_id"
+  | "desired_sex_preference"
+  | "desired_litter_id"
+  | "desired_litter_group_id"
+  | "status"
+  | "active_rank"
+  | "initial_rank"
+> & {
+  contacts: { display_name: string | null } | null;
+};
 
 function NotFoundOrUnauthorized() {
   return (
@@ -171,11 +188,20 @@ export default async function LitterGroupDetailPage({
     attach_status?: string;
     reservation_attach_status?: string;
     group_detail_status?: string;
+    group_campaign_status?: string;
+    group_campaign_count?: string;
+    group_campaign_payment_count?: string;
   }>;
 }) {
   const { id } = await params;
-  const { attach_status, reservation_attach_status, group_detail_status } =
-    await searchParams;
+  const {
+    attach_status,
+    reservation_attach_status,
+    group_detail_status,
+    group_campaign_status,
+    group_campaign_count,
+    group_campaign_payment_count,
+  } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -209,6 +235,9 @@ export default async function LitterGroupDetailPage({
     : { data: null, error: null };
 
   const groupLitters = rawGroupLitters as GroupLitter[] | null;
+  const groupLitterIds = (groupLitters ?? [])
+    .map((litter) => litter.id)
+    .filter((litterId): litterId is string => Boolean(litterId));
 
   // Réservations rattachées au groupe.
   const { data: rawGroupReservations, error: reservationsError } = group
@@ -281,6 +310,79 @@ export default async function LitterGroupDetailPage({
     }));
   } else if (rawLinkedApplications) {
     linkedApplications = [];
+  }
+
+  // Candidatures qualifiées éligibles à la campagne du groupe :
+  // souhait groupe direct OU portée souhaitée appartenant au groupe.
+  const groupCampaignApplicationsQuery =
+    group && group.organization_id
+      ? supabase
+          .from("applications")
+          .select(
+            "id, contact_id, desired_sex_preference, desired_litter_id, desired_litter_group_id, status, active_rank, initial_rank, created_at",
+          )
+          .eq("organization_id", group.organization_id)
+          .eq("status", "qualified")
+          .is("deleted_at", null)
+          .order("active_rank", { ascending: true, nullsFirst: false })
+          .order("initial_rank", { ascending: true, nullsFirst: false })
+          .order("created_at", { ascending: true })
+      : null;
+
+  const { data: rawQualifiedApplications, error: qualifiedAppsError } =
+    groupCampaignApplicationsQuery
+      ? groupLitterIds.length > 0
+        ? await groupCampaignApplicationsQuery.or(
+            `desired_litter_group_id.eq.${id},desired_litter_id.in.(${groupLitterIds.join(",")})`,
+          )
+        : await groupCampaignApplicationsQuery.eq("desired_litter_group_id", id)
+      : { data: null, error: null };
+
+  let qualifiedApplications: GroupQualifiedApplication[] | null = null;
+
+  if (
+    rawQualifiedApplications &&
+    rawQualifiedApplications.length > 0 &&
+    group &&
+    group.organization_id
+  ) {
+    const qualifiedContactIds = Array.from(
+      new Set(
+        rawQualifiedApplications
+          .map((app) => app.contact_id)
+          .filter((cid): cid is string => Boolean(cid)),
+      ),
+    );
+
+    const contactNameMap = new Map<string, string | null>();
+
+    if (qualifiedContactIds.length > 0) {
+      const { data: qualifiedContacts } = await supabase
+        .from("contacts")
+        .select("id, display_name")
+        .eq("organization_id", group.organization_id)
+        .in("id", qualifiedContactIds);
+
+      qualifiedContacts?.forEach((contact) => {
+        contactNameMap.set(contact.id, contact.display_name);
+      });
+    }
+
+    qualifiedApplications = rawQualifiedApplications.map((app) => ({
+      id: app.id,
+      contact_id: app.contact_id,
+      desired_sex_preference: app.desired_sex_preference,
+      desired_litter_id: app.desired_litter_id,
+      desired_litter_group_id: app.desired_litter_group_id,
+      status: app.status,
+      active_rank: app.active_rank,
+      initial_rank: app.initial_rank,
+      contacts: app.contact_id
+        ? { display_name: contactNameMap.get(app.contact_id) ?? null }
+        : null,
+    }));
+  } else if (rawQualifiedApplications) {
+    qualifiedApplications = [];
   }
 
   // Candidatures rattachables à ce groupe (hors archivées, hors déjà liées
@@ -468,6 +570,45 @@ export default async function LitterGroupDetailPage({
                 </p>
               </div>
             </header>
+
+            {group_campaign_status === "success" && (
+              <div
+                role="status"
+                className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                Campagne préparée avec succès —{" "}
+                {group_campaign_count ?? "0"} pré-réservation(s) préparée(s) et{" "}
+                {group_campaign_payment_count ?? "0"} demande(s) de paiement créée(s).
+                Aucun email réel n’a été envoyé.
+              </div>
+            )}
+            {group_campaign_status === "no_selection" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucune candidature sélectionnée. Cochez au moins une case avant
+                de lancer la campagne.
+              </div>
+            )}
+            {group_campaign_status === "no_eligible" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucune candidature qualifiée trouvée pour ce groupe parmi les
+                sélections.
+              </div>
+            )}
+            {group_campaign_status === "error" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors du lancement de la campagne. Aucune
+                modification n&apos;a été appliquée pour les candidatures en erreur.
+              </div>
+            )}
 
             <div className="space-y-6 py-8">
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -753,6 +894,96 @@ export default async function LitterGroupDetailPage({
                   />
                 }
               />
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                <h2 className="text-xl font-semibold">
+                  Campagne de pré-réservation du groupe
+                </h2>
+                <p className="mt-2 text-sm text-muted">
+                  Sélectionnez les candidatures qualifiées liées à ce groupe ou
+                  à une portée du groupe. Pour chaque candidature éligible, le
+                  système prépare ou réutilise une réservation et crée une
+                  demande de paiement de pré-réservation si nécessaire.
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  En Phase 1, cette action crée les demandes de paiement et
+                  prépare le suivi. Aucun email réel n’est envoyé.
+                </p>
+
+                {qualifiedAppsError ? (
+                  <p role="alert" className="mt-5 text-sm text-amber-800">
+                    Impossible de charger les candidatures qualifiées.
+                  </p>
+                ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
+                  <p className="mt-5 text-sm text-muted">
+                    Aucune candidature qualifiée liée à ce groupe ou à une
+                    portée du groupe.
+                  </p>
+                ) : (
+                  <form
+                    action={launchGroupPreReservationCampaign}
+                    className="mt-6"
+                  >
+                    <input type="hidden" name="litter_group_id" value={id} />
+
+                    <fieldset>
+                      <legend className="sr-only">Candidatures qualifiées</legend>
+                      <div className="divide-y divide-border rounded-xl border bg-background">
+                        {qualifiedApplications.map((app) => {
+                          const contactName =
+                            app.contacts?.display_name ?? "Contact inconnu";
+                          const sexPref = getSexPreferenceLabel(
+                            app.desired_sex_preference,
+                          );
+                          const rank = app.active_rank ?? app.initial_rank;
+                          const scopeLabel = app.desired_litter_id
+                            ? "Portée du groupe"
+                            : "Groupe";
+
+                          return (
+                            <label
+                              key={app.id}
+                              htmlFor={`group-campaign-app-${app.id}`}
+                              className="flex cursor-pointer items-start gap-4 px-4 py-4 hover:bg-muted-soft"
+                            >
+                              <input
+                                type="checkbox"
+                                id={`group-campaign-app-${app.id}`}
+                                name="application_ids[]"
+                                value={app.id}
+                                defaultChecked
+                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent"
+                              />
+                              <div className="min-w-0 flex-1 space-y-0.5">
+                                <p className="text-sm font-semibold text-foreground">
+                                  {contactName}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  {scopeLabel} · Préférence : {sexPref}
+                                  {rank ? ` · Rang : ${rank}` : ""}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
+
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        Lancer la campagne de pré-réservation
+                      </button>
+                      <p className="text-xs text-muted">
+                        En Phase 1, les demandes de paiement sont créées et le
+                        suivi est préparé. Aucun email réel n’est envoyé.
+                      </p>
+                    </div>
+                  </form>
+                )}
+              </section>
 
               <section
                 id="reservations-liees"

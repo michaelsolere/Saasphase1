@@ -1274,6 +1274,237 @@ export async function attachReservationToPreciseLitter(formData: FormData) {
 // Campagne de pré-réservation
 // ---------------------------------------------------------------------------
 
+const ACTIVE_DEPOSIT_PAYMENT_STATUSES = [
+  "requested",
+  "pending",
+  "partially_paid",
+  "paid",
+] as const;
+
+type PreReservationCampaignApplication = {
+  id: string;
+  contact_id: string;
+  species: string | null;
+  breed: string | null;
+  desired_sex_preference: string | null;
+  target_litter_id: string | null;
+  target_litter_group_id: string | null;
+};
+
+type PreReservationCampaignResult = {
+  reservationsPreparedCount: number;
+  paymentsCreatedCount: number;
+  errorCount: number;
+};
+
+function isReservationCompatibleWithCampaignTarget({
+  reservation,
+  targetLitterId,
+  targetLitterGroupId,
+}: {
+  reservation: {
+    litter_id: string | null;
+    litter_group_id: string | null;
+  };
+  targetLitterId: string | null;
+  targetLitterGroupId: string | null;
+}) {
+  if (targetLitterId) {
+    return (
+      reservation.litter_id === targetLitterId ||
+      (!reservation.litter_id && reservation.litter_group_id === targetLitterGroupId)
+    );
+  }
+
+  return (
+    reservation.litter_id === null &&
+    reservation.litter_group_id === targetLitterGroupId
+  );
+}
+
+async function runPreReservationCampaignForApplications({
+  supabase,
+  userId,
+  organizationId,
+  applications,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  organizationId: string;
+  applications: PreReservationCampaignApplication[];
+}): Promise<PreReservationCampaignResult> {
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId,
+  });
+  const dueDateStr = addDaysAsIsoDate(
+    depositSettings.preReservationResponseDelayDays,
+  );
+
+  const note =
+    `Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+${depositSettings.preReservationResponseDelayDays} après confirmation de gestation.`;
+
+  let reservationsPreparedCount = 0;
+  let paymentsCreatedCount = 0;
+  let errorCount = 0;
+
+  for (const app of applications) {
+    const { data: existingReservations, error: existingReservationErr } =
+      await supabase
+        .from("reservations")
+        .select("id, status, litter_id, litter_group_id")
+        .eq("organization_id", organizationId)
+        .eq("application_id", app.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+    if (existingReservationErr) {
+      errorCount++;
+      continue;
+    }
+
+    const existingReservation = existingReservations?.[0] ?? null;
+
+    let reservationId: string | null = null;
+    let reservationStatus: string | null = null;
+
+    if (existingReservation) {
+      const isCompatible = isReservationCompatibleWithCampaignTarget({
+        reservation: existingReservation,
+        targetLitterId: app.target_litter_id,
+        targetLitterGroupId: app.target_litter_group_id,
+      });
+
+      if (!isCompatible) {
+        continue;
+      }
+
+      reservationId = existingReservation.id;
+      reservationStatus = existingReservation.status;
+    } else {
+      const { data: newReservation, error: insertErr } = await supabase
+        .from("reservations")
+        .insert({
+          organization_id: organizationId,
+          contact_id: app.contact_id,
+          application_id: app.id,
+          litter_id: app.target_litter_id,
+          litter_group_id: app.target_litter_group_id,
+          species: app.species ?? "dog",
+          breed: app.breed ?? "Golden Retriever",
+          reserved_sex_preference: app.desired_sex_preference ?? "unknown",
+          status: "draft",
+          created_by: userId,
+          updated_by: userId,
+        })
+        .select("id")
+        .maybeSingle();
+
+      if (insertErr || !newReservation) {
+        errorCount++;
+        continue;
+      }
+
+      reservationId = newReservation.id;
+      reservationStatus = "draft";
+    }
+
+    if (
+      reservationStatus !== "draft" &&
+      reservationStatus !== "pre_reservation_requested"
+    ) {
+      continue;
+    }
+
+    const { data: existingDepositPayments, error: existingPaymentErr } =
+      await supabase
+        .from("payments")
+        .select("id")
+        .eq("reservation_id", reservationId)
+        .eq("payment_type", "arrhes")
+        .in("status", [...ACTIVE_DEPOSIT_PAYMENT_STATUSES])
+        .is("deleted_at", null)
+        .limit(1);
+
+    if (existingPaymentErr) {
+      errorCount++;
+      continue;
+    }
+
+    const hasExistingDepositPayment =
+      existingDepositPayments && existingDepositPayments.length > 0;
+    let didCreatePayment = false;
+
+    if (!hasExistingDepositPayment) {
+      const { error: paymentErr } = await supabase.from("payments").insert({
+        organization_id: organizationId,
+        contact_id: app.contact_id,
+        reservation_id: reservationId,
+        amount_cents: depositSettings.preReservationDepositCents,
+        currency: "EUR",
+        payment_type: "arrhes",
+        status: "requested",
+        payment_method: "bank_transfer",
+        requested_at: new Date().toISOString(),
+        due_date: dueDateStr,
+        notes: note,
+        created_by: userId,
+        updated_by: userId,
+      });
+
+      if (paymentErr) {
+        errorCount++;
+        continue;
+      }
+
+      didCreatePayment = true;
+      paymentsCreatedCount++;
+    }
+
+    const shouldUpdateReservation =
+      reservationStatus === "draft" ||
+      (reservationStatus === "pre_reservation_requested" &&
+        existingReservation &&
+        (existingReservation.litter_id !== app.target_litter_id ||
+          existingReservation.litter_group_id !== app.target_litter_group_id));
+
+    if (!shouldUpdateReservation) {
+      if (didCreatePayment) {
+        reservationsPreparedCount++;
+      }
+      continue;
+    }
+
+    const { error: updateErr } = await supabase
+      .from("reservations")
+      .update({
+        status: "pre_reservation_requested",
+        litter_id: app.target_litter_id,
+        litter_group_id: app.target_litter_group_id,
+        updated_at: new Date().toISOString(),
+        updated_by: userId,
+      })
+      .eq("id", reservationId)
+      .eq("organization_id", organizationId)
+      .in("status", ["draft", "pre_reservation_requested"])
+      .is("deleted_at", null);
+
+    if (updateErr) {
+      errorCount++;
+      continue;
+    }
+
+    reservationsPreparedCount++;
+  }
+
+  return {
+    reservationsPreparedCount,
+    paymentsCreatedCount,
+    errorCount,
+  };
+}
+
 /**
  * Lance une campagne de pré-réservation pour les candidatures qualifiées
  * sélectionnées par l'éleveur depuis la fiche portée.
@@ -1307,10 +1538,10 @@ export async function launchPreReservationCampaign(formData: FormData) {
     redirect("/login");
   }
 
-  // Relire la portée pour récupérer organization_id + species/breed
+  // Relire la portée pour récupérer organization_id + species/breed/groupe.
   const { data: litter, error: litterError } = await supabase
     .from("litters")
-    .select("id, organization_id, species, breed")
+    .select("id, organization_id, species, breed, litter_group_id")
     .eq("id", litterId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -1333,7 +1564,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
   // bien à cette portée et à la même organisation
   const { data: applications, error: appsError } = await supabase
     .from("applications")
-    .select("id, contact_id, desired_sex_preference, status")
+    .select("id, contact_id, species, breed, desired_sex_preference, status")
     .eq("organization_id", litter.organization_id)
     .eq("desired_litter_id", litterId)
     .eq("status", "qualified")
@@ -1348,160 +1579,154 @@ export async function launchPreReservationCampaign(formData: FormData) {
     redirect(`/litters/${litterId}?campaign_status=no_eligible`);
   }
 
-  const depositSettings = await readDepositSettingsForOrganization({
+  const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
+    userId: user.id,
     organizationId: litter.organization_id,
+    applications: applications.map((app) => ({
+      id: app.id,
+      contact_id: app.contact_id,
+      species: app.species ?? litter.species ?? "dog",
+      breed: app.breed ?? litter.breed ?? "Golden Retriever",
+      desired_sex_preference: app.desired_sex_preference,
+      target_litter_id: litterId,
+      target_litter_group_id: litter.litter_group_id,
+    })),
   });
-  const dueDateStr = addDaysAsIsoDate(
-    depositSettings.preReservationResponseDelayDays,
-  );
-
-  const note =
-    `Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+${depositSettings.preReservationResponseDelayDays} après confirmation de gestation.`;
-
-  let successCount = 0;
-  let errorCount = 0;
-
-  for (const app of applications) {
-    // 1. Vérifier s'il existe déjà une réservation liée à cette candidature + portée
-    const { data: existingReservation, error: existingReservationErr } =
-      await supabase
-        .from("reservations")
-        .select("id, status")
-        .eq("organization_id", litter.organization_id)
-        .eq("contact_id", app.contact_id)
-        .eq("application_id", app.id)
-        .eq("litter_id", litterId)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-    if (existingReservationErr) {
-      errorCount++;
-      continue;
-    }
-
-    let reservationId: string | null = null;
-    let reservationStatus: string | null = null;
-
-    if (existingReservation) {
-      reservationId = existingReservation.id;
-      reservationStatus = existingReservation.status;
-    } else {
-      // Créer une nouvelle réservation en brouillon d'abord : elle ne sera
-      // promue qu'après création effective de la demande de paiement.
-      const { data: newReservation, error: insertErr } = await supabase
-        .from("reservations")
-        .insert({
-          organization_id: litter.organization_id,
-          contact_id: app.contact_id,
-          application_id: app.id,
-          litter_id: litterId,
-          species: litter.species ?? "dog",
-          breed: litter.breed ?? "Golden Retriever",
-          reserved_sex_preference: app.desired_sex_preference ?? "unknown",
-          status: "draft",
-          created_by: user.id,
-          updated_by: user.id,
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (insertErr || !newReservation) {
-        errorCount++;
-        continue;
-      }
-      reservationId = newReservation.id;
-      reservationStatus = "draft";
-    }
-
-    const { data: existingDepositPayments, error: existingPaymentErr } =
-      await supabase
-        .from("payments")
-        .select("id")
-        .eq("reservation_id", reservationId)
-        .eq("payment_type", "arrhes")
-        .in("status", ["requested", "paid"])
-        .is("deleted_at", null)
-        .limit(1);
-
-    if (existingPaymentErr) {
-      errorCount++;
-      continue;
-    }
-
-    const hasExistingDepositPayment =
-      existingDepositPayments && existingDepositPayments.length > 0;
-    const canCreateMissingDepositRequest =
-      reservationStatus === "draft" ||
-      reservationStatus === "pre_reservation_requested";
-
-    if (!hasExistingDepositPayment && !canCreateMissingDepositRequest) {
-      continue;
-    }
-
-    if (!hasExistingDepositPayment) {
-      // 2. Créer la demande de paiement de pré-réservation.
-      const { error: paymentErr } = await supabase.from("payments").insert({
-        organization_id: litter.organization_id,
-        contact_id: app.contact_id,
-        reservation_id: reservationId,
-        amount_cents: depositSettings.preReservationDepositCents,
-        currency: "EUR",
-        payment_type: "arrhes",
-        status: "requested",
-        payment_method: "bank_transfer",
-        requested_at: new Date().toISOString(),
-        due_date: dueDateStr,
-        notes: note,
-        created_by: user.id,
-        updated_by: user.id,
-      });
-
-      if (paymentErr) {
-        errorCount++;
-        continue;
-      }
-    }
-
-    if (reservationStatus !== "draft") {
-      if (!hasExistingDepositPayment) {
-        successCount++;
-      }
-      continue;
-    }
-
-    // Mettre à jour le brouillon vers pre_reservation_requested uniquement
-    // après existence confirmée de la demande de pré-réservation.
-    const { error: updateErr } = await supabase
-      .from("reservations")
-      .update({
-        status: "pre_reservation_requested",
-        updated_at: new Date().toISOString(),
-        updated_by: user.id,
-      })
-      .eq("id", reservationId)
-      .eq("organization_id", litter.organization_id)
-      .eq("status", "draft")
-      .is("deleted_at", null);
-
-    if (updateErr) {
-      errorCount++;
-      continue;
-    }
-
-    successCount++;
-  }
 
   revalidatePath(`/litters/${litterId}`);
   revalidatePath("/litters");
   revalidatePath("/reservations");
 
-  if (successCount === 0 && errorCount > 0) {
+  if (
+    campaignResult.reservationsPreparedCount === 0 &&
+    campaignResult.errorCount > 0
+  ) {
     redirect(`/litters/${litterId}?campaign_status=error`);
   }
 
   redirect(
-    `/litters/${litterId}?campaign_status=success&campaign_count=${successCount}`,
+    `/litters/${litterId}?campaign_status=success&campaign_count=${campaignResult.reservationsPreparedCount}`,
+  );
+}
+
+export async function launchGroupPreReservationCampaign(formData: FormData) {
+  const groupId = formData.get("litter_group_id");
+
+  if (typeof groupId !== "string" || !isUuid(groupId)) {
+    redirect("/litter-groups?group_campaign_status=error");
+  }
+
+  const rawApplicationIds = formData.getAll("application_ids[]");
+  const applicationIds = Array.from(
+    new Set(
+      rawApplicationIds.filter(
+        (v): v is string => typeof v === "string" && isUuid(v),
+      ),
+    ),
+  );
+
+  if (applicationIds.length === 0) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=no_selection`);
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: group, error: groupError } = await supabase
+    .from("litter_groups")
+    .select("id, organization_id, species")
+    .eq("id", groupId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (groupError || !group) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
+  }
+
+  const { data: groupLitters, error: littersError } = await supabase
+    .from("litters")
+    .select("id")
+    .eq("organization_id", group.organization_id)
+    .eq("litter_group_id", groupId)
+    .is("deleted_at", null);
+
+  if (littersError) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
+  }
+
+  const groupLitterIds = new Set((groupLitters ?? []).map((litter) => litter.id));
+
+  const { data: applications, error: appsError } = await supabase
+    .from("applications")
+    .select(
+      "id, contact_id, species, breed, desired_sex_preference, desired_litter_id, desired_litter_group_id, status",
+    )
+    .eq("organization_id", group.organization_id)
+    .eq("status", "qualified")
+    .is("deleted_at", null)
+    .in("id", applicationIds);
+
+  if (appsError) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
+  }
+
+  const eligibleApplications = (applications ?? []).filter((app) => {
+    if (app.desired_litter_group_id === groupId) {
+      return true;
+    }
+
+    return Boolean(
+      app.desired_litter_id && groupLitterIds.has(app.desired_litter_id),
+    );
+  });
+
+  if (eligibleApplications.length === 0) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=no_eligible`);
+  }
+
+  const campaignResult = await runPreReservationCampaignForApplications({
+    supabase,
+    userId: user.id,
+    organizationId: group.organization_id,
+    applications: eligibleApplications.map((app) => {
+      const targetLitterId =
+        app.desired_litter_id && groupLitterIds.has(app.desired_litter_id)
+          ? app.desired_litter_id
+          : null;
+
+      return {
+        id: app.id,
+        contact_id: app.contact_id,
+        species: app.species ?? group.species ?? "dog",
+        breed: app.breed ?? "Golden Retriever",
+        desired_sex_preference: app.desired_sex_preference,
+        target_litter_id: targetLitterId,
+        target_litter_group_id: groupId,
+      };
+    }),
+  });
+
+  revalidatePath(`/litter-groups/${groupId}`);
+  revalidatePath("/litter-groups");
+  revalidatePath("/reservations");
+
+  if (
+    campaignResult.reservationsPreparedCount === 0 &&
+    campaignResult.paymentsCreatedCount === 0 &&
+    campaignResult.errorCount > 0
+  ) {
+    redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
+  }
+
+  redirect(
+    `/litter-groups/${groupId}?group_campaign_status=success&group_campaign_count=${campaignResult.reservationsPreparedCount}&group_campaign_payment_count=${campaignResult.paymentsCreatedCount}`,
   );
 }
 
