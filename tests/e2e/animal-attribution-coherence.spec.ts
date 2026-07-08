@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   createAuthenticatedSupabaseClient,
@@ -9,6 +9,14 @@ import {
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
+
+async function loginOwner(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).toHaveURL(/\/candidatures/);
+}
 
 test("keeps reservation and animal statuses coherent when assigning and unassigning", async ({
   page,
@@ -157,6 +165,244 @@ test("keeps reservation and animal statuses coherent when assigning and unassign
     id: animalId,
     status: "available",
   });
+});
+
+test("initializes reservation price from animal sex defaults during attribution", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+
+  const supabase = await createAuthenticatedSupabaseClient();
+  const createdLitterIds: string[] = [];
+  const createdContactIds: string[] = [];
+  const createdReservationIds: string[] = [];
+  const createdAnimalIds: string[] = [];
+
+  const originalSettings = expectSupabaseData(
+    await supabase
+      .from("organization_settings")
+      .select(
+        "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
+      )
+      .eq("organization_id", organizationId)
+      .single(),
+    "read original price settings",
+  );
+
+  async function updatePriceSettings({
+    male,
+    female,
+    fallback,
+  }: {
+    male: number | null;
+    female: number | null;
+    fallback: number | null;
+  }) {
+    const { error } = await supabase
+      .from("organization_settings")
+      .update({
+        default_male_puppy_price_cents: male,
+        default_female_puppy_price_cents: female,
+        default_puppy_price_cents: fallback,
+      })
+      .eq("organization_id", organizationId);
+
+    expect(error).toBeNull();
+  }
+
+  async function createAttributionFixture({
+    label,
+    animalSex,
+    initialPriceCents = null,
+  }: {
+    label: string;
+    animalSex: "male" | "female" | "unknown";
+    initialPriceCents?: number | null;
+  }) {
+    const suffix = `${label}-${randomUUID().slice(0, 8)}`;
+    const litterId = randomUUID();
+    const contactId = randomUUID();
+    const reservationId = randomUUID();
+    const animalId = randomUUID();
+
+    createdLitterIds.push(litterId);
+    createdContactIds.push(contactId);
+    createdReservationIds.push(reservationId);
+    createdAnimalIds.push(animalId);
+
+    const { error: litterError } = await supabase.from("litters").insert({
+      id: litterId,
+      organization_id: organizationId,
+      name: `Portee prix ${suffix}`,
+      species: "dog",
+      breed: "Golden Retriever",
+      status: "born",
+      actual_birth_date: "2026-06-28",
+      created_by: ownerId,
+      updated_by: ownerId,
+    });
+    expect(litterError).toBeNull();
+
+    const { error: contactError } = await supabase.from("contacts").insert({
+      id: contactId,
+      organization_id: organizationId,
+      contact_type: "person",
+      first_name: "Prix",
+      last_name: suffix,
+      display_name: `Prix ${suffix}`,
+      email: `prix-attribution-${suffix}@example.invalid`,
+      origin_channel: "manual",
+      primary_status: "active",
+      created_by: ownerId,
+      updated_by: ownerId,
+    });
+    expect(contactError).toBeNull();
+
+    const { error: reservationError } = await supabase
+      .from("reservations")
+      .insert({
+        id: reservationId,
+        organization_id: organizationId,
+        contact_id: contactId,
+        species: "dog",
+        breed: "Golden Retriever",
+        litter_id: litterId,
+        reserved_sex_preference:
+          animalSex === "male" ? "female_only" : "male_only",
+        status: "draft",
+        price_cents: initialPriceCents,
+        created_by: ownerId,
+        updated_by: ownerId,
+      });
+    expect(reservationError).toBeNull();
+
+    const { error: animalError } = await supabase.from("animals").insert({
+      id: animalId,
+      organization_id: organizationId,
+      litter_id: litterId,
+      display_name: `Animal prix ${suffix}`,
+      species: "dog",
+      breed: "Golden Retriever",
+      sex: animalSex,
+      status: "available",
+      ownership_status: "produced",
+      is_breeder: false,
+      is_external: false,
+      is_retired: false,
+      created_by: ownerId,
+      updated_by: ownerId,
+    });
+    expect(animalError).toBeNull();
+
+    return { reservationId, animalId };
+  }
+
+  async function assignAndExpectPrice(
+    fixture: { reservationId: string; animalId: string },
+    expectedPriceCents: number | null,
+  ) {
+    await page.goto(`/reservations/${fixture.reservationId}`);
+    await page.getByLabel("Attribuer un animal").selectOption(fixture.animalId);
+    await page.getByRole("button", { name: "Attribuer l’animal" }).click();
+    await expect(page).toHaveURL(/animal_assign_status=success/);
+
+    const reservation = expectSupabaseData(
+      await supabase
+        .from("reservations")
+        .select("id, animal_id, status, price_cents")
+        .eq("id", fixture.reservationId)
+        .single(),
+      "read priced reservation",
+    );
+
+    expect(reservation).toMatchObject({
+      id: fixture.reservationId,
+      animal_id: fixture.animalId,
+      status: "animal_assigned",
+      price_cents: expectedPriceCents,
+    });
+
+    const { count, error: paymentsError } = await supabase
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .eq("reservation_id", fixture.reservationId);
+
+    expect(paymentsError).toBeNull();
+    expect(count).toBe(0);
+  }
+
+  try {
+    await loginOwner(page);
+
+    await updatePriceSettings({
+      male: 181000,
+      female: 202000,
+      fallback: 190000,
+    });
+    await assignAndExpectPrice(
+      await createAttributionFixture({ label: "male", animalSex: "male" }),
+      181000,
+    );
+    await assignAndExpectPrice(
+      await createAttributionFixture({ label: "female", animalSex: "female" }),
+      202000,
+    );
+
+    await updatePriceSettings({
+      male: null,
+      female: 202000,
+      fallback: 190000,
+    });
+    await assignAndExpectPrice(
+      await createAttributionFixture({
+        label: "male-fallback",
+        animalSex: "male",
+      }),
+      190000,
+    );
+
+    await updatePriceSettings({
+      male: null,
+      female: null,
+      fallback: null,
+    });
+    await assignAndExpectPrice(
+      await createAttributionFixture({ label: "no-price", animalSex: "unknown" }),
+      null,
+    );
+
+    await updatePriceSettings({
+      male: 181000,
+      female: 202000,
+      fallback: 190000,
+    });
+    await assignAndExpectPrice(
+      await createAttributionFixture({
+        label: "existing-price",
+        animalSex: "male",
+        initialPriceCents: 199000,
+      }),
+      199000,
+    );
+  } finally {
+    await supabase
+      .from("organization_settings")
+      .update(originalSettings)
+      .eq("organization_id", organizationId);
+
+    if (createdReservationIds.length > 0) {
+      await supabase.from("reservations").delete().in("id", createdReservationIds);
+    }
+    if (createdAnimalIds.length > 0) {
+      await supabase.from("animals").delete().in("id", createdAnimalIds);
+    }
+    if (createdContactIds.length > 0) {
+      await supabase.from("contacts").delete().in("id", createdContactIds);
+    }
+    if (createdLitterIds.length > 0) {
+      await supabase.from("litters").delete().in("id", createdLitterIds);
+    }
+  }
 });
 
 test("requires produced offspring to be available before attribution", async ({

@@ -12,6 +12,7 @@ import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 import { PRE_RESERVATION_PAYMENT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import { resolveDefaultPuppyPriceCents } from "@/features/reservations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -902,7 +903,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 1. Relire la réservation
   const { data: reservation, error: readResError } = await supabase
     .from("reservations")
-    .select("id, organization_id, animal_id, animal_assignment_locked, litter_id, status, deleted_at")
+    .select("id, organization_id, animal_id, animal_assignment_locked, litter_id, status, price_cents, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -932,7 +933,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 4. Relire l'animal
   const { data: animal, error: readAnimalError } = await supabase
     .from("animals")
-    .select("id, organization_id, litter_id, status, ownership_status, is_breeder, is_external, is_retired, deleted_at")
+    .select("id, organization_id, litter_id, sex, status, ownership_status, is_breeder, is_external, is_retired, deleted_at")
     .eq("id", animalId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -999,6 +1000,45 @@ export async function assignAnimalToReservation(formData: FormData) {
 
   if (updateError || !updatedReservation) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
+  }
+
+  if (reservation.price_cents === null) {
+    const { data: settings, error: settingsError } = await supabase
+      .from("organization_settings")
+      .select(
+        "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
+      )
+      .eq("organization_id", reservation.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (settingsError) {
+      redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
+    }
+
+    const defaultPriceCents = resolveDefaultPuppyPriceCents(
+      settings,
+      animal.sex,
+    );
+
+    if (defaultPriceCents !== null) {
+      const { error: priceUpdateError } = await supabase
+        .from("reservations")
+        .update({
+          price_cents: defaultPriceCents,
+          updated_at: now,
+          updated_by: user.id,
+        })
+        .eq("id", reservationId)
+        .eq("organization_id", reservation.organization_id)
+        .eq("animal_id", animalId)
+        .is("price_cents", null)
+        .is("deleted_at", null);
+
+      if (priceUpdateError) {
+        redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
+      }
+    }
   }
 
   if (animal.status === "available") {

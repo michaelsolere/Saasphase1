@@ -14,6 +14,8 @@ type StatusValue = "success" | "invalid" | "error" | undefined;
 type PaymentSettings = {
   default_pre_reservation_deposit_cents: number;
   default_arrhes_second_payment_cents: number;
+  default_male_puppy_price_cents: number | null;
+  default_female_puppy_price_cents: number | null;
   default_puppy_price_cents: number | null;
   pre_reservation_response_delay_days: number;
   default_currency: string;
@@ -212,7 +214,7 @@ export default async function PaymentSettingsPage({
     ? await supabase
         .from("organization_settings")
         .select(
-          "default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents, default_puppy_price_cents, pre_reservation_response_delay_days, default_currency, settings_json",
+          "default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents, default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, pre_reservation_response_delay_days, default_currency, settings_json",
         )
         .eq("organization_id", organizationId)
         .is("deleted_at", null)
@@ -304,10 +306,34 @@ export default async function PaymentSettingsPage({
                   suffix={currency}
                 />
                 <Field
+                  id="default_male_puppy_price_euros"
+                  label="Prix chiot mâle par défaut"
+                  name="default_male_puppy_price_euros"
+                  defaultValue={formatEurosInput(
+                    settings.default_male_puppy_price_cents,
+                  )}
+                  disabled={!canEdit}
+                  step="0.01"
+                  suffix={currency}
+                />
+                <Field
+                  id="default_female_puppy_price_euros"
+                  label="Prix chiot femelle par défaut"
+                  name="default_female_puppy_price_euros"
+                  defaultValue={formatEurosInput(
+                    settings.default_female_puppy_price_cents,
+                  )}
+                  disabled={!canEdit}
+                  step="0.01"
+                  suffix={currency}
+                />
+                <Field
                   id="default_puppy_price_euros"
-                  label="Prix chiot par défaut"
+                  label="Prix générique fallback"
                   name="default_puppy_price_euros"
-                  defaultValue={formatEurosInput(settings.default_puppy_price_cents)}
+                  defaultValue={formatEurosInput(
+                    settings.default_puppy_price_cents,
+                  )}
                   disabled={!canEdit}
                   step="0.01"
                   suffix={currency}
@@ -368,9 +394,25 @@ export default async function PaymentSettingsPage({
                 detail="Somme de la pré-réservation et du complément d’arrhes."
               />
               <SettingCard
-                label="Prix chiot par défaut"
+                label="Prix chiot mâle"
+                value={formatPrice(
+                  settings.default_male_puppy_price_cents,
+                  currency,
+                )}
+                detail="Tarif appliqué à l’attribution d’un mâle si la réservation n’a pas déjà un prix."
+              />
+              <SettingCard
+                label="Prix chiot femelle"
+                value={formatPrice(
+                  settings.default_female_puppy_price_cents,
+                  currency,
+                )}
+                detail="Tarif appliqué à l’attribution d’une femelle si la réservation n’a pas déjà un prix."
+              />
+              <SettingCard
+                label="Prix générique fallback"
                 value={formatPrice(settings.default_puppy_price_cents, currency)}
-                detail="Tarif indicatif, si renseigné dans les paramètres d’organisation."
+                detail="Tarif utilisé si aucun prix spécifique au sexe n’est disponible."
               />
               <SettingCard
                 label="Délai de réponse pré-réservation"

@@ -2341,6 +2341,8 @@ export type Database = {
           default_arrhes_second_payment_cents: number
           default_currency: string
           default_dog_breed: string
+          default_female_puppy_price_cents: number | null
+          default_male_puppy_price_cents: number | null
           default_pre_reservation_deposit_cents: number
           default_puppy_price_cents: number | null
           default_species: string
@@ -2366,6 +2368,8 @@ export type Database = {
           default_arrhes_second_payment_cents?: number
           default_currency?: string
           default_dog_breed?: string
+          default_female_puppy_price_cents?: number | null
+          default_male_puppy_price_cents?: number | null
           default_pre_reservation_deposit_cents?: number
           default_puppy_price_cents?: number | null
           default_species?: string
@@ -2391,6 +2395,8 @@ export type Database = {
           default_arrhes_second_payment_cents?: number
           default_currency?: string
           default_dog_breed?: string
+          default_female_puppy_price_cents?: number | null
+          default_male_puppy_price_cents?: number | null
           default_pre_reservation_deposit_cents?: number
           default_puppy_price_cents?: number | null
           default_species?: string

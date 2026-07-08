@@ -79,6 +79,14 @@ export async function updatePaymentSettings(formData: FormData) {
   const defaultArrhesSecondPaymentCents = parseEuroAmountCents(
     formData.get("default_arrhes_second_payment_euros"),
   );
+  const defaultMalePuppyPriceCents = parseEuroAmountCents(
+    formData.get("default_male_puppy_price_euros"),
+    { allowEmpty: true },
+  );
+  const defaultFemalePuppyPriceCents = parseEuroAmountCents(
+    formData.get("default_female_puppy_price_euros"),
+    { allowEmpty: true },
+  );
   const defaultPuppyPriceCents = parseEuroAmountCents(
     formData.get("default_puppy_price_euros"),
     { allowEmpty: true },
@@ -92,6 +100,8 @@ export async function updatePaymentSettings(formData: FormData) {
     defaultPreReservationDepositCents === null ||
     defaultArrhesSecondPaymentCents === undefined ||
     defaultArrhesSecondPaymentCents === null ||
+    defaultMalePuppyPriceCents === undefined ||
+    defaultFemalePuppyPriceCents === undefined ||
     defaultPuppyPriceCents === undefined ||
     preReservationResponseDelayDays === undefined
   ) {
@@ -129,6 +139,8 @@ export async function updatePaymentSettings(formData: FormData) {
     .update({
       default_pre_reservation_deposit_cents: defaultPreReservationDepositCents,
       default_arrhes_second_payment_cents: defaultArrhesSecondPaymentCents,
+      default_male_puppy_price_cents: defaultMalePuppyPriceCents,
+      default_female_puppy_price_cents: defaultFemalePuppyPriceCents,
       default_puppy_price_cents: defaultPuppyPriceCents,
       pre_reservation_response_delay_days: preReservationResponseDelayDays,
     })
