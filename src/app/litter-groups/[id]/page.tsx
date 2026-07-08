@@ -5,6 +5,13 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import {
+  CampaignEmailTemplatePicker,
+} from "@/features/documents/campaign-email-template-picker";
+import {
+  getCampaignEmailTemplateOptions,
+  isCampaignEmailTemplateCategory,
+} from "@/features/documents/campaign-email-template-options";
+import {
   AttachApplicationForm,
   AttachReservationForm,
   LinkedApplicationsSection,
@@ -251,6 +258,34 @@ export default async function LitterGroupDetailPage({
     : { data: null, error: null };
 
   const groupReservations = rawGroupReservations as GroupReservation[] | null;
+
+  const { data: rawCampaignEmailTemplates, error: campaignEmailTemplatesError } =
+    group && group.organization_id
+      ? await supabase
+          .from("email_templates")
+          .select("id, title, category, subject, body, is_active")
+          .eq("organization_id", group.organization_id)
+          .eq("is_active", true)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: true })
+      : { data: null, error: null };
+
+  const campaignEmailTemplates = getCampaignEmailTemplateOptions(
+    (rawCampaignEmailTemplates ?? []).flatMap((template) => {
+      if (!isCampaignEmailTemplateCategory(template.category)) {
+        return [];
+      }
+
+      return [{
+        id: template.id,
+        title: template.title,
+        category: template.category,
+        subject: template.subject,
+        body: template.body,
+        isActive: template.is_active,
+      }];
+    }),
+  );
 
   // Candidatures souhaitant ce groupe (lecture seule).
   const { data: rawLinkedApplications, error: linkedAppsError } =
@@ -579,7 +614,8 @@ export default async function LitterGroupDetailPage({
                 Campagne préparée avec succès —{" "}
                 {group_campaign_count ?? "0"} pré-réservation(s) préparée(s) et{" "}
                 {group_campaign_payment_count ?? "0"} demande(s) de paiement créée(s).
-                Aucun email réel n’a été envoyé.
+                Aucun email réel n’a été envoyé. Vous pouvez copier le texte du
+                modèle pour l’envoyer manuellement.
               </div>
             )}
             {group_campaign_status === "no_selection" && (
@@ -909,6 +945,16 @@ export default async function LitterGroupDetailPage({
                   En Phase 1, cette action crée les demandes de paiement et
                   prépare le suivi. Aucun email réel n’est envoyé.
                 </p>
+                {campaignEmailTemplatesError ? (
+                  <p role="alert" className="mt-5 text-sm text-amber-800">
+                    Impossible de charger les modèles d’e-mails pour cette
+                    campagne.
+                  </p>
+                ) : (
+                  <CampaignEmailTemplatePicker
+                    templates={campaignEmailTemplates}
+                  />
+                )}
 
                 {qualifiedAppsError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
