@@ -1768,8 +1768,8 @@ export default async function LitterDetailPage({
                 role="status"
                 className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
               >
-                ✓ Campagne lancée avec succès —{" "}
-                {campaign_count ?? "0"} pré-réservation(s) créée(s) et demande(s) de paiement envoyée(s).
+                ✓ Campagne préparée avec succès —{" "}
+                {campaign_count ?? "0"} pré-réservation(s) préparée(s) et demande(s) de paiement créée(s). Aucun email réel n’a été envoyé.
               </div>
             )}
             {campaign_status === "no_selection" && (
@@ -1926,8 +1926,12 @@ export default async function LitterDetailPage({
                   À la différence de la section « Candidatures liées » ci-dessus
                   (vue de suivi), cette section agit : pour chaque candidature
                   qualifiée sélectionnée, une demande de paiement de
-                  pré-réservation avec montant et échéance paramétrés est lancée et le
+                  pré-réservation avec montant et échéance paramétrés est créée et le
                   dossier passe en attente de paiement.
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  En Phase 1, cette action crée les demandes de paiement et
+                  prépare le suivi. Aucun email réel n’est envoyé.
                 </p>
 
                 {qualifiedAppsError ? (
@@ -1990,7 +1994,8 @@ export default async function LitterDetailPage({
                         Lancer la campagne de pré-réservation
                       </button>
                       <p className="text-xs text-muted">
-                        Aucun e-mail ne sera envoyé automatiquement.
+                        En Phase 1, les demandes de paiement sont créées et le
+                        suivi est préparé. Aucun email réel n’est envoyé.
                       </p>
                     </div>
                   </form>
