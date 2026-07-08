@@ -55,9 +55,6 @@ export function ContactList({ contacts }: { contacts: ContactOverview[] }) {
               <th className="px-5 py-4">Coordonnées</th>
               <th className="px-5 py-4">Rôles actifs</th>
               <th className="px-5 py-4">Créé le</th>
-              <th className="px-5 py-4">
-                <span className="sr-only">Ouvrir</span>
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -65,7 +62,20 @@ export function ContactList({ contacts }: { contacts: ContactOverview[] }) {
               return (
                 <tr key={contact.id ?? index}>
                   <td className="px-5 py-5 align-top font-medium">
-                    {contact.display_name ?? "Nom non renseigné"}
+                    <div className="flex flex-col items-start gap-1.5">
+                      <span>{contact.display_name ?? "Nom non renseigné"}</span>
+                      {contact.id ? (
+                        <Link
+                          href={`/contacts/${contact.id}`}
+                          aria-label={`Ouvrir le contact ${
+                            contact.display_name ?? ""
+                          }`}
+                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                        >
+                          Fiche
+                        </Link>
+                      ) : null}
+                    </div>
                   </td>
                   <td className="px-5 py-5 align-top">
                     <div>{contact.email ?? "Email non renseigné"}</div>
@@ -78,19 +88,6 @@ export function ContactList({ contacts }: { contacts: ContactOverview[] }) {
                   </td>
                   <td className="whitespace-nowrap px-5 py-5 align-top text-muted">
                     {formatApplicationDate(contact.created_at)}
-                  </td>
-                  <td className="px-5 py-5 text-right align-top">
-                    {contact.id ? (
-                      <Link
-                        href={`/contacts/${contact.id}`}
-                        aria-label={`Ouvrir le contact ${
-                          contact.display_name ?? ""
-                        }`}
-                        className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter
-                      </Link>
-                    ) : null}
                   </td>
                 </tr>
               );

@@ -88,7 +88,6 @@ export function DocumentList({ documents }: { documents: DocumentWithContact[] }
             <th scope="col" className="px-6 py-4">Fichier</th>
             <th scope="col" className="px-6 py-4">Signature</th>
             <th scope="col" className="px-6 py-4">Liens</th>
-            <th scope="col" className="px-6 py-4">Détail</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -101,7 +100,15 @@ export function DocumentList({ documents }: { documents: DocumentWithContact[] }
             return (
               <tr key={document.id} className="transition-colors hover:bg-muted-soft/40">
                 <td className="min-w-72 px-6 py-4">
-                  <p className="font-semibold text-foreground">{document.title}</p>
+                  <div className="flex flex-col items-start gap-1.5">
+                    <p className="font-semibold text-foreground">{document.title}</p>
+                    <Link
+                      href={`/documents/${document.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
+                  </div>
                   <p className="mt-1 text-xs text-muted">
                     {getDocumentTypeLabel(document.document_type)}
                   </p>
@@ -149,14 +156,6 @@ export function DocumentList({ documents }: { documents: DocumentWithContact[] }
                 </td>
                 <td className="min-w-48 px-6 py-4">
                   <RelatedLinks document={document} />
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <Link
-                    href={`/documents/${document.id}`}
-                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Consulter
-                  </Link>
                 </td>
               </tr>
             );

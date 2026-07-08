@@ -213,9 +213,6 @@ export default async function LitterGroupsPage() {
                   <th scope="col" className="px-6 py-4">
                     Réservations
                   </th>
-                  <th scope="col" className="px-6 py-4">
-                    Détail
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -227,9 +224,17 @@ export default async function LitterGroupsPage() {
                       className="transition-colors hover:bg-muted-soft/40"
                     >
                       <td className="min-w-72 px-6 py-4">
-                        <p className="font-semibold text-foreground">
-                          {group.name || `Groupe ${group.id.slice(0, 8)}`}
-                        </p>
+                        <div className="flex flex-col items-start gap-1.5">
+                          <p className="font-semibold text-foreground">
+                            {group.name || `Groupe ${group.id.slice(0, 8)}`}
+                          </p>
+                          <Link
+                            href={`/litter-groups/${group.id}`}
+                            className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                          >
+                            Fiche
+                          </Link>
+                        </div>
                         <p className="mt-1 text-xs text-muted">
                           {getSpeciesLabel(group.species)}
                         </p>
@@ -258,14 +263,6 @@ export default async function LitterGroupsPage() {
                       </td>
                       <td className="whitespace-nowrap px-6 py-4 text-muted">
                         {reservationCounts.get(group.id) ?? 0}
-                      </td>
-                      <td className="whitespace-nowrap px-6 py-4">
-                        <Link
-                          href={`/litter-groups/${group.id}`}
-                          className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                        >
-                          Consulter
-                        </Link>
                       </td>
                     </tr>
                   );

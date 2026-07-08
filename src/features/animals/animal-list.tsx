@@ -54,18 +54,23 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
             <th scope="col" className="px-6 py-4">
               Création
             </th>
-            <th scope="col" className="px-6 py-4">
-              Détail
-            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {animals.map((animal) => (
             <tr key={animal.id} className="transition-colors hover:bg-muted-soft/40">
               <td className="min-w-72 px-6 py-4">
-                <p className="font-semibold text-foreground">
-                  {getAnimalDisplayName(animal)}
-                </p>
+                <div className="flex flex-col items-start gap-1.5">
+                  <p className="font-semibold text-foreground">
+                    {getAnimalDisplayName(animal)}
+                  </p>
+                  <Link
+                    href={`/animals/${animal.id}`}
+                    className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                  >
+                    Fiche
+                  </Link>
+                </div>
                 <p className="mt-1 text-xs text-muted">
                   {getAnimalSpeciesLabel(animal.species)} · {animal.breed || "Race non renseignée"}
                 </p>
@@ -123,14 +128,6 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-muted">
                 {formatAnimalDate(animal.created_at)}
-              </td>
-              <td className="whitespace-nowrap px-6 py-4">
-                <Link
-                  href={`/animals/${animal.id}`}
-                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                >
-                  Consulter
-                </Link>
               </td>
             </tr>
           ))}

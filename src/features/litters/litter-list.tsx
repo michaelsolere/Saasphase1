@@ -80,9 +80,6 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
             <th scope="col" className="px-6 py-4">
               Création
             </th>
-            <th scope="col" className="px-6 py-4">
-              Détail
-            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -92,9 +89,19 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
               className="transition-colors hover:bg-muted-soft/40"
             >
               <td className="min-w-72 px-6 py-4">
-                <p className="font-semibold text-foreground">
-                  {getLitterDisplayName(litter.name, litter.id)}
-                </p>
+                <div className="flex flex-col items-start gap-1.5">
+                  <p className="font-semibold text-foreground">
+                    {getLitterDisplayName(litter.name, litter.id)}
+                  </p>
+                  {litter.id ? (
+                    <Link
+                      href={`/litters/${litter.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
+                  ) : null}
+                </div>
                 <p className="mt-1 text-xs text-muted">
                   {getSpeciesLabel(litter.species)} ·{" "}
                   {litter.breed || "Race non renseignée"}
@@ -136,18 +143,6 @@ export function LitterList({ litters }: { litters: LitterOverview[] }) {
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-muted">
                 {formatLitterDate(litter.created_at)}
-              </td>
-              <td className="whitespace-nowrap px-6 py-4">
-                {litter.id ? (
-                  <Link
-                    href={`/litters/${litter.id}`}
-                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Consulter
-                  </Link>
-                ) : (
-                  <span className="text-muted">Indisponible</span>
-                )}
               </td>
             </tr>
           ))}

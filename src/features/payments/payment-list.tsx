@@ -60,7 +60,6 @@ export function PaymentList({ payments }: { payments: PaymentListItem[] }) {
             <th scope="col" className="px-6 py-4">Date</th>
             <th scope="col" className="px-6 py-4">Contact</th>
             <th scope="col" className="px-6 py-4">Réservation</th>
-            <th scope="col" className="px-6 py-4">Action</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -70,8 +69,18 @@ export function PaymentList({ payments }: { payments: PaymentListItem[] }) {
 
             return (
               <tr key={payment.id} className="hover:bg-muted-soft/40 transition-colors">
-                <td className="whitespace-nowrap px-6 py-4 font-semibold text-foreground">
-                  {formatPrice(payment.amount_cents, payment.currency)}
+                <td className="whitespace-nowrap px-6 py-4">
+                  <div className="flex flex-col items-start gap-1.5">
+                    <span className="font-semibold text-foreground">
+                      {formatPrice(payment.amount_cents, payment.currency)}
+                    </span>
+                    <Link
+                      href={`/payments/${payment.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
+                  </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <StatusBadge status={payment.status} />
@@ -104,14 +113,6 @@ export function PaymentList({ payments }: { payments: PaymentListItem[] }) {
                   ) : (
                     <span className="text-muted/60">—</span>
                   )}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <Link
-                    href={`/payments/${payment.id}`}
-                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Consulter
-                  </Link>
                 </td>
               </tr>
             );
