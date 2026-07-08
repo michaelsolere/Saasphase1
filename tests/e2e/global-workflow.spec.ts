@@ -130,7 +130,7 @@ test("validates the global application to draft reservation workflow", async ({
   await page.goto(`/candidatures/${applicationId}`);
   await expect(page.getByRole("heading", { name: "Claire Dubois" })).toBeVisible();
   await expect(
-    page.locator("header").getByText("Qualifiée", { exact: true }),
+    page.locator("header").getByText("Validée", { exact: true }),
   ).toBeVisible();
   if (!reservationId) {
     await expect(

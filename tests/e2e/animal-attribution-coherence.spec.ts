@@ -8,7 +8,6 @@ import {
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
-const litterId = "c0000000-0000-4000-8000-000000000001";
 const animalId = "d0000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 
@@ -40,7 +39,6 @@ test("keeps reservation and animal statuses coherent when assigning and unassign
     id: reservationId,
     organization_id: organizationId,
     contact_id: contactId,
-    litter_id: litterId,
     species: "dog",
     breed: "Golden Retriever",
     reserved_sex_preference: "female_only",
