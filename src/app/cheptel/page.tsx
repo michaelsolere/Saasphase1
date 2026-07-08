@@ -100,6 +100,19 @@ const herdOwnershipStatusLabels: Record<string, string> = {
   unknown: "Non précisé",
 };
 
+const nonPresentHerdStatuses = new Set([
+  "adopted",
+  "archived",
+  "deceased",
+  "planned",
+  "stillborn",
+]);
+
+const outOfHomeOwnershipStatuses = new Set([
+  "adopted_out",
+  "sold",
+]);
+
 function uniqueIds(values: Array<string | null>) {
   return Array.from(new Set(values.filter(Boolean))) as string[];
 }
@@ -116,6 +129,16 @@ function isHomeBreeder(
   animal: Pick<HerdAnimal, "is_breeder" | "is_external">,
 ) {
   return animal.is_breeder && !animal.is_external;
+}
+
+function isHomeAnimalPresent(
+  animal: Pick<HerdAnimal, "is_external" | "ownership_status" | "status">,
+) {
+  return (
+    !isExternalAnimal(animal) &&
+    !outOfHomeOwnershipStatuses.has(animal.ownership_status ?? "") &&
+    !nonPresentHerdStatuses.has(animal.status)
+  );
 }
 
 function normalizeHealthLookup(value: string) {
@@ -187,7 +210,7 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
     },
     {
       key: "home_males",
-      title: "Mâles maison",
+      title: "Reproducteurs",
       description: "Mâles reproducteurs détenus ou produits à l’élevage.",
       animals: animals.filter(
         (animal) =>
@@ -437,6 +460,7 @@ export default async function HerdPage() {
   });
 
   const categories = buildCategories(herdAnimals);
+  const herdCount = herdAnimals.filter(isHomeAnimalPresent).length;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -479,13 +503,7 @@ export default async function HerdPage() {
                   Cheptel
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
-                  {
-                    new Set(
-                      categories.flatMap((category) =>
-                        category.animals.map((animal) => animal.id),
-                      ),
-                    ).size
-                  }
+                  {herdCount}
                 </p>
               </div>
               <div className="rounded-2xl border bg-surface p-5">
@@ -498,10 +516,10 @@ export default async function HerdPage() {
               </div>
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Étalons extérieurs
+                  Reproducteurs
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
-                  {categories.find((category) => category.key === "external_breeders")?.animals.length ?? 0}
+                  {categories.find((category) => category.key === "home_males")?.animals.length ?? 0}
                 </p>
               </div>
               <div className="rounded-2xl border bg-surface p-5">
