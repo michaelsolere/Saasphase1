@@ -126,9 +126,9 @@ function isExternalAnimal(animal: Pick<HerdAnimal, "is_external" | "ownership_st
 }
 
 function isHomeBreeder(
-  animal: Pick<HerdAnimal, "is_breeder" | "is_external">,
+  animal: Pick<HerdAnimal, "is_breeder" | "is_external" | "ownership_status">,
 ) {
-  return animal.is_breeder && !animal.is_external;
+  return animal.is_breeder && !isExternalAnimal(animal);
 }
 
 function isHomeAnimalPresent(
@@ -138,6 +138,23 @@ function isHomeAnimalPresent(
     !isExternalAnimal(animal) &&
     !outOfHomeOwnershipStatuses.has(animal.ownership_status ?? "") &&
     !nonPresentHerdStatuses.has(animal.status)
+  );
+}
+
+function isHerdTotalAnimal(
+  animal: Pick<
+    HerdAnimal,
+    "is_breeder" | "is_external" | "is_retired" | "ownership_status" | "status"
+  >,
+) {
+  return (
+    isHomeAnimalPresent(animal) &&
+    (
+      isHomeBreeder(animal) ||
+      animal.status === "kept" ||
+      animal.status === "retired" ||
+      animal.is_retired
+    )
   );
 }
 
@@ -460,7 +477,8 @@ export default async function HerdPage() {
   });
 
   const categories = buildCategories(herdAnimals);
-  const herdCount = herdAnimals.filter(isHomeAnimalPresent).length;
+  // Cheptel = animaux maison présents, hors reproducteurs extérieurs.
+  const herdCount = herdAnimals.filter(isHerdTotalAnimal).length;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
