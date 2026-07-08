@@ -497,7 +497,7 @@ export function MainSidebar({
               section,
             );
             const sectionOpen =
-              !collapsed && openSections.has(section.label);
+              !collapsed && (active || openSections.has(section.label));
 
             if (section.href) {
               return (
