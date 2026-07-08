@@ -374,7 +374,7 @@ function countRelatedAnimalsBySex(
   animals: RelatedAnimal[] | null,
   sex: "male" | "female",
 ) {
-  if (!animals || animals.length === 0) {
+  if (!animals) {
     return null;
   }
 
@@ -387,14 +387,14 @@ function getBirthCounterCards(
 ) {
   const animalMaleCount = countRelatedAnimalsBySex(animals, "male");
   const animalFemaleCount = countRelatedAnimalsBySex(animals, "female");
-  const maleCount = litter.born_male_count ?? animalMaleCount;
-  const femaleCount = litter.born_female_count ?? animalFemaleCount;
+  const maleCount = animalMaleCount ?? litter.born_male_count;
+  const femaleCount = animalFemaleCount ?? litter.born_female_count;
   const calculatedTotalFromSex =
     maleCount !== null && femaleCount !== null ? maleCount + femaleCount : null;
   const calculatedTotalFromAnimals =
-    animals && animals.length > 0 ? animals.length : null;
+    animals ? animals.length : null;
   const totalBornCount =
-    litter.born_total_count ?? calculatedTotalFromSex ?? calculatedTotalFromAnimals;
+    calculatedTotalFromAnimals ?? calculatedTotalFromSex ?? litter.born_total_count;
   const hasSexBreakdown = maleCount !== null && femaleCount !== null;
 
   const cards = hasSexBreakdown
