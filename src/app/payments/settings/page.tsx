@@ -5,7 +5,11 @@ import { formatPrice } from "@/features/reservations/formatters";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
 
+import { updatePaymentSettings } from "./actions";
+
 export const dynamic = "force-dynamic";
+
+type StatusValue = "success" | "invalid" | "error" | undefined;
 
 type PaymentSettings = {
   default_pre_reservation_deposit_cents: number;
@@ -46,6 +50,89 @@ function getSettingsJsonCurrency(settingsJson: Json) {
   }
 
   return null;
+}
+
+function formatEurosInput(amountCents: number | null) {
+  if (amountCents === null) {
+    return "";
+  }
+
+  return (amountCents / 100).toFixed(2);
+}
+
+function StatusMessage({ value }: { value: StatusValue }) {
+  if (!value) {
+    return null;
+  }
+
+  const isSuccess = value === "success";
+  const message =
+    value === "success"
+      ? "Paramètres de paiement enregistrés."
+      : value === "invalid"
+        ? "Vérifiez les montants et le délai : valeurs positives uniquement, sans format invalide."
+        : "Impossible d’enregistrer les paramètres. Aucune donnée n’a été modifiée.";
+
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-5 py-4 text-sm leading-6 ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {message}
+    </section>
+  );
+}
+
+function Field({
+  id,
+  label,
+  name,
+  defaultValue,
+  disabled,
+  min = "0",
+  step,
+  suffix,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  defaultValue: string | number;
+  disabled: boolean;
+  min?: string;
+  step?: string;
+  suffix?: string;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="text-xs font-semibold uppercase tracking-wide text-muted"
+      >
+        {label}
+      </label>
+      <div className="mt-2 flex rounded-xl border bg-background focus-within:border-accent">
+        <input
+          id={id}
+          name={name}
+          type="number"
+          min={min}
+          step={step}
+          defaultValue={defaultValue}
+          disabled={disabled}
+          className="min-w-0 flex-1 rounded-xl bg-transparent px-4 py-3 text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        />
+        {suffix ? (
+          <span className="flex items-center border-l px-3 text-sm font-medium text-muted">
+            {suffix}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function SettingCard({
@@ -93,7 +180,12 @@ function MissingSettingsMessage() {
   );
 }
 
-export default async function PaymentSettingsPage() {
+export default async function PaymentSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ settings_status?: StatusValue }>;
+}) {
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -105,7 +197,7 @@ export default async function PaymentSettingsPage() {
 
   const { data: membership, error: membershipError } = await supabase
     .from("memberships")
-    .select("organization_id")
+    .select("organization_id, role")
     .eq("profile_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
@@ -114,6 +206,7 @@ export default async function PaymentSettingsPage() {
     .maybeSingle();
 
   const organizationId = membership?.organization_id ?? null;
+  const canEdit = membership?.role === "owner" || membership?.role === "admin";
 
   const { data: rawSettings, error: settingsError } = organizationId
     ? await supabase
@@ -159,8 +252,8 @@ export default async function PaymentSettingsPage() {
         </h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted">
           Ces paramètres serviront à définir les montants et délais par défaut
-          des parcours adoptants. Pour l’instant, cette page est en lecture
-          seule.
+          des parcours adoptants. Les workflows existants continueront à utiliser
+          leurs règles actuelles jusqu’au lot de branchement prévu ensuite.
         </p>
       </header>
 
@@ -169,11 +262,88 @@ export default async function PaymentSettingsPage() {
           <MissingSettingsMessage />
         ) : (
           <div className="space-y-6">
+            <StatusMessage value={query.settings_status} />
+
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
               Les workflows existants utilisent encore les constantes
               applicatives. La modification de ces paramètres sera ajoutée dans
               un lot ultérieur.
             </div>
+
+            <form
+              action={updatePaymentSettings}
+              className="rounded-2xl border bg-surface p-5"
+            >
+              <input
+                type="hidden"
+                name="organization_id"
+                value={organizationId ?? ""}
+              />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  id="default_pre_reservation_deposit_euros"
+                  label="Montant pré-réservation"
+                  name="default_pre_reservation_deposit_euros"
+                  defaultValue={formatEurosInput(
+                    settings.default_pre_reservation_deposit_cents,
+                  )}
+                  disabled={!canEdit}
+                  step="0.01"
+                  suffix={currency}
+                />
+                <Field
+                  id="default_arrhes_second_payment_euros"
+                  label="Complément d’arrhes"
+                  name="default_arrhes_second_payment_euros"
+                  defaultValue={formatEurosInput(
+                    settings.default_arrhes_second_payment_cents,
+                  )}
+                  disabled={!canEdit}
+                  step="0.01"
+                  suffix={currency}
+                />
+                <Field
+                  id="default_puppy_price_euros"
+                  label="Prix chiot par défaut"
+                  name="default_puppy_price_euros"
+                  defaultValue={formatEurosInput(settings.default_puppy_price_cents)}
+                  disabled={!canEdit}
+                  step="0.01"
+                  suffix={currency}
+                />
+                <Field
+                  id="pre_reservation_response_delay_days"
+                  label="Délai de réponse pré-réservation"
+                  name="pre_reservation_response_delay_days"
+                  defaultValue={settings.pre_reservation_response_delay_days}
+                  disabled={!canEdit}
+                  step="1"
+                  suffix="jours"
+                />
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t pt-5">
+                <p className="text-sm text-muted">
+                  Devise : <span className="font-semibold text-foreground">{currency}</span>{" "}
+                  en lecture seule.
+                </p>
+                <button
+                  type="submit"
+                  disabled={!canEdit}
+                  className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Enregistrer les paramètres
+                </button>
+              </div>
+
+              {!canEdit ? (
+                <p className="mt-4 text-sm text-muted">
+                  Seuls les propriétaires et administrateurs peuvent modifier ces
+                  paramètres.
+                </p>
+              ) : null}
+            </form>
 
             <dl className="grid gap-4 sm:grid-cols-2">
               <SettingCard
@@ -215,10 +385,6 @@ export default async function PaymentSettingsPage() {
                 detail="Devise affichée depuis les paramètres existants, sans création de donnée."
               />
             </dl>
-
-            <p className="rounded-xl border bg-surface px-4 py-3 text-sm text-muted">
-              Aucun champ n’est modifiable depuis cette page dans ce lot.
-            </p>
           </div>
         )}
       </section>
