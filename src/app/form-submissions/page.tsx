@@ -155,22 +155,7 @@ export default async function FormSubmissionsPage() {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
-      <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <Link href="/" className="text-sm font-medium text-accent hover:underline">
-          Tableau de bord
-        </Link>
-        <span className="select-none text-sm text-muted" aria-hidden="true">
-          |
-        </span>
-        <Link
-          href="/candidatures"
-          className="text-sm font-medium text-accent hover:underline"
-        >
-          Candidatures
-        </Link>
-      </div>
-
-      <header className="mt-8 border-b pb-7">
+      <header className="border-b pb-7">
         <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
           <div>
             <p className="text-sm font-semibold uppercase tracking-wide text-accent">
