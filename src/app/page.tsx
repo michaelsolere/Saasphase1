@@ -7,6 +7,8 @@ import {
   formatPrice,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
+import { reservationNeedsAttention } from "@/features/reservations/attention";
+import { isFinalReservationStatus } from "@/features/reservations/statuses";
 import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
@@ -78,18 +80,6 @@ const quickLinks = [
     status: "Privé",
   },
 ];
-
-const closedOrNegativeReservationStatuses = new Set([
-  "adopted",
-  "withdrawn",
-  "cancelled",
-  "expired",
-  "archived",
-]);
-
-function isClosedOrNegativeReservationStatus(status: string | null | undefined) {
-  return Boolean(status && closedOrNegativeReservationStatuses.has(status));
-}
 
 export default async function Home() {
   const supabase = await createClient();
@@ -243,9 +233,7 @@ export default async function Home() {
       return true;
     }
 
-    return !isClosedOrNegativeReservationStatus(
-      reservationStatusById.get(reservationId),
-    );
+    return !isFinalReservationStatus(reservationStatusById.get(reservationId));
   };
   const paymentsNeedAttention = (rawPayments || []).filter((payment) =>
     isActionableLinkedReservation(payment.reservation_id),
@@ -254,17 +242,10 @@ export default async function Home() {
     isActionableLinkedReservation(document.reservation_id),
   );
   const reservationsNeedAttention = (rawReservations || []).filter((r) => {
-    const isPreResRequested = r.status === "pre_reservation_requested";
-    const isPreResPaid = r.status === "pre_reservation_paid";
     const paidArrhesCents = r.id
       ? paidArrhesCentsByReservationId.get(r.id) ?? 0
       : 0;
-    const isArrhesCompleteNoAnimal =
-      paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
-      !r.animal_id &&
-      r.status !== "animal_assigned" &&
-      !isClosedOrNegativeReservationStatus(r.status);
-    return isPreResRequested || isPreResPaid || isArrhesCompleteNoAnimal;
+    return reservationNeedsAttention(r, paidArrhesCents);
   });
 
   // Load litters in progress
@@ -524,7 +505,7 @@ export default async function Home() {
                       paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
                       !res.animal_id &&
                       res.status !== "animal_assigned" &&
-                      !isClosedOrNegativeReservationStatus(res.status);
+                      !isFinalReservationStatus(res.status);
                     let detailText = getReservationStatusLabel(res.status);
                     if (isArrhesCompleteNoAnimal) {
                       detailText = "Arrhes complètes — animal non attribué";
@@ -563,7 +544,7 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/reservations"
+                href="/reservations?filter=attention"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
                 Voir les parcours adoptants à suivre ({reservationsNeedAttention.length}) →

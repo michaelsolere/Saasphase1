@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { reservationNeedsAttention } from "@/features/reservations/attention";
 import { ReservationList } from "@/features/reservations/reservation-list";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
@@ -8,6 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 type ReservationsSearchParams = {
+  filter?: string;
   litter_group_id?: string;
   litter_id?: string;
 };
@@ -47,6 +49,8 @@ export default async function ReservationsPage({
   searchParams: Promise<ReservationsSearchParams>;
 }) {
   const params = await searchParams;
+  const selectedFilter = normalizeFilterParam(params.filter);
+  const isAttentionFilter = selectedFilter === "attention";
   const selectedLitterGroupId = normalizeFilterParam(params.litter_group_id);
   const selectedLitterId = normalizeFilterParam(params.litter_id);
   const supabase = await createClient();
@@ -68,7 +72,7 @@ export default async function ReservationsPage({
   let reservationQuery = supabase
     .from("reservation_overview")
     .select(
-      "id, contact_id, contact_display_name, status, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_display_name, created_at"
+      "id, contact_id, contact_display_name, status, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
     )
     .order("created_at", { ascending: false });
 
@@ -97,6 +101,45 @@ export default async function ReservationsPage({
   ]);
 
   reservations = result.data as ReservationOverview[] | null;
+  if (isAttentionFilter && reservations) {
+    const reservationIds = reservations
+      .map((reservation) => reservation.id)
+      .filter((id): id is string => Boolean(id));
+    const paidArrhesCentsByReservationId = new Map<string, number>();
+
+    if (reservationIds.length > 0) {
+      const { data: rawPaidArrhesPayments, error: paidArrhesError } =
+        await supabase
+          .from("payments")
+          .select("reservation_id, amount_cents")
+          .in("reservation_id", reservationIds)
+          .eq("payment_type", "arrhes")
+          .eq("status", "paid")
+          .is("deleted_at", null);
+
+      hasLoadingError = hasLoadingError || Boolean(paidArrhesError);
+
+      for (const payment of rawPaidArrhesPayments ?? []) {
+        if (!payment.reservation_id) {
+          continue;
+        }
+
+        paidArrhesCentsByReservationId.set(
+          payment.reservation_id,
+          (paidArrhesCentsByReservationId.get(payment.reservation_id) ?? 0) +
+            payment.amount_cents,
+        );
+      }
+    }
+
+    reservations = reservations.filter((reservation) => {
+      const paidArrhesCents = reservation.id
+        ? paidArrhesCentsByReservationId.get(reservation.id) ?? 0
+        : 0;
+
+      return reservationNeedsAttention(reservation, paidArrhesCents);
+    });
+  }
   litterGroups = (litterGroupsResult.data ?? []) as LitterGroupFilterOption[];
   litters = (littersResult.data ?? []) as LitterFilterOption[];
   hasLoadingError =
@@ -139,11 +182,26 @@ export default async function ReservationsPage({
           <ErrorMessage />
         ) : (
           <>
+            {isAttentionFilter ? (
+              <div className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+                <p className="font-medium">Filtre : parcours adoptants à suivre</p>
+                <Link
+                  href="/reservations"
+                  className="font-semibold text-amber-950 underline-offset-4 hover:underline"
+                >
+                  Voir tous les parcours
+                </Link>
+              </div>
+            ) : null}
+
             <form
-              key={`${selectedLitterGroupId ?? "all"}-${selectedLitterId ?? "all"}`}
+              key={`${selectedFilter ?? "all"}-${selectedLitterGroupId ?? "all"}-${selectedLitterId ?? "all"}`}
               action="/reservations"
               className="mb-5 rounded-2xl border bg-surface p-5"
             >
+              {isAttentionFilter ? (
+                <input type="hidden" name="filter" value="attention" />
+              ) : null}
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
                 <div>
                   <label
