@@ -161,12 +161,28 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
   return [
     {
       key: "home_females",
-      title: "Reproductrices maison",
+      title: "Reproductrices",
       description: "Femelles reproductrices détenues ou produites à l’élevage.",
       animals: animals.filter(
         (animal) =>
           isHomeBreeder(animal) &&
           animal.sex === "female",
+      ),
+    },
+    {
+      key: "kept",
+      title: "Restent à l’élevage",
+      description: "Animaux identifiés avec le statut Gardé à l’élevage.",
+      animals: animals.filter(
+        (animal) => animal.status === "kept" && !isHomeBreeder(animal),
+      ),
+    },
+    {
+      key: "retired",
+      title: "Retraités",
+      description: "Animaux marqués comme retraités.",
+      animals: animals.filter(
+        (animal) => animal.status === "retired" || animal.is_retired,
       ),
     },
     {
@@ -188,22 +204,6 @@ function buildCategories(animals: HerdAnimalItem[]): HerdCategory[] {
           animal.is_breeder &&
           !isHomeBreeder(animal) &&
           isExternalAnimal(animal),
-      ),
-    },
-    {
-      key: "kept",
-      title: "Restent à l’élevage",
-      description: "Animaux identifiés avec le statut Gardé à l’élevage.",
-      animals: animals.filter(
-        (animal) => animal.status === "kept" && !isHomeBreeder(animal),
-      ),
-    },
-    {
-      key: "retired",
-      title: "Retraités",
-      description: "Animaux marqués comme retraités.",
-      animals: animals.filter(
-        (animal) => animal.status === "retired" || animal.is_retired,
       ),
     },
   ];
@@ -437,9 +437,6 @@ export default async function HerdPage() {
   });
 
   const categories = buildCategories(herdAnimals);
-  const animalsWithHealthEventCount = herdAnimals.filter(
-    (animal) => animal.nextHealthEvent,
-  ).length;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -454,7 +451,7 @@ export default async function HerdPage() {
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
               Vue synthétique des reproducteurs, animaux restant à l’élevage,
-              retraités et soins prévus, à partir des données Animaux existantes.
+              et retraités, à partir des données Animaux existantes.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -476,10 +473,10 @@ export default async function HerdPage() {
           <ErrorMessage />
         ) : (
           <div className="space-y-8">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Cheptel suivi
+                  Cheptel
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
                   {
@@ -493,17 +490,15 @@ export default async function HerdPage() {
               </div>
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Reproducteurs maison
+                  Reproductrices
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
                   {categories.find((category) => category.key === "home_females")?.animals.length ?? 0}
-                  {" / "}
-                  {categories.find((category) => category.key === "home_males")?.animals.length ?? 0}
                 </p>
               </div>
               <div className="rounded-2xl border bg-surface p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Extérieurs
+                  Étalons extérieurs
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
                   {categories.find((category) => category.key === "external_breeders")?.animals.length ?? 0}
@@ -515,14 +510,6 @@ export default async function HerdPage() {
                 </p>
                 <p className="mt-3 text-3xl font-semibold">
                   {categories.find((category) => category.key === "kept")?.animals.length ?? 0}
-                </p>
-              </div>
-              <div className="rounded-2xl border bg-surface p-5">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Soins prévus
-                </p>
-                <p className="mt-3 text-3xl font-semibold">
-                  {animalsWithHealthEventCount}
                 </p>
               </div>
             </div>
