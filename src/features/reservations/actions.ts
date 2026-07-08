@@ -925,6 +925,10 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
+  if (!reservation.litter_id) {
+    redirect(`/reservations/${reservationId}?animal_assign_status=missing_litter#scope-and-animal`);
+  }
+
   // 4. Relire l'animal
   const { data: animal, error: readAnimalError } = await supabase
     .from("animals")
@@ -942,8 +946,8 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
-  // 6. Vérifier la cohérence de portée quand la réservation est liée à une portée précise
-  if (reservation.litter_id && animal.litter_id !== reservation.litter_id) {
+  // 6. Vérifier la cohérence de portée.
+  if (animal.litter_id !== reservation.litter_id) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
@@ -1126,6 +1130,97 @@ export async function unassignAnimalFromReservation(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
 
   redirect(`/reservations/${reservationId}?animal_unassign_status=success#scope-and-animal`);
+}
+
+function preciseLitterAttachUrl(
+  reservationId: string,
+  outcome: "success" | "error" | "animal_attributed",
+) {
+  return `/reservations/${reservationId}?litter_attach_status=${outcome}#scope-and-animal`;
+}
+
+export async function attachReservationToPreciseLitter(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+  const litterId = formData.get("litter_id");
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof litterId !== "string" ||
+    !isUuid(litterId)
+  ) {
+    redirect("/reservations?erreur=rattachement_portee");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, animal_id, litter_group_id, status")
+    .eq("id", reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation?.organization_id) {
+    redirect(preciseLitterAttachUrl(reservationId, "error"));
+  }
+
+  if (reservation.animal_id) {
+    redirect(preciseLitterAttachUrl(reservationId, "animal_attributed"));
+  }
+
+  if (isFinalReservationStatus(reservation.status)) {
+    redirect(preciseLitterAttachUrl(reservationId, "error"));
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, litter_group_id")
+    .eq("id", litterId)
+    .eq("organization_id", reservation.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter) {
+    redirect(preciseLitterAttachUrl(reservationId, "error"));
+  }
+
+  if (
+    reservation.litter_group_id &&
+    litter.litter_group_id !== reservation.litter_group_id
+  ) {
+    redirect(preciseLitterAttachUrl(reservationId, "error"));
+  }
+
+  const { error: updateError } = await supabase
+    .from("reservations")
+    .update({
+      litter_id: litter.id,
+      litter_group_id: litter.litter_group_id,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", reservation.id)
+    .eq("organization_id", reservation.organization_id)
+    .is("animal_id", null)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    redirect(preciseLitterAttachUrl(reservationId, "error"));
+  }
+
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath(`/litters/${litter.id}`);
+
+  redirect(preciseLitterAttachUrl(reservationId, "success"));
 }
 
 // ---------------------------------------------------------------------------
