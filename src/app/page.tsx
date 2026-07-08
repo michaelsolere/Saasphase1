@@ -365,10 +365,10 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/candidatures"
+                href="/candidatures?filter=attention"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir les candidats ({applicationsNeedReview.length}) →
+                Voir les candidats à suivre ({applicationsNeedReview.length}) →
               </Link>
             </div>
           </div>
@@ -606,10 +606,10 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/litters"
+                href="/litters?filter=active"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir toutes les portées ({littersInProgress.length}) →
+                Voir les portées en cours ({littersInProgress.length}) →
               </Link>
             </div>
           </div>

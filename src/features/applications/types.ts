@@ -41,6 +41,7 @@ export type ApplicationDetail = Pick<
 >;
 
 export type ApplicationFilter =
+  | "attention"
   | "to_validate"
   | "validated"
   | "unsuccessful"

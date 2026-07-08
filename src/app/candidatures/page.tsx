@@ -34,7 +34,8 @@ const filters = [
   href: string;
 }>;
 
-const toValidateStatuses = ["new", "to_review", "to_call"];
+const attentionStatuses = ["new", "to_review"];
+const toValidateStatuses = [...attentionStatuses, "to_call"];
 
 function getDecisionPreview(value: string | null) {
   if (!value) {
@@ -88,12 +89,14 @@ export default async function ApplicationsPage({
     action?: string;
     connexion?: string;
     erreur?: string;
+    filter?: string;
     filtre?: string;
     note_status?: string;
   }>;
 }) {
   const params = await searchParams;
-  const filter = getApplicationFilter(params.filtre);
+  const filter =
+    params.filter === "attention" ? "attention" : getApplicationFilter(params.filtre);
   const supabase = await createClient();
 
   const {
@@ -116,7 +119,9 @@ export default async function ApplicationsPage({
     .order("submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
-  if (filter === "to_validate") {
+  if (filter === "attention") {
+    query = query.in("status", attentionStatuses);
+  } else if (filter === "to_validate") {
     query = query.in("status", toValidateStatuses);
   } else if (filter === "validated") {
     query = query.in("status", ["qualified", "waiting_litter"]);

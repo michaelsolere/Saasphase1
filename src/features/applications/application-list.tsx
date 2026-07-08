@@ -13,6 +13,10 @@ import type {
 } from "@/features/applications/types";
 
 function getEmptyMessage(filter: ApplicationFilter) {
+  if (filter === "attention") {
+    return "Aucun candidat à suivre";
+  }
+
   if (filter === "to_validate") {
     return "Aucune candidature à valider";
   }
@@ -33,6 +37,10 @@ function isToValidateStatus(status: string | null) {
 }
 
 function getReturnPath(filter: ApplicationFilter) {
+  if (filter === "attention") {
+    return "/candidatures?filter=attention";
+  }
+
   if (filter === "validated") {
     return "/candidatures?filtre=validees";
   }

@@ -24,9 +24,14 @@ function ErrorMessage() {
 export default async function LittersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ group_status?: string; litter_status?: string }>;
+  searchParams: Promise<{
+    filter?: string;
+    group_status?: string;
+    litter_status?: string;
+  }>;
 }) {
   const query = await searchParams;
+  const isActiveFilter = query.filter === "active";
   const supabase = await createClient();
 
   const {
@@ -50,6 +55,14 @@ export default async function LittersPage({
     .order("created_at", { ascending: false });
 
   litters = result.data as LitterOverview[] | null;
+  if (isActiveFilter && litters) {
+    litters = litters.filter(
+      (litter) =>
+        litter.status !== "closed" &&
+        litter.status !== "cancelled" &&
+        litter.status !== "archived",
+    );
+  }
   hasLoadingError = hasLoadingError || Boolean(result.error);
 
   return (
