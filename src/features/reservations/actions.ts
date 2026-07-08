@@ -7,6 +7,7 @@ import {
   FINAL_RESERVATION_STATUSES,
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
+import { isAssignableReservationAnimal } from "@/features/reservations/assignable-animals";
 import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
@@ -927,7 +928,7 @@ export async function assignAnimalToReservation(formData: FormData) {
   // 4. Relire l'animal
   const { data: animal, error: readAnimalError } = await supabase
     .from("animals")
-    .select("id, organization_id, litter_id, status, deleted_at")
+    .select("id, organization_id, litter_id, status, ownership_status, is_breeder, is_external, is_retired, deleted_at")
     .eq("id", animalId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -946,9 +947,8 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 
-  // 7. Vérifier le statut de l'animal
-  const allowedAnimalStatuses = ["born", "active", "available"];
-  if (!allowedAnimalStatuses.includes(animal.status)) {
+  // 7. Vérifier que l'animal est attribuable à une réservation/adoption
+  if (!isAssignableReservationAnimal(animal)) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
 

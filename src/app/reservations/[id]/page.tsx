@@ -57,6 +57,7 @@ import {
   FINAL_RESERVATION_STATUSES,
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
+import { isAssignableReservationAnimal } from "@/features/reservations/assignable-animals";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
 import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
@@ -1335,6 +1336,10 @@ export default async function ReservationDetailPage({
     official_name: string | null;
     sex: string;
     status: string;
+    ownership_status: string;
+    is_breeder: boolean;
+    is_external: boolean;
+    is_retired: boolean;
     species: string;
     breed: string;
     litter_id: string | null;
@@ -1344,10 +1349,14 @@ export default async function ReservationDetailPage({
   if (reservation && reservation.organization_id && !reservation.animal_id) {
     const rawAnimalsQuery = supabase
       .from("animals")
-      .select("id, display_name, temporary_name, call_name, official_name, sex, status, species, breed, litter_id")
+      .select("id, display_name, temporary_name, call_name, official_name, sex, status, ownership_status, is_breeder, is_external, is_retired, species, breed, litter_id")
       .eq("organization_id", reservation.organization_id)
       .is("deleted_at", null)
-      .in("status", ["born", "active", "available"]);
+      .in("status", ["born", "available"])
+      .eq("ownership_status", "produced")
+      .eq("is_breeder", false)
+      .eq("is_external", false)
+      .eq("is_retired", false);
 
     if (reservation.litter_id) {
       rawAnimalsQuery.eq("litter_id", reservation.litter_id);
@@ -1375,7 +1384,9 @@ export default async function ReservationDetailPage({
             .filter(Boolean)
         );
         availableAnimals = (rawAnimals as typeof availableAnimals).filter(
-          (animal) => !assignedAnimalIds.has(animal.id)
+          (animal) =>
+            isAssignableReservationAnimal(animal) &&
+            !assignedAnimalIds.has(animal.id)
         );
       }
     }
@@ -2831,7 +2842,7 @@ export default async function ReservationDetailPage({
                                 <p className="mt-2 text-xs leading-5 text-muted">
                                   {reservation.litter_id
                                     ? "Seuls les animaux disponibles de la portée liée sont proposés."
-                                    : "Seuls les animaux disponibles de l’organisation sont proposés."}
+                                    : "Seuls les chiots ou chatons nés à l’élevage et disponibles sont proposés."}
                                 </p>
                               </div>
                               <button
