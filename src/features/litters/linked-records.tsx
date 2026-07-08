@@ -98,6 +98,12 @@ export function LinkedApplicationsSection({
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                       {getApplicationStatusLabel(application.status)}
                     </span>
+                    <Link
+                      href={`/candidatures/${application.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
                   </div>
                   <p className="text-xs text-muted">
                     {getSpeciesLabel(application.species)} ·{" "}
@@ -111,12 +117,6 @@ export function LinkedApplicationsSection({
                     Créée le {formatLitterDate(application.created_at)}
                   </p>
                 </div>
-                <Link
-                  href={`/candidatures/${application.id}`}
-                  className="inline-flex self-start rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft sm:self-center"
-                >
-                  Consulter
-                </Link>
               </div>
             </div>
           ))}

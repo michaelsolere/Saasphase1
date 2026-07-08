@@ -481,15 +481,15 @@ function RelatedLitterSection({
           <p className="mt-2 text-sm text-muted">
             {getLitterDisplayName(litter.name, litter.id)}
           </p>
+          {litter.id ? (
+            <Link
+              href={`/litters/${litter.id}`}
+              className="mt-2 inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+            >
+              Fiche
+            </Link>
+          ) : null}
         </div>
-        {litter.id ? (
-          <Link
-            href={`/litters/${litter.id}`}
-            className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-          >
-            Consulter la portée
-          </Link>
-        ) : null}
       </div>
 
       <dl className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -557,30 +557,28 @@ function RelatedReservationSection({
           <h2 className="text-xl font-semibold">Réservation liée</h2>
           {reservation ? (
             <p className="mt-2 text-sm text-muted">
-              {reservation.contact_display_name ?? "Contact non renseigné"}
+              {reservation.contact_id ? (
+                <Link
+                  href={`/contacts/${reservation.contact_id}`}
+                  className="font-medium text-accent hover:underline"
+                >
+                  {reservation.contact_display_name ??
+                    "Contact non renseigné"}
+                </Link>
+              ) : (
+                reservation.contact_display_name ?? "Contact non renseigné"
+              )}
             </p>
           ) : null}
+          {reservation?.id ? (
+            <Link
+              href={`/reservations/${reservation.id}`}
+              className="mt-2 inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+            >
+              Fiche
+            </Link>
+          ) : null}
         </div>
-        {reservation?.id || reservation?.contact_id ? (
-          <div className="flex flex-wrap gap-2">
-            {reservation.contact_id ? (
-              <Link
-                href={`/contacts/${reservation.contact_id}`}
-                className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-              >
-                Voir le contact
-              </Link>
-            ) : null}
-            {reservation.id ? (
-              <Link
-                href={`/reservations/${reservation.id}`}
-                className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-              >
-                Consulter
-              </Link>
-            ) : null}
-          </div>
-        ) : null}
       </div>
 
       {hasError ? (
@@ -786,6 +784,12 @@ function AnimalHealthSection({
                           <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                             {getDocumentStatusLabel(document.status)}
                           </span>
+                          <Link
+                            href={`/documents/${document.id}`}
+                            className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                          >
+                            Fiche
+                          </Link>
                         </div>
                         <p className="text-xs text-muted">
                           Type : {getDocumentTypeLabel(document.document_type)}
@@ -794,12 +798,6 @@ function AnimalHealthSection({
                           {usefulDate.label}{" "}
                           {formatAnimalDate(usefulDate.value)}
                         </p>
-                        <Link
-                          href={`/documents/${document.id}`}
-                          className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                        >
-                          Consulter
-                        </Link>
                       </div>
                     </div>
                   );
@@ -1103,6 +1101,12 @@ function RelatedDocumentsSection({
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                       {getDocumentStatusLabel(document.status)}
                     </span>
+                    <Link
+                      href={`/documents/${document.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
                   </div>
                   <p className="text-xs text-muted">
                     Type : {getDocumentTypeLabel(document.document_type)}
@@ -1117,12 +1121,6 @@ function RelatedDocumentsSection({
                     Signature requise :{" "}
                     {getSignatureRequiredLabel(document.signature_required)}
                   </p>
-                  <Link
-                    href={`/documents/${document.id}`}
-                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Consulter
-                  </Link>
                 </div>
               </div>
             );

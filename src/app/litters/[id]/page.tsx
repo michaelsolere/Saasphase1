@@ -605,18 +605,23 @@ function RelatedAnimalsSection({
                 <th scope="col" className="px-4 py-3">
                   Couleur / robe
                 </th>
-                <th scope="col" className="px-4 py-3">
-                  Détail
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {animals.map((animal) => (
                 <tr key={animal.id}>
                   <td className="min-w-56 px-4 py-4">
-                    <p className="font-semibold text-foreground">
-                      {getAnimalDisplayName(animal)}
-                    </p>
+                    <div className="flex flex-col items-start gap-1.5">
+                      <p className="font-semibold text-foreground">
+                        {getAnimalDisplayName(animal)}
+                      </p>
+                      <Link
+                        href={`/animals/${animal.id}`}
+                        className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                      >
+                        Fiche
+                      </Link>
+                    </div>
                     <p className="mt-1 text-xs text-muted">
                       Sexe : {getAnimalSexLabel(animal.sex)}
                     </p>
@@ -645,14 +650,6 @@ function RelatedAnimalsSection({
                   </td>
                   <td className="whitespace-nowrap px-4 py-4 text-muted">
                     {formatAnimalCoat(animal)}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-4">
-                    <Link
-                      href={`/animals/${animal.id}`}
-                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Consulter
-                    </Link>
                   </td>
                 </tr>
               ))}
@@ -739,6 +736,14 @@ function RelatedReservationsSection({
                       >
                         {preReservationDepositLabel}
                       </span>
+                      {reservation.id ? (
+                        <Link
+                          href={`/reservations/${reservation.id}`}
+                          className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                        >
+                          Fiche
+                        </Link>
+                      ) : null}
                     </div>
                     <p className="text-xs text-muted">
                       Préférence :{" "}
@@ -780,14 +785,6 @@ function RelatedReservationsSection({
                     </p>
                     <p className="text-xs text-muted">Créée le {dateText}</p>
                   </div>
-                  {reservation.id ? (
-                    <Link
-                      href={`/reservations/${reservation.id}`}
-                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
-                    >
-                      Consulter
-                    </Link>
-                  ) : null}
                 </div>
               </div>
             );
@@ -1109,6 +1106,12 @@ function RelatedDocumentsSection({
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                       {getDocumentStatusLabel(document.status)}
                     </span>
+                    <Link
+                      href={`/documents/${document.id}`}
+                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                    >
+                      Fiche
+                    </Link>
                   </div>
                   <p className="text-xs text-muted">
                     Type : {getDocumentTypeLabel(document.document_type)}
@@ -1123,12 +1126,6 @@ function RelatedDocumentsSection({
                     Signature requise :{" "}
                     {getSignatureRequiredLabel(document.signature_required)}
                   </p>
-                  <Link
-                    href={`/documents/${document.id}`}
-                    className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Consulter
-                  </Link>
                 </div>
               </div>
             );

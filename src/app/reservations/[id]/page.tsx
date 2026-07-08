@@ -3272,6 +3272,12 @@ export default async function ReservationDetailPage({
                                   <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                     {getPaymentStatusLabel(payment.status)}
                                   </span>
+                                  <Link
+                                    href={`/payments/${payment.id}`}
+                                    className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                  >
+                                    Fiche
+                                  </Link>
                                 </div>
                                 <p className="text-xs text-muted">
                                   Type : {getPaymentTypeLabel(payment.payment_type)}
@@ -3288,14 +3294,8 @@ export default async function ReservationDetailPage({
                                   </p>
                                 ) : null}
                               </div>
-                              <div className="flex flex-col gap-2 sm:items-end">
-                                <Link
-                                  href={`/payments/${payment.id}`}
-                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft text-center"
-                                >
-                                  Consulter
-                                </Link>
-                                {!reservationIsFinal && payment.status === "requested" ? (
+                              {!reservationIsFinal && payment.status === "requested" ? (
+                                <div className="flex flex-col gap-2 sm:items-end">
                                   <PaymentConfirmDialog
                                     paymentId={payment.id}
                                     reservationId={id}
@@ -3308,8 +3308,8 @@ export default async function ReservationDetailPage({
                                     )}
                                     dueDateLabel={dateDisplay}
                                   />
-                                ) : null}
-                              </div>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         );
@@ -3485,6 +3485,12 @@ export default async function ReservationDetailPage({
                                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                   {getDocumentStatusLabel(document.status, document.document_type)}
                                 </span>
+                                <Link
+                                  href={`/documents/${document.id}`}
+                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                  Fiche
+                                </Link>
                               </div>
                               <p className="text-xs text-muted">
                                 Type : {getDocumentTypeLabel(document.document_type)}
@@ -3520,15 +3526,8 @@ export default async function ReservationDetailPage({
                               </p>
                             </div>
 
-                            <div className="flex flex-col gap-2 sm:items-end">
-                              <Link
-                                href={`/documents/${document.id}`}
-                                className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-medium text-accent transition hover:border-accent/40 hover:bg-accent-soft text-center justify-center min-w-[150px]"
-                              >
-                                Consulter
-                              </Link>
-
-                              {!reservationIsFinal && hasIndividualDocumentAction ? (
+                            {!reservationIsFinal && hasIndividualDocumentAction ? (
+                              <div className="flex flex-col gap-2 sm:items-end">
                                 <>
                                   {document.status === "to_generate" ? (
                                     <DocumentConfirmDialog
@@ -3560,8 +3559,8 @@ export default async function ReservationDetailPage({
                                     />
                                   ) : null}
                                 </>
-                              ) : null}
-                            </div>
+                              </div>
+                            ) : null}
                           </div>
                         );
                       })}

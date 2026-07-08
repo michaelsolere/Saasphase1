@@ -457,6 +457,14 @@ export default async function ContactDetailPage({
                                   >
                                     {getApplicationStatusLabel(app.status)}
                                   </span>
+                                  {app.id ? (
+                                    <Link
+                                      href={`/candidatures/${app.id}`}
+                                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                    >
+                                      Fiche
+                                    </Link>
+                                  ) : null}
                                 </div>
                                 <p className="text-xs text-muted">
                                   Préférence :{" "}
@@ -468,14 +476,6 @@ export default async function ContactDetailPage({
                                   Soumise le {dateText} · Source : {sourceForm}
                                 </p>
                               </div>
-                              {app.id ? (
-                                <Link
-                                  href={`/candidatures/${app.id}`}
-                                  className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
-                                >
-                                  Consulter
-                                </Link>
-                              ) : null}
                             </div>
                           </div>
                         );
@@ -531,6 +531,14 @@ export default async function ContactDetailPage({
                                   >
                                     {getReservationStatusLabel(res.status)}
                                   </span>
+                                  {res.id ? (
+                                    <Link
+                                      href={`/reservations/${res.id}`}
+                                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                    >
+                                      Fiche
+                                    </Link>
+                                  ) : null}
                                 </div>
                                 <p className="text-xs text-muted">
                                   Préférence : {getSexPreferenceLabel(res.reserved_sex_preference)}
@@ -544,7 +552,17 @@ export default async function ContactDetailPage({
                                   ) : null}
                                 </p>
                                 <p className="text-xs text-muted">
-                                  Animal : {res.animal_display_name ?? "Non attribué"}
+                                  Animal :{" "}
+                                  {res.animal_id ? (
+                                    <Link
+                                      href={`/animals/${res.animal_id}`}
+                                      className="font-medium text-accent hover:underline"
+                                    >
+                                      {res.animal_display_name ?? "Animal lié"}
+                                    </Link>
+                                  ) : (
+                                    res.animal_display_name ?? "Non attribué"
+                                  )}
                                 </p>
                                 {res.status === "adopted" ? (
                                   <p className="text-xs font-medium text-emerald-700">
@@ -561,26 +579,6 @@ export default async function ContactDetailPage({
                                   Créée le {dateText}
                                 </p>
                               </div>
-                              {res.id || res.animal_id ? (
-                                <div className="flex flex-wrap gap-2 self-start sm:self-center">
-                                  {res.animal_id ? (
-                                    <Link
-                                      href={`/animals/${res.animal_id}`}
-                                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                                    >
-                                      Voir l’animal
-                                    </Link>
-                                  ) : null}
-                                  {res.id ? (
-                                    <Link
-                                      href={`/reservations/${res.id}`}
-                                      className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                                    >
-                                      Consulter
-                                    </Link>
-                                  ) : null}
-                                </div>
-                              ) : null}
                             </div>
                           </div>
                         );
@@ -623,6 +621,12 @@ export default async function ContactDetailPage({
                                   <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                     {getPaymentStatusLabel(payment.status)}
                                   </span>
+                                  <Link
+                                    href={`/payments/${payment.id}`}
+                                    className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                  >
+                                    Fiche
+                                  </Link>
                                 </div>
                                 <p className="text-xs text-muted">
                                   Type : {getPaymentTypeLabel(payment.payment_type)}
@@ -648,12 +652,6 @@ export default async function ContactDetailPage({
                                   </p>
                                 )}
                               </div>
-                              <Link
-                                href={`/payments/${payment.id}`}
-                                className="inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft self-start sm:self-center"
-                              >
-                                Consulter
-                              </Link>
                             </div>
                           </div>
                         );
@@ -693,6 +691,12 @@ export default async function ContactDetailPage({
                                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                   {getDocumentStatusLabel(document.status)}
                                 </span>
+                                <Link
+                                  href={`/documents/${document.id}`}
+                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                  Fiche
+                                </Link>
                               </div>
                               <p className="text-xs text-muted">
                                 Type : {getDocumentTypeLabel(document.document_type)}

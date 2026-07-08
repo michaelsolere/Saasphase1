@@ -700,6 +700,14 @@ export default async function LitterGroupDetailPage({
                                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                                   {getLitterStatusLabel(litter.status)}
                                 </span>
+                                {litter.id ? (
+                                  <Link
+                                    href={`/litters/${litter.id}`}
+                                    className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                  >
+                                    Fiche
+                                  </Link>
+                                ) : null}
                               </div>
                               <p className="text-xs text-muted">
                                 Mère :{" "}
@@ -716,14 +724,6 @@ export default async function LitterGroupDetailPage({
                                   : "Non renseignée"}
                               </p>
                             </div>
-                            {litter.id ? (
-                              <Link
-                                href={`/litters/${litter.id}`}
-                                className="inline-flex self-start rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft sm:self-center"
-                              >
-                                Consulter
-                              </Link>
-                            ) : null}
                           </div>
                         </div>
                       );
@@ -814,6 +814,14 @@ export default async function LitterGroupDetailPage({
                                   preReservationDepositState,
                                 )}
                               </span>
+                              {reservation.id ? (
+                                <Link
+                                  href={`/reservations/${reservation.id}`}
+                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                  Fiche
+                                </Link>
+                              ) : null}
                             </div>
                             <p className="text-xs text-muted">
                               Portée :{" "}
@@ -843,14 +851,6 @@ export default async function LitterGroupDetailPage({
                               )}
                             </p>
                           </div>
-                          {reservation.id ? (
-                            <Link
-                              href={`/reservations/${reservation.id}`}
-                              className="inline-flex self-start rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft sm:self-center"
-                            >
-                              Consulter
-                            </Link>
-                          ) : null}
                         </div>
                       </div>
                       );
