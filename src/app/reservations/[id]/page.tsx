@@ -730,6 +730,12 @@ function ReservationStatusMessages({
       message: "Cet animal n’est plus disponible pour attribution.",
     },
     {
+      when: query.animal_assign_status === "animal_must_be_available",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: "Cet animal doit être marqué disponible avant de pouvoir être attribué.",
+    },
+    {
       when: query.animal_assign_status === "missing_litter",
       role: "alert",
       className: errorStatusMessageClassName,
@@ -1398,7 +1404,7 @@ export default async function ReservationDetailPage({
       .select("id, display_name, temporary_name, call_name, official_name, sex, status, ownership_status, is_breeder, is_external, is_retired, species, breed, litter_id")
       .eq("organization_id", reservation.organization_id)
       .is("deleted_at", null)
-      .in("status", ["born", "available"])
+      .eq("status", "available")
       .eq("ownership_status", "produced")
       .eq("is_breeder", false)
       .eq("is_external", false)

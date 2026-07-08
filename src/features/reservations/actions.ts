@@ -952,6 +952,10 @@ export async function assignAnimalToReservation(formData: FormData) {
   }
 
   // 7. Vérifier que l'animal est attribuable à une réservation/adoption
+  if (animal.status === "born") {
+    redirect(`/reservations/${reservationId}?animal_assign_status=animal_must_be_available#scope-and-animal`);
+  }
+
   if (!isAssignableReservationAnimal(animal)) {
     redirect(`/reservations/${reservationId}?animal_assign_status=animal_unavailable#scope-and-animal`);
   }
@@ -997,7 +1001,7 @@ export async function assignAnimalToReservation(formData: FormData) {
     redirect(`/reservations/${reservationId}?animal_assign_status=error#scope-and-animal`);
   }
 
-  if (animal.status === "born" || animal.status === "available") {
+  if (animal.status === "available") {
     const { data: updatedAnimal, error: animalUpdateError } = await supabase
       .from("animals")
       .update({
@@ -1007,7 +1011,7 @@ export async function assignAnimalToReservation(formData: FormData) {
       })
       .eq("id", animal.id)
       .eq("organization_id", reservation.organization_id)
-      .in("status", ["born", "available"])
+      .eq("status", "available")
       .is("deleted_at", null)
       .select("id")
       .maybeSingle();

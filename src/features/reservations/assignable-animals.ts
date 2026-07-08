@@ -1,4 +1,4 @@
-const assignableAnimalStatuses = new Set(["born", "available"]);
+const assignableAnimalStatuses = new Set(["available"]);
 
 export type AssignableAnimalCandidate = {
   litter_id: string | null;

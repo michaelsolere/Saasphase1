@@ -109,6 +109,18 @@ function animalMakeAvailableUrl(
   return `/animals/${animalId}?make_available_status=${code}`;
 }
 
+function animalAvailabilityStatusUrl(
+  animalId: string,
+  code: "success" | "not_allowed" | "error",
+  litterId?: string | null,
+) {
+  if (litterId) {
+    return `/litters/${litterId}?animal_availability_status=${code}#animaux-lies`;
+  }
+
+  return `/animals/${animalId}?availability_status=${code}`;
+}
+
 function normalizeOptionalText(
   value: FormDataEntryValue | null,
   maxLength = 255,
@@ -836,6 +848,124 @@ export async function makeKeptAnimalAvailable(formData: FormData) {
   revalidatePath(`/animals/${animalId}`);
   revalidatePath("/cheptel");
   redirect(animalMakeAvailableUrl(animalId, "success"));
+}
+
+export async function updateProducedOffspringAvailability(formData: FormData) {
+  const animalId = parseOptionalUuid(formData.get("animal_id"));
+
+  if (!animalId || animalId === "invalid") {
+    redirect("/animals");
+  }
+
+  const sourceLitterId = parseOptionalUuid(formData.get("source_litter_id"));
+  const litterRedirectId = sourceLitterId === "invalid" ? null : sourceLitterId;
+  const rawNextStatus = formData.get("next_status");
+  const nextStatus =
+    typeof rawNextStatus === "string" ? rawNextStatus.trim() : "";
+
+  if (nextStatus !== "born" && nextStatus !== "available") {
+    redirect(animalAvailabilityStatusUrl(animalId, "not_allowed", litterRedirectId));
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    redirect(animalAvailabilityStatusUrl(animalId, "error", litterRedirectId));
+  }
+
+  const { data: animal, error: readError } = await supabase
+    .from("animals")
+    .select(
+      "id, organization_id, litter_id, status, ownership_status, is_breeder, is_external, is_retired",
+    )
+    .eq("id", animalId)
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !animal) {
+    redirect(animalAvailabilityStatusUrl(animalId, "error", litterRedirectId));
+  }
+
+  const canToggle =
+    Boolean(animal.litter_id) &&
+    animal.ownership_status === "produced" &&
+    (animal.status === "born" || animal.status === "available") &&
+    !animal.is_breeder &&
+    !animal.is_external &&
+    !animal.is_retired;
+
+  if (!canToggle) {
+    redirect(animalAvailabilityStatusUrl(animalId, "not_allowed", litterRedirectId));
+  }
+
+  if (animal.status === nextStatus) {
+    redirect(animalAvailabilityStatusUrl(animalId, "success", litterRedirectId));
+  }
+
+  if (nextStatus === "born") {
+    const { data: activeReservations, error: reservationsError } = await supabase
+      .from("reservations")
+      .select("id")
+      .eq("organization_id", animal.organization_id)
+      .eq("animal_id", animal.id)
+      .is("deleted_at", null)
+      .not("status", "in", `(${FINAL_RESERVATION_STATUSES.join(",")})`)
+      .limit(1);
+
+    if (reservationsError) {
+      redirect(animalAvailabilityStatusUrl(animalId, "error", litterRedirectId));
+    }
+
+    if (activeReservations && activeReservations.length > 0) {
+      redirect(animalAvailabilityStatusUrl(animalId, "not_allowed", litterRedirectId));
+    }
+  }
+
+  const { data: updatedAnimal, error: updateError } = await supabase
+    .from("animals")
+    .update({
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+      updated_by: user.id,
+    })
+    .eq("id", animal.id)
+    .eq("organization_id", animal.organization_id)
+    .eq("status", animal.status)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError || !updatedAnimal?.id) {
+    redirect(animalAvailabilityStatusUrl(animalId, "error", litterRedirectId));
+  }
+
+  revalidatePath("/animals");
+  revalidatePath(`/animals/${animalId}`);
+
+  if (animal.litter_id) {
+    revalidatePath(`/litters/${animal.litter_id}`);
+  }
+
+  revalidatePath("/cheptel");
+  redirect(animalAvailabilityStatusUrl(animalId, "success", litterRedirectId));
 }
 
 export async function createAnimalHealthEvent(formData: FormData) {

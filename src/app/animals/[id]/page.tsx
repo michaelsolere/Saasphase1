@@ -6,6 +6,7 @@ import {
   keepAnimalAtKennel,
   makeKeptAnimalAvailable,
   promoteAnimalToHomeBreeder,
+  updateProducedOffspringAvailability,
   updateAnimalFinalIdentity,
 } from "@/features/animals/actions";
 import {
@@ -322,6 +323,17 @@ function canMakeAvailable(animal: DBAnimal) {
     !animal.is_external &&
     !animal.is_retired &&
     !isAdoptedOut
+  );
+}
+
+function canToggleProducedOffspringAvailability(animal: DBAnimal) {
+  return (
+    Boolean(animal.litter_id) &&
+    animal.ownership_status === "produced" &&
+    (animal.status === "born" || animal.status === "available") &&
+    !animal.is_breeder &&
+    !animal.is_external &&
+    !animal.is_retired
   );
 }
 
@@ -1143,6 +1155,7 @@ export default async function AnimalDetailPage({
     home_breeder_promotion_status?: string;
     keep_at_kennel_status?: string;
     make_available_status?: string;
+    availability_status?: string;
   }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
@@ -1258,12 +1271,16 @@ export default async function AnimalDetailPage({
     ((rawReservations as ReservationOverview[] | null) ?? [])[0] ?? null;
   const canKeepAnimalAtKennel = animal ? canKeepAtKennel(animal) : false;
   const canMakeAnimalAvailable = animal ? canMakeAvailable(animal) : false;
+  const canToggleAvailability = animal
+    ? canToggleProducedOffspringAvailability(animal)
+    : false;
   const canPromoteAnimalToHomeBreeder = animal
     ? canPromoteToHomeBreeder(animal)
     : false;
   const hasUnavailableBreedingDecision =
     !canKeepAnimalAtKennel ||
     !canMakeAnimalAvailable ||
+    !canToggleAvailability ||
     !canPromoteAnimalToHomeBreeder;
 
   return (
@@ -1371,6 +1388,19 @@ export default async function AnimalDetailPage({
                   className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-950"
                 >
                   Impossible de remettre cet animal disponible.
+                </section>
+              ) : null}
+
+              {query.availability_status === "success" ? (
+                <section className="rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5 text-sm text-emerald-950">
+                  Le statut de disponibilité de l’animal a été mis à jour.
+                </section>
+              ) : query.availability_status ? (
+                <section
+                  role="alert"
+                  className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-sm text-amber-950"
+                >
+                  Impossible de modifier le statut de disponibilité de cet animal.
                 </section>
               ) : null}
 
@@ -1483,6 +1513,38 @@ export default async function AnimalDetailPage({
                     Statut opérationnel
                   </span>
                 </div>
+
+                {canToggleAvailability ? (
+                  <form
+                    action={updateProducedOffspringAvailability}
+                    className="mt-6 border-t pt-6"
+                  >
+                    <input type="hidden" name="animal_id" value={animal.id} />
+                    <label
+                      htmlFor="animal-produced-offspring-availability"
+                      className="text-xs font-semibold uppercase tracking-wide text-muted"
+                    >
+                      Statut de disponibilité
+                    </label>
+                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <select
+                        id="animal-produced-offspring-availability"
+                        name="next_status"
+                        defaultValue={animal.status}
+                        className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent sm:max-w-xs"
+                      >
+                        <option value="born">Né</option>
+                        <option value="available">Disponible</option>
+                      </select>
+                      <button
+                        type="submit"
+                        className="inline-flex w-fit rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Mettre à jour
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
 
                 {canKeepAnimalAtKennel ? (
                   <form

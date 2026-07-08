@@ -2,6 +2,9 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  updateProducedOffspringAvailability,
+} from "@/features/animals/actions";
+import {
   formatAnimalCoat,
   formatAnimalDate,
   getAnimalDisplayName,
@@ -69,6 +72,9 @@ type RelatedAnimal = Pick<
   | "status"
   | "ownership_status"
   | "litter_id"
+  | "is_breeder"
+  | "is_external"
+  | "is_retired"
   | "birth_date"
   | "birth_order"
   | "identification_number"
@@ -570,6 +576,17 @@ function RelatedAnimalsSection({
   banner?: React.ReactNode;
   footer?: React.ReactNode;
 }) {
+  function canToggleOffspringAvailability(animal: RelatedAnimal) {
+    return (
+      Boolean(animal.litter_id) &&
+      animal.ownership_status === "produced" &&
+      (animal.status === "born" || animal.status === "available") &&
+      !animal.is_breeder &&
+      !animal.is_external &&
+      !animal.is_retired
+    );
+  }
+
   return (
     <section id="animaux-lies" className="rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Animaux liés</h2>
@@ -638,6 +655,40 @@ function RelatedAnimalsSection({
                     <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                       {getAnimalStatusLabel(animal.status)}
                     </span>
+                    {canToggleOffspringAvailability(animal) ? (
+                      <form
+                        action={updateProducedOffspringAvailability}
+                        className="mt-3 flex min-w-52 flex-wrap items-end gap-2"
+                      >
+                        <input type="hidden" name="animal_id" value={animal.id} />
+                        <input
+                          type="hidden"
+                          name="source_litter_id"
+                          value={animal.litter_id ?? ""}
+                        />
+                        <label
+                          htmlFor={`animal-availability-${animal.id}`}
+                          className="sr-only"
+                        >
+                          Statut de disponibilité
+                        </label>
+                        <select
+                          id={`animal-availability-${animal.id}`}
+                          name="next_status"
+                          defaultValue={animal.status ?? "born"}
+                          className="rounded-lg border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground outline-none transition focus:border-accent"
+                        >
+                          <option value="born">Né</option>
+                          <option value="available">Disponible</option>
+                        </select>
+                        <button
+                          type="submit"
+                          className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        >
+                          Mettre à jour
+                        </button>
+                      </form>
+                    ) : null}
                     <p className="mt-2 text-xs text-muted">
                       Origine : {getOwnershipStatusLabel(animal.ownership_status)}
                     </p>
@@ -1150,6 +1201,7 @@ export default async function LitterDetailPage({
     reservation_attach_status?: string;
     offspring_status?: string;
     offspring_count?: string;
+    animal_availability_status?: string;
     event_status?: string;
   }>;
 }) {
@@ -1163,6 +1215,7 @@ export default async function LitterDetailPage({
     reservation_attach_status,
     offspring_status,
     offspring_count,
+    animal_availability_status,
     event_status,
   } = await searchParams;
   const supabase = await createClient();
@@ -1259,7 +1312,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("animals")
         .select(
-          "id, display_name, temporary_name, call_name, official_name, species, sex, status, ownership_status, litter_id, birth_date, birth_order, identification_number, color, coat_color, created_at",
+          "id, display_name, temporary_name, call_name, official_name, species, sex, status, ownership_status, litter_id, is_breeder, is_external, is_retired, birth_date, birth_order, identification_number, color, coat_color, created_at",
         )
         .eq("litter_id", id)
         .is("deleted_at", null)
@@ -1622,6 +1675,23 @@ export default async function LitterDetailPage({
       </p>
     ) : null;
 
+  const animalAvailabilityBanner =
+    animal_availability_status === "success" ? (
+      <p
+        role="status"
+        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+      >
+        Le statut de disponibilité de l’animal a été mis à jour.
+      </p>
+    ) : animal_availability_status ? (
+      <p
+        role="alert"
+        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+      >
+        Impossible de modifier le statut de disponibilité de cet animal.
+      </p>
+    ) : null;
+
   const eventBanner =
     event_status === "success" ? (
       <p
@@ -1787,7 +1857,12 @@ export default async function LitterDetailPage({
               <RelatedAnimalsSection
                 animals={litterAnimals}
                 hasError={Boolean(animalsError)}
-                banner={offspringBanner}
+                banner={
+                  <>
+                    {offspringBanner}
+                    {animalAvailabilityBanner}
+                  </>
+                }
                 footer={
                   <OffspringCreationForm
                     litterId={litter.id}
