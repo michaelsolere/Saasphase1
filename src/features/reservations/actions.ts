@@ -11,7 +11,10 @@ import { isAssignableReservationAnimal } from "@/features/reservations/assignabl
 import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
-import { PRE_RESERVATION_PAYMENT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import {
+  addDaysAsIsoDate,
+  readDepositSettingsForOrganization,
+} from "@/features/payments/deposit-thresholds";
 import { resolveDefaultPuppyPriceCents } from "@/features/reservations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -1278,8 +1281,8 @@ export async function attachReservationToPreciseLitter(formData: FormData) {
  * Pour chaque candidature sélectionnée :
  *   1. Crée une réservation en statut `pre_reservation_requested` (ou met à jour
  *      un brouillon existant lié à cette candidature + portée).
- *   2. Crée une demande de paiement de 250 € (type `arrhes`, statut `requested`,
- *      échéance J+15).
+ *   2. Crée une demande de paiement de pré-réservation (type `arrhes`,
+ *      statut `requested`, échéance paramétrée).
  *
  * Décisions Phase 1 :
  *   - Pas de changement automatique du statut de candidature.
@@ -1345,13 +1348,16 @@ export async function launchPreReservationCampaign(formData: FormData) {
     redirect(`/litters/${litterId}?campaign_status=no_eligible`);
   }
 
-  // Calculer l'échéance J+15 (date ISO YYYY-MM-DD)
-  const dueDate = new Date();
-  dueDate.setUTCDate(dueDate.getUTCDate() + 15);
-  const dueDateStr = dueDate.toISOString().slice(0, 10); // YYYY-MM-DD
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: litter.organization_id,
+  });
+  const dueDateStr = addDaysAsIsoDate(
+    depositSettings.preReservationResponseDelayDays,
+  );
 
   const note =
-    "Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+15 après confirmation de gestation.";
+    `Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+${depositSettings.preReservationResponseDelayDays} après confirmation de gestation.`;
 
   let successCount = 0;
   let errorCount = 0;
@@ -1414,7 +1420,6 @@ export async function launchPreReservationCampaign(formData: FormData) {
         .select("id")
         .eq("reservation_id", reservationId)
         .eq("payment_type", "arrhes")
-        .eq("amount_cents", PRE_RESERVATION_PAYMENT_AMOUNT_CENTS)
         .in("status", ["requested", "paid"])
         .is("deleted_at", null)
         .limit(1);
@@ -1435,12 +1440,12 @@ export async function launchPreReservationCampaign(formData: FormData) {
     }
 
     if (!hasExistingDepositPayment) {
-      // 2. Créer la demande de paiement de 250 € (arrhes, requested, J+15)
+      // 2. Créer la demande de paiement de pré-réservation.
       const { error: paymentErr } = await supabase.from("payments").insert({
         organization_id: litter.organization_id,
         contact_id: app.contact_id,
         reservation_id: reservationId,
-        amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+        amount_cents: depositSettings.preReservationDepositCents,
         currency: "EUR",
         payment_type: "arrhes",
         status: "requested",
@@ -1466,7 +1471,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
     }
 
     // Mettre à jour le brouillon vers pre_reservation_requested uniquement
-    // après existence confirmée de la demande 250 €.
+    // après existence confirmée de la demande de pré-réservation.
     const { error: updateErr } = await supabase
       .from("reservations")
       .update({
@@ -1533,13 +1538,17 @@ export async function requestPreReservationBalance(formData: FormData) {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
-  // 3. Récupérer les paiements actifs de type arrhes et montant Phase 1.
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+
+  // 3. Récupérer les paiements actifs de type arrhes.
   const { data: payments, error: paymentsError } = await supabase
     .from("payments")
-    .select("id, status")
+    .select("id, status, amount_cents")
     .eq("reservation_id", reservationId)
     .eq("payment_type", "arrhes")
-    .eq("amount_cents", PRE_RESERVATION_PAYMENT_AMOUNT_CENTS)
     .in("status", ["requested", "paid"])
     .is("deleted_at", null);
 
@@ -1548,35 +1557,45 @@ export async function requestPreReservationBalance(formData: FormData) {
   }
 
   const paidPayments = payments.filter((p) => p.status === "paid");
+  const paidArrhesTotalCents = paidPayments.reduce(
+    (total, payment) => total + payment.amount_cents,
+    0,
+  );
 
-  // Si on a déjà 2 demandes ou plus, on renvoie une erreur contrôlée (doublon)
-  if (payments.length >= 2) {
+  // Si une demande de complément existe déjà, on renvoie une erreur contrôlée.
+  if (payments.some((payment) => payment.status === "requested")) {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
-  // Il doit y avoir exactement une demande active de 250 € d'arrhes qui est payée
-  if (payments.length !== 1 || paidPayments.length !== 1) {
+  // Le complément ne concerne que les pré-réservations avec un premier paiement
+  // réglé, sans forcer les parcours directs où les arrhes sont déjà complètes.
+  if (
+    paidPayments.length === 0 ||
+    paidArrhesTotalCents < depositSettings.preReservationDepositCents ||
+    paidArrhesTotalCents >= depositSettings.completeDepositCents
+  ) {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
-  // 4. Calcul de l'échéance J+15
-  const dueDate = new Date();
-  dueDate.setDate(dueDate.getDate() + 15);
-  const dueDateStr = dueDate.toISOString().split("T")[0];
+  // 4. Aucun champ dédié n'existe encore pour le complément : on réutilise le
+  // délai de réponse pré-réservation avec fallback central.
+  const dueDateStr = addDaysAsIsoDate(
+    depositSettings.preReservationResponseDelayDays,
+  );
 
   // 5. Création de la deuxième demande de paiement
   const { error: insertError } = await supabase.from("payments").insert({
     organization_id: reservation.organization_id,
     contact_id: reservation.contact_id,
     reservation_id: reservation.id,
-    amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+    amount_cents: depositSettings.arrhesSecondPaymentCents,
     currency: "EUR",
     payment_type: "arrhes",
     status: "requested",
     payment_method: "bank_transfer",
     requested_at: new Date().toISOString(),
     due_date: dueDateStr,
-    notes: "Demande 2/2 — complément des arrhes. Total attendu des arrhes : 500 €.",
+    notes: `Demande 2/2 — complément d’arrhes. Total attendu des arrhes complètes : ${Math.round(depositSettings.completeDepositCents / 100)} €.`,
     created_by: user.id,
     updated_by: user.id,
   });

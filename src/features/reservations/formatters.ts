@@ -48,10 +48,10 @@ export function getPreReservationDepositLabel(
   }
 
   if (state === "requested") {
-    return "Paiement 250 € demandé";
+    return "Paiement demandé";
   }
 
-  return "Paiement 250 € absent";
+  return "Paiement absent";
 }
 
 export function getPreReservationDepositBadgeClassName(

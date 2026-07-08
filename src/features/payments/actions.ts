@@ -7,8 +7,7 @@ import {
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
 import {
-  COMPLETE_DEPOSIT_AMOUNT_CENTS,
-  PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+  readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,11 +43,7 @@ async function markLinkedPreReservationAsPaidIfNeeded({
   amountCents: number;
   userId: string;
 }) {
-  if (
-    !reservationId ||
-    paymentType !== "arrhes" ||
-    amountCents < PRE_RESERVATION_PAYMENT_AMOUNT_CENTS
-  ) {
+  if (!reservationId || paymentType !== "arrhes") {
     return;
   }
 
@@ -60,6 +55,15 @@ async function markLinkedPreReservationAsPaidIfNeeded({
     .maybeSingle();
 
   if (!reservation || reservation.status !== "pre_reservation_requested") {
+    return;
+  }
+
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+
+  if (amountCents < depositSettings.preReservationDepositCents) {
     return;
   }
 
@@ -162,7 +166,12 @@ async function markLinkedReservationHolderRoleIfDepositCompleted({
     0,
   );
 
-  if (paidArrhesTotalCents < COMPLETE_DEPOSIT_AMOUNT_CENTS) {
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+
+  if (paidArrhesTotalCents < depositSettings.completeDepositCents) {
     return;
   }
 

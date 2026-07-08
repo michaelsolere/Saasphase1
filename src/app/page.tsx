@@ -21,7 +21,7 @@ import {
   getLitterStatusLabel,
   formatLitterDate,
 } from "@/features/litters/formatters";
-import { COMPLETE_DEPOSIT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import { resolveDepositSettings } from "@/features/payments/deposit-thresholds";
 
 export const dynamic = "force-dynamic";
 
@@ -196,8 +196,31 @@ export default async function Home() {
   // Load reservations for attention checks
   const { data: rawReservations } = await supabase
     .from("reservation_overview")
-    .select("id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
+    .select("id, organization_id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
     .order("created_at", { ascending: false });
+  const organizationIds = Array.from(
+    new Set(
+      (rawReservations || [])
+        .map((reservation) => reservation.organization_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const { data: rawPaymentSettings } = organizationIds.length > 0
+    ? await supabase
+        .from("organization_settings")
+        .select(
+          "organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents, pre_reservation_response_delay_days",
+        )
+        .in("organization_id", organizationIds)
+        .is("deleted_at", null)
+    : { data: [] };
+  const completeDepositCentsByOrganizationId = new Map<string, number>();
+  for (const settings of rawPaymentSettings || []) {
+    completeDepositCentsByOrganizationId.set(
+      settings.organization_id,
+      resolveDepositSettings(settings).completeDepositCents,
+    );
+  }
   const reservationIds = (rawReservations || [])
     .map((reservation) => reservation.id)
     .filter((id): id is string => Boolean(id));
@@ -239,7 +262,10 @@ export default async function Home() {
     const paidArrhesCents = r.id
       ? paidArrhesCentsByReservationId.get(r.id) ?? 0
       : 0;
-    return reservationNeedsAttention(r, paidArrhesCents);
+    const completeDepositCents = r.organization_id
+      ? completeDepositCentsByOrganizationId.get(r.organization_id)
+      : undefined;
+    return reservationNeedsAttention(r, paidArrhesCents, completeDepositCents);
   });
 
   // Load litters in progress
@@ -496,7 +522,12 @@ export default async function Home() {
                       ? paidArrhesCentsByReservationId.get(res.id) ?? 0
                       : 0;
                     const isArrhesCompleteNoAnimal =
-                      paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
+                      paidArrhesCents >=
+                        (res.organization_id
+                          ? completeDepositCentsByOrganizationId.get(
+                              res.organization_id,
+                            ) ?? resolveDepositSettings(null).completeDepositCents
+                          : resolveDepositSettings(null).completeDepositCents) &&
                       !res.animal_id &&
                       res.status !== "animal_assigned" &&
                       !isFinalReservationStatus(res.status);

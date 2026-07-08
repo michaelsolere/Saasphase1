@@ -24,8 +24,8 @@ import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
 import {
-  COMPLETE_DEPOSIT_AMOUNT_CENTS,
-  PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+  readDepositSettingsForOrganization,
+  resolveDepositSettings,
 } from "@/features/payments/deposit-thresholds";
 import {
   updateReservationInternalComment,
@@ -243,6 +243,14 @@ function getAppointmentStatusClassName(
   return "border-border bg-muted-soft text-muted";
 }
 
+function formatDepositSettingAmount(cents: number, currency: string | null) {
+  if (currency === "EUR" && cents % 100 === 0) {
+    return `${cents / 100} €`;
+  }
+
+  return formatPrice(cents, currency);
+}
+
 function deriveAppointmentSummary({
   kind,
   label,
@@ -441,8 +449,10 @@ const errorStatusMessageClassName =
   "mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950";
 
 function ReservationStatusMessages({
+  balanceAmountLabel,
   query,
 }: {
+  balanceAmountLabel: string;
   query: ReservationSearchParams;
 }) {
   const messages: ReservationStatusMessage[] = [
@@ -523,14 +533,14 @@ function ReservationStatusMessages({
       when: query.balance_request_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "Le complément 2/2 — 250 € a bien été créé.",
+      message: `Le complément 2/2 — ${balanceAmountLabel} a bien été créé.`,
     },
     {
       when: query.balance_request_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Le complément 2/2 — 250 € n’a pas pu être créé. Aucune donnée n’a été modifiée.",
+        `Le complément 2/2 — ${balanceAmountLabel} n’a pas pu être créé. Aucune donnée n’a été modifiée.`,
     },
     {
       when: query.document_action_status === "success",
@@ -1371,6 +1381,12 @@ export default async function ReservationDetailPage({
     .maybeSingle();
 
   const reservation = rawReservation as ReservationOverview | null;
+  const depositSettings = reservation?.organization_id
+    ? await readDepositSettingsForOrganization({
+        supabase,
+        organizationId: reservation.organization_id,
+      })
+    : resolveDepositSettings(null);
 
   // Fetch available animals of the organization if reservation has no animal
   let availableAnimals: Array<{
@@ -1531,7 +1547,7 @@ export default async function ReservationDetailPage({
 
   const preReservationDepositPayments = reservationPayments?.filter(
     (p) =>
-      p.amount_cents === PRE_RESERVATION_PAYMENT_AMOUNT_CENTS &&
+      p.amount_cents === depositSettings.preReservationDepositCents &&
       (p.payment_type === "pre_reservation_deposit_refundable" ||
         p.payment_type === "arrhes"),
   ) || [];
@@ -1552,17 +1568,22 @@ export default async function ReservationDetailPage({
     .reduce((total, payment) => total + payment.amount_cents, 0);
   const hasSecondPayment = hasSeparatePreReservationDeposit
     ? activeArrhesPayments.length >= 1
-    : activeArrhesPayments.length >= 2;
+    : activeArrhesPayments.some(
+        (payment) =>
+          payment.status === "requested" &&
+          payment.amount_cents === depositSettings.arrhesSecondPaymentCents,
+      ) || paidArrhesTotalCents >= depositSettings.completeDepositCents;
   const hasSecondPaid = hasSeparatePreReservationDeposit
     ? paidArrhesPaymentCount >= 1
-    : paidArrhesPaymentCount >= 2;
+    : paidArrhesTotalCents >= depositSettings.completeDepositCents;
   const hasFirstPaid =
     preReservationDepositPayments.some((p) => p.status === "paid") ||
     reservation?.status === "pre_reservation_paid";
   const canRequestPreReservationBalance =
     reservation?.status === "pre_reservation_paid" &&
-    activeArrhesPayments.length === 1 &&
-    paidArrhesPaymentCount === 1;
+    activeArrhesPayments.every((payment) => payment.status === "paid") &&
+    paidArrhesTotalCents >= depositSettings.preReservationDepositCents &&
+    paidArrhesTotalCents < depositSettings.completeDepositCents;
   const hasRequestedFirstDeposit =
     reservation?.status === "pre_reservation_requested" ||
     preReservationDepositPayments.some(
@@ -1753,12 +1774,24 @@ export default async function ReservationDetailPage({
   const paidCents = reservation?.paid_cents ?? 0;
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
+  const preReservationDepositAmountLabel = formatDepositSettingAmount(
+    depositSettings.preReservationDepositCents,
+    currency,
+  );
+  const arrhesSecondPaymentAmountLabel = formatDepositSettingAmount(
+    depositSettings.arrhesSecondPaymentCents,
+    currency,
+  );
+  const completeDepositAmountLabel = formatDepositSettingAmount(
+    depositSettings.completeDepositCents,
+    currency,
+  );
   const reservationIsFinal = isFinalReservationStatus(reservation?.status);
   const netPaidCents = paidCents - refundedCents;
   const remainingBalanceCents =
     priceCents === null ? null : priceCents - netPaidCents;
   const hasCompleteDeposit =
-    paidArrhesTotalCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS;
+    paidArrhesTotalCents >= depositSettings.completeDepositCents;
   const isPaidInFull =
     priceCents !== null && netPaidCents >= priceCents;
 
@@ -2108,7 +2141,10 @@ export default async function ReservationDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
-            <ReservationStatusMessages query={query} />
+            <ReservationStatusMessages
+              balanceAmountLabel={arrhesSecondPaymentAmountLabel}
+              query={query}
+            />
 
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
@@ -2229,7 +2265,7 @@ export default async function ReservationDetailPage({
                   badgeClassName={paymentsSummaryColor}
                 />
                 <SummaryIndicator
-                  label="Paiement 250 €"
+                  label={`Paiement ${preReservationDepositAmountLabel}`}
                   value={getPreReservationDepositLabel(
                     preReservationDepositState,
                   )}
@@ -2387,11 +2423,11 @@ export default async function ReservationDetailPage({
                     </h3>
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
                       <DetailItem
-                        label="Versement de pré-réservation — 250 €"
+                        label={`Versement de pré-réservation — ${preReservationDepositAmountLabel}`}
                         value={firstDepositLabel}
                       />
                       <DetailItem
-                        label="Complément 2/2 — 250 €"
+                        label={`Complément 2/2 — ${arrhesSecondPaymentAmountLabel}`}
                         value={secondDepositLabel}
                       />
                       <DetailItem
@@ -2491,7 +2527,7 @@ export default async function ReservationDetailPage({
                         Paiement de pré-réservation demandé
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-amber-950">
-                        La campagne de pré-réservation a été lancée. Le dossier est en attente du paiement de pré-réservation de {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)}.
+                        La campagne de pré-réservation a été lancée. Le dossier est en attente du paiement de pré-réservation de {preReservationDepositAmountLabel}.
                       </p>
                     </div>
                   ) : null}
@@ -2504,7 +2540,7 @@ export default async function ReservationDetailPage({
                             Dossier en pré-réservation réglée — arrhes complètes
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Arrhes complètes : {formatPrice(paidArrhesTotalCents, currency)} / {formatPrice(COMPLETE_DEPOSIT_AMOUNT_CENTS, currency)} payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
+                            Arrhes complètes : {formatPrice(paidArrhesTotalCents, currency)} / {completeDepositAmountLabel} payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
                           </p>
                         </>
                       ) : (
@@ -2513,7 +2549,7 @@ export default async function ReservationDetailPage({
                             Dossier en pré-réservation réglée
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Le paiement de pré-réservation de {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)} a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — {formatPrice(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS, currency)} n’est demandé automatiquement à ce stade.
+                            Le paiement de pré-réservation de {preReservationDepositAmountLabel} a été validé. Le dossier est en attente de disponibilité réelle, de compatibilité avec le sexe souhaité / le rang, et d’une proposition acceptée. Aucun complément 2/2 — {arrhesSecondPaymentAmountLabel} n’est demandé automatiquement à ce stade.
                           </p>
                         </>
                       )}
@@ -2671,10 +2707,11 @@ export default async function ReservationDetailPage({
                           {canRequestPreReservationBalance ? (
                             <div className="mt-4">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Cette action crée le complément 2/2 — 250 € pour atteindre 500 € d’arrhes.
+                                Cette action crée le complément 2/2 — {arrhesSecondPaymentAmountLabel} pour atteindre {completeDepositAmountLabel} d’arrhes complètes.
                               </p>
                               <PreReservationBalanceConfirmDialog
                                 reservationId={id}
+                                amountLabel={arrhesSecondPaymentAmountLabel}
                                 buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                               />
                             </div>
@@ -2683,9 +2720,9 @@ export default async function ReservationDetailPage({
                               <div className="rounded-xl border border-slate-100 bg-slate-50/50 px-4 py-3">
                                 <p className="text-sm text-slate-700">
                                   {hasSecondPaid ? (
-                                    "Complément 2/2 — 250 € payé."
+                                    `Complément 2/2 — ${arrhesSecondPaymentAmountLabel} payé.`
                                   ) : (
-                                    "Complément 2/2 — 250 € demandé."
+                                    `Complément 2/2 — ${arrhesSecondPaymentAmountLabel} demandé.`
                                   )}
                                 </p>
                               </div>
@@ -2703,7 +2740,7 @@ export default async function ReservationDetailPage({
                                 value={id}
                               />
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Le versement de pré-réservation de 250 € est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                                Le versement de pré-réservation est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
                               </p>
                               <button
                                 type="submit"
@@ -3407,7 +3444,7 @@ export default async function ReservationDetailPage({
                       value={balanceValue}
                     />
                     <DetailItem
-                      label="Paiement de pré-réservation — 250 €"
+                      label={`Paiement de pré-réservation — ${preReservationDepositAmountLabel}`}
                       value={
                         <span
                           className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(

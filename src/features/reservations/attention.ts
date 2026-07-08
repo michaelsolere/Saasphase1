@@ -9,12 +9,13 @@ type AttentionReservation = {
 export function reservationNeedsAttention(
   reservation: AttentionReservation,
   paidArrhesCents: number,
+  completeDepositCents = COMPLETE_DEPOSIT_AMOUNT_CENTS,
 ) {
   const isPreReservationRequested =
     reservation.status === "pre_reservation_requested";
   const isPreReservationPaid = reservation.status === "pre_reservation_paid";
   const isArrhesCompleteWithoutAnimal =
-    paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS &&
+    paidArrhesCents >= completeDepositCents &&
     !reservation.animal_id &&
     reservation.status !== "animal_assigned" &&
     !isFinalReservationStatus(reservation.status);

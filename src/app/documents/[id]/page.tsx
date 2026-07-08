@@ -17,7 +17,10 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
-import { COMPLETE_DEPOSIT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import {
+  readDepositSettingsForOrganization,
+  resolveDepositSettings,
+} from "@/features/payments/deposit-thresholds";
 import {
   formatPrice,
   getReservationStatusLabel,
@@ -365,11 +368,13 @@ function getFinancialStatus({
   paidCents,
   refundedCents,
   paidArrhesCents,
+  completeDepositCents,
 }: {
   priceCents: number | null;
   paidCents: number | null;
   refundedCents: number | null;
   paidArrhesCents: number;
+  completeDepositCents: number;
 }) {
   if (paidCents === null && priceCents === null && paidArrhesCents === 0) {
     return "État non calculable";
@@ -388,7 +393,7 @@ function getFinancialStatus({
     return "Paiement intégral";
   }
 
-  if (paidArrhesCents >= COMPLETE_DEPOSIT_AMOUNT_CENTS) {
+  if (paidArrhesCents >= completeDepositCents) {
     return "Arrhes complètes";
   }
 
@@ -867,6 +872,7 @@ function ReservationContractPreview({
   relatedLitterGroup,
   relatedAnimal,
   relatedPayments,
+  completeDepositCents,
 }: {
   document: DBDocument;
   sellerOrganization: SellerOrganization | null;
@@ -879,6 +885,7 @@ function ReservationContractPreview({
   relatedLitterGroup: { id: string; name: string } | null;
   relatedAnimal: RelatedAnimal | null;
   relatedPayments: RelatedPayment[];
+  completeDepositCents: number;
 }) {
   if (document.document_type !== "reservation_contract") {
     return null;
@@ -897,6 +904,7 @@ function ReservationContractPreview({
     paidCents,
     refundedCents,
     paidArrhesCents,
+    completeDepositCents,
   });
   const species = relatedLitter?.species || relatedApplication?.species;
   const breed =
@@ -1887,13 +1895,19 @@ export default async function DocumentDetailPage({
       ? await supabase
           .from("reservation_overview")
           .select(
-            "id, contact_id, contact_display_name, animal_id, animal_display_name, litter_id, litter_name, litter_group_id, litter_group_name, status, reserved_sex_preference, price_cents, currency, paid_cents, refunded_cents, adoption_planned_at, adoption_completed_at, created_at, updated_at",
+            "id, organization_id, contact_id, contact_display_name, animal_id, animal_display_name, litter_id, litter_name, litter_group_id, litter_group_name, status, reserved_sex_preference, price_cents, currency, paid_cents, refunded_cents, adoption_planned_at, adoption_completed_at, created_at, updated_at",
           )
           .eq("id", document.reservation_id)
           .maybeSingle()
       : { data: null, error: null };
 
   const relatedReservation = rawReservation as ReservationOverview | null;
+  const depositSettings = relatedReservation?.organization_id
+    ? await readDepositSettingsForOrganization({
+        supabase,
+        organizationId: relatedReservation.organization_id,
+      })
+    : resolveDepositSettings(null);
 
   // 4. Litter
   const targetLitterId = document?.litter_id || relatedReservation?.litter_id;
@@ -2359,6 +2373,7 @@ export default async function DocumentDetailPage({
                   relatedLitterGroup={relatedLitterGroup}
                   relatedAnimal={relatedAnimal}
                   relatedPayments={relatedPayments}
+                  completeDepositCents={depositSettings.completeDepositCents}
                 />
 
                 <SaleCertificatePreview
@@ -2854,6 +2869,8 @@ export default async function DocumentDetailPage({
                               paidCents: relatedReservation.paid_cents,
                               refundedCents: relatedReservation.refunded_cents,
                               paidArrhesCents: paidArrhesTotalCents,
+                              completeDepositCents:
+                                depositSettings.completeDepositCents,
                             })}
                           </span>
                         }

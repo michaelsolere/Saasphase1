@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { PRE_RESERVATION_PAYMENT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import { readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 
 const actionableReservationDocumentTypes = [
@@ -140,7 +140,12 @@ export async function initializeReservationDocuments(formData: FormData) {
     0,
   );
 
-  if (paidArrhesTotalCents < PRE_RESERVATION_PAYMENT_AMOUNT_CENTS) {
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+
+  if (paidArrhesTotalCents < depositSettings.preReservationDepositCents) {
     redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
   }
 

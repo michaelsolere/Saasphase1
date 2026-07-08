@@ -253,9 +253,9 @@ export default async function PaymentSettingsPage({
           Paramètres de paiement
         </h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted">
-          Ces paramètres serviront à définir les montants et délais par défaut
-          des parcours adoptants. Les workflows existants continueront à utiliser
-          leurs règles actuelles jusqu’au lot de branchement prévu ensuite.
+          Ces paramètres définissent les montants et délais par défaut des
+          parcours adoptants déjà branchés sur les paiements de pré-réservation
+          et les compléments d’arrhes.
         </p>
       </header>
 
@@ -267,9 +267,8 @@ export default async function PaymentSettingsPage({
             <StatusMessage value={query.settings_status} />
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
-              Les workflows existants utilisent encore les constantes
-              applicatives. La modification de ces paramètres sera ajoutée dans
-              un lot ultérieur.
+              Les parcours non encore branchés conservent leurs règles
+              existantes avec fallback applicatif.
             </div>
 
             <form
