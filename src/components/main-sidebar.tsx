@@ -74,6 +74,7 @@ const sections: SidebarSection[] = [
       },
       { label: "Paiements reçus", href: "/payments?filter=received" },
       { label: "Remboursements / avoirs", comingSoon: true },
+      { label: "Paramètres de paiement", href: "/payments/settings" },
     ],
   },
   {
