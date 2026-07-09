@@ -1606,7 +1606,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
   }
 
   redirect(
-    `/litters/${litterId}?campaign_status=success&campaign_count=${campaignResult.reservationsPreparedCount}`,
+    `/litters/${litterId}?campaign_status=success&campaign_count=${campaignResult.reservationsPreparedCount}&campaign_payment_count=${campaignResult.paymentsCreatedCount}`,
   );
 }
 
