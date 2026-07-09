@@ -408,15 +408,15 @@ function AppointmentSummaryCard({
 function NotFoundOrUnauthorized() {
   return (
     <section className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center">
-      <h1 className="text-2xl font-semibold">Réservation introuvable</h1>
+      <h1 className="text-2xl font-semibold">Dossier adoptant introuvable</h1>
       <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-muted">
-        Réservation introuvable ou inaccessible.
+        Dossier adoptant introuvable ou inaccessible.
       </p>
       <Link
         href="/reservations"
         className="mt-6 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
       >
-        Retour aux réservations
+        Retour aux parcours adoptants
       </Link>
     </section>
   );
@@ -429,7 +429,7 @@ function ErrorMessage() {
       className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"
     >
       <h1 className="text-xl font-semibold">
-        Impossible de charger la réservation
+        Impossible de charger le dossier adoptant
       </h1>
       <p className="mt-2 text-sm">
         Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
@@ -438,7 +438,7 @@ function ErrorMessage() {
         href="/reservations"
         className="mt-6 inline-flex text-sm font-semibold underline"
       >
-        Retour aux réservations
+        Retour aux parcours adoptants
       </Link>
     </section>
   );
@@ -482,7 +482,7 @@ function ReservationStatusMessages({
       role: "status",
       className: successStatusMessageClassName,
       message:
-        "Le commentaire interne de réservation a bien été mis à jour.",
+        "Le commentaire interne du dossier a bien été mis à jour.",
     },
     {
       when: query.comment_status === "error",
@@ -535,7 +535,7 @@ function ReservationStatusMessages({
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Ce paiement n’est plus dans un état permettant de le marquer comme payé depuis la réservation.",
+        "Ce paiement n’est plus dans un état permettant de le marquer comme payé depuis ce dossier.",
     },
     {
       when: query.balance_request_status === "success",
@@ -568,7 +568,7 @@ function ReservationStatusMessages({
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Le lot de documents de réservation est incomplet : le certificat d’engagement et le contrat de réservation doivent tous les deux être liés avant de valider l’action groupée.",
+        "Le lot de documents contractuels est incomplet : le certificat d’engagement et le contrat de réservation doivent tous les deux être liés avant de valider l’action groupée.",
     },
     {
       when: query.note_status === "success",
@@ -602,7 +602,7 @@ function ReservationStatusMessages({
       role: "status",
       className: successStatusMessageClassName,
       message:
-        "Remboursement enregistré. Le solde de la réservation a été mis à jour.",
+        "Remboursement enregistré. Le solde du dossier a été mis à jour.",
     },
     {
       when: query.payment_refund_status === "error",
@@ -615,20 +615,20 @@ function ReservationStatusMessages({
       when: query.activation_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "La réservation a été confirmée.",
+      message: "Le dossier adoptant a été confirmé.",
     },
     {
       when: query.activation_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "La réservation ne peut pas être confirmée dans son état actuel.",
+      message: "Le dossier adoptant ne peut pas être confirmé dans son état actuel.",
     },
     {
       when: query.activation_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "La réservation n’a pas pu être confirmée. Aucune donnée n’a été modifiée.",
+        "Le dossier adoptant n’a pas pu être confirmé. Aucune donnée n’a été modifiée.",
     },
     {
       when: query.role_status === "error",
@@ -647,7 +647,7 @@ function ReservationStatusMessages({
       when: query.adoption_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "La réservation ne peut pas être finalisée dans son état actuel.",
+      message: "Le dossier adoptant ne peut pas être finalisé dans son état actuel.",
     },
     {
       when: query.adoption_status === "error",
@@ -667,33 +667,33 @@ function ReservationStatusMessages({
       when: query.cancellation_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "Réservation annulée.",
+      message: "Dossier adoptant annulé.",
     },
     {
       when: query.cancellation_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "La réservation ne peut pas être annulée dans son état actuel.",
+      message: "Le dossier adoptant ne peut pas être annulé dans son état actuel.",
     },
     {
       when: query.cancellation_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "La réservation n’a pas pu être annulée. Aucune donnée n’a été modifiée.",
+        "Le dossier adoptant n’a pas pu être annulé. Aucune donnée n’a été modifiée.",
     },
     {
       when: query.withdrawal_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "Réservation marquée comme désistée.",
+      message: "Dossier adoptant marqué comme désisté.",
     },
     {
       when: query.withdrawal_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "La réservation ne peut pas être marquée comme désistée dans son état actuel.",
+        "Le dossier adoptant ne peut pas être marqué comme désisté dans son état actuel.",
     },
     {
       when: query.withdrawal_status === "error",
@@ -706,14 +706,14 @@ function ReservationStatusMessages({
       when: query.expiration_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "Réservation marquée comme expirée.",
+      message: "Dossier adoptant marqué comme expiré.",
     },
     {
       when: query.expiration_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "La réservation ne peut pas être marquée comme expirée dans son état actuel.",
+        "Le dossier adoptant ne peut pas être marqué comme expiré dans son état actuel.",
     },
     {
       when: query.expiration_status === "error",
@@ -726,7 +726,7 @@ function ReservationStatusMessages({
       when: query.animal_assign_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "L’animal a été attribué à la réservation.",
+      message: "L’animal a été attribué à l’adoptant.",
     },
     {
       when: query.animal_assign_status === "error",
@@ -739,7 +739,7 @@ function ReservationStatusMessages({
       when: query.animal_assign_status === "already_assigned",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "Cette réservation possède déjà un animal attribué.",
+      message: "Cet adoptant possède déjà un animal attribué.",
     },
     {
       when: query.animal_assign_status === "animal_unavailable",
@@ -758,7 +758,7 @@ function ReservationStatusMessages({
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Rattachez d’abord la réservation à une portée précise avant d’attribuer un animal.",
+        "Choisissez d’abord une portée précise pour l’adoptant avant d’attribuer un animal.",
     },
     {
       when: query.animal_unassign_status === "success",
@@ -777,26 +777,26 @@ function ReservationStatusMessages({
       when: query.animal_unassign_status === "no_animal",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "Cette réservation ne possède aucun animal attribué.",
+      message: "Aucun animal n’est attribué à cet adoptant.",
     },
     {
       when: query.animal_unassign_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "L’attribution de cette réservation ne peut plus être modifiée.",
+      message: "L’attribution de cet adoptant ne peut plus être modifiée.",
     },
     {
       when: query.litter_attach_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "Le rattachement portée / groupe du parcours adoptant a été mis à jour.",
+      message: "La portée de l’adoptant a été mise à jour.",
     },
     {
       when: query.litter_attach_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Le rattachement portée / groupe n’a pas pu être enregistré. Aucune autre donnée n’a été modifiée.",
+        "La portée de l’adoptant n’a pas pu être enregistrée. Aucune autre donnée n’a été modifiée.",
     },
     {
       when: query.litter_attach_status === "animal_attributed",
@@ -999,10 +999,10 @@ function FinancialBalanceNotice({
     return (
       <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-4 py-3.5 text-sm text-emerald-900">
         <span className="font-semibold block mb-1 text-emerald-950 text-sm">
-          Réservation soldée
+          Dossier soldé
         </span>
         <p className="text-xs leading-5">
-          Cette réservation apparaît soldée. Vous pouvez tout de même enregistrer
+          Ce dossier apparaît soldé. Vous pouvez tout de même enregistrer
           un paiement si nécessaire, par exemple pour corriger une situation
           particulière.
         </p>
@@ -1018,7 +1018,7 @@ function FinancialBalanceNotice({
         Trop-perçu : {formatPrice(overpaidAmount, currency)}
       </span>
       <p className="text-xs leading-5">
-        Cette réservation présente un trop-perçu de{" "}
+        Ce dossier présente un trop-perçu de{" "}
         {formatPrice(overpaidAmount, currency)}. Vérifiez la situation avant
         d’ajouter un nouveau paiement.
       </p>
@@ -1131,9 +1131,9 @@ function getAdopterJourneySteps({
         : mainDocumentsSent
           ? "Certificat d’engagement et contrat de réservation envoyés ou signés."
         : hasReservationDocuments
-          ? "Les deux documents de réservation sont liés, envoi groupé non confirmé."
+          ? "Les deux documents contractuels sont liés, envoi groupé non confirmé."
         : hasDocuments
-          ? "Documents de réservation à initialiser."
+          ? "Documents contractuels à initialiser."
         : "Aucun document lié au dossier.",
     },
     {
@@ -1276,7 +1276,7 @@ function getReservationNextAction({
   if (!reservation.application_id) {
     return {
       label: "Compléter le contexte de candidature.",
-      detail: "La réservation n’est pas reliée à une candidature. Vérifier le rattachement du projet adoptant.",
+      detail: "Ce dossier n’est pas relié à une candidature. Vérifier le projet initial de l’adoptant.",
       badgeClassName: attentionBadge,
     };
   }
@@ -1292,7 +1292,7 @@ function getReservationNextAction({
   if (paymentCount === 0) {
     return {
       label: "Aucun paiement enregistré.",
-      detail: "Aucun paiement n’est lié à cette réservation pour l’instant. Les parcours directs restent possibles.",
+      detail: "Aucun paiement n’est lié à ce dossier pour l’instant. Les parcours directs restent possibles.",
       badgeClassName: attentionBadge,
     };
   }
@@ -1838,10 +1838,10 @@ export default async function ReservationDetailPage({
         </span>
       );
     } else if (balanceRemainingCents === 0) {
-      balanceLabel = "Réservation soldée";
+      balanceLabel = "Dossier soldé";
       balanceValue = (
         <span className="font-semibold text-emerald-700">
-          Réservation soldée
+          Dossier soldé
         </span>
       );
     } else {
@@ -1925,7 +1925,7 @@ export default async function ReservationDetailPage({
             reservationContractDocument.document_type,
           )}`,
         ].join(" · ")
-      : "Documents de réservation à initialiser.";
+      : "Documents contractuels à initialiser.";
   const firstDepositLabel = getPreReservationDepositLabel(
     preReservationDepositState,
   );
@@ -1949,7 +1949,7 @@ export default async function ReservationDetailPage({
   const canFinalizeAdoptionManually =
     reservation?.status === "animal_assigned" && Boolean(reservation.animal_id);
   const adoptionPreparationWarnings = [
-    !reservation?.animal_id ? "Aucun animal n’est attribué à cette réservation." : null,
+    !reservation?.animal_id ? "Aucun animal n’est attribué à cet adoptant." : null,
     reservation?.animal_id && relatedAnimal && !relatedAnimal.identification_number
       ? "Numéro d’identification de l’animal absent."
       : null,
@@ -1981,8 +1981,8 @@ export default async function ReservationDetailPage({
   const applicationSummaryValue = reservation?.application_id
     ? applicationDetails?.status === "qualified"
       ? "Candidature qualifiée"
-      : "Candidature liée"
-    : "Aucune candidature liée";
+      : "Candidature de l’adoptant"
+    : "Aucune candidature associée";
   const applicationSummaryDetail = applicationDetailsError
     ? "Candidature partiellement indisponible."
     : applicationDetails
@@ -1992,7 +1992,7 @@ export default async function ReservationDetailPage({
         ]
           .filter(Boolean)
           .join(" · ") || "Projet à compléter sur la candidature."
-      : "Aucune candidature liée à cette réservation.";
+      : "Aucune candidature associée à ce dossier.";
   const rankSummaryDetail = [
     reservation?.rank_initial !== null && reservation?.rank_initial !== undefined
       ? `Rang initial : ${reservation.rank_initial}`
@@ -2010,11 +2010,11 @@ export default async function ReservationDetailPage({
   } else if (totalDocs === 0) {
     docsSummaryText = "Aucun document lié";
   } else if (!hasReservationDocumentsBundle) {
-    docsSummaryText = "Documents de réservation à initialiser";
+    docsSummaryText = "Documents adoptant à initialiser";
   } else if (reservationDocumentsBundleSigned) {
-    docsSummaryText = "Documents de réservation reçus signés";
+    docsSummaryText = "Documents adoptant reçus signés";
   } else if (reservationDocumentsBundleSent) {
-    docsSummaryText = "Documents de réservation envoyés";
+    docsSummaryText = "Documents adoptant envoyés";
   } else {
     docsSummaryText = `${signedDocs} reçu(s) signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
   }
@@ -2065,7 +2065,7 @@ export default async function ReservationDetailPage({
   const documentSummaryDetail = documentsError
     ? "Documents partiellement indisponibles."
     : totalDocs === 0
-      ? "Aucun document lié à cette réservation."
+      ? "Aucun document lié à ce dossier."
       : [
           commitmentDocument
             ? `Certificat : ${getDocumentStatusLabel(commitmentDocument.status, commitmentDocument.document_type)}`
@@ -2156,7 +2156,7 @@ export default async function ReservationDetailPage({
     { href: "#appointments", label: "Créneaux RV" },
     { href: "#adoption-preparation", label: "Préparation départ" },
     { href: "#notes", label: "Notes internes" },
-    { href: "#reservation-details", label: "Réservation" },
+    { href: "#reservation-details", label: "Dossier" },
   ];
 
   return (
@@ -2323,7 +2323,7 @@ export default async function ReservationDetailPage({
               </div>
 
               <nav
-                aria-label="Sections de la réservation"
+                aria-label="Sections du dossier adoptant"
                 className="mt-6 flex flex-wrap gap-2 border-t pt-4"
               >
                 {sectionNavItems.map((item) => (
@@ -2446,7 +2446,7 @@ export default async function ReservationDetailPage({
 
                   <div className="mt-6 rounded-xl border bg-background p-4">
                     <h3 className="text-sm font-semibold text-foreground">
-                      Versements de réservation
+                      Versements du dossier
                     </h3>
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
                       <DetailItem
@@ -2515,7 +2515,7 @@ export default async function ReservationDetailPage({
 
                 <section id="reservation-details" className="order-[71] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
-                    Informations de la réservation
+                    Informations du dossier adoptant
                   </h2>
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem
@@ -2589,7 +2589,7 @@ export default async function ReservationDetailPage({
                         Statut final
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-muted">
-                        Cette réservation est finalisée avec le statut :{" "}
+                        Ce dossier adoptant est finalisé avec le statut :{" "}
                         <span className="font-semibold text-foreground">
                           {getReservationStatusLabel(reservation.status)}
                         </span>
@@ -2666,7 +2666,7 @@ export default async function ReservationDetailPage({
                             value={id}
                           />
                           <p className="max-w-2xl text-xs leading-5 text-muted">
-                            Cette action confirme manuellement la réservation. Elle
+                            Cette action confirme manuellement le dossier adoptant. Elle
                             ne crée ni paiement, ni document, ni attribution
                             d’animal.
                           </p>
@@ -2674,7 +2674,7 @@ export default async function ReservationDetailPage({
                             type="submit"
                             className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                           >
-                            Confirmer la réservation
+                            Confirmer le dossier
                           </button>
                         </form>
                       ) : null}
@@ -2688,7 +2688,7 @@ export default async function ReservationDetailPage({
                             <div className="mt-4 space-y-5">
                               <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
-                                  Annule manuellement la réservation sans créer
+                                  Annule manuellement le dossier adoptant sans créer
                                   de remboursement ni modifier les paiements,
                                   documents ou l’animal attribué.
                                 </p>
@@ -2714,7 +2714,7 @@ export default async function ReservationDetailPage({
 
                               <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
-                                  Marque la réservation comme expirée sans
+                                  Marque le dossier adoptant comme expiré sans
                                   automatisation liée à l’échéance de
                                   pré-réservation.
                                 </p>
@@ -2767,19 +2767,19 @@ export default async function ReservationDetailPage({
                                 value={id}
                               />
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Le versement de pré-réservation est validé. Vous pouvez maintenant initialiser la checklist des documents de réservation attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                                Le versement de pré-réservation est validé. Vous pouvez maintenant initialiser la checklist des documents contractuels attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
                               </p>
                               <button
                                 type="submit"
                                 className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                               >
-                                Initialiser les documents de réservation
+                                Initialiser les documents contractuels
                               </button>
                             </form>
                           ) : hasFirstPaid ? (
                             <div className="border-t mt-6 pt-6">
                               <p className="text-xs text-muted">
-                                Documents de réservation initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
+                                Documents contractuels initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
                               </p>
                             </div>
                           ) : null}
@@ -2838,7 +2838,7 @@ export default async function ReservationDetailPage({
                     <div>
                       <h2 className="text-xl font-semibold">Animal attribué et portée</h2>
                       <p className="mt-2 text-sm leading-6 text-muted">
-                        Vue compacte du rattachement portée, de l&apos;animal attribué
+                        Vue compacte de la portée de l&apos;adoptant, de l&apos;animal attribué
                         et des informations utiles avant le départ.
                       </p>
                     </div>
@@ -2855,7 +2855,7 @@ export default async function ReservationDetailPage({
                   <dl className="mt-5 rounded-xl border bg-background px-4 py-2">
                     <div className="grid gap-3 border-b border-border/70 py-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
                       <CompactField
-                        label="Portée"
+                        label="Portée de l’adoptant"
                         value={
                           reservation.litter_id ? (
                             <Link
@@ -2870,7 +2870,7 @@ export default async function ReservationDetailPage({
                         }
                       />
                       <CompactField
-                        label="Groupe de portée"
+                        label="Groupe de portées"
                         value={reservation.litter_group_name}
                       />
                       <CompactField
@@ -2942,7 +2942,7 @@ export default async function ReservationDetailPage({
                   {!isFinalReservationStatus(reservation.status) ? (
                     relatedAnimal ? (
                       <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
-                        Un animal est déjà attribué à ce parcours adoptant. Pour
+                        Un animal est déjà attribué à cet adoptant. Pour
                         modifier la portée ou le groupe, gérez d’abord
                         l’attribution afin de conserver la cohérence entre
                         l’animal et sa portée de naissance.
@@ -2950,11 +2950,11 @@ export default async function ReservationDetailPage({
                     ) : (
                       <div className="mt-6 rounded-xl border bg-background px-4 py-4">
                         <h3 className="text-sm font-semibold text-foreground">
-                          Modifier le rattachement portée / groupe
+                          Modifier la portée de l’adoptant
                         </h3>
                         <p className="mt-1 text-xs leading-5 text-muted">
-                          Cette action modifie uniquement le rattachement du
-                          parcours adoptant. Elle ne change pas le statut, la
+                          Cette action modifie uniquement la portée ou le groupe
+                          choisi pour cet adoptant. Elle ne change pas le statut, la
                           candidature, les paiements, les documents, les notes
                           ou les rôles du contact.
                         </p>
@@ -3031,7 +3031,7 @@ export default async function ReservationDetailPage({
                                 </select>
                                 <p className="text-xs leading-5 text-muted">
                                   Choisir un groupe seul retire la portée précise
-                                  du parcours adoptant.
+                                  du dossier adoptant.
                                 </p>
                                 <button
                                   type="submit"
@@ -3057,7 +3057,7 @@ export default async function ReservationDetailPage({
                             ) : attachableLitters.length === 0 ? (
                               <p className="mt-3 text-sm text-muted">
                                 Aucune portée précise disponible pour ce
-                                rattachement.
+                                dossier.
                               </p>
                             ) : (
                               <form
@@ -3129,12 +3129,12 @@ export default async function ReservationDetailPage({
 
                   {animalError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger l’animal lié.
+                      Impossible de charger l’animal attribué.
                     </p>
 	                  ) : !relatedAnimal ? (
 	                    <div className="mt-6 border-t pt-5">
 	                      <p className="text-sm text-muted">
-	                        Aucun animal lié à cette réservation.
+	                        Aucun animal attribué à cet adoptant.
 	                      </p>
 
 	                      {!isFinalReservationStatus(reservation.status) ? (
@@ -3144,8 +3144,8 @@ export default async function ReservationDetailPage({
 	                              role="alert"
 	                              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
 	                            >
-	                              Rattachez d’abord ce parcours adoptant à une
-	                              portée précise avant d’attribuer un animal.
+	                              Choisissez d’abord une portée précise pour cet
+	                              adoptant avant d’attribuer un animal.
 	                            </p>
 	                          ) : availableAnimalsError ? (
 	                            <p role="alert" className="text-sm text-amber-800">
@@ -3155,7 +3155,7 @@ export default async function ReservationDetailPage({
                             <p className="text-sm text-muted">
                               {reservation.litter_id
                                 ? "Aucun animal disponible dans cette portée."
-                                : "Aucun animal attribuable trouvé pour cette réservation."}
+                                : "Aucun animal attribuable trouvé pour cet adoptant."}
                             </p>
                           ) : (
                             <form action={assignAnimalToReservation} className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -3204,7 +3204,7 @@ export default async function ReservationDetailPage({
                       <input type="hidden" name="reservation_id" value={id} />
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <p className="max-w-2xl text-xs leading-5 text-muted">
-                          Cela retire uniquement le lien entre la réservation et
+                          Cela retire uniquement le lien entre l’adoptant et
                           l’animal. L’animal n’est pas supprimé.
                         </p>
                         <button
@@ -3217,14 +3217,14 @@ export default async function ReservationDetailPage({
                     </form>
                   ) : null}
 
-                  {/* Rattachement portée/groupe : candidature (projet) vs réservation (engagement) */}
                   <div className="mt-6 border-t pt-5">
                     <h3 className="text-sm font-semibold text-foreground">
-                      Rattachement de la candidature liée
+                      Candidature de l’adoptant
                     </h3>
                     <p className="mt-1 text-sm text-muted">
-                      La candidature représente le projet d’adoption. Modifier la
-                      candidature ne change jamais automatiquement la réservation.
+                      La candidature décrit le projet initial de l’adoptant.
+                      Modifier la candidature ne change jamais automatiquement
+                      les informations de l’adoptant dans ce dossier.
                     </p>
 
                     {query.scope_sync_status === "success" ? (
@@ -3232,8 +3232,8 @@ export default async function ReservationDetailPage({
                         role="status"
                         className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
                       >
-                        Le rattachement de la réservation a été mis à jour depuis
-                        la candidature.
+                        Les informations de portée du dossier ont été mises à
+                        jour depuis la candidature.
                       </p>
                     ) : null}
 
@@ -3242,8 +3242,9 @@ export default async function ReservationDetailPage({
                         role="alert"
                         className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
                       >
-                        La candidature liée n’a aucune portée ni groupe à
-                        reprendre. Aucune modification n’a été appliquée.
+                        La candidature n’indique aucune portée ni groupe à
+                        reprendre pour ce dossier. Aucune modification n’a été
+                        appliquée.
                       </p>
                     ) : null}
 
@@ -3252,7 +3253,7 @@ export default async function ReservationDetailPage({
                         role="alert"
                         className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
                       >
-                        Aucune candidature n’est liée à cette réservation. Aucune
+                        Aucune candidature n’est liée à ce dossier. Aucune
                         modification n’a été appliquée.
                       </p>
                     ) : null}
@@ -3262,18 +3263,18 @@ export default async function ReservationDetailPage({
                         role="alert"
                         className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
                       >
-                        Impossible de reprendre le rattachement pour le moment.
+                        Impossible de reprendre les informations de portée pour le moment.
                         Aucune modification n’a été appliquée.
                       </p>
                     ) : null}
 
                     {applicationDetailsError ? (
                       <p role="alert" className="mt-4 text-sm text-amber-800">
-                        Impossible de charger le rattachement de la candidature.
+                        Impossible de charger les informations de portée de la candidature.
                       </p>
                     ) : !reservation.application_id ? (
                       <p className="mt-4 text-sm text-muted">
-                        Aucune candidature liée à cette réservation.
+                        Aucune candidature associée à ce dossier.
                       </p>
                     ) : (
                       <>
@@ -3310,17 +3311,17 @@ export default async function ReservationDetailPage({
                             role="alert"
                             className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
                           >
-                            Le rattachement de la candidature diffère de celui de
-                            la réservation.
+                            Les informations de portée de la candidature
+                            diffèrent de celles de ce dossier.
                           </p>
                         ) : applicationHasScope ? (
                           <p className="mt-5 text-sm text-muted">
-                            Le rattachement de la réservation correspond déjà à
-                            celui de la candidature.
+                            Les informations de portée du dossier correspondent
+                            déjà à celles de la candidature.
                           </p>
                         ) : (
                           <p className="mt-5 text-sm text-muted">
-                            La candidature liée n’indique aucune portée ni
+                            La candidature n’indique aucune portée ni
                             groupe. Information non bloquante.
                           </p>
                         )}
@@ -3328,14 +3329,14 @@ export default async function ReservationDetailPage({
                         {canSyncScopeFromApplication ? (
                           <details className="mt-5 rounded-xl border bg-background px-4 py-3">
                             <summary className="cursor-pointer text-sm font-semibold text-accent">
-                              Reprendre le rattachement de la candidature
+                              Reprendre les informations de portée de la candidature
                             </summary>
                             <div className="mt-3 space-y-3">
                               <p className="text-xs leading-5 text-muted">
                                 Cette action remplace la portée et le groupe de la
-                                réservation par ceux de la candidature liée. Le
-                                statut de la réservation et la candidature ne sont
-                                pas modifiés.
+                                fiche adoptant par ceux de la candidature. Le
+                                statut du dossier et la candidature ne sont pas
+                                modifiés.
                               </p>
                               <form action={syncReservationScopeFromApplication}>
                                 <input
@@ -3423,7 +3424,7 @@ export default async function ReservationDetailPage({
                     </div>
 
                     <p className="mt-6 rounded-xl border border-dashed bg-background px-4 py-3 text-xs leading-5 text-muted">
-                      Les documents déjà liés à cette réservation restent
+                      Les documents déjà liés à ce dossier restent
                       visibles dans la section Documents liés.
                     </p>
                   </section>
@@ -3475,7 +3476,7 @@ export default async function ReservationDetailPage({
                         />
                         <p className="mt-2 text-xs leading-5 text-muted">
                           Commentaire synthétique interne lié à cette
-                          réservation. Les notes ci-dessous conservent
+                          fiche adoptant. Les notes ci-dessous conservent
                           l’historique daté.
                         </p>
                         <button
@@ -3498,7 +3499,7 @@ export default async function ReservationDetailPage({
 
                   {reservationNotesError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger les notes internes liées à la réservation.
+                      Impossible de charger les notes internes liées à ce dossier.
                     </p>
                   ) : reservationNotes && reservationNotes.length > 0 ? (
                     <div className="mt-5 divide-y divide-border">
@@ -3536,7 +3537,7 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : (
                     <p className="mt-5 rounded-xl border border-dashed bg-background px-4 py-4 text-sm text-muted">
-                      Aucune note interne pour cette réservation.
+                      Aucune note interne pour ce dossier.
                     </p>
                   )}
 
@@ -3671,7 +3672,7 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : (
                     <p className="text-sm text-muted">
-                      Aucun paiement lié à cette réservation.
+                      Aucun paiement lié à ce dossier.
                     </p>
                   )}
 
@@ -3723,11 +3724,11 @@ export default async function ReservationDetailPage({
                     <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                       <div>
                         <h3 className="text-sm font-semibold text-foreground">
-                          Documents de réservation
+                          Documents contractuels
                         </h3>
                         <p className="mt-1 text-xs leading-5 text-muted">
                           Certificat d’engagement et contrat de réservation sont
-                          traités ensemble sur ce parcours.
+                          traités ensemble dans ce dossier.
                         </p>
                       </div>
                       {!reservationIsFinal && hasReservationDocumentsBundle ? (
@@ -3757,7 +3758,7 @@ export default async function ReservationDetailPage({
 
                     {documentsError ? (
                       <p role="alert" className="mt-4 text-sm text-amber-800">
-                        Impossible de charger les documents de réservation.
+                        Impossible de charger les documents contractuels.
                       </p>
                     ) : !hasReservationDocumentsBundle ? (
                       <div className="mt-4 rounded-lg border border-border bg-muted-soft px-3 py-2 text-sm text-muted">
@@ -3921,7 +3922,7 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : (
                     <p className="text-sm text-muted">
-                      Aucun document lié à cette réservation pour l’instant.
+                      Aucun document lié à ce dossier pour l’instant.
                     </p>
                   )}
                 </section>
