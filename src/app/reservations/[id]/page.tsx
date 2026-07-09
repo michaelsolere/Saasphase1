@@ -1828,6 +1828,9 @@ export default async function ReservationDetailPage({
   const paidCents = reservation?.paid_cents ?? 0;
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
+  const paidPreReservationDepositCents = preReservationDepositPayments
+    .filter((payment) => payment.status === "paid")
+    .reduce((total, payment) => total + payment.amount_cents, 0);
   const preReservationDepositAmountLabel = formatDepositSettingAmount(
     depositSettings.preReservationDepositCents,
     currency,
@@ -2058,10 +2061,13 @@ export default async function ReservationDetailPage({
     paymentsSummaryText = "Paiement intégral / dossier soldé";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasCompleteDeposit) {
-    paymentsSummaryText = `Arrhes complètes (${formatPrice(paidArrhesTotalCents, currency)} payés)`;
+    paymentsSummaryText = "Arrhes complètes réglées";
     paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
   } else if (hasFirstPaid) {
-    paymentsSummaryText = `Versement de pré-réservation (${formatPrice(paidArrhesTotalCents, currency)} d’arrhes payé)`;
+    paymentsSummaryText = "Pré-réservation réglée";
+    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
+  } else if (hasRequestedFirstDeposit) {
+    paymentsSummaryText = "Pré-réservation à régler";
     paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
   } else if (paidCents > 0) {
     paymentsSummaryText = `${formatPrice(paidCents, currency)} payé hors pré-réservation`;
@@ -2071,28 +2077,46 @@ export default async function ReservationDetailPage({
     paymentsSummaryColor = "text-muted bg-muted-soft border-border";
   }
 
-  const financialSummaryDetail = paymentsError
-    ? "Paiements partiellement indisponibles."
-    : paymentCount === 0
-      ? priceCents === null
+  let financialSummaryDetail = "";
+  if (paymentsError) {
+    financialSummaryDetail = "Paiements partiellement indisponibles.";
+  } else if (hasCompleteDeposit) {
+    financialSummaryDetail = `${formatPrice(paidArrhesTotalCents, currency)} versés.`;
+  } else if (hasFirstPaid) {
+    const paidPreReservationAmountCents =
+      paidPreReservationDepositCents > 0
+        ? paidPreReservationDepositCents
+        : Math.min(paidCents, depositSettings.preReservationDepositCents);
+
+    financialSummaryDetail = `${formatPrice(
+      paidPreReservationAmountCents,
+      currency,
+    )} versés sur ${completeDepositAmountLabel} attendus.`;
+  } else if (hasRequestedFirstDeposit) {
+    financialSummaryDetail = `${preReservationDepositAmountLabel} demandés, en attente de règlement.`;
+  } else if (paymentCount === 0) {
+    financialSummaryDetail =
+      priceCents === null
         ? "Aucun paiement enregistré, tarif convenu non renseigné."
-        : `Aucun paiement enregistré. Tarif convenu : ${formatPrice(priceCents, currency)}.`
-      : [
-          `${paymentCount} paiement${paymentCount > 1 ? "s" : ""} lié${paymentCount > 1 ? "s" : ""}`,
-          `${formatPrice(paidCents, currency)} payé${paidCents > 0 ? "s" : ""}`,
-          refundedCents > 0
-            ? `${formatPrice(refundedCents, currency)} remboursé`
-            : null,
-          remainingBalanceCents === null
-            ? "solde non déterminé"
-            : remainingBalanceCents > 0
-              ? `${formatPrice(remainingBalanceCents, currency)} restant`
-              : remainingBalanceCents === 0
-                ? "solde à zéro"
-                : `${formatPrice(Math.abs(remainingBalanceCents), currency)} de trop-perçu`,
-        ]
-          .filter(Boolean)
-          .join(" · ");
+        : `Aucun paiement enregistré. Tarif convenu : ${formatPrice(priceCents, currency)}.`;
+  } else {
+    financialSummaryDetail = [
+      `${paymentCount} paiement${paymentCount > 1 ? "s" : ""} lié${paymentCount > 1 ? "s" : ""}`,
+      `${formatPrice(paidCents, currency)} payé${paidCents > 0 ? "s" : ""}`,
+      refundedCents > 0
+        ? `${formatPrice(refundedCents, currency)} remboursé`
+        : null,
+      remainingBalanceCents === null
+        ? "solde non déterminé"
+        : remainingBalanceCents > 0
+          ? `${formatPrice(remainingBalanceCents, currency)} restant`
+          : remainingBalanceCents === 0
+            ? "solde à zéro"
+            : `${formatPrice(Math.abs(remainingBalanceCents), currency)} de trop-perçu`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
 
   const documentSummaryDetail = documentsError
     ? "Documents partiellement indisponibles."
