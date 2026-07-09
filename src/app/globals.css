@@ -64,6 +64,25 @@ a {
   text-decoration: none;
 }
 
+button:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+a[href],
+summary,
+[role="button"]:not([aria-disabled="true"]):not([data-disabled]) {
+  cursor: pointer;
+}
+
+button:disabled:disabled,
+input[type="button"]:disabled:disabled,
+input[type="reset"]:disabled:disabled,
+input[type="submit"]:disabled:disabled,
+[aria-disabled="true"],
+[data-disabled] {
+  cursor: not-allowed;
+}
+
 .private-shell {
   display: grid;
   min-height: 100vh;
