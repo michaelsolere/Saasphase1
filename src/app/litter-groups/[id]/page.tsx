@@ -1102,24 +1102,26 @@ export default async function LitterGroupDetailPage({
                   />
                 )}
 
-                {qualifiedAppsError ? (
-                  <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger les candidatures validées.
-                  </p>
-                ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
-                  <p className="mt-5 text-sm text-muted">
-                    Aucune candidature validée liée à ce groupe ou à une
-                    portée du groupe.
-                  </p>
-                ) : (
-                  <form
-                    action={launchGroupPreReservationCampaign}
-                    className="mt-6"
-                  >
-                    <input type="hidden" name="litter_group_id" value={id} />
+                <form
+                  action={launchGroupPreReservationCampaign}
+                  className="mt-6"
+                >
+                  <input type="hidden" name="litter_group_id" value={id} />
 
+                  {qualifiedAppsError ? (
+                    <p role="alert" className="text-sm text-amber-800">
+                      Impossible de charger les candidatures validées.
+                    </p>
+                  ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      Aucune candidature validée liée à ce groupe ou à une
+                      portée du groupe.
+                    </p>
+                  ) : (
                     <fieldset>
-                      <legend className="sr-only">Candidatures validées</legend>
+                      <legend className="sr-only">
+                        Candidatures validées
+                      </legend>
                       <div className="divide-y divide-border rounded-xl border bg-background">
                         {qualifiedApplications.map((app) => {
                           const contactName =
@@ -1160,22 +1162,27 @@ export default async function LitterGroupDetailPage({
                         })}
                       </div>
                     </fieldset>
+                  )}
 
-                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <button
-                        type="submit"
-                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                      >
-                        Campagne de pré-réservation envoyée
-                      </button>
-                      <p className="text-xs text-muted">
-                        À utiliser après l’envoi manuel du message. Cette
-                        action crée les demandes de paiement de
-                        pré-réservation.
-                      </p>
-                    </div>
-                  </form>
-                )}
+                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <button
+                      type="submit"
+                      disabled={
+                        Boolean(qualifiedAppsError) ||
+                        !qualifiedApplications ||
+                        qualifiedApplications.length === 0
+                      }
+                      className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+                    >
+                      Campagne de pré-réservation envoyée
+                    </button>
+                    <p className="text-xs text-muted">
+                      À utiliser après l’envoi manuel du message. Cette action
+                      crée les demandes de paiement de pré-réservation pour les
+                      candidats concernés. Aucun e-mail réel n’est envoyé.
+                    </p>
+                  </div>
+                </form>
 
                 <div className="mt-8 border-t pt-8">
                   <p className="text-sm font-medium text-foreground">
