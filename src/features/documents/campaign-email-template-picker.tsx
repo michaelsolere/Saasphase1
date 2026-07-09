@@ -95,7 +95,7 @@ export function CampaignEmailTemplatePicker({
       ) : null}
 
       <p className="mt-3 text-xs text-muted">
-        Aucun email réel n’est envoyé. Copiez ce texte pour l’envoyer
+        Aucun e-mail réel n’est envoyé. Copiez ce texte pour l’envoyer
         manuellement.
       </p>
     </div>

@@ -1200,6 +1200,7 @@ export default async function LitterDetailPage({
   searchParams: Promise<{
     campaign_status?: string;
     campaign_count?: string;
+    campaign_payment_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
     offspring_status?: string;
@@ -1212,6 +1213,7 @@ export default async function LitterDetailPage({
   const {
     campaign_status,
     campaign_count,
+    campaign_payment_count,
     group_assignment_status,
     detail_status,
     offspring_status,
@@ -1374,7 +1376,7 @@ export default async function LitterDetailPage({
     litter && litter.organization_id
       ? await supabase
           .from("email_templates")
-          .select("id, title, category, subject, body, is_active")
+          .select("id, template_key, title, category, subject, body, is_active")
           .eq("organization_id", litter.organization_id)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -1389,6 +1391,7 @@ export default async function LitterDetailPage({
 
       return [{
         id: template.id,
+        templateKey: template.template_key,
         title: template.title,
         category: template.category,
         subject: template.subject,
@@ -1655,14 +1658,14 @@ export default async function LitterDetailPage({
               </div>
             </header>
 
-            {/* Feedback campagne de pré-réservation */}
             {campaign_status === "success" && (
               <div
                 role="status"
                 className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
               >
-                ✓ Campagne préparée avec succès —{" "}
-                {campaign_count ?? "0"} pré-réservation(s) préparée(s) et demande(s) de paiement créée(s). Aucun email réel n’a été envoyé. Vous pouvez copier le texte du modèle pour l’envoyer manuellement.
+                Campagne confirmée — {campaign_count ?? "0"} dossier(s),{" "}
+                {campaign_payment_count ?? "0"} demande(s) de paiement créée(s).
+                Aucun e-mail réel n’a été envoyé par l’application.
               </div>
             )}
             {campaign_status === "no_selection" && (
@@ -1782,21 +1785,16 @@ export default async function LitterDetailPage({
                 sectionId="reservations-liees"
               />
 
-              <CollapsibleSection title="Campagne de pré-réservation">
+              <CollapsibleSection title="Campagnes d’e-mails">
                 <p className="text-sm font-medium text-foreground">
-                  Action métier : sélectionner des candidatures validées pour
-                  préparer une campagne de pré-réservation.
+                  Pré-réservation
                 </p>
                 <p className="mt-2 text-sm text-muted">
-                  À la différence de la section « Candidats liés » ci-dessus
-                  (vue de suivi), cette section agit : pour chaque candidature
-                  validée sélectionnée, une demande de paiement de
-                  pré-réservation avec montant et échéance paramétrés est créée et le
-                  dossier passe en attente de paiement.
+                  Copiez le modèle d’e-mail, envoyez-le manuellement, puis
+                  confirmez l’envoi dans le SaaS.
                 </p>
                 <p className="mt-2 text-sm text-muted">
-                  En Phase 1, cette action crée les demandes de paiement et
-                  prépare le suivi. Aucun email réel n’est envoyé.
+                  Aucun e-mail réel n’est envoyé par l’application.
                 </p>
                 {campaignEmailTemplatesError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -1861,16 +1859,17 @@ export default async function LitterDetailPage({
                       </div>
                     </fieldset>
 
-                    <div className="mt-5 flex items-center gap-4">
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
                       <button
                         type="submit"
                         className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       >
-                        Lancer la campagne de pré-réservation
+                        Campagne de pré-réservation envoyée
                       </button>
                       <p className="text-xs text-muted">
-                        En Phase 1, les demandes de paiement sont créées et le
-                        suivi est préparé. Aucun email réel n’est envoyé.
+                        À utiliser après l’envoi manuel du message. Cette
+                        action crée les demandes de paiement de
+                        pré-réservation.
                       </p>
                     </div>
                   </form>

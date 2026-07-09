@@ -5,6 +5,7 @@ export type CampaignEmailTemplateCategory =
 
 export type CampaignEmailTemplateOption = {
   id: string;
+  templateKey: string;
   title: string;
   category: CampaignEmailTemplateCategory;
   subject: string;
@@ -45,6 +46,14 @@ export function getCampaignEmailTemplateOptions(
       : templates.filter((template) => template.category === "post_adoption");
 
   return [...selectableTemplates].sort((a, b) => {
+    if (a.templateKey === "pre_reservation") {
+      return -1;
+    }
+
+    if (b.templateKey === "pre_reservation") {
+      return 1;
+    }
+
     const categoryDelta = categoryOrder[a.category] - categoryOrder[b.category];
 
     if (categoryDelta !== 0) {

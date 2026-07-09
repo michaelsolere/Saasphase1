@@ -263,7 +263,7 @@ export default async function LitterGroupDetailPage({
     group && group.organization_id
       ? await supabase
           .from("email_templates")
-          .select("id, title, category, subject, body, is_active")
+          .select("id, template_key, title, category, subject, body, is_active")
           .eq("organization_id", group.organization_id)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -278,6 +278,7 @@ export default async function LitterGroupDetailPage({
 
       return [{
         id: template.id,
+        templateKey: template.template_key,
         title: template.title,
         category: template.category,
         subject: template.subject,
@@ -611,11 +612,9 @@ export default async function LitterGroupDetailPage({
                 role="status"
                 className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
               >
-                Campagne préparée avec succès —{" "}
-                {group_campaign_count ?? "0"} pré-réservation(s) préparée(s) et{" "}
-                {group_campaign_payment_count ?? "0"} demande(s) de paiement créée(s).
-                Aucun email réel n’a été envoyé. Vous pouvez copier le texte du
-                modèle pour l’envoyer manuellement.
+                Campagne confirmée — {group_campaign_count ?? "0"} dossier(s),{" "}
+                {group_campaign_payment_count ?? "0"} demande(s) de paiement
+                créée(s). Aucun e-mail réel n’a été envoyé par l’application.
               </div>
             )}
             {group_campaign_status === "no_selection" && (
@@ -933,17 +932,17 @@ export default async function LitterGroupDetailPage({
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
-                  Campagne de pré-réservation du groupe
+                  Campagnes d’e-mails
                 </h2>
-                <p className="mt-2 text-sm text-muted">
-                  Sélectionnez les candidatures validées liées à ce groupe ou
-                  à une portée du groupe. Pour chaque candidature éligible, le
-                  système prépare ou réutilise une réservation et crée une
-                  demande de paiement de pré-réservation si nécessaire.
+                <p className="mt-4 text-sm font-medium text-foreground">
+                  Pré-réservation
                 </p>
                 <p className="mt-2 text-sm text-muted">
-                  En Phase 1, cette action crée les demandes de paiement et
-                  prépare le suivi. Aucun email réel n’est envoyé.
+                  Copiez le modèle d’e-mail, envoyez-le manuellement, puis
+                  confirmez l’envoi dans le SaaS.
+                </p>
+                <p className="mt-2 text-sm text-muted">
+                  Aucun e-mail réel n’est envoyé par l’application.
                 </p>
                 {campaignEmailTemplatesError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
@@ -1020,11 +1019,12 @@ export default async function LitterGroupDetailPage({
                         type="submit"
                         className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                       >
-                        Lancer la campagne de pré-réservation
+                        Campagne de pré-réservation envoyée
                       </button>
                       <p className="text-xs text-muted">
-                        En Phase 1, les demandes de paiement sont créées et le
-                        suivi est préparé. Aucun email réel n’est envoyé.
+                        À utiliser après l’envoi manuel du message. Cette
+                        action crée les demandes de paiement de
+                        pré-réservation.
                       </p>
                     </div>
                   </form>
