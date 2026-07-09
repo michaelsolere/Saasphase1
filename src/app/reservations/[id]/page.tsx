@@ -946,6 +946,33 @@ function SummaryIndicator({
   );
 }
 
+function getPreReservationPaymentActionSummary({
+  state,
+  amountLabel,
+}: {
+  state: PreReservationDepositState;
+  amountLabel: string;
+}) {
+  if (state === "requested") {
+    return {
+      value: `Paiement de ${amountLabel} à suivre`,
+      detail: "Vérifier la réception du paiement demandé.",
+    };
+  }
+
+  if (state === "paid") {
+    return {
+      value: "Aucun paiement attendu pour le moment",
+      detail: "Le versement de pré-réservation est déjà réglé.",
+    };
+  }
+
+  return {
+    value: "Aucun paiement attendu pour le moment",
+    detail: "Aucune demande de pré-réservation n’est ouverte sur ce dossier.",
+  };
+}
+
 function formatPriceInputValue(priceCents: number | null) {
   if (priceCents === null || priceCents === undefined) {
     return "";
@@ -1929,6 +1956,11 @@ export default async function ReservationDetailPage({
   const firstDepositLabel = getPreReservationDepositLabel(
     preReservationDepositState,
   );
+  const preReservationPaymentActionSummary =
+    getPreReservationPaymentActionSummary({
+      state: preReservationDepositState,
+      amountLabel: preReservationDepositAmountLabel,
+    });
   const secondDepositLabel = hasSecondPaid
     ? "Complément payé"
     : hasSecondPayment
@@ -2286,17 +2318,15 @@ export default async function ReservationDetailPage({
 
               <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 <SummaryIndicator
-                  label="Paiements"
+                  label="État financier"
                   value={paymentsSummaryText}
                   detail={financialSummaryDetail}
                   badgeClassName={paymentsSummaryColor}
                 />
                 <SummaryIndicator
-                  label={`Paiement ${preReservationDepositAmountLabel}`}
-                  value={getPreReservationDepositLabel(
-                    preReservationDepositState,
-                  )}
-                  detail={secondDepositLabel}
+                  label="Prochaine action paiement"
+                  value={preReservationPaymentActionSummary.value}
+                  detail={preReservationPaymentActionSummary.detail}
                   badgeClassName={getPreReservationDepositBadgeClassName(
                     preReservationDepositState,
                   )}
