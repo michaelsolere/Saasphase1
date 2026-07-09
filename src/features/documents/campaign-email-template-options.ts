@@ -54,6 +54,14 @@ export function getCampaignEmailTemplateOptions(
       return 1;
     }
 
+    if (a.templateKey === "birth_documents_deposit") {
+      return -1;
+    }
+
+    if (b.templateKey === "birth_documents_deposit") {
+      return 1;
+    }
+
     const categoryDelta = categoryOrder[a.category] - categoryOrder[b.category];
 
     if (categoryDelta !== 0) {

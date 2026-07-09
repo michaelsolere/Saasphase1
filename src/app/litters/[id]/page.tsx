@@ -56,7 +56,10 @@ import {
   getPreReservationDepositStateFromStatus,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
-import { launchPreReservationCampaign } from "@/features/reservations/actions";
+import {
+  launchLitterPreReservationBalanceCampaign,
+  launchPreReservationCampaign,
+} from "@/features/reservations/actions";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -1201,6 +1204,14 @@ export default async function LitterDetailPage({
     campaign_status?: string;
     campaign_count?: string;
     campaign_payment_count?: string;
+    balance_campaign_status?: string;
+    balance_campaign_count?: string;
+    balance_campaign_payment_count?: string;
+    balance_campaign_complete_count?: string;
+    balance_campaign_active_request_count?: string;
+    balance_campaign_unpaid_count?: string;
+    balance_campaign_ineligible_count?: string;
+    balance_campaign_error_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
     offspring_status?: string;
@@ -1214,6 +1225,14 @@ export default async function LitterDetailPage({
     campaign_status,
     campaign_count,
     campaign_payment_count,
+    balance_campaign_status,
+    balance_campaign_count,
+    balance_campaign_payment_count,
+    balance_campaign_complete_count,
+    balance_campaign_active_request_count,
+    balance_campaign_unpaid_count,
+    balance_campaign_ineligible_count,
+    balance_campaign_error_count,
     group_assignment_status,
     detail_status,
     offspring_status,
@@ -1619,6 +1638,27 @@ export default async function LitterDetailPage({
       </p>
     ) : null;
 
+  const balanceCampaignIgnoredSummary = [
+    balance_campaign_complete_count &&
+    balance_campaign_complete_count !== "0"
+      ? `${balance_campaign_complete_count} déjà arrhes complètes`
+      : null,
+    balance_campaign_active_request_count &&
+    balance_campaign_active_request_count !== "0"
+      ? `${balance_campaign_active_request_count} demande active déjà existante`
+      : null,
+    balance_campaign_unpaid_count && balance_campaign_unpaid_count !== "0"
+      ? `${balance_campaign_unpaid_count} pré-réservation non réglée`
+      : null,
+    balance_campaign_ineligible_count &&
+    balance_campaign_ineligible_count !== "0"
+      ? `${balance_campaign_ineligible_count} dossier non éligible`
+      : null,
+    balance_campaign_error_count && balance_campaign_error_count !== "0"
+      ? `${balance_campaign_error_count} erreur`
+      : null,
+  ].filter(Boolean);
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -1690,6 +1730,38 @@ export default async function LitterDetailPage({
                 className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
               >
                 Une erreur est survenue lors du lancement de la campagne. Aucune modification n&apos;a été appliquée pour les candidatures en erreur.
+              </div>
+            )}
+            {balance_campaign_status === "success" && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                Campagne confirmée — {balance_campaign_count ?? "0"} dossier(s),{" "}
+                {balance_campaign_payment_count ?? "0"} demande(s) de complément
+                créée(s). Aucun e-mail réel n’a été envoyé par l’application.
+                {balanceCampaignIgnoredSummary.length > 0 ? (
+                  <span className="mt-2 block text-emerald-900">
+                    Ignorés : {balanceCampaignIgnoredSummary.join(" · ")}.
+                  </span>
+                ) : null}
+              </div>
+            )}
+            {balance_campaign_status === "no_eligible" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucun dossier adoptant lié à cette portée.
+              </div>
+            )}
+            {balance_campaign_status === "error" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors de la confirmation de campagne.
+                Aucune donnée n’a été modifiée pour les dossiers en erreur.
               </div>
             )}
 
@@ -1786,16 +1858,18 @@ export default async function LitterDetailPage({
               />
 
               <CollapsibleSection title="Campagnes d’e-mails">
-                <p className="text-sm font-medium text-foreground">
-                  Pré-réservation
-                </p>
-                <p className="mt-2 text-sm text-muted">
-                  Copiez le modèle d’e-mail, envoyez-le manuellement, puis
-                  confirmez l’envoi dans le SaaS.
-                </p>
-                <p className="mt-2 text-sm text-muted">
-                  Aucun e-mail réel n’est envoyé par l’application.
-                </p>
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Pré-réservation
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    Copiez le modèle d’e-mail, envoyez-le manuellement, puis
+                    confirmez l’envoi dans le SaaS.
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    Aucun e-mail réel n’est envoyé par l’application.
+                  </p>
+                </div>
                 {campaignEmailTemplatesError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
                     Impossible de charger les modèles d’e-mails pour cette
@@ -1804,6 +1878,7 @@ export default async function LitterDetailPage({
                 ) : (
                   <CampaignEmailTemplatePicker
                     templates={campaignEmailTemplates}
+                    preferredTemplateKey="pre_reservation"
                   />
                 )}
 
@@ -1874,6 +1949,48 @@ export default async function LitterDetailPage({
                     </div>
                   </form>
                 )}
+
+                <div className="mt-8 border-t pt-8">
+                  <p className="text-sm font-medium text-foreground">
+                    Contrat + certificat
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    À utiliser après l’envoi manuel du message. Cette action
+                    crée les demandes de complément d’arrhes pour les dossiers
+                    éligibles. Aucun e-mail réel n’est envoyé.
+                  </p>
+                  {campaignEmailTemplatesError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les modèles d’e-mails pour cette
+                      campagne.
+                    </p>
+                  ) : (
+                    <CampaignEmailTemplatePicker
+                      templates={campaignEmailTemplates}
+                      preferredTemplateKey="birth_documents_deposit"
+                    />
+                  )}
+
+                  <form
+                    action={launchLitterPreReservationBalanceCampaign}
+                    className="mt-6"
+                  >
+                    <input type="hidden" name="litter_id" value={id} />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        Campagne contrat + certificat envoyée
+                      </button>
+                      <p className="text-xs text-muted">
+                        Crée uniquement les demandes de complément d’arrhes
+                        manquantes. Aucun document, animal ou statut de dossier
+                        n’est modifié automatiquement.
+                      </p>
+                    </div>
+                  </form>
+                </div>
               </CollapsibleSection>
 
               <CollapsibleSection id="modifier-portee" title="Modifier la portée">
