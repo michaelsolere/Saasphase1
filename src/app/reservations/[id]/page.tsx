@@ -34,7 +34,7 @@ import {
   assignAnimalToReservation,
   unassignAnimalFromReservation,
   syncReservationScopeFromApplication,
-  attachReservationToPreciseLitter,
+  attachReservationToScope,
 } from "@/features/reservations/actions";
 import {
   ReservationAppointmentForm,
@@ -190,6 +190,14 @@ type ReservationAttachableLitter = {
   status: string | null;
   expected_birth_date: string | null;
   actual_birth_date: string | null;
+};
+
+type ReservationAttachableLitterGroup = {
+  id: string;
+  name: string | null;
+  status: string | null;
+  expected_period_start: string | null;
+  expected_period_end: string | null;
 };
 
 type ReservationInternalComment = {
@@ -781,21 +789,21 @@ function ReservationStatusMessages({
       when: query.litter_attach_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "La réservation est maintenant rattachée à une portée précise.",
+      message: "Le rattachement portée / groupe du parcours adoptant a été mis à jour.",
     },
     {
       when: query.litter_attach_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Le rattachement à la portée n’a pas pu être enregistré. Aucune autre donnée n’a été modifiée.",
+        "Le rattachement portée / groupe n’a pas pu être enregistré. Aucune autre donnée n’a été modifiée.",
     },
     {
       when: query.litter_attach_status === "animal_attributed",
       role: "alert",
       className: errorStatusMessageClassName,
       message:
-        "Impossible de modifier la portée précise après attribution d’un animal.",
+        "Impossible de modifier la portée ou le groupe après attribution d’un animal.",
     },
   ];
 
@@ -1408,6 +1416,8 @@ export default async function ReservationDetailPage({
   let availableAnimalsError: unknown = null;
   let attachableLitters: ReservationAttachableLitter[] = [];
   let attachableLittersError: unknown = null;
+  let attachableLitterGroups: ReservationAttachableLitterGroup[] = [];
+  let attachableLitterGroupsError: unknown = null;
 
   if (
     reservation &&
@@ -1463,7 +1473,6 @@ export default async function ReservationDetailPage({
   if (
     reservation &&
     reservation.organization_id &&
-    !reservation.litter_id &&
     !reservation.animal_id &&
     !isFinalReservationStatus(reservation.status)
   ) {
@@ -1474,7 +1483,7 @@ export default async function ReservationDetailPage({
       )
       .eq("organization_id", reservation.organization_id);
 
-    if (reservation.litter_group_id) {
+    if (reservation.litter_group_id && !reservation.litter_id) {
       attachableLittersQuery.eq("litter_group_id", reservation.litter_group_id);
     } else {
       attachableLittersQuery.not("status", "in", "(archived,cancelled)");
@@ -1488,6 +1497,24 @@ export default async function ReservationDetailPage({
     } else {
       attachableLitters =
         (rawAttachableLitters as ReservationAttachableLitter[] | null) ?? [];
+    }
+
+    const { data: rawAttachableLitterGroups, error: fetchGroupsError } =
+      await supabase
+        .from("litter_groups")
+        .select(
+          "id, name, status, expected_period_start, expected_period_end",
+        )
+        .eq("organization_id", reservation.organization_id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+    if (fetchGroupsError) {
+      attachableLitterGroupsError = fetchGroupsError;
+    } else {
+      attachableLitterGroups =
+        (rawAttachableLitterGroups as ReservationAttachableLitterGroup[] | null) ??
+        [];
     }
   }
 
@@ -2912,6 +2939,194 @@ export default async function ReservationDetailPage({
                     </div>
                   </dl>
 
+                  {!isFinalReservationStatus(reservation.status) ? (
+                    relatedAnimal ? (
+                      <p className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                        Un animal est déjà attribué à ce parcours adoptant. Pour
+                        modifier la portée ou le groupe, gérez d’abord
+                        l’attribution afin de conserver la cohérence entre
+                        l’animal et sa portée de naissance.
+                      </p>
+                    ) : (
+                      <div className="mt-6 rounded-xl border bg-background px-4 py-4">
+                        <h3 className="text-sm font-semibold text-foreground">
+                          Modifier le rattachement portée / groupe
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-muted">
+                          Cette action modifie uniquement le rattachement du
+                          parcours adoptant. Elle ne change pas le statut, la
+                          candidature, les paiements, les documents, les notes
+                          ou les rôles du contact.
+                        </p>
+
+                        <div className="mt-5 grid gap-5 lg:grid-cols-2">
+                          <div className="rounded-xl border bg-surface px-4 py-4">
+                            <h4 className="text-sm font-semibold text-foreground">
+                              Choisir un groupe de portées
+                            </h4>
+                            {attachableLitterGroupsError ? (
+                              <p
+                                role="alert"
+                                className="mt-3 text-sm text-amber-800"
+                              >
+                                Impossible de charger les groupes disponibles.
+                              </p>
+                            ) : attachableLitterGroups.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted">
+                                Aucun groupe de portées disponible.
+                              </p>
+                            ) : (
+                              <form
+                                action={attachReservationToScope}
+                                className="mt-4 space-y-3"
+                              >
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="return_to_reservation_id"
+                                  value={id}
+                                />
+                                <label
+                                  htmlFor="reservation-litter-group-id"
+                                  className="text-xs font-semibold uppercase tracking-wide text-muted"
+                                >
+                                  Groupe
+                                </label>
+                                <select
+                                  id="reservation-litter-group-id"
+                                  name="litter_group_id"
+                                  required
+                                  defaultValue={reservation.litter_group_id ?? ""}
+                                  className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                                >
+                                  <option value="" disabled>
+                                    -- Choisir un groupe --
+                                  </option>
+                                  {attachableLitterGroups.map((group) => {
+                                    const start = group.expected_period_start
+                                      ? formatApplicationDate(
+                                          group.expected_period_start,
+                                        )
+                                      : null;
+                                    const end = group.expected_period_end
+                                      ? formatApplicationDate(
+                                          group.expected_period_end,
+                                        )
+                                      : null;
+                                    const period =
+                                      start || end
+                                        ? `${start ?? "?"} - ${end ?? "?"}`
+                                        : "période non renseignée";
+                                    return (
+                                      <option key={group.id} value={group.id}>
+                                        {group.name ?? "Groupe sans nom"} (
+                                        {period})
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <p className="text-xs leading-5 text-muted">
+                                  Choisir un groupe seul retire la portée précise
+                                  du parcours adoptant.
+                                </p>
+                                <button
+                                  type="submit"
+                                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                                >
+                                  Enregistrer le groupe
+                                </button>
+                              </form>
+                            )}
+                          </div>
+
+                          <div className="rounded-xl border bg-surface px-4 py-4">
+                            <h4 className="text-sm font-semibold text-foreground">
+                              Choisir une portée précise
+                            </h4>
+                            {attachableLittersError ? (
+                              <p
+                                role="alert"
+                                className="mt-3 text-sm text-amber-800"
+                              >
+                                Impossible de charger les portées disponibles.
+                              </p>
+                            ) : attachableLitters.length === 0 ? (
+                              <p className="mt-3 text-sm text-muted">
+                                Aucune portée précise disponible pour ce
+                                rattachement.
+                              </p>
+                            ) : (
+                              <form
+                                action={attachReservationToScope}
+                                className="mt-4 space-y-3"
+                              >
+                                <input
+                                  type="hidden"
+                                  name="reservation_id"
+                                  value={id}
+                                />
+                                <input
+                                  type="hidden"
+                                  name="return_to_reservation_id"
+                                  value={id}
+                                />
+                                <label
+                                  htmlFor="reservation-litter-id"
+                                  className="text-xs font-semibold uppercase tracking-wide text-muted"
+                                >
+                                  Portée précise
+                                </label>
+                                <select
+                                  id="reservation-litter-id"
+                                  name="litter_id"
+                                  required
+                                  defaultValue={reservation.litter_id ?? ""}
+                                  className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
+                                >
+                                  <option value="" disabled>
+                                    -- Choisir une portée --
+                                  </option>
+                                  {attachableLitters.map((litter) => {
+                                    const usefulDate =
+                                      litter.actual_birth_date ??
+                                      litter.expected_birth_date;
+                                    const dateLabel = usefulDate
+                                      ? formatApplicationDate(usefulDate)
+                                      : "date non renseignée";
+                                    const groupLabel =
+                                      litter.litter_group_name ?? "sans groupe";
+                                    return (
+                                      <option key={litter.id} value={litter.id}>
+                                        {litter.name ?? "Portée sans nom"} (
+                                        {groupLabel} - {dateLabel})
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <p className="text-xs leading-5 text-muted">
+                                  {reservation.litter_group_id &&
+                                  !reservation.litter_id
+                                    ? "Seules les portées de ce groupe sont proposées."
+                                    : "Le groupe réel de la portée choisie sera repris automatiquement."}
+                                </p>
+                                <button
+                                  type="submit"
+                                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                                >
+                                  Enregistrer la portée
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  ) : null}
+
                   {animalError ? (
                     <p role="alert" className="mt-5 text-sm text-amber-800">
                       Impossible de charger l’animal lié.
@@ -2925,101 +3140,13 @@ export default async function ReservationDetailPage({
 	                      {!isFinalReservationStatus(reservation.status) ? (
 	                        <div className="mt-4">
 	                          {!reservation.litter_id ? (
-	                            <div className="space-y-4">
-	                              <p
-	                                role="alert"
-	                                className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-	                              >
-	                                Rattachez d’abord ce parcours adoptant à une
-	                                portée précise avant d’attribuer un animal.
-	                              </p>
-
-	                              <div className="rounded-xl border bg-background px-4 py-4">
-	                                <h3 className="text-sm font-semibold text-foreground">
-	                                  Rattacher à une portée précise
-	                                </h3>
-	                                <p className="mt-1 text-xs leading-5 text-muted">
-	                                  Cette action renseigne uniquement la portée de la
-	                                  réservation. Aucun animal n’est attribué
-	                                  automatiquement.
-	                                </p>
-
-	                                {attachableLittersError ? (
-	                                  <p
-	                                    role="alert"
-	                                    className="mt-4 text-sm text-amber-800"
-	                                  >
-	                                    Impossible de charger les portées disponibles.
-	                                  </p>
-	                                ) : attachableLitters.length === 0 ? (
-	                                  <p className="mt-4 text-sm text-muted">
-	                                    Aucune portée précise disponible pour ce
-	                                    rattachement.
-	                                  </p>
-	                                ) : (
-	                                  <form
-	                                    action={attachReservationToPreciseLitter}
-	                                    className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end"
-	                                  >
-	                                    <input
-	                                      type="hidden"
-	                                      name="reservation_id"
-	                                      value={id}
-	                                    />
-	                                    <div className="max-w-md flex-1">
-	                                      <label
-	                                        htmlFor="litter_id"
-	                                        className="mb-2 block text-xs font-semibold uppercase tracking-wide text-muted"
-	                                      >
-	                                        Portée précise
-	                                      </label>
-	                                      <select
-	                                        id="litter_id"
-	                                        name="litter_id"
-	                                        required
-	                                        className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-	                                      >
-	                                        <option value="">
-	                                          -- Choisir une portée --
-	                                        </option>
-	                                        {attachableLitters.map((litter) => {
-	                                          const usefulDate =
-	                                            litter.actual_birth_date ??
-	                                            litter.expected_birth_date;
-	                                          const dateLabel = usefulDate
-	                                            ? formatApplicationDate(usefulDate)
-	                                            : "date non renseignée";
-	                                          const groupLabel =
-	                                            litter.litter_group_name ??
-	                                            "sans groupe";
-	                                          return (
-	                                            <option
-	                                              key={litter.id}
-	                                              value={litter.id}
-	                                            >
-	                                              {litter.name ??
-	                                                "Portée sans nom"}{" "}
-	                                              ({groupLabel} - {dateLabel})
-	                                            </option>
-	                                          );
-	                                        })}
-	                                      </select>
-	                                      <p className="mt-2 text-xs leading-5 text-muted">
-	                                        {reservation.litter_group_id
-	                                          ? "Seules les portées de ce groupe sont proposées."
-	                                          : "Les portées actives ou non archivées de l’organisation sont proposées."}
-	                                      </p>
-	                                    </div>
-	                                    <button
-	                                      type="submit"
-	                                      className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-	                                    >
-	                                      Rattacher à cette portée
-	                                    </button>
-	                                  </form>
-	                                )}
-	                              </div>
-	                            </div>
+	                            <p
+	                              role="alert"
+	                              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+	                            >
+	                              Rattachez d’abord ce parcours adoptant à une
+	                              portée précise avant d’attribuer un animal.
+	                            </p>
 	                          ) : availableAnimalsError ? (
 	                            <p role="alert" className="text-sm text-amber-800">
 	                              Impossible de charger les animaux disponibles.
