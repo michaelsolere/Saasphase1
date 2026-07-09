@@ -2139,12 +2139,66 @@ export default async function ReservationDetailPage({
           .filter(Boolean)
           .join(" · ");
 
-  const scopeSummaryValue = reservation?.litter_name ??
+  const reservationLitterLabel =
+    reservation?.litter_name ?? (reservation?.litter_id ? "Portée liée" : null);
+  const reservationLitterGroupLabel =
     reservation?.litter_group_name ??
-    "Portée ou groupe non renseigné";
+    (reservation?.litter_group_id ? "Groupe lié" : null);
+  const scopeSummaryValue =
+    reservationLitterLabel && reservationLitterGroupLabel ? (
+      <>
+        {reservation?.litter_id ? (
+          <Link
+            href={`/litters/${reservation.litter_id}`}
+            className="inline text-accent hover:underline"
+          >
+            {reservationLitterLabel}
+          </Link>
+        ) : (
+          reservationLitterLabel
+        )}
+        <span className="mx-1 text-muted">·</span>
+        {reservation?.litter_group_id ? (
+          <Link
+            href={`/litter-groups/${reservation.litter_group_id}`}
+            className="inline text-accent hover:underline"
+          >
+            {reservationLitterGroupLabel}
+          </Link>
+        ) : (
+          reservationLitterGroupLabel
+        )}
+      </>
+    ) : reservationLitterLabel ? (
+      reservation?.litter_id ? (
+        <Link
+          href={`/litters/${reservation.litter_id}`}
+          className="inline text-accent hover:underline"
+        >
+          {reservationLitterLabel}
+        </Link>
+      ) : (
+        reservationLitterLabel
+      )
+    ) : reservationLitterGroupLabel ? (
+      reservation?.litter_group_id ? (
+        <Link
+          href={`/litter-groups/${reservation.litter_group_id}`}
+          className="inline text-accent hover:underline"
+        >
+          {reservationLitterGroupLabel}
+        </Link>
+      ) : (
+        reservationLitterGroupLabel
+      )
+    ) : (
+      "Portée ou groupe non renseigné"
+    );
   const scopeSummaryDetail = reservation?.litter_id
-    ? "Portée précise liée au dossier."
-    : reservation?.litter_group_name
+    ? reservation?.litter_group_id
+      ? "Portée précise et groupe liés au dossier."
+      : "Portée précise liée au dossier."
+    : reservation?.litter_group_id || reservation?.litter_group_name
       ? "Groupe de portée lié, portée précise à confirmer plus tard."
       : "Aucune portée précise ni groupe renseigné.";
   const animalSummaryDetail = relatedAnimal
@@ -2367,11 +2421,6 @@ export default async function ReservationDetailPage({
                     rankSummaryDetail
                       ? `${scopeSummaryDetail} · ${rankSummaryDetail}`
                       : scopeSummaryDetail
-                  }
-                  href={
-                    reservation.litter_id
-                      ? `/litters/${reservation.litter_id}`
-                      : undefined
                   }
                 />
               </div>
@@ -2916,16 +2965,28 @@ export default async function ReservationDetailPage({
                               href={`/litters/${reservation.litter_id}`}
                               className="font-medium text-accent hover:underline"
                             >
-                              {reservation.litter_name}
+                              {reservation.litter_name ?? "Portée liée"}
                             </Link>
                           ) : (
-                            reservation.litter_name
+                            reservation.litter_name ?? "Aucune portée précise"
                           )
                         }
                       />
                       <CompactField
                         label="Groupe de portées"
-                        value={reservation.litter_group_name}
+                        value={
+                          reservation.litter_group_id ? (
+                            <Link
+                              href={`/litter-groups/${reservation.litter_group_id}`}
+                              className="font-medium text-accent hover:underline"
+                            >
+                              {reservation.litter_group_name ?? "Groupe lié"}
+                            </Link>
+                          ) : (
+                            reservation.litter_group_name ??
+                            "Aucun groupe de portées"
+                          )
+                        }
                       />
                       <CompactField
                         label="Animal attribué"
