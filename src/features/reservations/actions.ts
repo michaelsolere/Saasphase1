@@ -1297,6 +1297,34 @@ type PreReservationCampaignResult = {
   errorCount: number;
 };
 
+type PreReservationBalanceCampaignReservation = {
+  id: string;
+  organization_id: string;
+  contact_id: string | null;
+  status: string | null;
+};
+
+type PreReservationBalanceCampaignResult = {
+  reservationsCheckedCount: number;
+  paymentsCreatedCount: number;
+  ignoredCompleteCount: number;
+  ignoredActiveRequestCount: number;
+  ignoredPreReservationUnpaidCount: number;
+  ignoredIneligibleCount: number;
+  errorCount: number;
+};
+
+type PreReservationBalanceCreationResult =
+  | { outcome: "created" }
+  | {
+      outcome:
+        | "complete"
+        | "active_request"
+        | "pre_reservation_unpaid"
+        | "ineligible"
+        | "error";
+    };
+
 function isReservationCompatibleWithCampaignTarget({
   reservation,
   targetLitterId,
@@ -1503,6 +1531,163 @@ async function runPreReservationCampaignForApplications({
     paymentsCreatedCount,
     errorCount,
   };
+}
+
+async function createPreReservationBalanceRequestForReservation({
+  supabase,
+  userId,
+  reservation,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  reservation: PreReservationBalanceCampaignReservation;
+}): Promise<PreReservationBalanceCreationResult> {
+  if (!reservation.contact_id || isFinalReservationStatus(reservation.status)) {
+    return { outcome: "ineligible" };
+  }
+
+  if (reservation.status !== "pre_reservation_paid") {
+    return { outcome: "pre_reservation_unpaid" };
+  }
+
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+
+  const { data: payments, error: paymentsError } = await supabase
+    .from("payments")
+    .select("id, payment_type, status, amount_cents")
+    .eq("reservation_id", reservation.id)
+    .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
+    .in("status", ["requested", "pending", "partially_paid", "paid"])
+    .is("deleted_at", null);
+
+  if (paymentsError || !payments) {
+    return { outcome: "error" };
+  }
+
+  const paidArrhesTotalCents = payments
+    .filter((payment) => payment.status === "paid")
+    .reduce((total, payment) => total + payment.amount_cents, 0);
+
+  if (paidArrhesTotalCents >= depositSettings.completeDepositCents) {
+    return { outcome: "complete" };
+  }
+
+  if (
+    payments.some(
+      (payment) =>
+        payment.payment_type === "arrhes" &&
+        (payment.status === "requested" ||
+          payment.status === "pending" ||
+          payment.status === "partially_paid"),
+    )
+  ) {
+    return { outcome: "active_request" };
+  }
+
+  if (
+    paidArrhesTotalCents < depositSettings.preReservationDepositCents
+  ) {
+    return { outcome: "pre_reservation_unpaid" };
+  }
+
+  const balanceAmountCents =
+    depositSettings.completeDepositCents - paidArrhesTotalCents;
+
+  if (balanceAmountCents <= 0) {
+    return { outcome: "complete" };
+  }
+
+  const dueDateStr = addDaysAsIsoDate(
+    depositSettings.preReservationResponseDelayDays,
+  );
+
+  const { error: insertError } = await supabase.from("payments").insert({
+    organization_id: reservation.organization_id,
+    contact_id: reservation.contact_id,
+    reservation_id: reservation.id,
+    amount_cents: balanceAmountCents,
+    currency: "EUR",
+    payment_type: "arrhes",
+    status: "requested",
+    payment_method: "bank_transfer",
+    requested_at: new Date().toISOString(),
+    due_date: dueDateStr,
+    notes: `Demande 2/2 — complément d’arrhes. Total attendu des arrhes complètes : ${Math.round(depositSettings.completeDepositCents / 100)} €.`,
+    created_by: userId,
+    updated_by: userId,
+  });
+
+  if (insertError) {
+    return { outcome: "error" };
+  }
+
+  return { outcome: "created" };
+}
+
+async function runPreReservationBalanceCampaignForReservations({
+  supabase,
+  userId,
+  reservations,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  reservations: PreReservationBalanceCampaignReservation[];
+}): Promise<PreReservationBalanceCampaignResult> {
+  const result: PreReservationBalanceCampaignResult = {
+    reservationsCheckedCount: reservations.length,
+    paymentsCreatedCount: 0,
+    ignoredCompleteCount: 0,
+    ignoredActiveRequestCount: 0,
+    ignoredPreReservationUnpaidCount: 0,
+    ignoredIneligibleCount: 0,
+    errorCount: 0,
+  };
+
+  for (const reservation of reservations) {
+    const creationResult = await createPreReservationBalanceRequestForReservation({
+      supabase,
+      userId,
+      reservation,
+    });
+
+    if (creationResult.outcome === "created") {
+      result.paymentsCreatedCount++;
+    } else if (creationResult.outcome === "complete") {
+      result.ignoredCompleteCount++;
+    } else if (creationResult.outcome === "active_request") {
+      result.ignoredActiveRequestCount++;
+    } else if (creationResult.outcome === "pre_reservation_unpaid") {
+      result.ignoredPreReservationUnpaidCount++;
+    } else if (creationResult.outcome === "ineligible") {
+      result.ignoredIneligibleCount++;
+    } else {
+      result.errorCount++;
+    }
+  }
+
+  return result;
+}
+
+function preReservationBalanceCampaignParams(
+  result: PreReservationBalanceCampaignResult,
+) {
+  return new URLSearchParams({
+    balance_campaign_status: "success",
+    balance_campaign_count: String(result.reservationsCheckedCount),
+    balance_campaign_payment_count: String(result.paymentsCreatedCount),
+    balance_campaign_complete_count: String(result.ignoredCompleteCount),
+    balance_campaign_active_request_count: String(
+      result.ignoredActiveRequestCount,
+    ),
+    balance_campaign_unpaid_count: String(
+      result.ignoredPreReservationUnpaidCount,
+    ),
+    balance_campaign_ineligible_count: String(result.ignoredIneligibleCount),
+    balance_campaign_error_count: String(result.errorCount),
+  });
 }
 
 /**
@@ -1730,6 +1915,160 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
   );
 }
 
+export async function launchLitterPreReservationBalanceCampaign(
+  formData: FormData,
+) {
+  const litterId = formData.get("litter_id");
+
+  if (typeof litterId !== "string" || !isUuid(litterId)) {
+    redirect("/litters?balance_campaign_status=error");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter) {
+    redirect(`/litters/${litterId}?balance_campaign_status=error`);
+  }
+
+  const { data: reservations, error: reservationsError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id, status")
+    .eq("organization_id", litter.organization_id)
+    .eq("litter_id", litterId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  if (reservationsError || !reservations) {
+    redirect(`/litters/${litterId}?balance_campaign_status=error`);
+  }
+
+  if (reservations.length === 0) {
+    redirect(`/litters/${litterId}?balance_campaign_status=no_eligible`);
+  }
+
+  const campaignResult = await runPreReservationBalanceCampaignForReservations({
+    supabase,
+    userId: user.id,
+    reservations,
+  });
+
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters");
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  if (
+    campaignResult.paymentsCreatedCount === 0 &&
+    campaignResult.errorCount > 0 &&
+    campaignResult.errorCount === campaignResult.reservationsCheckedCount
+  ) {
+    redirect(`/litters/${litterId}?balance_campaign_status=error`);
+  }
+
+  const params = preReservationBalanceCampaignParams(campaignResult);
+  redirect(`/litters/${litterId}?${params.toString()}`);
+}
+
+export async function launchGroupPreReservationBalanceCampaign(
+  formData: FormData,
+) {
+  const groupId = formData.get("litter_group_id");
+
+  if (typeof groupId !== "string" || !isUuid(groupId)) {
+    redirect("/litter-groups?balance_campaign_status=error");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: group, error: groupError } = await supabase
+    .from("litter_groups")
+    .select("id, organization_id")
+    .eq("id", groupId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (groupError || !group) {
+    redirect(`/litter-groups/${groupId}?balance_campaign_status=error`);
+  }
+
+  const { data: groupLitters, error: littersError } = await supabase
+    .from("litters")
+    .select("id")
+    .eq("organization_id", group.organization_id)
+    .eq("litter_group_id", groupId)
+    .is("deleted_at", null);
+
+  if (littersError) {
+    redirect(`/litter-groups/${groupId}?balance_campaign_status=error`);
+  }
+
+  const groupLitterIds = (groupLitters ?? []).map((litter) => litter.id);
+  const reservationsQuery = supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id, status")
+    .eq("organization_id", group.organization_id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true });
+
+  const { data: reservations, error: reservationsError } =
+    groupLitterIds.length > 0
+      ? await reservationsQuery.or(
+          `litter_group_id.eq.${groupId},litter_id.in.(${groupLitterIds.join(",")})`,
+        )
+      : await reservationsQuery.eq("litter_group_id", groupId);
+
+  if (reservationsError || !reservations) {
+    redirect(`/litter-groups/${groupId}?balance_campaign_status=error`);
+  }
+
+  if (reservations.length === 0) {
+    redirect(`/litter-groups/${groupId}?balance_campaign_status=no_eligible`);
+  }
+
+  const campaignResult = await runPreReservationBalanceCampaignForReservations({
+    supabase,
+    userId: user.id,
+    reservations,
+  });
+
+  revalidatePath(`/litter-groups/${groupId}`);
+  revalidatePath("/litter-groups");
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  if (
+    campaignResult.paymentsCreatedCount === 0 &&
+    campaignResult.errorCount > 0 &&
+    campaignResult.errorCount === campaignResult.reservationsCheckedCount
+  ) {
+    redirect(`/litter-groups/${groupId}?balance_campaign_status=error`);
+  }
+
+  const params = preReservationBalanceCampaignParams(campaignResult);
+  redirect(`/litter-groups/${groupId}?${params.toString()}`);
+}
+
 export async function requestPreReservationBalance(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
@@ -1758,74 +2097,13 @@ export async function requestPreReservationBalance(formData: FormData) {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 
-  // 2. Valider le statut : doit être pre_reservation_paid
-  if (reservation.status !== "pre_reservation_paid") {
-    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
-  }
-
-  const depositSettings = await readDepositSettingsForOrganization({
+  const creationResult = await createPreReservationBalanceRequestForReservation({
     supabase,
-    organizationId: reservation.organization_id,
+    userId: user.id,
+    reservation,
   });
 
-  // 3. Récupérer les paiements actifs de type arrhes.
-  const { data: payments, error: paymentsError } = await supabase
-    .from("payments")
-    .select("id, status, amount_cents")
-    .eq("reservation_id", reservationId)
-    .eq("payment_type", "arrhes")
-    .in("status", ["requested", "paid"])
-    .is("deleted_at", null);
-
-  if (paymentsError || !payments) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
-  }
-
-  const paidPayments = payments.filter((p) => p.status === "paid");
-  const paidArrhesTotalCents = paidPayments.reduce(
-    (total, payment) => total + payment.amount_cents,
-    0,
-  );
-
-  // Si une demande de complément existe déjà, on renvoie une erreur contrôlée.
-  if (payments.some((payment) => payment.status === "requested")) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
-  }
-
-  // Le complément ne concerne que les pré-réservations avec un premier paiement
-  // réglé, sans forcer les parcours directs où les arrhes sont déjà complètes.
-  if (
-    paidPayments.length === 0 ||
-    paidArrhesTotalCents < depositSettings.preReservationDepositCents ||
-    paidArrhesTotalCents >= depositSettings.completeDepositCents
-  ) {
-    redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
-  }
-
-  // 4. Aucun champ dédié n'existe encore pour le complément : on réutilise le
-  // délai de réponse pré-réservation avec fallback central.
-  const dueDateStr = addDaysAsIsoDate(
-    depositSettings.preReservationResponseDelayDays,
-  );
-
-  // 5. Création de la deuxième demande de paiement
-  const { error: insertError } = await supabase.from("payments").insert({
-    organization_id: reservation.organization_id,
-    contact_id: reservation.contact_id,
-    reservation_id: reservation.id,
-    amount_cents: depositSettings.arrhesSecondPaymentCents,
-    currency: "EUR",
-    payment_type: "arrhes",
-    status: "requested",
-    payment_method: "bank_transfer",
-    requested_at: new Date().toISOString(),
-    due_date: dueDateStr,
-    notes: `Demande 2/2 — complément d’arrhes. Total attendu des arrhes complètes : ${Math.round(depositSettings.completeDepositCents / 100)} €.`,
-    created_by: user.id,
-    updated_by: user.id,
-  });
-
-  if (insertError) {
+  if (creationResult.outcome !== "created") {
     redirect(`/reservations/${reservationId}?balance_request_status=error#payments`);
   }
 

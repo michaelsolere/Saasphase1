@@ -15,11 +15,16 @@ const categoryLabels = {
 
 export function CampaignEmailTemplatePicker({
   templates,
+  preferredTemplateKey,
 }: {
   templates: CampaignEmailTemplateOption[];
+  preferredTemplateKey?: string;
 }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState(
-    templates[0]?.id ?? "",
+    templates.find((template) => template.templateKey === preferredTemplateKey)
+      ?.id ??
+      templates[0]?.id ??
+      "",
   );
   const selectedTemplate = useMemo(
     () =>
