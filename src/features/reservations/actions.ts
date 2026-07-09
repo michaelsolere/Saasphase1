@@ -15,6 +15,7 @@ import {
   addDaysAsIsoDate,
   readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
+import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
 import { resolveDefaultPuppyPriceCents } from "@/features/reservations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -1325,6 +1326,38 @@ type PreReservationBalanceCreationResult =
         | "error";
     };
 
+type DepartureBalanceCampaignReservation = {
+  id: string;
+  organization_id: string;
+  contact_id: string | null;
+  status: string | null;
+  price_cents: number | null;
+  paid_cents: number | null;
+  refunded_cents: number | null;
+  currency: string | null;
+};
+
+type DepartureBalanceCampaignResult = {
+  reservationsCheckedCount: number;
+  paymentsCreatedCount: number;
+  ignoredNoBalanceCount: number;
+  ignoredActiveRequestCount: number;
+  ignoredMissingPriceCount: number;
+  ignoredIneligibleCount: number;
+  errorCount: number;
+};
+
+type DepartureBalanceCreationResult =
+  | { outcome: "created" }
+  | {
+      outcome:
+        | "no_balance"
+        | "active_request"
+        | "missing_price"
+        | "ineligible"
+        | "error";
+    };
+
 function isReservationCompatibleWithCampaignTarget({
   reservation,
   targetLitterId,
@@ -1687,6 +1720,163 @@ function preReservationBalanceCampaignParams(
     ),
     balance_campaign_ineligible_count: String(result.ignoredIneligibleCount),
     balance_campaign_error_count: String(result.errorCount),
+  });
+}
+
+const ACTIVE_BALANCE_PAYMENT_STATUSES = [
+  "requested",
+  "pending",
+  "partially_paid",
+] as const;
+
+const DEPARTURE_BALANCE_ELIGIBLE_RESERVATION_STATUSES = [
+  "pre_reservation_paid",
+  "active",
+  "confirmed_after_birth",
+  "animal_assigned",
+  "adoption_ready",
+] as const;
+
+async function createDepartureBalanceRequestForReservation({
+  supabase,
+  userId,
+  reservation,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  reservation: DepartureBalanceCampaignReservation;
+}): Promise<DepartureBalanceCreationResult> {
+  if (
+    !reservation.contact_id ||
+    isFinalReservationStatus(reservation.status) ||
+    !DEPARTURE_BALANCE_ELIGIBLE_RESERVATION_STATUSES.includes(
+      reservation.status as (typeof DEPARTURE_BALANCE_ELIGIBLE_RESERVATION_STATUSES)[number],
+    )
+  ) {
+    return { outcome: "ineligible" };
+  }
+
+  const remainingBalanceCents = calculateRemainingBalanceCents({
+    priceCents: reservation.price_cents,
+    paidCents: reservation.paid_cents,
+    refundedCents: reservation.refunded_cents,
+  });
+
+  if (remainingBalanceCents === null) {
+    return { outcome: "missing_price" };
+  }
+
+  if (remainingBalanceCents <= 0) {
+    return { outcome: "no_balance" };
+  }
+
+  const { data: activeBalancePayments, error: activeBalanceError } =
+    await supabase
+      .from("payments")
+      .select("id")
+      .eq("reservation_id", reservation.id)
+      .eq("payment_type", "balance")
+      .in("status", [...ACTIVE_BALANCE_PAYMENT_STATUSES])
+      .is("deleted_at", null)
+      .limit(1);
+
+  if (activeBalanceError || !activeBalancePayments) {
+    return { outcome: "error" };
+  }
+
+  if (activeBalancePayments.length > 0) {
+    return { outcome: "active_request" };
+  }
+
+  const { error: insertError } = await supabase.from("payments").insert({
+    organization_id: reservation.organization_id,
+    contact_id: reservation.contact_id,
+    reservation_id: reservation.id,
+    amount_cents: remainingBalanceCents,
+    currency: reservation.currency ?? "EUR",
+    payment_type: "balance",
+    status: "requested",
+    payment_method: "bank_transfer",
+    requested_at: new Date().toISOString(),
+    notes:
+      "Demande de solde avant départ/adoption créée après confirmation manuelle de campagne. Aucun e-mail réel envoyé par l'application.",
+    created_by: userId,
+    updated_by: userId,
+  });
+
+  if (insertError) {
+    return { outcome: "error" };
+  }
+
+  return { outcome: "created" };
+}
+
+async function runDepartureBalanceCampaignForReservations({
+  supabase,
+  userId,
+  reservations,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  reservations: DepartureBalanceCampaignReservation[];
+}): Promise<DepartureBalanceCampaignResult> {
+  const result: DepartureBalanceCampaignResult = {
+    reservationsCheckedCount: reservations.length,
+    paymentsCreatedCount: 0,
+    ignoredNoBalanceCount: 0,
+    ignoredActiveRequestCount: 0,
+    ignoredMissingPriceCount: 0,
+    ignoredIneligibleCount: 0,
+    errorCount: 0,
+  };
+
+  for (const reservation of reservations) {
+    const creationResult = await createDepartureBalanceRequestForReservation({
+      supabase,
+      userId,
+      reservation,
+    });
+
+    if (creationResult.outcome === "created") {
+      result.paymentsCreatedCount++;
+    } else if (creationResult.outcome === "no_balance") {
+      result.ignoredNoBalanceCount++;
+    } else if (creationResult.outcome === "active_request") {
+      result.ignoredActiveRequestCount++;
+    } else if (creationResult.outcome === "missing_price") {
+      result.ignoredMissingPriceCount++;
+    } else if (creationResult.outcome === "ineligible") {
+      result.ignoredIneligibleCount++;
+    } else {
+      result.errorCount++;
+    }
+  }
+
+  return result;
+}
+
+function departureBalanceCampaignParams(
+  result: DepartureBalanceCampaignResult,
+) {
+  return new URLSearchParams({
+    departure_balance_campaign_status: "success",
+    departure_balance_campaign_count: String(result.reservationsCheckedCount),
+    departure_balance_campaign_payment_count: String(
+      result.paymentsCreatedCount,
+    ),
+    departure_balance_campaign_no_balance_count: String(
+      result.ignoredNoBalanceCount,
+    ),
+    departure_balance_campaign_active_request_count: String(
+      result.ignoredActiveRequestCount,
+    ),
+    departure_balance_campaign_missing_price_count: String(
+      result.ignoredMissingPriceCount,
+    ),
+    departure_balance_campaign_ineligible_count: String(
+      result.ignoredIneligibleCount,
+    ),
+    departure_balance_campaign_error_count: String(result.errorCount),
   });
 }
 
@@ -2066,6 +2256,206 @@ export async function launchGroupPreReservationBalanceCampaign(
   }
 
   const params = preReservationBalanceCampaignParams(campaignResult);
+  redirect(`/litter-groups/${groupId}?${params.toString()}`);
+}
+
+export async function launchLitterDepartureBalanceCampaign(
+  formData: FormData,
+) {
+  const litterId = formData.get("litter_id");
+
+  if (typeof litterId !== "string" || !isUuid(litterId)) {
+    redirect("/litters?departure_balance_campaign_status=error");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter) {
+    redirect(`/litters/${litterId}?departure_balance_campaign_status=error`);
+  }
+
+  const { data: reservations, error: reservationsError } = await supabase
+    .from("reservation_overview")
+    .select(
+      "id, organization_id, contact_id, status, price_cents, paid_cents, refunded_cents, currency",
+    )
+    .eq("organization_id", litter.organization_id)
+    .eq("litter_id", litterId)
+    .order("created_at", { ascending: true });
+
+  if (reservationsError || !reservations) {
+    redirect(`/litters/${litterId}?departure_balance_campaign_status=error`);
+  }
+
+  const validReservations = reservations.flatMap((reservation) => {
+    if (!reservation.id || !reservation.organization_id) {
+      return [];
+    }
+
+    return [{
+      id: reservation.id,
+      organization_id: reservation.organization_id,
+      contact_id: reservation.contact_id,
+      status: reservation.status,
+      price_cents: reservation.price_cents,
+      paid_cents: reservation.paid_cents,
+      refunded_cents: reservation.refunded_cents,
+      currency: reservation.currency,
+    }];
+  });
+
+  if (validReservations.length === 0) {
+    redirect(`/litters/${litterId}?departure_balance_campaign_status=no_eligible`);
+  }
+
+  const campaignResult = await runDepartureBalanceCampaignForReservations({
+    supabase,
+    userId: user.id,
+    reservations: validReservations,
+  });
+
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters");
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  if (
+    campaignResult.paymentsCreatedCount === 0 &&
+    campaignResult.errorCount > 0 &&
+    campaignResult.errorCount === campaignResult.reservationsCheckedCount
+  ) {
+    redirect(`/litters/${litterId}?departure_balance_campaign_status=error`);
+  }
+
+  const params = departureBalanceCampaignParams(campaignResult);
+  redirect(`/litters/${litterId}?${params.toString()}`);
+}
+
+export async function launchGroupDepartureBalanceCampaign(
+  formData: FormData,
+) {
+  const groupId = formData.get("litter_group_id");
+
+  if (typeof groupId !== "string" || !isUuid(groupId)) {
+    redirect("/litter-groups?departure_balance_campaign_status=error");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: group, error: groupError } = await supabase
+    .from("litter_groups")
+    .select("id, organization_id")
+    .eq("id", groupId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (groupError || !group) {
+    redirect(
+      `/litter-groups/${groupId}?departure_balance_campaign_status=error`,
+    );
+  }
+
+  const { data: groupLitters, error: littersError } = await supabase
+    .from("litters")
+    .select("id")
+    .eq("organization_id", group.organization_id)
+    .eq("litter_group_id", groupId)
+    .is("deleted_at", null);
+
+  if (littersError) {
+    redirect(
+      `/litter-groups/${groupId}?departure_balance_campaign_status=error`,
+    );
+  }
+
+  const groupLitterIds = (groupLitters ?? []).map((litter) => litter.id);
+  const reservationsQuery = supabase
+    .from("reservation_overview")
+    .select(
+      "id, organization_id, contact_id, status, price_cents, paid_cents, refunded_cents, currency",
+    )
+    .eq("organization_id", group.organization_id)
+    .order("created_at", { ascending: true });
+
+  const { data: reservations, error: reservationsError } =
+    groupLitterIds.length > 0
+      ? await reservationsQuery.or(
+          `litter_group_id.eq.${groupId},litter_id.in.(${groupLitterIds.join(",")})`,
+        )
+      : await reservationsQuery.eq("litter_group_id", groupId);
+
+  if (reservationsError || !reservations) {
+    redirect(
+      `/litter-groups/${groupId}?departure_balance_campaign_status=error`,
+    );
+  }
+
+  const validReservations = reservations.flatMap((reservation) => {
+    if (!reservation.id || !reservation.organization_id) {
+      return [];
+    }
+
+    return [{
+      id: reservation.id,
+      organization_id: reservation.organization_id,
+      contact_id: reservation.contact_id,
+      status: reservation.status,
+      price_cents: reservation.price_cents,
+      paid_cents: reservation.paid_cents,
+      refunded_cents: reservation.refunded_cents,
+      currency: reservation.currency,
+    }];
+  });
+
+  if (validReservations.length === 0) {
+    redirect(
+      `/litter-groups/${groupId}?departure_balance_campaign_status=no_eligible`,
+    );
+  }
+
+  const campaignResult = await runDepartureBalanceCampaignForReservations({
+    supabase,
+    userId: user.id,
+    reservations: validReservations,
+  });
+
+  revalidatePath(`/litter-groups/${groupId}`);
+  revalidatePath("/litter-groups");
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+
+  if (
+    campaignResult.paymentsCreatedCount === 0 &&
+    campaignResult.errorCount > 0 &&
+    campaignResult.errorCount === campaignResult.reservationsCheckedCount
+  ) {
+    redirect(
+      `/litter-groups/${groupId}?departure_balance_campaign_status=error`,
+    );
+  }
+
+  const params = departureBalanceCampaignParams(campaignResult);
   redirect(`/litter-groups/${groupId}?${params.toString()}`);
 }
 
