@@ -64,6 +64,14 @@ a {
   text-decoration: none;
 }
 
+:where(button:not(:disabled), a[href], summary, [role="button"]:not([aria-disabled="true"]):not([data-disabled])) {
+  cursor: pointer;
+}
+
+:where(button:disabled, [aria-disabled="true"], [data-disabled]) {
+  cursor: not-allowed;
+}
+
 .private-shell {
   display: grid;
   min-height: 100vh;
