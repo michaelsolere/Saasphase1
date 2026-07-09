@@ -632,7 +632,7 @@ export default async function LitterGroupDetailPage({
                 role="alert"
                 className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
               >
-                Aucune candidature qualifiée trouvée pour ce groupe parmi les
+                Aucune candidature validée trouvée pour ce groupe parmi les
                 sélections.
               </div>
             )}
@@ -936,7 +936,7 @@ export default async function LitterGroupDetailPage({
                   Campagne de pré-réservation du groupe
                 </h2>
                 <p className="mt-2 text-sm text-muted">
-                  Sélectionnez les candidatures qualifiées liées à ce groupe ou
+                  Sélectionnez les candidatures validées liées à ce groupe ou
                   à une portée du groupe. Pour chaque candidature éligible, le
                   système prépare ou réutilise une réservation et crée une
                   demande de paiement de pré-réservation si nécessaire.
@@ -958,11 +958,11 @@ export default async function LitterGroupDetailPage({
 
                 {qualifiedAppsError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger les candidatures qualifiées.
+                    Impossible de charger les candidatures validées.
                   </p>
                 ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
                   <p className="mt-5 text-sm text-muted">
-                    Aucune candidature qualifiée liée à ce groupe ou à une
+                    Aucune candidature validée liée à ce groupe ou à une
                     portée du groupe.
                   </p>
                 ) : (
@@ -973,7 +973,7 @@ export default async function LitterGroupDetailPage({
                     <input type="hidden" name="litter_group_id" value={id} />
 
                     <fieldset>
-                      <legend className="sr-only">Candidatures qualifiées</legend>
+                      <legend className="sr-only">Candidatures validées</legend>
                       <div className="divide-y divide-border rounded-xl border bg-background">
                         {qualifiedApplications.map((app) => {
                           const contactName =

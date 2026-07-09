@@ -1678,7 +1678,7 @@ export default async function LitterDetailPage({
                 role="alert"
                 className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
               >
-                Aucune candidature qualifiée trouvée pour cette portée parmi les sélections.
+                Aucune candidature validée trouvée pour cette portée parmi les sélections.
               </div>
             )}
             {campaign_status === "error" && (
@@ -1784,13 +1784,13 @@ export default async function LitterDetailPage({
 
               <CollapsibleSection title="Campagne de pré-réservation">
                 <p className="text-sm font-medium text-foreground">
-                  Action métier : sélectionner des candidatures qualifiées pour
+                  Action métier : sélectionner des candidatures validées pour
                   préparer une campagne de pré-réservation.
                 </p>
                 <p className="mt-2 text-sm text-muted">
                   À la différence de la section « Candidats liés » ci-dessus
                   (vue de suivi), cette section agit : pour chaque candidature
-                  qualifiée sélectionnée, une demande de paiement de
+                  validée sélectionnée, une demande de paiement de
                   pré-réservation avec montant et échéance paramétrés est créée et le
                   dossier passe en attente de paiement.
                 </p>
@@ -1811,18 +1811,18 @@ export default async function LitterDetailPage({
 
                 {qualifiedAppsError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger les candidatures qualifiées.
+                    Impossible de charger les candidatures validées.
                   </p>
                 ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
                   <p className="mt-5 text-sm text-muted">
-                    Aucune candidature qualifiée liée à cette portée.
+                    Aucune candidature validée liée à cette portée.
                   </p>
                 ) : (
                   <form action={launchPreReservationCampaign} className="mt-6">
                     <input type="hidden" name="litter_id" value={id} />
 
                     <fieldset>
-                      <legend className="sr-only">Candidatures qualifiées</legend>
+                      <legend className="sr-only">Candidatures validées</legend>
                       <div className="divide-y divide-border rounded-xl border bg-background">
                         {qualifiedApplications.map((app) => {
                           const contactName =

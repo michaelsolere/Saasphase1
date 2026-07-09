@@ -1980,7 +1980,7 @@ export default async function ReservationDetailPage({
       : null;
   const applicationSummaryValue = reservation?.application_id
     ? applicationDetails?.status === "qualified"
-      ? "Candidature qualifiée"
+      ? "Candidature validée"
       : "Candidature de l’adoptant"
     : "Aucune candidature associée";
   const applicationSummaryDetail = applicationDetailsError

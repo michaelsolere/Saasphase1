@@ -204,7 +204,7 @@ function getCandidateJourneySteps(application: ApplicationDetail): JourneyStep[]
       state: isQualified ? "done" : "unknown",
       detail: isQualified
         ? "Le statut de candidature permet la suite du parcours."
-        : "Validation en attente de qualification éleveur.",
+        : "Validation en attente côté éleveur.",
     },
     {
       label: "Email confirmation de saillie",
@@ -448,7 +448,7 @@ export default async function ApplicationDetailPage({
                 className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
               >
                 Seule une candidature validée peut créer une demande de
-                pré-réservation. Vérifiez d’abord le statut de qualification.
+                pré-réservation. Vérifiez d’abord le statut de validation.
               </p>
             ) : null}
 

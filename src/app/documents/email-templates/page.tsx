@@ -113,7 +113,7 @@ export default async function EmailTemplatesPage({
             Parcours candidat
           </h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
-            Modèles à utiliser pendant les premiers échanges et la qualification
+            Modèles à utiliser pendant les premiers échanges et la validation
             des candidatures.
           </p>
         </div>
