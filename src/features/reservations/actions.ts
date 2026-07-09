@@ -1981,6 +1981,7 @@ export async function syncReservationScopeFromApplication(formData: FormData) {
 
 // ---------------------------------------------------------------------------
 // Rattachement d'une réservation existante depuis une fiche Portée / Groupe
+// ou modification explicite depuis la fiche Réservation
 // ---------------------------------------------------------------------------
 
 function litterReservationAttachUrl(
@@ -1997,9 +1998,16 @@ function groupReservationAttachUrl(
   return `/litter-groups/${groupId}?reservation_attach_status=${outcome}#reservations-liees`;
 }
 
+function reservationScopeAttachUrl(
+  reservationId: string,
+  outcome: "success" | "error" | "animal_attributed",
+) {
+  return `/reservations/${reservationId}?litter_attach_status=${outcome}#scope-and-animal`;
+}
+
 /**
  * Rattache une réservation existante à une portée OU à un groupe de portées,
- * depuis la fiche Portée ou la fiche Groupe.
+ * depuis la fiche Portée, la fiche Groupe, ou la fiche Réservation.
  *
  * - Le contexte (portée ou groupe) est déterminé par le champ présent
  *   (`litter_id` pour une portée, `litter_group_id` pour un groupe).
@@ -2016,6 +2024,7 @@ export async function attachReservationToScope(formData: FormData) {
   const reservationIdRaw = formData.get("reservation_id");
   const litterIdRaw = formData.get("litter_id");
   const groupIdRaw = formData.get("litter_group_id");
+  const returnToReservationIdRaw = formData.get("return_to_reservation_id");
 
   const litterId =
     typeof litterIdRaw === "string" &&
@@ -2029,9 +2038,18 @@ export async function attachReservationToScope(formData: FormData) {
     isUuid(groupIdRaw.trim())
       ? groupIdRaw.trim()
       : null;
+  const returnToReservationId =
+    typeof returnToReservationIdRaw === "string" &&
+    returnToReservationIdRaw.trim() &&
+    isUuid(returnToReservationIdRaw.trim())
+      ? returnToReservationIdRaw.trim()
+      : null;
 
   // URL de retour selon le contexte d'origine.
   const backUrl = (outcome: "success" | "error" | "animal_attributed") => {
+    if (returnToReservationId) {
+      return reservationScopeAttachUrl(returnToReservationId, outcome);
+    }
     if (litterId) {
       return litterReservationAttachUrl(litterId, outcome);
     }
@@ -2055,6 +2073,10 @@ export async function attachReservationToScope(formData: FormData) {
   }
 
   const reservationId = (reservationIdRaw as string).trim();
+
+  if (returnToReservationId && returnToReservationId !== reservationId) {
+    redirect(backUrl("error"));
+  }
 
   const supabase = await createClient();
   const {
