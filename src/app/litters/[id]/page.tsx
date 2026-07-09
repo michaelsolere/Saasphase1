@@ -38,9 +38,7 @@ import {
 import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
 import {
-  AttachApplicationForm,
   LinkedApplicationsSection,
-  type AttachableApplication,
   type LinkedApplication,
 } from "@/features/litters/linked-records";
 import {
@@ -732,17 +730,19 @@ function RelatedReservationsSection({
 }) {
   return (
     <section id={sectionId} className="rounded-2xl border bg-surface p-6 sm:p-8">
-      <h2 className="text-xl font-semibold">Réservations liées</h2>
+      <h2 className="text-xl font-semibold">
+        Dossiers adoptants liés à cette portée
+      </h2>
 
       {banner}
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
-          Impossible de charger les réservations liées.
+          Impossible de charger les dossiers adoptants liés.
         </p>
       ) : !reservations || reservations.length === 0 ? (
         <p className="mt-5 text-sm text-muted">
-          Aucune réservation liée à cette portée.
+          Aucun dossier adoptant lié à cette portée.
         </p>
       ) : (
         <div className="mt-6 divide-y divide-border">
@@ -1202,7 +1202,6 @@ export default async function LitterDetailPage({
     campaign_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
-    attach_status?: string;
     offspring_status?: string;
     offspring_count?: string;
     animal_availability_status?: string;
@@ -1215,7 +1214,6 @@ export default async function LitterDetailPage({
     campaign_count,
     group_assignment_status,
     detail_status,
-    attach_status,
     offspring_status,
     offspring_count,
     animal_availability_status,
@@ -1471,7 +1469,7 @@ export default async function LitterDetailPage({
     qualifiedApplications = [];
   }
 
-  // Candidatures liées à cette portée (tous statuts, lecture seule).
+  // Candidats liés à cette portée (tous statuts, lecture seule).
   const { data: rawLinkedApplications, error: linkedAppsError } = shouldLoadApps
     ? await supabase
         .from("applications")
@@ -1529,87 +1527,6 @@ export default async function LitterDetailPage({
   } else if (rawLinkedApplications) {
     linkedApplications = [];
   }
-
-  // Candidatures rattachables à cette portée (hors archivées, hors déjà liées
-  // à cette portée), pour l'action manuelle de rattachement.
-  const { data: rawAttachableApplications } = shouldLoadApps
-    ? await supabase
-        .from("applications")
-        .select(
-          "id, contact_id, status, created_at, desired_litter_id, desired_litter_group_id",
-        )
-        .eq("organization_id", litter.organization_id)
-        .neq("status", "archived")
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false })
-        .limit(50)
-    : { data: null };
-
-  let attachableApplications: AttachableApplication[] = [];
-
-  if (
-    rawAttachableApplications &&
-    rawAttachableApplications.length > 0 &&
-    litter &&
-    litter.organization_id
-  ) {
-    const candidates = rawAttachableApplications.filter(
-      (app) => app.desired_litter_id !== id,
-    );
-
-    const attachableContactIds = Array.from(
-      new Set(
-        candidates
-          .map((app) => app.contact_id)
-          .filter((cid): cid is string => Boolean(cid)),
-      ),
-    );
-
-    const attachableContactMap = new Map<string, string | null>();
-
-    if (attachableContactIds.length > 0) {
-      const { data: attachableContacts } = await supabase
-        .from("contacts")
-        .select("id, display_name")
-        .eq("organization_id", litter.organization_id)
-        .in("id", attachableContactIds);
-
-      attachableContacts?.forEach((contact) => {
-        attachableContactMap.set(contact.id, contact.display_name);
-      });
-    }
-
-    attachableApplications = candidates.map((app) => ({
-      id: app.id,
-      contact_display_name: app.contact_id
-        ? (attachableContactMap.get(app.contact_id) ?? null)
-        : null,
-      status: app.status,
-      created_at: app.created_at,
-      already_attached_elsewhere: Boolean(
-        app.desired_litter_id || app.desired_litter_group_id,
-      ),
-    }));
-  }
-
-  const attachBanner =
-    attach_status === "success" ? (
-      <p
-        role="status"
-        className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
-      >
-        La candidature a été rattachée à cette portée. Son statut n’a pas été
-        modifié et aucune réservation n’a été créée.
-      </p>
-    ) : attach_status === "error" ? (
-      <p
-        role="alert"
-        className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-      >
-        Impossible de rattacher la candidature. Aucune modification n’a été
-        appliquée.
-      </p>
-    ) : null;
 
   const offspringBanner =
     offspring_status === "success" ? (
@@ -1851,26 +1768,12 @@ export default async function LitterDetailPage({
               />
 
               <LinkedApplicationsSection
-                title="Candidatures liées à cette portée"
-                description="Vue de suivi : candidatures actuellement rattachées à cette portée, quel que soit leur statut. Le rattachement modifie la portée souhaitée de la candidature ; il ne crée pas de réservation."
-                emptyLabel="Aucune candidature ne souhaite cette portée."
+                title="Candidats liés à cette portée"
+                description="Vue de suivi : candidats actuellement liés à cette portée, quel que soit le statut de leur dossier."
+                emptyLabel="Aucun candidat ne souhaite cette portée."
                 applications={linkedApplications}
                 hasError={Boolean(linkedAppsError)}
                 sectionId="candidatures-liees"
-                banner={attachBanner}
-                footer={
-                  <AttachApplicationForm
-                    scope={{
-                      kind: "litter",
-                      litterId: litter.id,
-                      label:
-                        "Rattacher une candidature existante à cette portée",
-                      warning:
-                        "Cette action modifiera la portée souhaitée de la candidature et reprendra le groupe réel de cette portée.",
-                    }}
-                    applications={attachableApplications}
-                  />
-                }
               />
 
               <RelatedReservationsSection
@@ -1885,7 +1788,7 @@ export default async function LitterDetailPage({
                   préparer une campagne de pré-réservation.
                 </p>
                 <p className="mt-2 text-sm text-muted">
-                  À la différence de la section « Candidatures liées » ci-dessus
+                  À la différence de la section « Candidats liés » ci-dessus
                   (vue de suivi), cette section agit : pour chaque candidature
                   qualifiée sélectionnée, une demande de paiement de
                   pré-réservation avec montant et échéance paramétrés est créée et le
