@@ -34,6 +34,7 @@ import {
 } from "@/features/reservations/formatters";
 import { updateLitterGroupDetails } from "@/features/litters/actions";
 import {
+  launchGroupDepartureBalanceCampaign,
   launchGroupPreReservationBalanceCampaign,
   launchGroupPreReservationCampaign,
 } from "@/features/reservations/actions";
@@ -209,6 +210,14 @@ export default async function LitterGroupDetailPage({
     balance_campaign_unpaid_count?: string;
     balance_campaign_ineligible_count?: string;
     balance_campaign_error_count?: string;
+    departure_balance_campaign_status?: string;
+    departure_balance_campaign_count?: string;
+    departure_balance_campaign_payment_count?: string;
+    departure_balance_campaign_no_balance_count?: string;
+    departure_balance_campaign_active_request_count?: string;
+    departure_balance_campaign_missing_price_count?: string;
+    departure_balance_campaign_ineligible_count?: string;
+    departure_balance_campaign_error_count?: string;
   }>;
 }) {
   const { id } = await params;
@@ -227,6 +236,14 @@ export default async function LitterGroupDetailPage({
     balance_campaign_unpaid_count,
     balance_campaign_ineligible_count,
     balance_campaign_error_count,
+    departure_balance_campaign_status,
+    departure_balance_campaign_count,
+    departure_balance_campaign_payment_count,
+    departure_balance_campaign_no_balance_count,
+    departure_balance_campaign_active_request_count,
+    departure_balance_campaign_missing_price_count,
+    departure_balance_campaign_ineligible_count,
+    departure_balance_campaign_error_count,
   } = await searchParams;
   const supabase = await createClient();
   const {
@@ -597,6 +614,29 @@ export default async function LitterGroupDetailPage({
       : null,
   ].filter(Boolean);
 
+  const departureBalanceCampaignIgnoredSummary = [
+    departure_balance_campaign_no_balance_count &&
+    departure_balance_campaign_no_balance_count !== "0"
+      ? `${departure_balance_campaign_no_balance_count} aucun solde restant dû`
+      : null,
+    departure_balance_campaign_active_request_count &&
+    departure_balance_campaign_active_request_count !== "0"
+      ? `${departure_balance_campaign_active_request_count} demande de solde active déjà existante`
+      : null,
+    departure_balance_campaign_missing_price_count &&
+    departure_balance_campaign_missing_price_count !== "0"
+      ? `${departure_balance_campaign_missing_price_count} prix manquant`
+      : null,
+    departure_balance_campaign_ineligible_count &&
+    departure_balance_campaign_ineligible_count !== "0"
+      ? `${departure_balance_campaign_ineligible_count} dossier non éligible`
+      : null,
+    departure_balance_campaign_error_count &&
+    departure_balance_campaign_error_count !== "0"
+      ? `${departure_balance_campaign_error_count} erreur`
+      : null,
+  ].filter(Boolean);
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -714,6 +754,38 @@ export default async function LitterGroupDetailPage({
               >
                 Une erreur est survenue lors de la confirmation de campagne.
                 Aucune donnée n’a été modifiée pour les dossiers en erreur.
+              </div>
+            )}
+            {departure_balance_campaign_status === "success" && (
+              <div
+                role="status"
+                className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                Campagne confirmée — {departure_balance_campaign_count ?? "0"} dossier(s),{" "}
+                {departure_balance_campaign_payment_count ?? "0"} demande(s) de solde
+                créée(s).
+                {departureBalanceCampaignIgnoredSummary.length > 0 ? (
+                  <span className="mt-2 block text-emerald-900">
+                    Ignorés : {departureBalanceCampaignIgnoredSummary.join(" · ")}.
+                  </span>
+                ) : null}
+              </div>
+            )}
+            {departure_balance_campaign_status === "no_eligible" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucun dossier adoptant lié à ce groupe.
+              </div>
+            )}
+            {departure_balance_campaign_status === "error" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors de la confirmation de campagne
+                solde. Aucune donnée n’a été modifiée pour les dossiers en erreur.
               </div>
             )}
 
@@ -1142,6 +1214,48 @@ export default async function LitterGroupDetailPage({
                         Crée uniquement les demandes de complément d’arrhes
                         manquantes. Aucun document, animal ou statut de dossier
                         n’est modifié automatiquement.
+                      </p>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="mt-8 border-t pt-8">
+                  <p className="text-sm font-medium text-foreground">
+                    Solde avant départ
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    À utiliser après l’envoi manuel du message. Cette action
+                    crée les demandes de paiement du solde restant pour les
+                    dossiers éligibles. Aucun e-mail réel n’est envoyé.
+                  </p>
+                  {campaignEmailTemplatesError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les modèles d’e-mails pour cette
+                      campagne.
+                    </p>
+                  ) : (
+                    <CampaignEmailTemplatePicker
+                      templates={campaignEmailTemplates}
+                      preferredTemplateKey="departure_preparation"
+                    />
+                  )}
+
+                  <form
+                    action={launchGroupDepartureBalanceCampaign}
+                    className="mt-6"
+                  >
+                    <input type="hidden" name="litter_group_id" value={id} />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <button
+                        type="submit"
+                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                      >
+                        Campagne solde envoyée
+                      </button>
+                      <p className="text-xs text-muted">
+                        Crée uniquement les demandes de solde restant. Aucun
+                        statut, animal, document ou adoption n’est modifié
+                        automatiquement.
                       </p>
                     </div>
                   </form>
