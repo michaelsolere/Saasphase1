@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 
 function paymentRedirectUrl(
   reservationId: string,
-  outcome: "success" | "error",
+  outcome: "success" | "error" | "technical_pre_reservation",
 ) {
   return `/reservations/${reservationId}?payment_create_status=${outcome}#payments`;
 }
@@ -197,6 +197,10 @@ export async function createReservationPayment(formData: FormData) {
 
   if (readError || !reservation) {
     redirect(paymentRedirectUrl(reservationId, "error"));
+  }
+
+  if (reservation.status === "pre_reservation_requested") {
+    redirect(paymentRedirectUrl(reservationId, "technical_pre_reservation"));
   }
 
   // 3. Récupération et validation du montant

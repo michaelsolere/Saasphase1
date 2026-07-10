@@ -471,6 +471,52 @@ test("Nicolas remains candidate until payment, then enters the adopter journey",
     }),
   ).toBeVisible();
 
+  await page.goto(`/reservations/${nicolasReservationId}`);
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${nicolasApplicationId}`));
+  await expect(
+    page.getByRole("heading", { name: "Parcours adoptant de Nicolas Bernard" }),
+  ).toHaveCount(0);
+
+  const paymentsBeforeDirectPost = expectSupabaseData(
+    await supabase
+      .from("payments")
+      .select("id, status")
+      .eq("reservation_id", nicolasReservationId)
+      .is("deleted_at", null),
+    "read Nicolas payments before guarded direct post",
+  );
+  expect(paymentsBeforeDirectPost).toHaveLength(1);
+  expect(paymentsBeforeDirectPost[0].id).toBe(nicolasPaymentId);
+  expect(paymentsBeforeDirectPost[0].status).toBe("requested");
+
+  await page.goto("/reservations/90000000-0000-4000-8000-000000000005");
+  await page.getByRole("button", { name: "+ Enregistrer un encaissement" }).click();
+  await page.locator('input[name="amount"]').fill("250");
+  await page.locator('select[name="payment_type"]').selectOption("arrhes");
+  await page.locator('select[name="status"]').selectOption("requested");
+  await page.locator('select[name="payment_method"]').selectOption("bank_transfer");
+  await page.locator('input[name="payment_date"]').fill("2026-07-10");
+  const paymentForm = page.locator('form:has(input[name="amount"])');
+  await paymentForm.locator('input[name="reservation_id"]').evaluate((input, value) => {
+    (input as HTMLInputElement).value = value;
+  }, nicolasReservationId);
+  await paymentForm.evaluate((form) => {
+    (form as HTMLFormElement).requestSubmit();
+  });
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${nicolasApplicationId}`));
+
+  const paymentsAfterDirectPost = expectSupabaseData(
+    await supabase
+      .from("payments")
+      .select("id, status")
+      .eq("reservation_id", nicolasReservationId)
+      .is("deleted_at", null),
+    "read Nicolas payments after guarded direct post",
+  );
+  expect(paymentsAfterDirectPost).toHaveLength(1);
+  expect(paymentsAfterDirectPost[0].id).toBe(nicolasPaymentId);
+  expect(paymentsAfterDirectPost[0].status).toBe("requested");
+
   await page.goto(`/payments/${nicolasPaymentId}`);
   await expect(
     page.getByRole("link", { name: "Consulter la fiche du candidat" }),

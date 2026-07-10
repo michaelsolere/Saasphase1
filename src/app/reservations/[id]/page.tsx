@@ -444,6 +444,97 @@ function ErrorMessage() {
   );
 }
 
+function TechnicalPreReservationPage({
+  contactName,
+  payments,
+  query,
+}: {
+  contactName: string | null;
+  payments: RelatedPayment[];
+  query: ReservationSearchParams;
+}) {
+  const requestedPayments = payments.filter(
+    (payment) =>
+      payment.status === "requested" ||
+      payment.status === "pending" ||
+      payment.status === "partially_paid",
+  );
+
+  return (
+    <>
+      {query.payment_create_status === "technical_pre_reservation" ? (
+        <p
+          role="alert"
+          className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+        >
+          Cette demande de pré-réservation possède déjà un paiement demandé.
+          Traitez ce paiement depuis la fiche Paiement.
+        </p>
+      ) : null}
+
+      <section className="rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
+        <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+          Consultation technique
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+          Demande de pré-réservation
+        </h1>
+        <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+          <DetailItem
+            label="Contact"
+            value={contactName ?? "Contact associé"}
+          />
+          <DetailItem
+            label="Paiement demandé"
+            value={
+              requestedPayments.length > 0
+                ? `${requestedPayments.length} paiement${
+                    requestedPayments.length > 1 ? "s" : ""
+                  } en attente`
+                : "Aucun paiement en attente"
+            }
+          />
+        </dl>
+
+        <div className="mt-8 space-y-3">
+          <h2 className="text-lg font-semibold">Paiement demandé</h2>
+          {requestedPayments.length > 0 ? (
+            requestedPayments.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex flex-col justify-between gap-3 rounded-xl border bg-background p-4 sm:flex-row sm:items-center"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {formatPrice(payment.amount_cents, payment.currency)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {getPaymentTypeLabel(payment.payment_type)} ·{" "}
+                    {getPaymentStatusLabel(payment.status)}
+                    {payment.due_date
+                      ? ` · échéance ${formatApplicationDate(payment.due_date)}`
+                      : ""}
+                  </p>
+                </div>
+                <Link
+                  href={`/payments/${payment.id}`}
+                  className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                >
+                  Consulter la fiche Paiement
+                </Link>
+              </div>
+            ))
+          ) : (
+            <p className="rounded-xl border border-dashed bg-background p-4 text-sm text-muted">
+              Aucun paiement demandé n’est lié à cette demande.
+            </p>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
+
 type ReservationStatusMessage = {
   when: boolean;
   role: "status" | "alert";
@@ -516,6 +607,13 @@ function ReservationStatusMessages({
       className: errorStatusMessageClassName,
       message:
         "Le paiement n’a pas pu être enregistré. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.payment_create_status === "technical_pre_reservation",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Cette demande de pré-réservation possède déjà un paiement demandé. Traitez ce paiement depuis la fiche candidat ou la fiche Paiement.",
     },
     {
       when: query.payment_mark_status === "success",
@@ -1416,6 +1514,33 @@ export default async function ReservationDetailPage({
     .maybeSingle();
 
   const reservation = rawReservation as ReservationOverview | null;
+
+  if (
+    !readError &&
+    reservation?.status === "pre_reservation_requested"
+  ) {
+    if (reservation.application_id) {
+      redirect(`/candidatures/${reservation.application_id}`);
+    }
+
+    const { data: rawTechnicalPayments } = await supabase
+      .from("payments")
+      .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, notes, due_date, requested_at")
+      .eq("reservation_id", id)
+      .is("deleted_at", null)
+      .order("created_at", { ascending: false });
+
+    return (
+      <main className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-6 py-10 sm:px-10 lg:px-12">
+        <TechnicalPreReservationPage
+          contactName={reservation.contact_display_name ?? null}
+          payments={(rawTechnicalPayments as RelatedPayment[] | null) ?? []}
+          query={query}
+        />
+      </main>
+    );
+  }
+
   const depositSettings = reservation?.organization_id
     ? await readDepositSettingsForOrganization({
         supabase,

@@ -313,7 +313,7 @@ async function createPreReservationPaymentFixture(
     throw new Error(`create pre-reservation payment: ${paymentError.message}`);
   }
 
-  return { contactId, paymentId, reservationId };
+  return { applicationId, contactId, paymentId, reservationId };
 }
 
 async function createReservationContractDocumentFixture(
@@ -604,11 +604,11 @@ test("confirms a draft reservation manually without side effects", async ({
     .not.toContain("reservation_holder");
 });
 
-test("marks a 250 euro pre-reservation payment as paid from reservation detail", async ({
+test("marks a 250 euro pre-reservation payment as paid from payment detail", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { paymentId, reservationId } =
+  const { applicationId, paymentId, reservationId } =
     await createPreReservationPaymentFixture(supabase);
 
   await page.goto("/login");
@@ -618,15 +618,17 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
+  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+
+  await page.goto(`/payments/${paymentId}`);
   await expect(
-    page.getByRole("heading", { name: "Paiement de pré-réservation demandé" }),
+    page.getByRole("heading", { name: "Marquer comme payé" }),
   ).toBeVisible();
-  await openDialog(
-    page.getByRole("button", { name: "Marquer payé" }),
-    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
-  );
-  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await page.locator('input[name="paid_date"]').fill("2026-07-10");
+  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
+  await page.goto(`/reservations/${reservationId}`);
   await expect(
     page.getByRole("heading", {
       name: "Pré-réservation réglée",
@@ -656,10 +658,11 @@ test("marks a direct 500 euro arrhes payment as pre-reservation holder", async (
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationPaymentFixture(supabase, {
-    amountCents: 50000,
-    paymentType: "arrhes",
-  });
+  const { applicationId, paymentId, reservationId } =
+    await createPreReservationPaymentFixture(supabase, {
+      amountCents: 50000,
+      paymentType: "arrhes",
+    });
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("owner@saasphase1.invalid");
@@ -668,12 +671,17 @@ test("marks a direct 500 euro arrhes payment as pre-reservation holder", async (
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await openDialog(
-    page.getByRole("button", { name: "Marquer payé" }),
-    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
-  );
-  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
+  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+
+  await page.goto(`/payments/${paymentId}`);
+  await expect(
+    page.getByRole("heading", { name: "Marquer comme payé" }),
+  ).toBeVisible();
+  await page.locator('input[name="paid_date"]').fill("2026-07-10");
+  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
+  await page.goto(`/reservations/${reservationId}`);
   await expect(page.getByText("Arrhes complètes", { exact: true })).toBeVisible();
 
   const updatedReservation = await readReservation(supabase, reservationId);
@@ -696,10 +704,11 @@ test("does not display complete deposit for a paid non-arrhes 500 euro payment",
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationPaymentFixture(supabase, {
-    amountCents: 50000,
-    paymentType: "balance",
-  });
+  const { applicationId, paymentId, reservationId } =
+    await createPreReservationPaymentFixture(supabase, {
+      amountCents: 50000,
+      paymentType: "balance",
+    });
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("owner@saasphase1.invalid");
@@ -708,11 +717,15 @@ test("does not display complete deposit for a paid non-arrhes 500 euro payment",
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await openDialog(
-    page.getByRole("button", { name: "Marquer payé" }),
-    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
-  );
-  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
+  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+
+  await page.goto(`/payments/${paymentId}`);
+  await expect(
+    page.getByRole("heading", { name: "Marquer comme payé" }),
+  ).toBeVisible();
+  await page.locator('input[name="paid_date"]').fill("2026-07-10");
+  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
   await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
 });
@@ -721,13 +734,11 @@ test("does not mark a document financial status as complete deposit for a paid n
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { contactId, reservationId } = await createPreReservationPaymentFixture(
-    supabase,
-    {
+  const { applicationId, contactId, paymentId, reservationId } =
+    await createPreReservationPaymentFixture(supabase, {
       amountCents: 50000,
       paymentType: "balance",
-    },
-  );
+    });
 
   await page.goto("/login");
   await page.getByLabel("Email").fill("owner@saasphase1.invalid");
@@ -736,11 +747,15 @@ test("does not mark a document financial status as complete deposit for a paid n
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await openDialog(
-    page.getByRole("button", { name: "Marquer payé" }),
-    page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
-  );
-  await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
+  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+
+  await page.goto(`/payments/${paymentId}`);
+  await expect(
+    page.getByRole("heading", { name: "Marquer comme payé" }),
+  ).toBeVisible();
+  await page.locator('input[name="paid_date"]').fill("2026-07-10");
+  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
   await expect(page).toHaveURL(/payment_mark_status=success/);
 
   const documentId = await createReservationContractDocumentFixture(
