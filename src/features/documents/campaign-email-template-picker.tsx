@@ -16,24 +16,35 @@ const categoryLabels = {
 export function CampaignEmailTemplatePicker({
   templates,
   preferredTemplateKey,
+  exactTemplateKey,
+  instanceId = "campaign-email-template",
 }: {
   templates: CampaignEmailTemplateOption[];
   preferredTemplateKey?: string;
+  exactTemplateKey?: string;
+  instanceId?: string;
 }) {
+  const visibleTemplates = useMemo(
+    () =>
+      exactTemplateKey
+        ? templates.filter((template) => template.templateKey === exactTemplateKey)
+        : templates,
+    [exactTemplateKey, templates],
+  );
   const [selectedTemplateId, setSelectedTemplateId] = useState(
-    templates.find((template) => template.templateKey === preferredTemplateKey)
+    visibleTemplates.find((template) => template.templateKey === preferredTemplateKey)
       ?.id ??
-      templates[0]?.id ??
+      visibleTemplates[0]?.id ??
       "",
   );
   const selectedTemplate = useMemo(
     () =>
-      templates.find((template) => template.id === selectedTemplateId) ??
-      templates[0],
-    [selectedTemplateId, templates],
+      visibleTemplates.find((template) => template.id === selectedTemplateId) ??
+      visibleTemplates[0],
+    [selectedTemplateId, visibleTemplates],
   );
 
-  if (templates.length === 0) {
+  if (visibleTemplates.length === 0) {
     return (
       <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
         Aucun modèle d’e-mail disponible. Créez ou modifiez vos modèles dans
@@ -53,24 +64,40 @@ export function CampaignEmailTemplatePicker({
     <div className="mt-5 rounded-xl border bg-background p-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_auto] lg:items-end">
         <div>
-          <label
-            htmlFor="campaign-email-template"
-            className="text-sm font-semibold text-foreground"
-          >
-            Modèle d’e-mail
-          </label>
-          <select
-            id="campaign-email-template"
-            value={selectedTemplateId}
-            onChange={(event) => setSelectedTemplateId(event.target.value)}
-            className="mt-2 min-h-10 w-full rounded-md border bg-surface px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
-          >
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.title} - {categoryLabels[template.category]}
-              </option>
-            ))}
-          </select>
+          {exactTemplateKey ? (
+            <>
+              <p className="text-sm font-semibold text-foreground">
+                Modèle d’e-mail
+              </p>
+              <p className="mt-2 rounded-md border bg-surface px-3 py-2 text-sm text-foreground">
+                {selectedTemplate?.title ?? exactTemplateKey} -{" "}
+                {selectedTemplate
+                  ? categoryLabels[selectedTemplate.category]
+                  : "Parcours adoptant"}
+              </p>
+            </>
+          ) : (
+            <>
+              <label
+                htmlFor={instanceId}
+                className="text-sm font-semibold text-foreground"
+              >
+                Modèle d’e-mail
+              </label>
+              <select
+                id={instanceId}
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                className="mt-2 min-h-10 w-full rounded-md border bg-surface px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
+              >
+                {visibleTemplates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.title} - {categoryLabels[template.category]}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
         <EmailTemplateCopyButton text={copyText} />
       </div>

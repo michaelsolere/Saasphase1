@@ -1126,6 +1126,8 @@ export default async function LitterGroupDetailPage({
                   <CampaignEmailTemplatePicker
                     templates={campaignEmailTemplates}
                     preferredTemplateKey="pre_reservation"
+                    exactTemplateKey="pre_reservation"
+                    instanceId="group-pre-reservation-template"
                   />
                 )}
 
@@ -1229,6 +1231,8 @@ export default async function LitterGroupDetailPage({
                     <CampaignEmailTemplatePicker
                       templates={campaignEmailTemplates}
                       preferredTemplateKey="birth_documents_deposit"
+                      exactTemplateKey="birth_documents_deposit"
+                      instanceId="group-birth-documents-deposit-template"
                     />
                   )}
 
@@ -1255,6 +1259,30 @@ export default async function LitterGroupDetailPage({
 
                 <div className="mt-8 border-t pt-8">
                   <p className="text-sm font-medium text-foreground">
+                    Créneaux de choix + livret d’adoption
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    Modèle à personnaliser et envoyer depuis chaque fiche
+                    portée, lorsque les créneaux individuels sont renseignés.
+                    Aucun e-mail réel n’est envoyé par l’application.
+                  </p>
+                  {campaignEmailTemplatesError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les modèles d’e-mails pour cette
+                      campagne.
+                    </p>
+                  ) : (
+                    <CampaignEmailTemplatePicker
+                      templates={campaignEmailTemplates}
+                      preferredTemplateKey="choice_appointment_adoption_booklet"
+                      exactTemplateKey="choice_appointment_adoption_booklet"
+                      instanceId="group-choice-appointments-booklet-template"
+                    />
+                  )}
+                </div>
+
+                <div className="mt-8 border-t pt-8">
+                  <p className="text-sm font-medium text-foreground">
                     Solde avant départ
                   </p>
                   <p className="mt-2 text-sm text-muted">
@@ -1271,6 +1299,8 @@ export default async function LitterGroupDetailPage({
                     <CampaignEmailTemplatePicker
                       templates={campaignEmailTemplates}
                       preferredTemplateKey="departure_preparation"
+                      exactTemplateKey="departure_preparation"
+                      instanceId="group-departure-preparation-template"
                     />
                   )}
 

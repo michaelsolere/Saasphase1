@@ -146,6 +146,9 @@ type RelatedReservationEvent = RelatedPostAdoptionEvent & {
 
 type AppointmentKind = "puppy_choice" | "adoption";
 
+const CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE =
+  "Créneaux proposés et livret d’adoption envoyés";
+
 type ReservationAppointmentSummary = {
   kind: AppointmentKind;
   eventId: string | null;
@@ -1170,6 +1173,7 @@ function getAdopterJourneySteps({
   reservationEventsError,
   choiceAppointment,
   adoptionAppointment,
+  hasChoiceAppointmentsCampaignTrace,
   adoptionCompletedAt,
 }: {
   preReservationDepositState: PreReservationDepositState;
@@ -1184,6 +1188,7 @@ function getAdopterJourneySteps({
   reservationEventsError: unknown;
   choiceAppointment: ReservationAppointmentSummary;
   adoptionAppointment: ReservationAppointmentSummary;
+  hasChoiceAppointmentsCampaignTrace: boolean;
   adoptionCompletedAt: string | null | undefined;
 }): JourneyStep[] {
   const visibleDocuments = reservationDocuments ?? [];
@@ -1214,7 +1219,6 @@ function getAdopterJourneySteps({
   const validatedAppointmentCount = appointments.filter(
     (appointment) => appointment.status === "done",
   ).length;
-  const hasBothAppointmentProposals = proposedAppointmentCount === 2;
   const hasBothValidatedAppointments = validatedAppointmentCount === 2;
   const hasAnyAppointmentProposal = proposedAppointmentCount > 0;
   const hasAnyValidatedAppointment = validatedAppointmentCount > 0;
@@ -1288,18 +1292,18 @@ function getAdopterJourneySteps({
       label: "Créneaux RV proposés",
       state: reservationEventsError
         ? "needs_check"
-        : hasBothAppointmentProposals
+        : hasChoiceAppointmentsCampaignTrace
           ? "done"
-          : hasAnyAppointmentProposal
-            ? "in_progress"
+        : hasAnyAppointmentProposal
+          ? "in_progress"
           : "unknown",
       detail: reservationEventsError
         ? "Événements liés indisponibles."
-        : hasBothAppointmentProposals
-          ? "Les deux créneaux sont renseignés."
-          : hasAnyAppointmentProposal
-            ? "Un seul des deux créneaux est renseigné."
-            : "Aucun créneau RV dédié n'est disponible.",
+        : hasChoiceAppointmentsCampaignTrace
+          ? "Les créneaux proposés et le livret d’adoption ont été envoyés."
+        : hasAnyAppointmentProposal
+          ? "Les créneaux sont renseignés mais leur envoi n’est pas confirmé."
+          : "Aucun créneau de rendez-vous renseigné.",
     },
     {
       label: "Créneaux RV confirmés",
@@ -2362,6 +2366,13 @@ export default async function ReservationDetailPage({
     events: reservationEvents,
     fallbackPlannedAt: reservation?.adoption_planned_at,
   });
+  const hasChoiceAppointmentsCampaignTrace = Boolean(
+    reservationEvents?.some(
+      (event) =>
+        event.title === CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE &&
+        event.status === "done",
+    ),
+  );
   const showAppointmentChronologyWarning = hasAppointmentChronologyWarning({
     choiceAppointment,
     adoptionAppointment,
@@ -2380,6 +2391,7 @@ export default async function ReservationDetailPage({
         reservationEventsError,
         choiceAppointment,
         adoptionAppointment,
+        hasChoiceAppointmentsCampaignTrace,
         adoptionCompletedAt: reservation.adoption_completed_at,
       })
     : [];

@@ -60,6 +60,11 @@ import {
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import {
+  ChoiceAppointmentCampaignList,
+  type ChoiceAppointmentCampaignReservation,
+} from "@/features/reservations/choice-appointment-campaign-list";
+import {
+  confirmChoiceAppointmentsAdoptionBookletCampaign,
   launchLitterDepartureBalanceCampaign,
   launchLitterPreReservationBalanceCampaign,
   launchPreReservationCampaign,
@@ -120,6 +125,10 @@ type RelatedReservation = Pick<
   | "reserved_sex_preference"
   | "created_at"
 >;
+type LitterCampaignReservation = Pick<
+  Database["public"]["Tables"]["reservations"]["Row"],
+  "id" | "contact_id" | "status" | "animal_id" | "created_at"
+>;
 type RelatedReservationPayment = Pick<
   Database["public"]["Tables"]["payments"]["Row"],
   "reservation_id" | "amount_cents" | "payment_type" | "status"
@@ -164,6 +173,26 @@ type RelatedEvent = Pick<
   | "actual_at"
   | "created_at"
 >;
+type ChoiceCampaignDocument = Pick<
+  Database["public"]["Tables"]["documents"]["Row"],
+  "reservation_id" | "document_type" | "status" | "received_at" | "signed_at"
+>;
+type ChoiceCampaignAppointment = Pick<
+  Database["public"]["Tables"]["events"]["Row"],
+  "reservation_id" | "event_type" | "planned_at"
+>;
+type ChoiceCampaignTrace = Pick<
+  Database["public"]["Tables"]["events"]["Row"],
+  "reservation_id"
+>;
+type ChoiceCampaignContact = Pick<
+  Database["public"]["Tables"]["contacts"]["Row"],
+  "id" | "first_name" | "display_name"
+>;
+type ChoiceCampaignAnimal = Pick<
+  Database["public"]["Tables"]["animals"]["Row"],
+  "id" | "display_name" | "temporary_name" | "call_name" | "official_name"
+>;
 type LitterSummary = Pick<
   LitterOverview,
   | "id"
@@ -186,6 +215,45 @@ const DEPOSIT_PAYMENT_TYPES = new Set([
   "arrhes",
   "pre_reservation_deposit_refundable",
 ]);
+
+const CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY =
+  "choice_appointment_adoption_booklet";
+const CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE =
+  "Créneaux proposés et livret d’adoption envoyés";
+const CHOICE_APPOINTMENTS_ELIGIBLE_STATUSES = new Set([
+  "pre_reservation_paid",
+  "active",
+  "confirmed_after_birth",
+  "animal_assigned",
+  "adoption_ready",
+]);
+
+function getChoiceCampaignAnimalName(
+  animal: ChoiceCampaignAnimal | undefined,
+) {
+  if (!animal) {
+    return null;
+  }
+
+  return (
+    animal.display_name ||
+    animal.call_name ||
+    animal.temporary_name ||
+    animal.official_name ||
+    null
+  );
+}
+
+function isChoiceCampaignDocumentReceivedOrSigned(
+  document: ChoiceCampaignDocument,
+) {
+  return (
+    document.status === "signed" ||
+    document.status === "received" ||
+    Boolean(document.signed_at) ||
+    Boolean(document.received_at)
+  );
+}
 
 function getReservationFinancialBadge({
   reservation,
@@ -1316,6 +1384,18 @@ export default async function LitterDetailPage({
     departure_balance_campaign_missing_price_count?: string;
     departure_balance_campaign_ineligible_count?: string;
     departure_balance_campaign_error_count?: string;
+    choice_appointments_campaign_status?: string;
+    choice_appointments_campaign_selected_count?: string;
+    choice_appointments_campaign_confirmed_count?: string;
+    choice_appointments_campaign_already_count?: string;
+    choice_appointments_campaign_not_found_count?: string;
+    choice_appointments_campaign_not_in_journey_count?: string;
+    choice_appointments_campaign_final_status_count?: string;
+    choice_appointments_campaign_missing_documents_count?: string;
+    choice_appointments_campaign_deposit_incomplete_count?: string;
+    choice_appointments_campaign_missing_choice_count?: string;
+    choice_appointments_campaign_missing_adoption_count?: string;
+    choice_appointments_campaign_error_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
     offspring_status?: string;
@@ -1346,6 +1426,18 @@ export default async function LitterDetailPage({
     departure_balance_campaign_missing_price_count,
     departure_balance_campaign_ineligible_count,
     departure_balance_campaign_error_count,
+    choice_appointments_campaign_status,
+    choice_appointments_campaign_selected_count,
+    choice_appointments_campaign_confirmed_count,
+    choice_appointments_campaign_already_count,
+    choice_appointments_campaign_not_found_count,
+    choice_appointments_campaign_not_in_journey_count,
+    choice_appointments_campaign_final_status_count,
+    choice_appointments_campaign_missing_documents_count,
+    choice_appointments_campaign_deposit_incomplete_count,
+    choice_appointments_campaign_missing_choice_count,
+    choice_appointments_campaign_missing_adoption_count,
+    choice_appointments_campaign_error_count,
     group_assignment_status,
     detail_status,
     offspring_status,
@@ -1569,6 +1661,195 @@ export default async function LitterDetailPage({
       }];
     }),
   );
+  const choiceAppointmentCampaignTemplate =
+    campaignEmailTemplates.find(
+      (template) =>
+        template.templateKey === CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY,
+    ) ?? null;
+
+  const { data: rawChoiceCampaignReservations } =
+    litter && litter.organization_id
+      ? await supabase
+          .from("reservations")
+          .select("id, contact_id, status, animal_id, created_at")
+          .eq("organization_id", litter.organization_id)
+          .eq("litter_id", id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: true })
+      : { data: null };
+
+  const choiceCampaignReservations =
+    (rawChoiceCampaignReservations ?? []) as LitterCampaignReservation[];
+  const choiceCampaignReservationIds = choiceCampaignReservations.map(
+    (reservation) => reservation.id,
+  );
+  const choiceCampaignContactIds = Array.from(
+    new Set(
+      choiceCampaignReservations
+        .map((reservation) => reservation.contact_id)
+        .filter((contactId): contactId is string => Boolean(contactId)),
+    ),
+  );
+  const choiceCampaignAnimalIds = Array.from(
+    new Set(
+      choiceCampaignReservations
+        .map((reservation) => reservation.animal_id)
+        .filter((animalId): animalId is string => Boolean(animalId)),
+    ),
+  );
+
+  const { data: rawChoiceCampaignDocuments } =
+    choiceCampaignReservationIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("documents")
+          .select("reservation_id, document_type, status, received_at, signed_at")
+          .eq("organization_id", litter.organization_id)
+          .in("reservation_id", choiceCampaignReservationIds)
+          .in("document_type", ["commitment_certificate", "reservation_contract"])
+          .is("deleted_at", null)
+      : { data: null };
+
+  const { data: rawChoiceCampaignAppointments } =
+    choiceCampaignReservationIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("events")
+          .select("reservation_id, event_type, planned_at")
+          .eq("organization_id", litter.organization_id)
+          .in("reservation_id", choiceCampaignReservationIds)
+          .in("event_type", ["puppy_choice", "adoption"])
+          .is("deleted_at", null)
+      : { data: null };
+
+  const { data: rawChoiceCampaignTraces } =
+    choiceCampaignReservationIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("events")
+          .select("reservation_id")
+          .eq("organization_id", litter.organization_id)
+          .in("reservation_id", choiceCampaignReservationIds)
+          .eq("title", CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE)
+          .eq("status", "done")
+          .eq("is_task", false)
+          .is("deleted_at", null)
+      : { data: null };
+
+  const { data: rawChoiceCampaignContacts } =
+    choiceCampaignContactIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("contacts")
+          .select("id, first_name, display_name")
+          .eq("organization_id", litter.organization_id)
+          .in("id", choiceCampaignContactIds)
+          .is("deleted_at", null)
+      : { data: null };
+
+  const { data: rawChoiceCampaignAnimals } =
+    choiceCampaignAnimalIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("animals")
+          .select("id, display_name, temporary_name, call_name, official_name")
+          .eq("organization_id", litter.organization_id)
+          .in("id", choiceCampaignAnimalIds)
+          .is("deleted_at", null)
+      : { data: null };
+
+  const choiceCampaignPaymentsByReservationId = paymentsByReservationId;
+  const choiceCampaignDocuments =
+    (rawChoiceCampaignDocuments ?? []) as ChoiceCampaignDocument[];
+  const choiceCampaignAppointments =
+    (rawChoiceCampaignAppointments ?? []) as ChoiceCampaignAppointment[];
+  const choiceCampaignTraceReservationIds = new Set(
+    ((rawChoiceCampaignTraces ?? []) as ChoiceCampaignTrace[])
+      .map((trace) => trace.reservation_id)
+      .filter((reservationId): reservationId is string => Boolean(reservationId)),
+  );
+  const choiceCampaignContactsById = new Map(
+    ((rawChoiceCampaignContacts ?? []) as ChoiceCampaignContact[]).map(
+      (contact) => [contact.id, contact],
+    ),
+  );
+  const choiceCampaignAnimalsById = new Map(
+    ((rawChoiceCampaignAnimals ?? []) as ChoiceCampaignAnimal[]).map(
+      (animal) => [animal.id, animal],
+    ),
+  );
+  const choiceAppointmentCampaignReservations: ChoiceAppointmentCampaignReservation[] =
+    choiceCampaignReservations.flatMap((reservation) => {
+      if (
+        !reservation.contact_id ||
+        !reservation.status ||
+        !CHOICE_APPOINTMENTS_ELIGIBLE_STATUSES.has(reservation.status) ||
+        FINAL_RESERVATION_STATUSES.has(reservation.status) ||
+        choiceCampaignTraceReservationIds.has(reservation.id)
+      ) {
+        return [];
+      }
+
+      const documents = choiceCampaignDocuments.filter(
+        (document) => document.reservation_id === reservation.id,
+      );
+      const commitmentDocument = documents.find(
+        (document) => document.document_type === "commitment_certificate",
+      );
+      const reservationContract = documents.find(
+        (document) => document.document_type === "reservation_contract",
+      );
+
+      if (
+        !commitmentDocument ||
+        !reservationContract ||
+        !isChoiceCampaignDocumentReceivedOrSigned(commitmentDocument) ||
+        !isChoiceCampaignDocumentReceivedOrSigned(reservationContract)
+      ) {
+        return [];
+      }
+
+      const paidDepositCents = (
+        choiceCampaignPaymentsByReservationId.get(reservation.id) ?? []
+      )
+        .filter((payment) => payment.status === "paid")
+        .reduce((total, payment) => total + payment.amount_cents, 0);
+
+      if (paidDepositCents < depositSettings.completeDepositCents) {
+        return [];
+      }
+
+      const choiceAppointment = choiceCampaignAppointments.find(
+        (event) =>
+          event.reservation_id === reservation.id &&
+          event.event_type === "puppy_choice" &&
+          event.planned_at,
+      );
+      const adoptionAppointment = choiceCampaignAppointments.find(
+        (event) =>
+          event.reservation_id === reservation.id &&
+          event.event_type === "adoption" &&
+          event.planned_at,
+      );
+
+      if (!choiceAppointment?.planned_at || !adoptionAppointment?.planned_at) {
+        return [];
+      }
+
+      const contact = choiceCampaignContactsById.get(reservation.contact_id);
+      const contactName = contact?.display_name ?? "Contact inconnu";
+      const contactFirstName =
+        contact?.first_name?.trim() || contactName.split(/\s+/)[0] || contactName;
+
+      return [{
+        id: reservation.id,
+        contactName,
+        contactFirstName,
+        litterName: getLitterDisplayName(litter?.name ?? null, id),
+        choiceAppointmentAt: choiceAppointment.planned_at,
+        adoptionAppointmentAt: adoptionAppointment.planned_at,
+        animalName: reservation.animal_id
+          ? getChoiceCampaignAnimalName(
+              choiceCampaignAnimalsById.get(reservation.animal_id),
+            )
+          : null,
+      }];
+    });
 
   // Candidatures qualifiées liées à cette portée (pour la campagne de pré-réservation)
   const shouldLoadApps = litter && litter.id && litter.organization_id;
@@ -1850,6 +2131,40 @@ export default async function LitterDetailPage({
       ? `${departure_balance_campaign_error_count} erreur`
       : null,
   ].filter(Boolean);
+  const choiceAppointmentsCampaignIgnoredSummary = [
+    choice_appointments_campaign_not_found_count &&
+    choice_appointments_campaign_not_found_count !== "0"
+      ? `${choice_appointments_campaign_not_found_count} introuvable`
+      : null,
+    choice_appointments_campaign_not_in_journey_count &&
+    choice_appointments_campaign_not_in_journey_count !== "0"
+      ? `${choice_appointments_campaign_not_in_journey_count} hors parcours adoptant`
+      : null,
+    choice_appointments_campaign_final_status_count &&
+    choice_appointments_campaign_final_status_count !== "0"
+      ? `${choice_appointments_campaign_final_status_count} statut final`
+      : null,
+    choice_appointments_campaign_missing_documents_count &&
+    choice_appointments_campaign_missing_documents_count !== "0"
+      ? `${choice_appointments_campaign_missing_documents_count} documents non reçus/signés`
+      : null,
+    choice_appointments_campaign_deposit_incomplete_count &&
+    choice_appointments_campaign_deposit_incomplete_count !== "0"
+      ? `${choice_appointments_campaign_deposit_incomplete_count} arrhes incomplètes`
+      : null,
+    choice_appointments_campaign_missing_choice_count &&
+    choice_appointments_campaign_missing_choice_count !== "0"
+      ? `${choice_appointments_campaign_missing_choice_count} créneau de choix manquant`
+      : null,
+    choice_appointments_campaign_missing_adoption_count &&
+    choice_appointments_campaign_missing_adoption_count !== "0"
+      ? `${choice_appointments_campaign_missing_adoption_count} créneau de départ manquant`
+      : null,
+    choice_appointments_campaign_error_count &&
+    choice_appointments_campaign_error_count !== "0"
+      ? `${choice_appointments_campaign_error_count} erreur`
+      : null,
+  ].filter(Boolean);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -1991,6 +2306,39 @@ export default async function LitterDetailPage({
                 solde. Aucune donnée n’a été modifiée pour les dossiers en erreur.
               </div>
             )}
+            {choice_appointments_campaign_status === "success" && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                Campagne confirmée — {choice_appointments_campaign_confirmed_count ?? "0"} envoi(s)
+                confirmé(s), {choice_appointments_campaign_already_count ?? "0"} déjà
+                confirmé(s), {choice_appointments_campaign_selected_count ?? "0"} dossier(s)
+                sélectionné(s). Aucun e-mail réel n’a été envoyé par l’application.
+                {choiceAppointmentsCampaignIgnoredSummary.length > 0 ? (
+                  <span className="mt-2 block text-emerald-900">
+                    Ignorés : {choiceAppointmentsCampaignIgnoredSummary.join(" · ")}.
+                  </span>
+                ) : null}
+              </div>
+            )}
+            {choice_appointments_campaign_status === "no_selection" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucun dossier sélectionné pour la campagne créneaux + livret.
+              </div>
+            )}
+            {choice_appointments_campaign_status === "error" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors de la confirmation des créneaux
+                proposés. Aucun e-mail réel n’a été envoyé.
+              </div>
+            )}
 
             <div className="space-y-6 py-8">
               <LitterTopSummary
@@ -2108,6 +2456,8 @@ export default async function LitterDetailPage({
                   <CampaignEmailTemplatePicker
                     templates={campaignEmailTemplates}
                     preferredTemplateKey="pre_reservation"
+                    exactTemplateKey="pre_reservation"
+                    instanceId="litter-pre-reservation-template"
                   />
                 )}
 
@@ -2204,6 +2554,8 @@ export default async function LitterDetailPage({
                     <CampaignEmailTemplatePicker
                       templates={campaignEmailTemplates}
                       preferredTemplateKey="birth_documents_deposit"
+                      exactTemplateKey="birth_documents_deposit"
+                      instanceId="litter-birth-documents-deposit-template"
                     />
                   )}
 
@@ -2230,6 +2582,60 @@ export default async function LitterDetailPage({
 
                 <div className="mt-8 border-t pt-8">
                   <p className="text-sm font-medium text-foreground">
+                    Créneaux de choix + livret d’adoption
+                  </p>
+                  <p className="mt-2 text-sm text-muted">
+                    Prévisualisez chaque e-mail personnalisé, envoyez-le
+                    manuellement avec le livret, puis confirmez la trace
+                    d’envoi des créneaux proposés.
+                  </p>
+                  {campaignEmailTemplatesError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger les modèles d’e-mails pour cette
+                      campagne.
+                    </p>
+                  ) : (
+                    <CampaignEmailTemplatePicker
+                      templates={campaignEmailTemplates}
+                      preferredTemplateKey="choice_appointment_adoption_booklet"
+                      exactTemplateKey="choice_appointment_adoption_booklet"
+                      instanceId="litter-choice-appointments-booklet-template"
+                    />
+                  )}
+
+                  <form
+                    action={confirmChoiceAppointmentsAdoptionBookletCampaign}
+                    className="mt-6"
+                  >
+                    <input type="hidden" name="litter_id" value={id} />
+                    <ChoiceAppointmentCampaignList
+                      reservations={choiceAppointmentCampaignReservations}
+                      template={choiceAppointmentCampaignTemplate}
+                    />
+                    <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <button
+                        type="submit"
+                        disabled={
+                          campaignEmailTemplatesError !== null ||
+                          choiceAppointmentCampaignReservations.length === 0 ||
+                          !choiceAppointmentCampaignTemplate
+                        }
+                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+                      >
+                        Confirmer l’envoi des créneaux proposés et du livret
+                      </button>
+                      <p className="text-xs text-muted">
+                        Crée uniquement une trace d’événement par réservation
+                        toujours éligible. Aucun paiement, statut de réservation
+                        ou rendez-vous n’est modifié. Aucun e-mail réel n’est
+                        envoyé.
+                      </p>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="mt-8 border-t pt-8">
+                  <p className="text-sm font-medium text-foreground">
                     Solde avant départ
                   </p>
                   <p className="mt-2 text-sm text-muted">
@@ -2246,6 +2652,8 @@ export default async function LitterDetailPage({
                     <CampaignEmailTemplatePicker
                       templates={campaignEmailTemplates}
                       preferredTemplateKey="departure_preparation"
+                      exactTemplateKey="departure_preparation"
+                      instanceId="litter-departure-preparation-template"
                     />
                   )}
 

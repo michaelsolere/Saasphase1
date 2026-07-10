@@ -1,5 +1,7 @@
 "use server";
 
+import { createHash } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -1351,6 +1353,57 @@ type DepartureBalanceCreationResult =
         | "error";
     };
 
+type ChoiceAppointmentsCampaignReservation = {
+  id: string;
+  organization_id: string;
+  contact_id: string | null;
+  litter_id: string | null;
+  status: string | null;
+};
+
+type ChoiceAppointmentsCampaignResult = {
+  selectedCount: number;
+  confirmedCount: number;
+  alreadyConfirmedCount: number;
+  ignoredNotFoundCount: number;
+  ignoredNotInJourneyCount: number;
+  ignoredFinalStatusCount: number;
+  ignoredMissingDocumentsCount: number;
+  ignoredDepositIncompleteCount: number;
+  ignoredMissingChoiceAppointmentCount: number;
+  ignoredMissingAdoptionAppointmentCount: number;
+  errorCount: number;
+};
+
+type ChoiceAppointmentsTraceResult =
+  | { outcome: "created" }
+  | {
+      outcome:
+        | "already_confirmed"
+        | "not_in_journey"
+        | "final_status"
+        | "missing_documents"
+        | "deposit_incomplete"
+        | "missing_choice_appointment"
+        | "missing_adoption_appointment"
+        | "not_found"
+        | "error";
+    };
+
+const CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY =
+  "choice_appointment_adoption_booklet";
+
+const CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE =
+  "Créneaux proposés et livret d’adoption envoyés";
+
+const CHOICE_APPOINTMENTS_CAMPAIGN_ELIGIBLE_STATUSES = new Set([
+  "pre_reservation_paid",
+  "active",
+  "confirmed_after_birth",
+  "animal_assigned",
+  "adoption_ready",
+]);
+
 async function runPreReservationCampaignForApplications({
   supabase,
   applications,
@@ -1752,6 +1805,278 @@ function departureBalanceCampaignParams(
   });
 }
 
+function deterministicChoiceAppointmentsTraceId(reservationId: string) {
+  const hash = createHash("sha1")
+    .update(`${CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY}:${reservationId}`)
+    .digest("hex");
+  const chars = hash.slice(0, 32).split("");
+
+  chars[12] = "5";
+  chars[16] = ((parseInt(chars[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+
+  return [
+    chars.slice(0, 8).join(""),
+    chars.slice(8, 12).join(""),
+    chars.slice(12, 16).join(""),
+    chars.slice(16, 20).join(""),
+    chars.slice(20, 32).join(""),
+  ].join("-");
+}
+
+function formatTraceAppointmentDate(value: string) {
+  const date = new Date(value);
+
+  if (!Number.isFinite(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: "Europe/Paris",
+  }).format(date);
+}
+
+function isDocumentReceivedOrSigned(document: {
+  status: string | null;
+  received_at?: string | null;
+  signed_at?: string | null;
+}) {
+  return (
+    document.status === "signed" ||
+    document.status === "received" ||
+    Boolean(document.signed_at) ||
+    Boolean(document.received_at)
+  );
+}
+
+async function createChoiceAppointmentsTraceForReservation({
+  supabase,
+  userId,
+  reservation,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  reservation: ChoiceAppointmentsCampaignReservation;
+}): Promise<ChoiceAppointmentsTraceResult> {
+  if (!reservation.contact_id || !reservation.litter_id) {
+    return { outcome: "not_found" };
+  }
+
+  if (isFinalReservationStatus(reservation.status)) {
+    return { outcome: "final_status" };
+  }
+
+  if (
+    !reservation.status ||
+    !CHOICE_APPOINTMENTS_CAMPAIGN_ELIGIBLE_STATUSES.has(reservation.status)
+  ) {
+    return { outcome: "not_in_journey" };
+  }
+
+  const traceId = deterministicChoiceAppointmentsTraceId(reservation.id);
+  const { data: existingTrace, error: existingTraceError } = await supabase
+    .from("events")
+    .select("id, deleted_at")
+    .eq("organization_id", reservation.organization_id)
+    .eq("id", traceId)
+    .eq("reservation_id", reservation.id)
+    .maybeSingle();
+
+  if (existingTraceError) {
+    return { outcome: "error" };
+  }
+
+  if (existingTrace && !existingTrace.deleted_at) {
+    return { outcome: "already_confirmed" };
+  }
+
+  const { data: documents, error: documentsError } = await supabase
+    .from("documents")
+    .select("document_type, status, received_at, signed_at")
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservation.id)
+    .in("document_type", ["commitment_certificate", "reservation_contract"])
+    .is("deleted_at", null);
+
+  if (documentsError || !documents) {
+    return { outcome: "error" };
+  }
+
+  const commitmentDocument = documents.find(
+    (document) => document.document_type === "commitment_certificate",
+  );
+  const reservationContract = documents.find(
+    (document) => document.document_type === "reservation_contract",
+  );
+
+  if (
+    !commitmentDocument ||
+    !reservationContract ||
+    !isDocumentReceivedOrSigned(commitmentDocument) ||
+    !isDocumentReceivedOrSigned(reservationContract)
+  ) {
+    return { outcome: "missing_documents" };
+  }
+
+  const depositSettings = await readDepositSettingsForOrganization({
+    supabase,
+    organizationId: reservation.organization_id,
+  });
+  const { data: payments, error: paymentsError } = await supabase
+    .from("payments")
+    .select("amount_cents, payment_type, status")
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservation.id)
+    .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
+    .eq("status", "paid")
+    .is("deleted_at", null);
+
+  if (paymentsError || !payments) {
+    return { outcome: "error" };
+  }
+
+  const paidDepositCents = payments.reduce(
+    (total, payment) => total + payment.amount_cents,
+    0,
+  );
+
+  if (paidDepositCents < depositSettings.completeDepositCents) {
+    return { outcome: "deposit_incomplete" };
+  }
+
+  const { data: appointments, error: appointmentsError } = await supabase
+    .from("events")
+    .select("event_type, planned_at")
+    .eq("organization_id", reservation.organization_id)
+    .eq("reservation_id", reservation.id)
+    .in("event_type", ["puppy_choice", "adoption"])
+    .is("deleted_at", null);
+
+  if (appointmentsError || !appointments) {
+    return { outcome: "error" };
+  }
+
+  const choiceAppointment = appointments.find(
+    (event) => event.event_type === "puppy_choice" && event.planned_at,
+  );
+  const adoptionAppointment = appointments.find(
+    (event) => event.event_type === "adoption" && event.planned_at,
+  );
+
+  if (!choiceAppointment?.planned_at) {
+    return { outcome: "missing_choice_appointment" };
+  }
+
+  if (!adoptionAppointment?.planned_at) {
+    return { outcome: "missing_adoption_appointment" };
+  }
+
+  const now = new Date().toISOString();
+  const description = [
+    `Modèle utilisé : ${CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY}`,
+    `Créneau de choix proposé : ${formatTraceAppointmentDate(choiceAppointment.planned_at)}`,
+    `Créneau de départ proposé : ${formatTraceAppointmentDate(adoptionAppointment.planned_at)}`,
+    "Aucun e-mail réel envoyé par l’application.",
+  ].join("\n");
+
+  const traceValues = {
+    id: traceId,
+    organization_id: reservation.organization_id,
+    reservation_id: reservation.id,
+    contact_id: reservation.contact_id,
+    litter_id: reservation.litter_id,
+    event_type: "other",
+    title: CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE,
+    description,
+    actual_at: now,
+    status: "done",
+    priority: "normal",
+    is_task: false,
+    created_by: userId,
+    updated_by: userId,
+    deleted_at: null,
+  };
+
+  if (existingTrace?.deleted_at) {
+    const { error: updateDeletedTraceError } = await supabase
+      .from("events")
+      .update({
+        contact_id: traceValues.contact_id,
+        litter_id: traceValues.litter_id,
+        event_type: traceValues.event_type,
+        title: traceValues.title,
+        description: traceValues.description,
+        planned_at: null,
+        planned_date: null,
+        actual_at: traceValues.actual_at,
+        status: traceValues.status,
+        priority: traceValues.priority,
+        is_task: traceValues.is_task,
+        updated_at: now,
+        updated_by: userId,
+        deleted_at: null,
+      })
+      .eq("organization_id", reservation.organization_id)
+      .eq("id", traceId);
+
+    if (updateDeletedTraceError) {
+      return { outcome: "error" };
+    }
+
+    return { outcome: "created" };
+  }
+
+  const { error: insertError } = await supabase.from("events").insert(traceValues);
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      return { outcome: "already_confirmed" };
+    }
+
+    return { outcome: "error" };
+  }
+
+  return { outcome: "created" };
+}
+
+function choiceAppointmentsCampaignParams(
+  result: ChoiceAppointmentsCampaignResult,
+) {
+  return new URLSearchParams({
+    choice_appointments_campaign_status: "success",
+    choice_appointments_campaign_selected_count: String(result.selectedCount),
+    choice_appointments_campaign_confirmed_count: String(
+      result.confirmedCount,
+    ),
+    choice_appointments_campaign_already_count: String(
+      result.alreadyConfirmedCount,
+    ),
+    choice_appointments_campaign_not_found_count: String(
+      result.ignoredNotFoundCount,
+    ),
+    choice_appointments_campaign_not_in_journey_count: String(
+      result.ignoredNotInJourneyCount,
+    ),
+    choice_appointments_campaign_final_status_count: String(
+      result.ignoredFinalStatusCount,
+    ),
+    choice_appointments_campaign_missing_documents_count: String(
+      result.ignoredMissingDocumentsCount,
+    ),
+    choice_appointments_campaign_deposit_incomplete_count: String(
+      result.ignoredDepositIncompleteCount,
+    ),
+    choice_appointments_campaign_missing_choice_count: String(
+      result.ignoredMissingChoiceAppointmentCount,
+    ),
+    choice_appointments_campaign_missing_adoption_count: String(
+      result.ignoredMissingAdoptionAppointmentCount,
+    ),
+    choice_appointments_campaign_error_count: String(result.errorCount),
+  });
+}
+
 /**
  * Lance une campagne de pré-réservation pour les candidatures qualifiées
  * sélectionnées par l'éleveur depuis la fiche portée.
@@ -1859,6 +2184,123 @@ export async function launchPreReservationCampaign(formData: FormData) {
     draftConflictCountParam: "campaign_draft_conflict_count",
     result: campaignResult,
   });
+  redirect(`/litters/${litterId}?${params.toString()}`);
+}
+
+export async function confirmChoiceAppointmentsAdoptionBookletCampaign(
+  formData: FormData,
+) {
+  const litterId = formData.get("litter_id");
+
+  if (typeof litterId !== "string" || !isUuid(litterId)) {
+    redirect("/litters?choice_appointments_campaign_status=error");
+  }
+
+  const reservationIds = Array.from(
+    new Set(
+      formData
+        .getAll("reservation_ids[]")
+        .filter((value): value is string => typeof value === "string" && isUuid(value)),
+    ),
+  );
+
+  if (reservationIds.length === 0) {
+    redirect(
+      `/litters/${litterId}?choice_appointments_campaign_status=no_selection`,
+    );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter) {
+    redirect(`/litters/${litterId}?choice_appointments_campaign_status=error`);
+  }
+
+  const { data: reservations, error: reservationsError } = await supabase
+    .from("reservations")
+    .select("id, organization_id, contact_id, litter_id, status")
+    .eq("organization_id", litter.organization_id)
+    .eq("litter_id", litterId)
+    .is("deleted_at", null)
+    .in("id", reservationIds);
+
+  if (reservationsError || !reservations) {
+    redirect(`/litters/${litterId}?choice_appointments_campaign_status=error`);
+  }
+
+  const reservationsById = new Map(
+    reservations.map((reservation) => [reservation.id, reservation]),
+  );
+  const result: ChoiceAppointmentsCampaignResult = {
+    selectedCount: reservationIds.length,
+    confirmedCount: 0,
+    alreadyConfirmedCount: 0,
+    ignoredNotFoundCount: 0,
+    ignoredNotInJourneyCount: 0,
+    ignoredFinalStatusCount: 0,
+    ignoredMissingDocumentsCount: 0,
+    ignoredDepositIncompleteCount: 0,
+    ignoredMissingChoiceAppointmentCount: 0,
+    ignoredMissingAdoptionAppointmentCount: 0,
+    errorCount: 0,
+  };
+
+  for (const reservationId of reservationIds) {
+    const reservation = reservationsById.get(reservationId);
+
+    if (!reservation) {
+      result.ignoredNotFoundCount++;
+      continue;
+    }
+
+    const traceResult = await createChoiceAppointmentsTraceForReservation({
+      supabase,
+      userId: user.id,
+      reservation,
+    });
+
+    if (traceResult.outcome === "created") {
+      result.confirmedCount++;
+    } else if (traceResult.outcome === "already_confirmed") {
+      result.alreadyConfirmedCount++;
+    } else if (traceResult.outcome === "not_found") {
+      result.ignoredNotFoundCount++;
+    } else if (traceResult.outcome === "not_in_journey") {
+      result.ignoredNotInJourneyCount++;
+    } else if (traceResult.outcome === "final_status") {
+      result.ignoredFinalStatusCount++;
+    } else if (traceResult.outcome === "missing_documents") {
+      result.ignoredMissingDocumentsCount++;
+    } else if (traceResult.outcome === "deposit_incomplete") {
+      result.ignoredDepositIncompleteCount++;
+    } else if (traceResult.outcome === "missing_choice_appointment") {
+      result.ignoredMissingChoiceAppointmentCount++;
+    } else if (traceResult.outcome === "missing_adoption_appointment") {
+      result.ignoredMissingAdoptionAppointmentCount++;
+    } else {
+      result.errorCount++;
+    }
+  }
+
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters");
+  revalidatePath("/reservations");
+
+  const params = choiceAppointmentsCampaignParams(result);
   redirect(`/litters/${litterId}?${params.toString()}`);
 }
 
