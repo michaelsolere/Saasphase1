@@ -64,3 +64,23 @@ Avant toute modification importante :
 4. travailler par petits lots ;
 5. résumer les fichiers modifiés ;
 6. ne jamais modifier directement la branche `main` si une branche de travail est possible.
+
+## Données temporaires de test — règle impérative
+
+- Toute donnée créée uniquement pour tester une fonctionnalité doit être supprimée avant la finalisation du lot.
+- Cette règle concerne notamment les contacts, rôles, candidatures, soumissions de formulaire, réservations ou parcours adoptants, paiements, documents, portées, groupes de portées, animaux, modèles d’e-mail, notes, événements et tables de liaison.
+- Lorsqu’une donnée de test est créée, conserver immédiatement son identifiant afin de pouvoir la supprimer sans ambiguïté.
+- Effectuer le nettoyage avant le commit, le merge et le rapport final.
+- Vérifier après nettoyage que les enregistrements créés pour le test n’existent plus et qu’aucun enregistrement dépendant ou orphelin ne subsiste.
+- Ne jamais supprimer une donnée ambiguë ou potentiellement réelle.
+- Une donnée de démonstration ne peut être conservée que si son ajout au seed minimal a été explicitement demandé et validé.
+- Privilégier les tests ne nécessitant aucune donnée persistante. Lorsqu’une création est nécessaire, créer puis supprimer les données dans le même lot.
+- Ne jamais utiliser une base distante ou de production pour créer des données de test sans autorisation explicite.
+- Le rapport final doit toujours indiquer :
+
+- les données temporaires créées ;
+- leurs identifiants ;
+- les données supprimées ;
+- le résultat de la vérification finale ;
+- ou explicitement qu’aucune donnée temporaire n’a été créée.
+- Un lot ne doit pas être déclaré terminé tant que ce contrôle n’a pas été effectué.
