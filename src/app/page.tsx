@@ -535,10 +535,12 @@ export default async function Home() {
                     if (isArrhesCompleteNoAnimal) {
                       detailText = "Arrhes complètes — animal non attribué";
                     }
-                    if (res.status === "pre_reservation_paid") {
+                    const isPreReservationPaid =
+                      res.status === "pre_reservation_paid";
+                    if (isPreReservationPaid) {
                       detailText = isArrhesCompleteNoAnimal
-                        ? "Dossier en pré-réservation réglée — arrhes complètes"
-                        : "Dossier en pré-réservation réglée";
+                        ? "Pré-réservation réglée — arrhes complètes"
+                        : "Pré-réservation réglée";
                     }
                     return (
                       <div key={res.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
@@ -554,7 +556,7 @@ export default async function Home() {
                           </span>
                         </div>
                         <span className={`h-fit max-w-full self-start whitespace-normal rounded border px-2 py-0.5 text-left text-[11px] font-medium sm:max-w-[170px] sm:self-center sm:text-right ${
-                          isArrhesCompleteNoAnimal
+                          isArrhesCompleteNoAnimal || isPreReservationPaid
                             ? "text-emerald-700 bg-emerald-50 border-emerald-200/60"
                             : "text-amber-700 bg-amber-50 border-amber-200/60"
                         }`}>
