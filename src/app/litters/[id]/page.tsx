@@ -1299,6 +1299,7 @@ export default async function LitterDetailPage({
     campaign_status?: string;
     campaign_count?: string;
     campaign_payment_count?: string;
+    campaign_draft_conflict_count?: string;
     balance_campaign_status?: string;
     balance_campaign_count?: string;
     balance_campaign_payment_count?: string;
@@ -1328,6 +1329,7 @@ export default async function LitterDetailPage({
     campaign_status,
     campaign_count,
     campaign_payment_count,
+    campaign_draft_conflict_count,
     balance_campaign_status,
     balance_campaign_count,
     balance_campaign_payment_count,
@@ -1875,6 +1877,9 @@ export default async function LitterDetailPage({
               >
                 Campagne confirmée — {campaign_count ?? "0"} dossier(s),{" "}
                 {campaign_payment_count ?? "0"} demande(s) de paiement créée(s).
+                {Number(campaign_draft_conflict_count ?? "0") > 0
+                  ? ` ${campaign_draft_conflict_count} dossier brouillon à vérifier.`
+                  : " "}
                 Aucun e-mail réel n’a été envoyé par l’application.
               </div>
             )}

@@ -202,6 +202,7 @@ export default async function LitterGroupDetailPage({
     group_campaign_status?: string;
     group_campaign_count?: string;
     group_campaign_payment_count?: string;
+    group_campaign_draft_conflict_count?: string;
     balance_campaign_status?: string;
     balance_campaign_count?: string;
     balance_campaign_payment_count?: string;
@@ -228,6 +229,7 @@ export default async function LitterGroupDetailPage({
     group_campaign_status,
     group_campaign_count,
     group_campaign_payment_count,
+    group_campaign_draft_conflict_count,
     balance_campaign_status,
     balance_campaign_count,
     balance_campaign_payment_count,
@@ -694,7 +696,11 @@ export default async function LitterGroupDetailPage({
               >
                 Campagne confirmée — {group_campaign_count ?? "0"} dossier(s),{" "}
                 {group_campaign_payment_count ?? "0"} demande(s) de paiement
-                créée(s). Aucun e-mail réel n’a été envoyé par l’application.
+                créée(s).
+                {Number(group_campaign_draft_conflict_count ?? "0") > 0
+                  ? ` ${group_campaign_draft_conflict_count} dossier brouillon à vérifier.`
+                  : " "}
+                Aucun e-mail réel n’a été envoyé par l’application.
               </div>
             )}
             {group_campaign_status === "no_selection" && (

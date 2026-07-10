@@ -1282,6 +1282,11 @@ const ACTIVE_DEPOSIT_PAYMENT_STATUSES = [
   "paid",
 ] as const;
 
+const PRE_RESERVATION_DEPOSIT_PAYMENT_TYPES = [
+  "arrhes",
+  "pre_reservation_deposit_refundable",
+] as const;
+
 type PreReservationCampaignApplication = {
   id: string;
   contact_id: string;
@@ -1295,6 +1300,7 @@ type PreReservationCampaignApplication = {
 type PreReservationCampaignResult = {
   reservationsPreparedCount: number;
   paymentsCreatedCount: number;
+  ignoredDraftConflictCount: number;
   errorCount: number;
 };
 
@@ -1383,6 +1389,107 @@ function isReservationCompatibleWithCampaignTarget({
   );
 }
 
+async function cleanupCreatedPreReservationCampaignObjects({
+  supabase,
+  organizationId,
+  userId,
+  createdReservationId,
+  createdPaymentId,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  organizationId: string;
+  userId: string;
+  createdReservationId: string | null;
+  createdPaymentId: string | null;
+}) {
+  const now = new Date().toISOString();
+
+  if (createdPaymentId) {
+    await supabase
+      .from("payments")
+      .update({
+        deleted_at: now,
+        updated_at: now,
+        updated_by: userId,
+      })
+      .eq("id", createdPaymentId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null);
+  }
+
+  if (createdReservationId) {
+    await supabase
+      .from("reservations")
+      .update({
+        deleted_at: now,
+        updated_at: now,
+        updated_by: userId,
+      })
+      .eq("id", createdReservationId)
+      .eq("organization_id", organizationId)
+      .is("deleted_at", null);
+  }
+}
+
+async function hasActivePreReservationDepositPayment({
+  supabase,
+  reservationId,
+  amountCents,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  reservationId: string;
+  amountCents: number;
+}) {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id")
+    .eq("reservation_id", reservationId)
+    .eq("amount_cents", amountCents)
+    .in("payment_type", [...PRE_RESERVATION_DEPOSIT_PAYMENT_TYPES])
+    .in("status", [...ACTIVE_DEPOSIT_PAYMENT_STATUSES])
+    .is("deleted_at", null)
+    .limit(1);
+
+  if (error) {
+    return { ok: false as const, hasPayment: false };
+  }
+
+  return { ok: true as const, hasPayment: (data ?? []).length > 0 };
+}
+
+async function validatePreReservationCampaignPair({
+  supabase,
+  organizationId,
+  reservationId,
+  amountCents,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  organizationId: string;
+  reservationId: string;
+  amountCents: number;
+}) {
+  const { data: reservation, error: reservationError } = await supabase
+    .from("reservations")
+    .select("id")
+    .eq("id", reservationId)
+    .eq("organization_id", organizationId)
+    .eq("status", "pre_reservation_requested")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (reservationError || !reservation) {
+    return false;
+  }
+
+  const paymentCheck = await hasActivePreReservationDepositPayment({
+    supabase,
+    reservationId,
+    amountCents,
+  });
+
+  return paymentCheck.ok && paymentCheck.hasPayment;
+}
+
 async function runPreReservationCampaignForApplications({
   supabase,
   userId,
@@ -1407,6 +1514,7 @@ async function runPreReservationCampaignForApplications({
 
   let reservationsPreparedCount = 0;
   let paymentsCreatedCount = 0;
+  let ignoredDraftConflictCount = 0;
   let errorCount = 0;
 
   for (const app of applications) {
@@ -1428,7 +1536,8 @@ async function runPreReservationCampaignForApplications({
     const existingReservation = existingReservations?.[0] ?? null;
 
     let reservationId: string | null = null;
-    let reservationStatus: string | null = null;
+    let createdReservationId: string | null = null;
+    let createdPaymentId: string | null = null;
 
     if (existingReservation) {
       const isCompatible = isReservationCompatibleWithCampaignTarget({
@@ -1442,7 +1551,15 @@ async function runPreReservationCampaignForApplications({
       }
 
       reservationId = existingReservation.id;
-      reservationStatus = existingReservation.status;
+
+      if (existingReservation.status === "draft") {
+        ignoredDraftConflictCount++;
+        continue;
+      }
+
+      if (existingReservation.status !== "pre_reservation_requested") {
+        continue;
+      }
     } else {
       const { data: newReservation, error: insertErr } = await supabase
         .from("reservations")
@@ -1455,7 +1572,7 @@ async function runPreReservationCampaignForApplications({
           species: app.species ?? "dog",
           breed: app.breed ?? "Golden Retriever",
           reserved_sex_preference: app.desired_sex_preference ?? "unknown",
-          status: "draft",
+          status: "pre_reservation_requested",
           created_by: userId,
           updated_by: userId,
         })
@@ -1468,102 +1585,117 @@ async function runPreReservationCampaignForApplications({
       }
 
       reservationId = newReservation.id;
-      reservationStatus = "draft";
+      createdReservationId = newReservation.id;
     }
 
-    if (
-      reservationStatus !== "draft" &&
-      reservationStatus !== "pre_reservation_requested"
-    ) {
-      continue;
-    }
+    const paymentCheck = await hasActivePreReservationDepositPayment({
+      supabase,
+      reservationId,
+      amountCents: depositSettings.preReservationDepositCents,
+    });
 
-    const { data: existingDepositPayments, error: existingPaymentErr } =
-      await supabase
-        .from("payments")
-        .select("id")
-        .eq("reservation_id", reservationId)
-        .eq("payment_type", "arrhes")
-        .in("status", [...ACTIVE_DEPOSIT_PAYMENT_STATUSES])
-        .is("deleted_at", null)
-        .limit(1);
-
-    if (existingPaymentErr) {
+    if (!paymentCheck.ok) {
+      await cleanupCreatedPreReservationCampaignObjects({
+        supabase,
+        organizationId,
+        userId,
+        createdReservationId,
+        createdPaymentId,
+      });
       errorCount++;
       continue;
     }
 
-    const hasExistingDepositPayment =
-      existingDepositPayments && existingDepositPayments.length > 0;
-    let didCreatePayment = false;
+    if (!paymentCheck.hasPayment) {
+      const { data: payment, error: paymentErr } = await supabase
+        .from("payments")
+        .insert({
+          organization_id: organizationId,
+          contact_id: app.contact_id,
+          reservation_id: reservationId,
+          amount_cents: depositSettings.preReservationDepositCents,
+          currency: "EUR",
+          payment_type: "arrhes",
+          status: "requested",
+          payment_method: "bank_transfer",
+          requested_at: new Date().toISOString(),
+          due_date: dueDateStr,
+          notes: note,
+          created_by: userId,
+          updated_by: userId,
+        })
+        .select("id")
+        .maybeSingle();
 
-    if (!hasExistingDepositPayment) {
-      const { error: paymentErr } = await supabase.from("payments").insert({
-        organization_id: organizationId,
-        contact_id: app.contact_id,
-        reservation_id: reservationId,
-        amount_cents: depositSettings.preReservationDepositCents,
-        currency: "EUR",
-        payment_type: "arrhes",
-        status: "requested",
-        payment_method: "bank_transfer",
-        requested_at: new Date().toISOString(),
-        due_date: dueDateStr,
-        notes: note,
-        created_by: userId,
-        updated_by: userId,
-      });
-
-      if (paymentErr) {
+      if (paymentErr || !payment) {
+        await cleanupCreatedPreReservationCampaignObjects({
+          supabase,
+          organizationId,
+          userId,
+          createdReservationId,
+          createdPaymentId,
+        });
         errorCount++;
         continue;
       }
 
-      didCreatePayment = true;
-      paymentsCreatedCount++;
+      createdPaymentId = payment.id;
     }
 
-    const shouldUpdateReservation =
-      reservationStatus === "draft" ||
-      (reservationStatus === "pre_reservation_requested" &&
-        existingReservation &&
-        (existingReservation.litter_id !== app.target_litter_id ||
-          existingReservation.litter_group_id !== app.target_litter_group_id));
+    const hasExpectedPair = await validatePreReservationCampaignPair({
+      supabase,
+      organizationId,
+      reservationId,
+      amountCents: depositSettings.preReservationDepositCents,
+    });
 
-    if (!shouldUpdateReservation) {
-      if (didCreatePayment) {
-        reservationsPreparedCount++;
-      }
-      continue;
-    }
-
-    const { error: updateErr } = await supabase
-      .from("reservations")
-      .update({
-        status: "pre_reservation_requested",
-        litter_id: app.target_litter_id,
-        litter_group_id: app.target_litter_group_id,
-        updated_at: new Date().toISOString(),
-        updated_by: userId,
-      })
-      .eq("id", reservationId)
-      .eq("organization_id", organizationId)
-      .in("status", ["draft", "pre_reservation_requested"])
-      .is("deleted_at", null);
-
-    if (updateErr) {
+    if (!hasExpectedPair) {
+      await cleanupCreatedPreReservationCampaignObjects({
+        supabase,
+        organizationId,
+        userId,
+        createdReservationId,
+        createdPaymentId,
+      });
       errorCount++;
       continue;
     }
 
-    reservationsPreparedCount++;
+    if (createdReservationId || createdPaymentId) {
+      reservationsPreparedCount++;
+    }
+    if (createdPaymentId) {
+      paymentsCreatedCount++;
+    }
   }
 
   return {
     reservationsPreparedCount,
     paymentsCreatedCount,
+    ignoredDraftConflictCount,
     errorCount,
   };
+}
+
+function preReservationCampaignParams({
+  statusParam,
+  countParam,
+  paymentCountParam,
+  draftConflictCountParam,
+  result,
+}: {
+  statusParam: string;
+  countParam: string;
+  paymentCountParam: string;
+  draftConflictCountParam: string;
+  result: PreReservationCampaignResult;
+}) {
+  return new URLSearchParams({
+    [statusParam]: "success",
+    [countParam]: String(result.reservationsPreparedCount),
+    [paymentCountParam]: String(result.paymentsCreatedCount),
+    [draftConflictCountParam]: String(result.ignoredDraftConflictCount),
+  });
 }
 
 async function createPreReservationBalanceRequestForReservation({
@@ -1885,8 +2017,8 @@ function departureBalanceCampaignParams(
  * sélectionnées par l'éleveur depuis la fiche portée.
  *
  * Pour chaque candidature sélectionnée :
- *   1. Crée une réservation en statut `pre_reservation_requested` (ou met à jour
- *      un brouillon existant lié à cette candidature + portée).
+ *   1. Crée une réservation en statut `pre_reservation_requested` (ou réutilise
+ *      une réservation compatible déjà demandée).
  *   2. Crée une demande de paiement de pré-réservation (type `arrhes`,
  *      statut `requested`, échéance paramétrée).
  *
@@ -1970,8 +2102,11 @@ export async function launchPreReservationCampaign(formData: FormData) {
   });
 
   revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/");
+  revalidatePath("/candidatures");
   revalidatePath("/litters");
   revalidatePath("/reservations");
+  revalidatePath("/payments");
 
   if (
     campaignResult.reservationsPreparedCount === 0 &&
@@ -1980,9 +2115,14 @@ export async function launchPreReservationCampaign(formData: FormData) {
     redirect(`/litters/${litterId}?campaign_status=error`);
   }
 
-  redirect(
-    `/litters/${litterId}?campaign_status=success&campaign_count=${campaignResult.reservationsPreparedCount}&campaign_payment_count=${campaignResult.paymentsCreatedCount}`,
-  );
+  const params = preReservationCampaignParams({
+    statusParam: "campaign_status",
+    countParam: "campaign_count",
+    paymentCountParam: "campaign_payment_count",
+    draftConflictCountParam: "campaign_draft_conflict_count",
+    result: campaignResult,
+  });
+  redirect(`/litters/${litterId}?${params.toString()}`);
 }
 
 export async function launchGroupPreReservationCampaign(formData: FormData) {
@@ -2089,8 +2229,11 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
   });
 
   revalidatePath(`/litter-groups/${groupId}`);
+  revalidatePath("/");
+  revalidatePath("/candidatures");
   revalidatePath("/litter-groups");
   revalidatePath("/reservations");
+  revalidatePath("/payments");
 
   if (
     campaignResult.reservationsPreparedCount === 0 &&
@@ -2100,9 +2243,14 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
     redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
   }
 
-  redirect(
-    `/litter-groups/${groupId}?group_campaign_status=success&group_campaign_count=${campaignResult.reservationsPreparedCount}&group_campaign_payment_count=${campaignResult.paymentsCreatedCount}`,
-  );
+  const params = preReservationCampaignParams({
+    statusParam: "group_campaign_status",
+    countParam: "group_campaign_count",
+    paymentCountParam: "group_campaign_payment_count",
+    draftConflictCountParam: "group_campaign_draft_conflict_count",
+    result: campaignResult,
+  });
+  redirect(`/litter-groups/${groupId}?${params.toString()}`);
 }
 
 export async function launchLitterPreReservationBalanceCampaign(
