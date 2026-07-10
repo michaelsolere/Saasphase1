@@ -11,7 +11,8 @@ export type LitterGroupOption = {
 
 export type LitterAnimalOption = {
   id: string;
-  display_name: string | null;
+  call_name: string | null;
+  official_name: string | null;
   sex: string | null;
   species: string | null;
   breed: string | null;
@@ -90,7 +91,10 @@ function groupOptionLabel(group: LitterGroupOption) {
 }
 
 function animalOptionLabel(animal: LitterAnimalOption) {
-  const parts = [animal.display_name ?? "Animal sans nom", sexLabel(animal.sex)];
+  const parts = [
+    animal.call_name ?? animal.official_name ?? "Animal sans nom",
+    sexLabel(animal.sex),
+  ];
   const speciesBreed = [speciesLabel(animal.species), animal.breed]
     .filter(Boolean)
     .join(" / ");

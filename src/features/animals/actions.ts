@@ -244,9 +244,10 @@ function parseOptionalUuid(value: FormDataEntryValue | null) {
 }
 
 export async function createManualAnimal(formData: FormData) {
-  const displayName = normalizeOptionalText(formData.get("display_name"));
+  const callName = normalizeOptionalText(formData.get("call_name"));
+  const officialName = normalizeOptionalText(formData.get("official_name"));
 
-  if (!displayName) {
+  if (!callName && !officialName) {
     redirect(animalCreateUrl("name_required"));
   }
 
@@ -383,7 +384,8 @@ export async function createManualAnimal(formData: FormData) {
 
   const animalToCreate: AnimalInsert = {
     organization_id: organizationId,
-    display_name: displayName,
+    call_name: callName,
+    official_name: officialName,
     species,
     breed,
     sex,
@@ -426,9 +428,10 @@ export async function updateAnimalIdentity(formData: FormData) {
     redirect("/animals");
   }
 
-  const displayName = normalizeOptionalText(formData.get("display_name"));
+  const callName = normalizeOptionalText(formData.get("call_name"));
+  const officialName = normalizeOptionalText(formData.get("official_name"));
 
-  if (!displayName) {
+  if (!callName && !officialName) {
     redirect(animalIdentityEditUrl(animalId, "name_required"));
   }
 
@@ -453,7 +456,8 @@ export async function updateAnimalIdentity(formData: FormData) {
   }
 
   const animalToUpdate: AnimalUpdate = {
-    display_name: displayName,
+    call_name: callName,
+    official_name: officialName,
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
@@ -523,12 +527,6 @@ export async function updateAnimalFinalIdentity(formData: FormData) {
     ),
     official_name: normalizeOptionalText(formData.get("official_name")),
     call_name: normalizeOptionalText(formData.get("call_name")),
-    chosen_name_by_adopter: normalizeOptionalText(
-      formData.get("chosen_name_by_adopter"),
-    ),
-    official_affix_name: normalizeOptionalText(
-      formData.get("official_affix_name"),
-    ),
     lof_number: normalizeOptionalText(formData.get("lof_number")),
     updated_at: new Date().toISOString(),
     updated_by: user.id,

@@ -173,7 +173,7 @@ test("secures litter parent choices in UI and server actions", async ({
     parents.map((parent) => ({
       id: parent.id,
       organization_id: organizationId,
-      display_name: parent.label,
+      call_name: parent.label,
       species: "dog",
       breed: "Golden Retriever",
       sex: parent.sex,

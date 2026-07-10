@@ -172,14 +172,16 @@ type RelatedReservationNote = {
 
 type RelatedAnimal = {
   id: string;
-  display_name: string;
-  temporary_name: string | null;
   call_name: string | null;
   official_name: string | null;
   sex: string;
   status: string;
   birth_date: string | null;
   litter_id: string | null;
+  species: string | null;
+  birth_order: number | null;
+  collar_color_current: string | null;
+  collar_color_initial: string | null;
   identification_number: string | null;
   color: string | null;
   coat_color: string | null;
@@ -1575,8 +1577,6 @@ export default async function ReservationDetailPage({
   // Fetch available animals of the organization if reservation has no animal
   let availableAnimals: Array<{
     id: string;
-    display_name: string;
-    temporary_name: string | null;
     call_name: string | null;
     official_name: string | null;
     sex: string;
@@ -1588,6 +1588,9 @@ export default async function ReservationDetailPage({
     species: string;
     breed: string;
     litter_id: string | null;
+    birth_order: number | null;
+    collar_color_current: string | null;
+    collar_color_initial: string | null;
   }> = [];
   let availableAnimalsError: unknown = null;
   let attachableLitters: ReservationAttachableLitter[] = [];
@@ -1603,7 +1606,7 @@ export default async function ReservationDetailPage({
   ) {
     const rawAnimalsQuery = supabase
       .from("animals")
-      .select("id, display_name, temporary_name, call_name, official_name, sex, status, ownership_status, is_breeder, is_external, is_retired, species, breed, litter_id")
+      .select("id, call_name, official_name, sex, status, ownership_status, is_breeder, is_external, is_retired, species, breed, litter_id, birth_order, collar_color_current, collar_color_initial")
       .eq("organization_id", reservation.organization_id)
       .is("deleted_at", null)
       .eq("status", "available")
@@ -1727,7 +1730,7 @@ export default async function ReservationDetailPage({
   const { data: rawAnimal, error: animalError } = reservation?.animal_id
     ? await supabase
         .from("animals")
-        .select("id, display_name, temporary_name, call_name, official_name, sex, status, birth_date, litter_id, identification_number, color, coat_color, deleted_at")
+        .select("id, call_name, official_name, sex, status, birth_date, litter_id, species, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, deleted_at")
         .eq("id", reservation.animal_id)
         .is("deleted_at", null)
         .maybeSingle()

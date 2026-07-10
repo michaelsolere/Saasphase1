@@ -137,14 +137,14 @@ test("creates newborn animals from a litter without touching reservations", asyn
   const motherCallName = `Rosie ${suffix}`;
   const fatherCallName = `Rimbaud ${suffix}`;
   const generatedDisplayName = `Collier bleu — ${motherCallName} × ${fatherCallName}`;
-  const fallbackGeneratedDisplayName = `Collier vert — ${motherCallName} × ${fatherName}`;
+  const firstGeneratedDisplayName = `Collier Rose — ${motherCallName} × ${fatherCallName}`;
+  const fallbackGeneratedDisplayName = `Collier vert — ${motherCallName}`;
 
   try {
     const { error: parentsError } = await supabase.from("animals").insert([
       {
         id: motherId,
         organization_id: organizationId,
-        display_name: motherName,
         official_name: motherOfficialName,
         call_name: motherCallName,
         species: "dog",
@@ -159,7 +159,6 @@ test("creates newborn animals from a litter without touching reservations", asyn
       {
         id: fatherId,
         organization_id: organizationId,
-        display_name: fatherName,
         official_name: fatherOfficialName,
         call_name: fatherCallName,
         species: "dog",
@@ -208,9 +207,6 @@ test("creates newborn animals from a litter without touching reservations", asyn
     await page.goto(`/litters/${litterId}`);
     await page.getByText("Ajouter des chiots").click();
     await page.locator('select[name="offspring_0_sex"]').selectOption("female");
-    await page
-      .locator('input[name="offspring_0_temporary_name"]')
-      .fill(`Femelle ${suffix}`);
     await page.locator('input[name="offspring_0_collar_color"]').fill("Rose");
     await page.locator('input[name="offspring_0_birth_order"]').fill("1");
     await page.locator('input[name="offspring_0_birth_weight_grams"]').fill("420");
@@ -224,7 +220,7 @@ test("creates newborn animals from a litter without touching reservations", asyn
 
     await page.getByRole("button", { name: "Créer les chiots" }).click();
     await expect(page).toHaveURL(/offspring_status=success/);
-    await expect(page.locator("#animaux-lies")).toContainText(`Femelle ${suffix}`);
+    await expect(page.locator("#animaux-lies")).toContainText(firstGeneratedDisplayName);
     await expect(page.locator("#animaux-lies")).toContainText(generatedDisplayName);
     await expect(page.locator("#animaux-lies")).not.toContainText(motherName);
     await expect(page.locator("#animaux-lies")).not.toContainText(fatherName);
@@ -239,10 +235,10 @@ test("creates newborn animals from a litter without touching reservations", asyn
       await supabase
         .from("animals")
         .select(
-          "id, organization_id, litter_id, species, breed, sex, status, ownership_status, display_name, temporary_name, collar_color_initial, collar_color_current, birth_date, birth_order, birth_weight_grams",
+          "id, organization_id, litter_id, species, breed, sex, status, ownership_status, call_name, official_name, collar_color_initial, collar_color_current, birth_date, birth_order, birth_weight_grams",
         )
         .eq("litter_id", litterId)
-        .eq("display_name", `Femelle ${suffix}`)
+        .eq("birth_order", 1)
         .single(),
       "read created offspring",
     );
@@ -256,8 +252,8 @@ test("creates newborn animals from a litter without touching reservations", asyn
       sex: "female",
       status: "born",
       ownership_status: "produced",
-      display_name: `Femelle ${suffix}`,
-      temporary_name: `Femelle ${suffix}`,
+      call_name: null,
+      official_name: null,
       collar_color_initial: "Rose",
       collar_color_current: "Rose",
       birth_date: "2026-06-20",
@@ -269,36 +265,36 @@ test("creates newborn animals from a litter without touching reservations", asyn
       await supabase
         .from("animals")
         .select(
-          "id, display_name, temporary_name, collar_color_initial, collar_color_current, birth_order",
+          "id, call_name, official_name, collar_color_initial, collar_color_current, birth_order",
         )
         .eq("litter_id", litterId)
-        .eq("display_name", generatedDisplayName)
+        .eq("birth_order", 2)
         .single(),
       "read generated collar offspring",
     );
     createdOffspringIds.push(generatedAnimal.id);
 
     expect(generatedAnimal).toMatchObject({
-      display_name: generatedDisplayName,
-      temporary_name: null,
+      call_name: null,
+      official_name: null,
       collar_color_initial: "bleu",
       collar_color_current: "bleu",
       birth_order: 2,
     });
-    expect(generatedAnimal.display_name).not.toContain(motherName);
-    expect(generatedAnimal.display_name).not.toContain(fatherName);
 
     await page.goto(`/animals/${motherId}`);
     await expect(page.locator("dt", { hasText: /^Nom complet$/ })).toBeVisible();
     await expect(page.getByText(motherOfficialName, { exact: true })).toBeVisible();
     await expect(page.locator("dt", { hasText: /^Nom d’usage$/ })).toBeVisible();
-    await expect(page.getByText(motherCallName, { exact: true })).toBeVisible();
+    await expect(
+      page.locator("dd").filter({ hasText: new RegExp(`^${motherCallName}$`) }),
+    ).toBeVisible();
     await expect(page.getByLabel("Nom complet")).toHaveValue(motherOfficialName);
     await expect(page.getByLabel("Nom d’usage")).toHaveValue(motherCallName);
 
     await page.goto("/animals");
     const animalRow = page.locator("tbody tr").filter({
-      hasText: `Femelle ${suffix}`,
+      hasText: firstGeneratedDisplayName,
     });
     await expect(animalRow).toContainText(`Portee creation chiots ${suffix}`);
     await expect(animalRow).toContainText(
@@ -307,7 +303,7 @@ test("creates newborn animals from a litter without touching reservations", asyn
     await expect(animalRow).toContainText("Origine : Produit à l’élevage");
 
     await page.goto(`/animals/${createdAnimal.id}`);
-    await expect(page.getByRole("heading", { name: `Femelle ${suffix}` })).toBeVisible();
+    await expect(page.getByRole("heading", { name: firstGeneratedDisplayName })).toBeVisible();
     await expect(page.getByText("Chiot né, non encore disponible/réservé")).toBeVisible();
     await expect(page.getByText("Produit à l’élevage")).toBeVisible();
     await page.locator(`a[href="/litters/${litterId}"]`).click();
@@ -334,17 +330,17 @@ test("creates newborn animals from a litter without touching reservations", asyn
     const fallbackGeneratedAnimal = expectSupabaseData(
       await supabase
         .from("animals")
-        .select("id, display_name, temporary_name, birth_order")
+        .select("id, call_name, official_name, birth_order")
         .eq("litter_id", litterId)
-        .eq("display_name", fallbackGeneratedDisplayName)
+        .eq("birth_order", 3)
         .single(),
-      "read generated collar offspring with parent display name fallback",
+      "read generated collar offspring with missing parent call name",
     );
     createdOffspringIds.push(fallbackGeneratedAnimal.id);
 
     expect(fallbackGeneratedAnimal).toMatchObject({
-      display_name: fallbackGeneratedDisplayName,
-      temporary_name: null,
+      call_name: null,
+      official_name: null,
       birth_order: 3,
     });
 

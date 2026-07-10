@@ -114,10 +114,10 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
               </td>
               <td className="min-w-56 px-6 py-4 text-xs leading-6">
                 <p>
-                  Mère : <OptionalValue value={animal.motherDisplayName} />
+                  Mère : <OptionalValue value={animal.motherCallName} />
                 </p>
                 <p>
-                  Père : <OptionalValue value={animal.fatherDisplayName} />
+                  Père : <OptionalValue value={animal.fatherCallName} />
                 </p>
               </td>
               <td className="whitespace-nowrap px-6 py-4 text-muted">

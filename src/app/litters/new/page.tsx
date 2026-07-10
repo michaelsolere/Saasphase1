@@ -61,11 +61,11 @@ export default async function NewLitterPage({
         supabase
           .from("animals")
           .select(
-            "id, display_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
+            "id, call_name, official_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
           )
           .eq("organization_id", organizationId)
           .is("deleted_at", null)
-          .order("display_name", { ascending: true }),
+          .order("call_name", { ascending: true }),
       ])
     : [{ data: [] }, { data: [] }];
 

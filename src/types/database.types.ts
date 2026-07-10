@@ -42,7 +42,6 @@ export type Database = {
           birth_weight_grams: number | null
           breed: string
           call_name: string | null
-          chosen_name_by_adopter: string | null
           coat_color: string | null
           collar_color_current: string | null
           collar_color_initial: string | null
@@ -52,7 +51,6 @@ export type Database = {
           created_by: string | null
           death_date: string | null
           deleted_at: string | null
-          display_name: string
           father_id: string | null
           id: string
           identification_number: string | null
@@ -63,7 +61,6 @@ export type Database = {
           lof_number: string | null
           mother_id: string | null
           notes: string | null
-          official_affix_name: string | null
           official_name: string | null
           organization_id: string
           ownership_status: string
@@ -71,7 +68,6 @@ export type Database = {
           sex: string
           species: string
           status: string
-          temporary_name: string | null
           updated_at: string
           updated_by: string | null
         }
@@ -82,7 +78,6 @@ export type Database = {
           birth_weight_grams?: number | null
           breed?: string
           call_name?: string | null
-          chosen_name_by_adopter?: string | null
           coat_color?: string | null
           collar_color_current?: string | null
           collar_color_initial?: string | null
@@ -92,7 +87,6 @@ export type Database = {
           created_by?: string | null
           death_date?: string | null
           deleted_at?: string | null
-          display_name: string
           father_id?: string | null
           id?: string
           identification_number?: string | null
@@ -103,7 +97,6 @@ export type Database = {
           lof_number?: string | null
           mother_id?: string | null
           notes?: string | null
-          official_affix_name?: string | null
           official_name?: string | null
           organization_id: string
           ownership_status?: string
@@ -111,7 +104,6 @@ export type Database = {
           sex?: string
           species?: string
           status?: string
-          temporary_name?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -122,7 +114,6 @@ export type Database = {
           birth_weight_grams?: number | null
           breed?: string
           call_name?: string | null
-          chosen_name_by_adopter?: string | null
           coat_color?: string | null
           collar_color_current?: string | null
           collar_color_initial?: string | null
@@ -132,7 +123,6 @@ export type Database = {
           created_by?: string | null
           death_date?: string | null
           deleted_at?: string | null
-          display_name?: string
           father_id?: string | null
           id?: string
           identification_number?: string | null
@@ -143,7 +133,6 @@ export type Database = {
           lof_number?: string | null
           mother_id?: string | null
           notes?: string | null
-          official_affix_name?: string | null
           official_name?: string | null
           organization_id?: string
           ownership_status?: string
@@ -151,7 +140,6 @@ export type Database = {
           sex?: string
           species?: string
           status?: string
-          temporary_name?: string | null
           updated_at?: string
           updated_by?: string | null
         }
@@ -3059,13 +3047,17 @@ export type Database = {
           created_at: string | null
           expected_birth_date: string | null
           expected_puppy_count: number | null
+          father_call_name: string | null
           father_display_name: string | null
           father_id: string | null
+          father_official_name: string | null
           id: string | null
           litter_group_id: string | null
           litter_group_name: string | null
+          mother_call_name: string | null
           mother_display_name: string | null
           mother_id: string | null
+          mother_official_name: string | null
           name: string | null
           organization_id: string | null
           reservation_count: number | null
@@ -3118,8 +3110,17 @@ export type Database = {
         Row: {
           adoption_completed_at: string | null
           adoption_planned_at: string | null
+          animal_birth_order: number | null
+          animal_call_name: string | null
+          animal_collar_color_current: string | null
+          animal_collar_color_initial: string | null
           animal_display_name: string | null
+          animal_father_call_name: string | null
           animal_id: string | null
+          animal_litter_id: string | null
+          animal_mother_call_name: string | null
+          animal_official_name: string | null
+          animal_species: string | null
           application_id: string | null
           contact_display_name: string | null
           contact_id: string | null

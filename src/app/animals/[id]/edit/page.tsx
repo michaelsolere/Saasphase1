@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  name_required: "Le nom principal est obligatoire.",
+  name_required: "Renseignez au moins un nom complet ou un nom d’usage.",
   invalid_date: "La date de naissance est invalide.",
   error: "Impossible d’enregistrer les informations pour le moment.",
 };
@@ -110,7 +110,7 @@ export default async function AnimalEditPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, display_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, is_breeder, is_external, is_retired",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, is_breeder, is_external, is_retired",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -125,18 +125,25 @@ export default async function AnimalEditPage({
   const { data: rawParents } = parentIds.length
     ? await supabase
         .from("animals")
-        .select("id, display_name")
+        .select("id, call_name")
         .in("id", parentIds)
         .is("deleted_at", null)
     : { data: [] };
   const parentsById = new Map(
-    (rawParents ?? []).map((parent) => [parent.id, parent.display_name]),
+    (rawParents ?? []).map((parent) => [parent.id, parent.call_name]),
   );
   const motherDisplayName = animal?.mother_id
     ? parentsById.get(animal.mother_id) ?? null
     : null;
   const fatherDisplayName = animal?.father_id
     ? parentsById.get(animal.father_id) ?? null
+    : null;
+  const animalDisplay = animal
+    ? getAnimalDisplayName({
+        ...animal,
+        motherCallName: motherDisplayName,
+        fatherCallName: fatherDisplayName,
+      })
     : null;
   const errorMessage = query.status ? errorMessages[query.status] : undefined;
 
@@ -182,7 +189,7 @@ export default async function AnimalEditPage({
                 Animal · Édition légère
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                Modifier {getAnimalDisplayName(animal)}
+                Modifier {animalDisplay}
               </h1>
               <p className="mt-3 max-w-2xl leading-7 text-muted">
                 Édition légère limitée aux informations d’identité non
@@ -257,11 +264,19 @@ export default async function AnimalEditPage({
               <div className="mt-6 grid gap-5 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <TextField
-                    id="animal-edit-display-name"
-                    label="Nom principal"
-                    name="display_name"
-                    defaultValue={animal.display_name}
-                    required
+                    id="animal-edit-call-name"
+                    label="Nom d’usage"
+                    name="call_name"
+                    defaultValue={animal.call_name}
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <TextField
+                    id="animal-edit-official-name"
+                    label="Nom complet"
+                    name="official_name"
+                    defaultValue={animal.official_name}
                   />
                 </div>
 

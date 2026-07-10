@@ -58,7 +58,7 @@ type LitterLookup = {
   reservation_count: number | null;
 };
 
-type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
+type ParentLookup = Pick<DBAnimal, "id" | "call_name">;
 type RelatedDocument = {
   id: string;
   title: string;
@@ -1171,7 +1171,7 @@ export default async function AnimalDetailPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, display_name, temporary_name, call_name, official_name, chosen_name_by_adopter, species, breed, sex, status, ownership_status, birth_date, death_date, litter_id, mother_id, father_id, identification_number, lof_number, color, coat_color, birth_order, birth_time, birth_weight_grams, collar_color_initial, collar_color_current, collar_color_note, official_affix_name, pedigree_url, is_breeder, is_external, is_retired, notes, created_at, updated_at, deleted_at",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, death_date, litter_id, mother_id, father_id, identification_number, lof_number, color, coat_color, birth_order, birth_time, birth_weight_grams, collar_color_initial, collar_color_current, collar_color_note, pedigree_url, is_breeder, is_external, is_retired, notes, created_at, updated_at, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -1196,7 +1196,7 @@ export default async function AnimalDetailPage({
   const { data: rawParents, error: parentsError } = parentIds.length
     ? await supabase
         .from("animals")
-        .select("id, display_name")
+        .select("id, call_name")
         .in("id", parentIds)
         .is("deleted_at", null)
     : { data: [], error: null };
@@ -1205,7 +1205,7 @@ export default async function AnimalDetailPage({
   const parentsById = new Map(
     ((rawParents as ParentLookup[] | null) ?? []).map((parent) => [
       parent.id,
-      parent.display_name,
+      parent.call_name,
     ]),
   );
 
@@ -1214,6 +1214,13 @@ export default async function AnimalDetailPage({
     : null;
   const fatherDisplayName = animal?.father_id
     ? parentsById.get(animal.father_id) ?? null
+    : null;
+  const animalDisplay = animal
+    ? getAnimalDisplayName({
+        ...animal,
+        motherCallName: motherDisplayName,
+        fatherCallName: fatherDisplayName,
+      })
     : null;
 
   const { data: rawDocuments, error: documentsError } = animal
@@ -1307,7 +1314,7 @@ export default async function AnimalDetailPage({
                   Animal · Lecture seule
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {getAnimalDisplayName(animal)}
+                  {animalDisplay}
                 </h1>
                 <p className="mt-3 text-sm text-muted">
                   Créé le {formatAnimalDate(animal.created_at)}
@@ -1409,16 +1416,6 @@ export default async function AnimalDetailPage({
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                   <DetailItem label="Nom complet" value={animal.official_name} />
                   <DetailItem label="Nom d’usage" value={animal.call_name} />
-                  <DetailItem label="Nom principal" value={animal.display_name} />
-                  <DetailItem label="Nom temporaire" value={animal.temporary_name} />
-                  <DetailItem
-                    label="Nom choisi par l’adoptant"
-                    value={animal.chosen_name_by_adopter}
-                  />
-                  <DetailItem
-                    label="Nom d’affixe officiel"
-                    value={animal.official_affix_name}
-                  />
                 </dl>
               </section>
 
@@ -1433,8 +1430,7 @@ export default async function AnimalDetailPage({
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-muted">
                       Mise à jour des informations utiles avant départ, sans
-                      modifier le nom provisoire, le collier ou le nom
-                      principal.
+                      modifier le collier ou les données de portée.
                     </p>
                   </div>
                   <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
@@ -1465,18 +1461,6 @@ export default async function AnimalDetailPage({
                       label="Nom d’usage"
                       name="call_name"
                       defaultValue={animal.call_name}
-                    />
-                    <FinalIdentityField
-                      id="animal-final-adopter-name"
-                      label="Nom choisi par l’adoptant"
-                      name="chosen_name_by_adopter"
-                      defaultValue={animal.chosen_name_by_adopter}
-                    />
-                    <FinalIdentityField
-                      id="animal-final-affix-name"
-                      label="Nom d’affixe officiel"
-                      name="official_affix_name"
-                      defaultValue={animal.official_affix_name}
                     />
                     <FinalIdentityField
                       id="animal-final-lof-number"

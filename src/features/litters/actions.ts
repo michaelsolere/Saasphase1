@@ -184,35 +184,6 @@ function parseOptionalPositiveInteger(value: FormDataEntryValue | null) {
   return { ok: true as const, value: parsedValue };
 }
 
-function getOffspringGenericName(species: string, index: number) {
-  return species === "cat" ? `Chaton ${index}` : `Chiot ${index}`;
-}
-
-function getCollarDisplayName(
-  collarColor: string,
-  motherDisplayName: string | null,
-  fatherDisplayName: string | null,
-) {
-  const parentDisplayNames = [motherDisplayName, fatherDisplayName].filter(
-    Boolean,
-  );
-
-  if (parentDisplayNames.length === 0) {
-    return `Collier ${collarColor}`;
-  }
-
-  return `Collier ${collarColor} — ${parentDisplayNames.join(" × ")}`;
-}
-
-function getParentDisplayName(parent: {
-  call_name: string | null;
-  display_name: string;
-}) {
-  const callName = parent.call_name?.trim();
-
-  return callName || parent.display_name;
-}
-
 /**
  * Crée un groupe de portées (période) depuis l'interface Portées.
  *
@@ -769,34 +740,8 @@ export async function createLitterOffspring(formData: FormData) {
     redirect(litterOffspringUrl(litterId, "error"));
   }
 
-  const parentIds = [litter.mother_id, litter.father_id].filter(
-    (value): value is string => Boolean(value),
-  );
-  let motherDisplayName: string | null = null;
-  let fatherDisplayName: string | null = null;
-
-  if (parentIds.length > 0) {
-    const { data: parents, error: parentsError } = await supabase
-      .from("animals")
-      .select("id, display_name, call_name")
-      .eq("organization_id", litter.organization_id)
-      .in("id", parentIds)
-      .is("deleted_at", null);
-
-    if (parentsError) {
-      redirect(litterOffspringUrl(litterId, "error"));
-    }
-
-    const mother = parents?.find((parent) => parent.id === litter.mother_id);
-    const father = parents?.find((parent) => parent.id === litter.father_id);
-
-    motherDisplayName = mother ? getParentDisplayName(mother) : null;
-    fatherDisplayName = father ? getParentDisplayName(father) : null;
-  }
-
   const animalsToCreate: AnimalInsert[] = [];
   const requestedBirthOrders = new Set<number>();
-  const requestedDisplayNames = new Set<string>();
 
   for (let index = 0; index < rowCount; index += 1) {
     const sexRaw = formData.get(`offspring_${index}_sex`);
@@ -804,10 +749,6 @@ export async function createLitterOffspring(formData: FormData) {
       typeof sexRaw === "string" && allowedAnimalSexes.has(sexRaw)
         ? sexRaw
         : "unknown";
-    const temporaryName = normalizeOptionalText(
-      formData.get(`offspring_${index}_temporary_name`),
-      255,
-    );
     const collarColor = normalizeOptionalText(
       formData.get(`offspring_${index}_collar_color`),
       255,
@@ -826,11 +767,7 @@ export async function createLitterOffspring(formData: FormData) {
     const birthOrder = parsedBirthOrder.value;
     const birthWeightGrams = parsedBirthWeight.value;
     const hasExplicitValue = Boolean(
-      temporaryName ||
-        collarColor ||
-        birthOrder ||
-        birthWeightGrams ||
-        sex !== "unknown",
+      collarColor || birthOrder || birthWeightGrams || sex !== "unknown",
     );
 
     if (!hasExplicitValue) {
@@ -844,26 +781,6 @@ export async function createLitterOffspring(formData: FormData) {
       requestedBirthOrders.add(birthOrder);
     }
 
-    const fallbackName = getOffspringGenericName(
-      litter.species,
-      birthOrder ?? animalsToCreate.length + 1,
-    );
-    const displayName =
-      temporaryName ||
-      (collarColor
-        ? getCollarDisplayName(
-            collarColor,
-            motherDisplayName,
-            fatherDisplayName,
-          )
-        : fallbackName);
-
-    if (requestedDisplayNames.has(displayName)) {
-      redirect(litterOffspringUrl(litterId, "duplicate"));
-    }
-
-    requestedDisplayNames.add(displayName);
-
     animalsToCreate.push({
       organization_id: litter.organization_id,
       litter_id: litter.id,
@@ -875,8 +792,6 @@ export async function createLitterOffspring(formData: FormData) {
       status: "born",
       ownership_status: "produced",
       sex,
-      display_name: displayName,
-      temporary_name: temporaryName,
       collar_color_initial: collarColor,
       collar_color_current: collarColor,
       birth_order: birthOrder,
@@ -907,28 +822,6 @@ export async function createLitterOffspring(formData: FormData) {
     }
 
     if (existingAnimals && existingAnimals.length > 0) {
-      redirect(litterOffspringUrl(litterId, "duplicate"));
-    }
-  }
-
-  const displayNames = Array.from(requestedDisplayNames);
-
-  if (displayNames.length > 0) {
-    const { data: existingNamedAnimals, error: existingNamedError } =
-      await supabase
-        .from("animals")
-        .select("id")
-        .eq("organization_id", litter.organization_id)
-        .eq("litter_id", litter.id)
-        .in("display_name", displayNames)
-        .is("deleted_at", null)
-        .limit(1);
-
-    if (existingNamedError) {
-      redirect(litterOffspringUrl(litterId, "error"));
-    }
-
-    if (existingNamedAnimals && existingNamedAnimals.length > 0) {
       redirect(litterOffspringUrl(litterId, "duplicate"));
     }
   }

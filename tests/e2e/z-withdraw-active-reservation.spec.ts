@@ -32,7 +32,7 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
     contact_type: "person",
     first_name: "Withdrawal",
     last_name: `Smoke ${suffix}`,
-    display_name: displayName,
+    call_name: displayName,
     email: `withdrawal-smoke-${suffix}@example.invalid`,
     origin_channel: "manual",
     primary_status: "active",

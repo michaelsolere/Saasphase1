@@ -154,7 +154,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
     await expect(
       page.getByText("ce formulaire ne crée pas de chiot/chaton"),
     ).toBeVisible();
-    await page.getByLabel("Nom affiché").fill(manualCase.label);
+    await page.getByLabel("Nom d’usage").fill(manualCase.label);
     await manualCase.fill(page);
     await page.getByRole("button", { name: "Créer l’animal" }).click();
     await expect(page).toHaveURL(/\/animals\/[0-9a-f-]{36}$/);
@@ -167,15 +167,15 @@ test("creates manual animals without confusing them with litter offspring", asyn
       await supabase
         .from("animals")
         .select(
-          "display_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id",
+          "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id",
         )
-        .eq("display_name", manualCase.label)
+        .eq("call_name", manualCase.label)
         .single(),
       `read ${manualCase.label}`,
     );
 
     expect(animal).toMatchObject({
-      display_name: manualCase.label,
+      call_name: manualCase.label,
       ...manualCase.expected,
     });
   }
@@ -208,7 +208,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
 
   const forcedProducedName = `QA produced force ${suffix}`;
   await page.goto("/animals/new");
-  await page.getByLabel("Nom affiché").fill(forcedProducedName);
+  await page.getByLabel("Nom d’usage").fill(forcedProducedName);
   await page.locator('select[name="ownership_status"]').evaluate((select) => {
     const option = document.createElement("option");
     option.value = "produced";
@@ -222,7 +222,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
   const { count, error } = await supabase
     .from("animals")
     .select("id", { count: "exact", head: true })
-    .eq("display_name", forcedProducedName);
+    .eq("call_name", forcedProducedName);
 
   expect(error).toBeNull();
   expect(count).toBe(0);
@@ -237,7 +237,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   const { error: manualInsertError } = await supabase.from("animals").insert({
     id: manualAnimalId,
     organization_id: organizationId,
-    display_name: `QA edition legere ${suffix}`,
+    call_name: `QA edition legere ${suffix}`,
     species: "dog",
     breed: "Golden Retriever",
     sex: "female",
@@ -259,7 +259,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       id: litterAnimalId,
       organization_id: organizationId,
       litter_id: litterId,
-      display_name: `QA edition chiot ${suffix}`,
+      call_name: `QA edition chiot ${suffix}`,
       species: "dog",
       breed: "Golden Retriever",
       sex: "male",
@@ -281,7 +281,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   await page.goto(`/animals/${manualAnimalId}`);
   await page.getByRole("link", { name: "Modifier les informations" }).click();
   await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit`);
-  await page.getByLabel("Nom principal").fill(`QA edition modifiee ${suffix}`);
+  await page.getByLabel("Nom d’usage").fill(`QA edition modifiee ${suffix}`);
   await page.getByLabel("Identification").fill("NEW-ID");
   await page.getByLabel("Couleur").fill("Doré");
   await page.getByLabel("Robe").fill("Fauve clair");
@@ -316,7 +316,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await supabase
       .from("animals")
       .select(
-        "display_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
+        "call_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
       )
       .eq("id", manualAnimalId)
       .single(),
@@ -324,7 +324,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   );
 
   expect(updatedManualAnimal).toMatchObject({
-    display_name: `QA edition modifiee ${suffix}`,
+    call_name: `QA edition modifiee ${suffix}`,
     identification_number: "NEW-ID",
     color: "Doré",
     coat_color: "Fauve clair",
@@ -344,7 +344,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
 
   await page.goto(`/animals/${litterAnimalId}/edit`);
   await expect(page.locator('input[name="birth_date"]')).toHaveCount(0);
-  await page.getByLabel("Nom principal").fill(`QA edition chiot modifie ${suffix}`);
+  await page.getByLabel("Nom d’usage").fill(`QA edition chiot modifie ${suffix}`);
   await page.locator("form").evaluate((form) => {
     const input = document.createElement("input");
     input.name = "birth_date";
@@ -359,14 +359,14 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
   const updatedLitterAnimal = expectSupabaseData(
     await supabase
       .from("animals")
-      .select("display_name, birth_date, litter_id, status, ownership_status")
+      .select("call_name, birth_date, litter_id, status, ownership_status")
       .eq("id", litterAnimalId)
       .single(),
     "read updated litter animal",
   );
 
   expect(updatedLitterAnimal).toMatchObject({
-    display_name: `QA edition chiot modifie ${suffix}`,
+    call_name: `QA edition chiot modifie ${suffix}`,
     birth_date: "2026-04-15",
     litter_id: litterId,
     status: "born",
@@ -385,7 +385,7 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
   const { error: animalInsertError } = await supabase.from("animals").insert({
     id: animalId,
     organization_id: organizationId,
-    display_name: animalName,
+    call_name: animalName,
     species: "dog",
     breed: "Golden Retriever",
     sex: "unknown",
@@ -489,7 +489,7 @@ test("promotes an eligible identified adult female to home breeder", async ({
   const { error: animalInsertError } = await supabase.from("animals").insert({
     id: animalId,
     organization_id: organizationId,
-    display_name: animalName,
+    call_name: animalName,
     species: "dog",
     breed: "Golden Retriever",
     sex: "female",
@@ -562,7 +562,7 @@ test("promotes an eligible identified adult female to home breeder", async ({
   await page.goto("/cheptel");
   const homeFemalesSection = page.locator("section.rounded-2xl").filter({
     has: page.getByRole("heading", {
-      name: "Reproductrices maison",
+      name: "Reproductrices",
       exact: true,
     }),
   });
@@ -579,7 +579,7 @@ test("shows an empty health section on animal detail", async ({
   const { error: animalInsertError } = await supabase.from("animals").insert({
     id: animalId,
     organization_id: organizationId,
-    display_name: `QA sante vide ${suffix}`,
+    call_name: `QA sante vide ${suffix}`,
     species: "dog",
     breed: "Golden Retriever",
     sex: "female",
@@ -618,7 +618,7 @@ test("creates a health event from an animal detail page", async ({ page }) => {
   const { error: animalInsertError } = await supabase.from("animals").insert({
     id: animalId,
     organization_id: organizationId,
-    display_name: `QA evenement sante ${suffix}`,
+    call_name: `QA evenement sante ${suffix}`,
     species: "dog",
     breed: "Golden Retriever",
     sex: "female",

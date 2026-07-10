@@ -21,6 +21,7 @@ type Fixture = {
   litterId: string;
   contactIds: string[];
   animalId: string;
+  emailTemplateId: string;
   paymentIds: string[];
   documentIds: string[];
   eventIds: string[];
@@ -75,6 +76,7 @@ async function hardDeleteFixtureWithSql(
   ]);
   const documentIds = sqlUuidArray(fixture.documentIds);
   const paymentIds = sqlUuidArray(fixture.paymentIds);
+  const emailTemplateId = sqlUuidArray([fixture.emailTemplateId]);
   const contactIds = sqlUuidArray(fixture.contactIds);
   const reservationIdArray = sqlUuidArray(reservationIds);
   const animalId = sqlUuidArray([fixture.animalId]);
@@ -89,6 +91,9 @@ with
   ),
   del_payments as (
     delete from public.payments where id = any(${paymentIds}) returning id
+  ),
+  del_email_templates as (
+    delete from public.email_templates where id = any(${emailTemplateId}) returning id
   ),
   del_reservations as (
     delete from public.reservations where id = any(${reservationIdArray}) returning id
@@ -106,6 +111,7 @@ select
   (select count(*) from del_events) as events_deleted,
   (select count(*) from del_documents) as documents_deleted,
   (select count(*) from del_payments) as payments_deleted,
+  (select count(*) from del_email_templates) as email_templates_deleted,
   (select count(*) from del_reservations) as reservations_deleted,
   (select count(*) from del_animals) as animals_deleted,
   (select count(*) from del_contacts) as contacts_deleted,
@@ -178,6 +184,14 @@ async function expectFixtureDeleted(
   );
   await expectNoRows(
     supabase,
+    "email_templates",
+    supabase
+      .from("email_templates")
+      .select("id", { count: "exact", head: true })
+      .eq("id", fixture.emailTemplateId),
+  );
+  await expectNoRows(
+    supabase,
     "reservations",
     supabase
       .from("reservations")
@@ -242,6 +256,7 @@ async function createFixture(
 
   const litterId = randomUUID();
   const animalId = randomUUID();
+  const emailTemplateId = randomUUID();
   const contactIds = [randomUUID(), randomUUID(), randomUUID()];
   const paymentIds = [randomUUID(), randomUUID(), randomUUID()];
   const documentIds = Array.from({ length: 6 }, () => randomUUID());
@@ -257,6 +272,7 @@ async function createFixture(
     litterId,
     contactIds,
     animalId,
+    emailTemplateId,
     paymentIds,
     documentIds,
     eventIds,
@@ -268,8 +284,25 @@ async function createFixture(
   };
 
   try {
+    const { error: templateError } = await supabase.from("email_templates").insert({
+      id: emailTemplateId,
+      organization_id: organizationId,
+      template_key: "choice_appointment_adoption_booklet",
+      title: "Confirmation du créneau de choix",
+      category: "adopter_journey",
+      subject: "Confirmation du créneau de choix - [Portée]",
+      body:
+        "Bonjour [Prénom],\n\nVotre rendez-vous de choix est prévu le [Date du rendez-vous de choix].\nLe départ est prévu le [Date du rendez-vous de départ].\nAnimal : [Nom du chiot].",
+      is_active: true,
+      created_by: user.id,
+      updated_by: user.id,
+    });
+    if (templateError) {
+      throw new Error(`create email template: ${templateError.message}`);
+    }
+
     const { error: litterError } = await supabase.from("litters").insert({
-    id: litterId,
+      id: litterId,
     organization_id: organizationId,
     name: `E2E portée créneaux ${suffix}`,
     species: "dog",
@@ -289,7 +322,7 @@ async function createFixture(
     species: "dog",
     breed: "Golden Retriever",
     sex: "female",
-    display_name: `Nala ${suffix}`,
+    call_name: `Nala ${suffix}`,
     status: "reserved",
     ownership_status: "produced",
     created_by: user.id,

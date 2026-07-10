@@ -88,7 +88,7 @@ type RelatedLitter = {
 
 type RelatedAnimal = {
   id: string;
-  display_name: string;
+  official_name: string | null;
   sex: string;
   birth_date: string | null;
   identification_number: string | null;
@@ -99,7 +99,6 @@ type RelatedAnimal = {
   breed: string;
   status: string;
   call_name: string | null;
-  chosen_name_by_adopter: string | null;
 };
 
 type OtherRelatedDocument = {
@@ -780,7 +779,7 @@ function CommitmentCertificatePreview({
             <DetailItem
               label="Animal attribué"
               value={
-                relatedAnimal?.display_name ??
+                relatedAnimal?.official_name ??
                 "Animal non attribué pour l’instant"
               }
             />
@@ -1039,7 +1038,7 @@ function ReservationContractPreview({
             <DetailItem
               label="Animal attribué"
               value={
-                relatedAnimal?.display_name ??
+                relatedAnimal?.official_name ??
                 "Animal non attribué pour l’instant"
               }
             />
@@ -1246,13 +1245,13 @@ function SaleCertificatePreview({
   otherRelatedDocuments: OtherRelatedDocument[];
   mother: {
     id: string;
-    display_name: string | null;
+    official_name: string | null;
     identification_number: string | null;
     lof_number: string | null;
   } | null;
   father: {
     id: string;
-    display_name: string | null;
+    official_name: string | null;
     identification_number: string | null;
     lof_number: string | null;
   } | null;
@@ -1411,7 +1410,7 @@ function SaleCertificatePreview({
               label="Race"
               value={relatedAnimal?.breed ?? relatedLitter?.breed}
             />
-            <DetailItem label="Nom" value={relatedAnimal?.display_name} />
+            <DetailItem label="Nom complet" value={relatedAnimal?.official_name} />
             <DetailItem
               label="Sexe"
               value={getAnimalSexLabel(relatedAnimal?.sex ?? null)}
@@ -1440,8 +1439,8 @@ function SaleCertificatePreview({
               label="Groupe de portée"
               value={relatedLitterGroup?.name ?? relatedReservation?.litter_group_name}
             />
-            <DetailItem label="Mère" value={mother?.display_name} />
-            <DetailItem label="Père" value={father?.display_name} />
+            <DetailItem label="Mère" value={mother?.official_name} />
+            <DetailItem label="Père" value={father?.official_name} />
           </dl>
         </div>
 
@@ -1937,13 +1936,13 @@ export default async function DocumentDetailPage({
   let litterParentsError = false;
   let mother: {
     id: string;
-    display_name: string | null;
+    official_name: string | null;
     identification_number: string | null;
     lof_number: string | null;
   } | null = null;
   let father: {
     id: string;
-    display_name: string | null;
+    official_name: string | null;
     identification_number: string | null;
     lof_number: string | null;
   } | null = null;
@@ -1954,7 +1953,7 @@ export default async function DocumentDetailPage({
     if (parentIds.length > 0) {
       const { data: parents, error: parentsError } = await supabase
         .from("animals")
-        .select("id, display_name, identification_number, lof_number")
+        .select("id, official_name, identification_number, lof_number")
         .in("id", parentIds);
 
       if (parentsError) {
@@ -1966,7 +1965,7 @@ export default async function DocumentDetailPage({
         if (relatedLitter.mother_id) {
           mother = {
             id: relatedLitter.mother_id,
-            display_name: motherData?.display_name ?? null,
+            official_name: motherData?.official_name ?? null,
             identification_number: motherData?.identification_number ?? null,
             lof_number: motherData?.lof_number ?? null,
           };
@@ -1975,7 +1974,7 @@ export default async function DocumentDetailPage({
         if (relatedLitter.father_id) {
           father = {
             id: relatedLitter.father_id,
-            display_name: fatherData?.display_name ?? null,
+            official_name: fatherData?.official_name ?? null,
             identification_number: fatherData?.identification_number ?? null,
             lof_number: fatherData?.lof_number ?? null,
           };
@@ -1989,7 +1988,7 @@ export default async function DocumentDetailPage({
   const { data: rawAnimal, error: animalError } = targetAnimalId
     ? await supabase
         .from("animals")
-        .select("id, display_name, sex, birth_date, identification_number, lof_number, collar_color_current, collar_color_initial, species, breed, status, call_name, chosen_name_by_adopter")
+        .select("id, official_name, sex, birth_date, identification_number, lof_number, collar_color_current, collar_color_initial, species, breed, status, call_name")
         .eq("id", targetAnimalId)
         .maybeSingle()
     : { data: null, error: null };
@@ -2184,10 +2183,10 @@ export default async function DocumentDetailPage({
       pointsOfAttention.push("Aucune portée précise liée à la réservation");
     }
     if (mother && !mother.lof_number) {
-      pointsOfAttention.push(`Numéro LOF de la mère (${mother.display_name || "Non renseignée"}) manquant`);
+      pointsOfAttention.push(`Numéro LOF de la mère (${mother.official_name || "Non renseignée"}) manquant`);
     }
     if (father && !father.lof_number) {
-      pointsOfAttention.push(`Numéro LOF du père (${father.display_name || "Non renseigné"}) manquant`);
+      pointsOfAttention.push(`Numéro LOF du père (${father.official_name || "Non renseigné"}) manquant`);
     }
     if (!targetAnimalId) {
       pointsOfAttention.push("Aucun animal attribué à ce dossier");
@@ -2959,7 +2958,7 @@ export default async function DocumentDetailPage({
                             )}
                           </div>
                           <dl className="mt-3 space-y-3">
-                            <DetailItem label="Nom" value={mother?.display_name ?? null} />
+                            <DetailItem label="Nom complet" value={mother?.official_name ?? null} />
                             <DetailItem
                               label="Numéro d’identification"
                               value={mother?.identification_number ?? null}
@@ -2980,7 +2979,7 @@ export default async function DocumentDetailPage({
                             )}
                           </div>
                           <dl className="mt-3 space-y-3">
-                            <DetailItem label="Nom" value={father?.display_name ?? null} />
+                            <DetailItem label="Nom complet" value={father?.official_name ?? null} />
                             <DetailItem
                               label="Numéro d’identification"
                               value={father?.identification_number ?? null}
@@ -2996,7 +2995,7 @@ export default async function DocumentDetailPage({
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <RelatedSectionHeader
                     title="Animal attribué"
-                    subtitle={relatedAnimal?.display_name ?? null}
+                    subtitle={relatedAnimal?.official_name ?? null}
                     href={relatedAnimal?.id ? `/animals/${relatedAnimal.id}` : null}
                   />
 
@@ -3010,7 +3009,7 @@ export default async function DocumentDetailPage({
                     </p>
                   ) : (
                     <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                      <DetailItem label="Nom" value={relatedAnimal.display_name} />
+                      <DetailItem label="Nom complet" value={relatedAnimal.official_name} />
                       <DetailItem
                         label="Sexe"
                         value={relatedAnimal.sex === "M" ? "Mâle" : relatedAnimal.sex === "F" ? "Femelle" : relatedAnimal.sex}

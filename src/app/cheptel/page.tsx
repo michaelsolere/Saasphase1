@@ -16,8 +16,6 @@ export const dynamic = "force-dynamic";
 type HerdAnimal = Pick<
   Database["public"]["Tables"]["animals"]["Row"],
   | "id"
-  | "display_name"
-  | "temporary_name"
   | "call_name"
   | "official_name"
   | "species"
@@ -28,6 +26,9 @@ type HerdAnimal = Pick<
   | "is_external"
   | "is_retired"
   | "litter_id"
+  | "birth_order"
+  | "collar_color_current"
+  | "collar_color_initial"
   | "pedigree_url"
   | "created_at"
 >;
@@ -398,7 +399,7 @@ export default async function HerdPage() {
   const { data: rawAnimals, error: animalsError } = await supabase
     .from("animals")
     .select(
-      "id, display_name, temporary_name, call_name, official_name, species, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, pedigree_url, created_at",
+      "id, call_name, official_name, species, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, birth_order, collar_color_current, collar_color_initial, pedigree_url, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });

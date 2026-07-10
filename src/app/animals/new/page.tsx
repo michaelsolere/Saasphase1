@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 const errorMessages: Record<string, string> = {
-  name_required: "Le nom affiché est obligatoire.",
+  name_required: "Renseignez au moins un nom complet ou un nom d’usage.",
   invalid:
     "Certaines valeurs sont incohérentes pour une création manuelle d’animal.",
   invalid_mother: "La mère sélectionnée est invalide ou inaccessible.",
@@ -37,9 +37,9 @@ export default async function NewAnimalPage({
 
   const { data: parentOptionsData } = await supabase
     .from("animals")
-    .select("id, display_name, sex, species, breed, status")
+    .select("id, call_name, official_name, sex, species, breed, status")
     .is("deleted_at", null)
-    .order("display_name", { ascending: true });
+    .order("call_name", { ascending: true });
 
   const parentOptions = (parentOptionsData ?? []) as AnimalParentOption[];
   const errorMessage = query.status ? errorMessages[query.status] : undefined;

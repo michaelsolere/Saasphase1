@@ -78,8 +78,6 @@ type DBLitter = Database["public"]["Tables"]["litters"]["Row"];
 type RelatedAnimal = Pick<
   Database["public"]["Tables"]["animals"]["Row"],
   | "id"
-  | "display_name"
-  | "temporary_name"
   | "call_name"
   | "official_name"
   | "species"
@@ -87,16 +85,23 @@ type RelatedAnimal = Pick<
   | "status"
   | "ownership_status"
   | "litter_id"
+  | "mother_id"
+  | "father_id"
   | "is_breeder"
   | "is_external"
   | "is_retired"
   | "birth_date"
   | "birth_order"
+  | "collar_color_current"
+  | "collar_color_initial"
   | "identification_number"
   | "color"
   | "coat_color"
   | "created_at"
->;
+> & {
+  motherCallName: string | null;
+  fatherCallName: string | null;
+};
 type RelatedDocument = Pick<
   Database["public"]["Tables"]["documents"]["Row"],
   | "id"
@@ -191,7 +196,14 @@ type ChoiceCampaignContact = Pick<
 >;
 type ChoiceCampaignAnimal = Pick<
   Database["public"]["Tables"]["animals"]["Row"],
-  "id" | "display_name" | "temporary_name" | "call_name" | "official_name"
+  | "id"
+  | "call_name"
+  | "official_name"
+  | "species"
+  | "litter_id"
+  | "birth_order"
+  | "collar_color_current"
+  | "collar_color_initial"
 >;
 type LitterSummary = Pick<
   LitterOverview,
@@ -235,13 +247,7 @@ function getChoiceCampaignAnimalName(
     return null;
   }
 
-  return (
-    animal.display_name ||
-    animal.call_name ||
-    animal.temporary_name ||
-    animal.official_name ||
-    null
-  );
+  return getAnimalDisplayName(animal);
 }
 
 function isChoiceCampaignDocumentSigned(
@@ -1518,11 +1524,11 @@ export default async function LitterDetailPage({
       ? await supabase
           .from("animals")
           .select(
-            "id, display_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
+            "id, call_name, official_name, sex, species, breed, status, ownership_status, is_breeder, is_external, is_retired, litter_id, deleted_at",
           )
           .eq("organization_id", litter.organization_id)
           .is("deleted_at", null)
-          .order("display_name", { ascending: true })
+          .order("call_name", { ascending: true })
       : { data: null };
 
   const animalOptions = (rawAnimalOptions ?? []) as LitterAnimalOption[];
@@ -1558,7 +1564,7 @@ export default async function LitterDetailPage({
     ? await supabase
         .from("animals")
         .select(
-          "id, display_name, temporary_name, call_name, official_name, species, sex, status, ownership_status, litter_id, is_breeder, is_external, is_retired, birth_date, birth_order, identification_number, color, coat_color, created_at",
+          "id, call_name, official_name, species, sex, status, ownership_status, litter_id, mother_id, father_id, is_breeder, is_external, is_retired, birth_date, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, created_at",
         )
         .eq("litter_id", id)
         .is("deleted_at", null)
@@ -1566,7 +1572,21 @@ export default async function LitterDetailPage({
         .order("created_at", { ascending: true })
     : { data: null, error: null };
 
-  const litterAnimals = rawAnimals as RelatedAnimal[] | null;
+  const parentCallNamesById = new Map(
+    animalOptions.map((animal) => [animal.id, animal.call_name]),
+  );
+  const litterAnimals =
+    ((rawAnimals as Omit<RelatedAnimal, "motherCallName" | "fatherCallName">[] | null) ?? []).map(
+      (animal) => ({
+        ...animal,
+        motherCallName: animal.mother_id
+          ? parentCallNamesById.get(animal.mother_id) ?? null
+          : null,
+        fatherCallName: animal.father_id
+          ? parentCallNamesById.get(animal.father_id) ?? null
+          : null,
+      }),
+    ) ?? null;
 
   const { data: rawReservations, error: reservationsError } = litter
     ? await supabase
@@ -1758,7 +1778,7 @@ export default async function LitterDetailPage({
     choiceCampaignAnimalIds.length > 0 && litter?.organization_id
       ? await supabase
           .from("animals")
-          .select("id, display_name, temporary_name, call_name, official_name")
+          .select("id, call_name, official_name, species, litter_id, birth_order, collar_color_current, collar_color_initial")
           .eq("organization_id", litter.organization_id)
           .in("id", choiceCampaignAnimalIds)
           .is("deleted_at", null)

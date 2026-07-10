@@ -37,12 +37,59 @@ const ownershipStatusLabels: Record<string, string> = {
   unknown: "Historique / origine inconnue",
 };
 
-export function getAnimalDisplayName(animal: Pick<AnimalListItem, "display_name" | "call_name" | "official_name" | "temporary_name" | "id">) {
+export type AnimalDisplayParts = {
+  id: string;
+  call_name: string | null;
+  official_name: string | null;
+  species?: string | null;
+  litter_id?: string | null;
+  birth_order?: number | null;
+  collar_color_current?: string | null;
+  collar_color_initial?: string | null;
+  motherCallName?: string | null;
+  fatherCallName?: string | null;
+  mother_call_name?: string | null;
+  father_call_name?: string | null;
+};
+
+function normalizeLabel(value: string | null | undefined) {
+  const trimmed = value?.trim();
+  return trimmed || null;
+}
+
+export function getCalculatedYoungAnimalName(animal: AnimalDisplayParts) {
+  if (!animal.litter_id) {
+    return null;
+  }
+
+  const collarColor =
+    normalizeLabel(animal.collar_color_current) ??
+    normalizeLabel(animal.collar_color_initial);
+  const baseLabel = collarColor
+    ? `Collier ${collarColor}`
+    : animal.birth_order
+      ? `${animal.species === "cat" ? "Chaton" : "Chiot"} ${animal.birth_order}`
+      : null;
+
+  if (!baseLabel) {
+    return null;
+  }
+
+  const parentNames = [
+    normalizeLabel(animal.motherCallName ?? animal.mother_call_name),
+    normalizeLabel(animal.fatherCallName ?? animal.father_call_name),
+  ].filter((value): value is string => Boolean(value));
+
+  return parentNames.length > 0
+    ? `${baseLabel} — ${parentNames.join(" × ")}`
+    : baseLabel;
+}
+
+export function getAnimalDisplayName(animal: AnimalDisplayParts) {
   return (
-    animal.display_name ||
-    animal.call_name ||
-    animal.official_name ||
-    animal.temporary_name ||
+    normalizeLabel(animal.call_name) ??
+    normalizeLabel(animal.official_name) ??
+    getCalculatedYoungAnimalName(animal) ??
     `Animal ${animal.id.slice(0, 8)}`
   );
 }

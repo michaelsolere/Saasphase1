@@ -1,6 +1,7 @@
 export type AnimalParentOption = {
   id: string;
-  display_name: string | null;
+  call_name: string | null;
+  official_name: string | null;
   sex: string | null;
   species: string | null;
   breed: string | null;
@@ -58,7 +59,10 @@ function sexLabel(value: string | null) {
 }
 
 function parentOptionLabel(animal: AnimalParentOption) {
-  const parts = [animal.display_name ?? "Animal sans nom", sexLabel(animal.sex)];
+  const parts = [
+    animal.call_name ?? animal.official_name ?? "Animal sans nom",
+    sexLabel(animal.sex),
+  ];
   const speciesBreed = [speciesLabel(animal.species), animal.breed]
     .filter(Boolean)
     .join(" / ");
@@ -114,10 +118,17 @@ export function AnimalFields({
     <div className="grid gap-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <TextField
-          id={`${idPrefix}-display-name`}
-          label="Nom affiché"
-          name="display_name"
-          required
+          id={`${idPrefix}-call-name`}
+          label="Nom d’usage"
+          name="call_name"
+        />
+      </div>
+
+      <div className="sm:col-span-2">
+        <TextField
+          id={`${idPrefix}-official-name`}
+          label="Nom complet"
+          name="official_name"
         />
       </div>
 

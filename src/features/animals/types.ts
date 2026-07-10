@@ -5,8 +5,6 @@ export type DBAnimal = Database["public"]["Tables"]["animals"]["Row"];
 export type AnimalListItem = Pick<
   DBAnimal,
   | "id"
-  | "display_name"
-  | "temporary_name"
   | "call_name"
   | "official_name"
   | "species"
@@ -21,6 +19,9 @@ export type AnimalListItem = Pick<
   | "litter_id"
   | "mother_id"
   | "father_id"
+  | "birth_order"
+  | "collar_color_current"
+  | "collar_color_initial"
   | "identification_number"
   | "color"
   | "coat_color"
@@ -28,6 +29,6 @@ export type AnimalListItem = Pick<
 > & {
   litterName: string | null;
   litterGroupName: string | null;
-  motherDisplayName: string | null;
-  fatherDisplayName: string | null;
+  motherCallName: string | null;
+  fatherCallName: string | null;
 };

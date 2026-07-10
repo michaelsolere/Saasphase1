@@ -92,9 +92,6 @@ export function OffspringCreationForm({
                 <th scope="col" className="min-w-32 px-3 py-3">
                   Sexe
                 </th>
-                <th scope="col" className="min-w-48 px-3 py-3">
-                  Nom provisoire
-                </th>
                 <th scope="col" className="min-w-44 px-3 py-3">
                   Collier / couleur
                 </th>
@@ -122,15 +119,6 @@ export function OffspringCreationForm({
                       <option value="female">Femelle</option>
                       <option value="male">Mâle</option>
                     </select>
-                  </td>
-                  <td className="px-3 py-3">
-                    <input
-                      name={`offspring_${index}_temporary_name`}
-                      type="text"
-                      maxLength={255}
-                      placeholder={species === "cat" ? "Chaton 1" : "Chiot 1"}
-                      className={inputClass}
-                    />
                   </td>
                   <td className="px-3 py-3">
                     <input

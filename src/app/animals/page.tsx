@@ -21,7 +21,7 @@ type LitterLookup = {
   litter_group_name: string | null;
 };
 
-type ParentLookup = Pick<DBAnimal, "id" | "display_name">;
+type ParentLookup = Pick<DBAnimal, "id" | "call_name">;
 
 const quickFilters = new Set<AnimalQuickFilter>([
   "born",
@@ -204,7 +204,7 @@ export default async function AnimalsPage({
   const result = await supabase
     .from("animals")
     .select(
-      "id, display_name, temporary_name, call_name, official_name, species, breed, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, mother_id, father_id, identification_number, color, coat_color, created_at",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });
@@ -226,9 +226,9 @@ export default async function AnimalsPage({
       : { data: [], error: null };
 
     const { data: rawParents, error: parentsError } = parentIds.length
-      ? await supabase
+        ? await supabase
           .from("animals")
-          .select("id, display_name")
+          .select("id, call_name")
           .in("id", parentIds)
           .is("deleted_at", null)
       : { data: [], error: null };
@@ -244,7 +244,7 @@ export default async function AnimalsPage({
     const parentsById = new Map(
       ((rawParents as ParentLookup[] | null) ?? []).map((parent) => [
         parent.id,
-        parent.display_name,
+        parent.call_name,
       ]),
     );
     litterOptions = buildLitterOptions(littersById);
@@ -258,10 +258,10 @@ export default async function AnimalsPage({
         ...animal,
         litterName: litter?.name ?? null,
         litterGroupName: litter?.litter_group_name ?? null,
-        motherDisplayName: animal.mother_id
+        motherCallName: animal.mother_id
           ? parentsById.get(animal.mother_id) ?? null
           : null,
-        fatherDisplayName: animal.father_id
+        fatherCallName: animal.father_id
           ? parentsById.get(animal.father_id) ?? null
           : null,
       } satisfies AnimalListItem;
