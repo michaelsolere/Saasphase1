@@ -70,11 +70,15 @@ Avant toute modification importante :
 - Toute donnée créée uniquement pour tester une fonctionnalité doit être supprimée avant la finalisation du lot.
 - « Supprimer » signifie supprimer physiquement la ligne avec `DELETE`.
 - Un soft delete par `deleted_at` ne constitue pas un nettoyage des fixtures de test.
+- Un appel Supabase `.delete()` sans vérification explicite de `error` ne constitue pas un cleanup validé.
 - Cette règle concerne notamment les contacts, rôles, candidatures, soumissions de formulaire, réservations ou parcours adoptants, paiements, documents, portées, groupes de portées, animaux, modèles d’e-mail, notes, événements et tables de liaison.
 - Lorsqu’une donnée de test est créée, conserver immédiatement son identifiant afin de pouvoir la supprimer sans ambiguïté.
 - Effectuer le nettoyage avant le commit, le merge et le rapport final.
 - Vérifier après nettoyage que les enregistrements créés pour le test n’existent plus et qu’aucun enregistrement dépendant ou orphelin ne subsiste.
 - La vérification finale doit compter toutes les lignes concernées avec `count(*)`, sans filtre sur `deleted_at`.
+- Une vérification limitée aux UUID du dernier run ne suffit pas lorsqu’il existe des préfixes historiques connus.
+- Après correction d’une spec ayant déjà pollué la base, nettoyer et vérifier également les restes des anciens runs.
+- Un test réussi n’est pas une preuve de cleanup réussi.
 - Un reset de base ne remplace pas la vérification du mécanisme de cleanup du test.
 - Toute spec qui crée des fixtures persistantes doit les hard-delete dans son `finally`, dans l’ordre des dépendances.
 - Ne jamais supprimer une donnée ambiguë ou potentiellement réelle.
