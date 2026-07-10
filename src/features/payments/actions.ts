@@ -43,7 +43,11 @@ async function markLinkedPreReservationAsPaidIfNeeded({
   amountCents: number;
   userId: string;
 }) {
-  if (!reservationId || paymentType !== "arrhes") {
+  const isPreReservationPayment =
+    paymentType === "arrhes" ||
+    paymentType === "pre_reservation_deposit_refundable";
+
+  if (!reservationId || !isPreReservationPayment) {
     return;
   }
 
@@ -112,6 +116,7 @@ async function markLinkedPreReservationAsPaidIfNeeded({
 
   revalidatePath("/contacts");
   revalidatePath(`/contacts/${reservation.contact_id}`);
+  revalidatePath("/");
 }
 
 async function markLinkedReservationHolderRoleIfDepositCompleted({
