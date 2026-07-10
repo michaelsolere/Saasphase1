@@ -85,13 +85,6 @@ function applicationStatusRedirectUrl({
   return `${returnPath}${separator}action=success${noteParam}`;
 }
 
-function reservationUrl(
-  applicationId: string,
-  outcome: "created" | "already_exists" | "not_qualified" | "error",
-) {
-  return `/candidatures/${applicationId}?reservation_status=${outcome}`;
-}
-
 function contactApplicationUrl(contactId: string, outcome: "error") {
   return `/contacts/${contactId}/applications/new?status=${outcome}`;
 }
@@ -313,88 +306,6 @@ export async function updateApplicationStatus(formData: FormData) {
   }
 
   redirect(applicationStatusRedirectUrl({ applicationId, returnPath }));
-}
-
-export async function createReservationFromApplication(formData: FormData) {
-  const applicationId = formData.get("application_id");
-
-  if (typeof applicationId !== "string" || !applicationId) {
-    redirect("/candidatures?erreur=reservation");
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: application, error: readError } = await supabase
-    .from("applications")
-    .select(
-      "id, organization_id, contact_id, species, breed, desired_litter_group_id, desired_litter_id, desired_sex_preference, status",
-    )
-    .eq("id", applicationId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (readError || !application) {
-    redirect(reservationUrl(applicationId, "error"));
-  }
-
-  if (application.status !== "qualified") {
-    redirect(reservationUrl(applicationId, "not_qualified"));
-  }
-
-  const { data: existingReservation, error: reservationReadError } =
-    await supabase
-      .from("reservations")
-      .select("id")
-      .eq("application_id", applicationId)
-      .is("deleted_at", null)
-      .limit(1)
-      .maybeSingle();
-
-  if (reservationReadError) {
-    redirect(reservationUrl(applicationId, "error"));
-  }
-
-  if (existingReservation) {
-    redirect(reservationUrl(applicationId, "already_exists"));
-  }
-
-  const { data: createdReservation, error: insertError } = await supabase
-    .from("reservations")
-    .insert({
-      organization_id: application.organization_id,
-      contact_id: application.contact_id,
-      application_id: application.id,
-      species: application.species,
-      breed: application.breed,
-      litter_group_id: application.desired_litter_group_id,
-      litter_id: application.desired_litter_id,
-      reserved_sex_preference: application.desired_sex_preference,
-      status: "draft",
-      created_by: user.id,
-      updated_by: user.id,
-    })
-    .select("id")
-    .maybeSingle();
-
-  if (insertError || !createdReservation?.id) {
-    redirect(reservationUrl(applicationId, "error"));
-  }
-
-  const createdReservationId = createdReservation.id;
-
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${application.contact_id}`);
-  revalidatePath("/candidatures");
-  revalidatePath(`/candidatures/${applicationId}`);
-  revalidatePath("/reservations");
-  redirect(`/reservations/${createdReservationId}`);
 }
 
 export async function createApplicationNote(formData: FormData) {

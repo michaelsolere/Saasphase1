@@ -224,20 +224,24 @@ function getReservationFinancialBadge({
     };
   }
 
-  const hasPendingPreReservationRequest =
-    reservation.status === "draft" ||
-    reservation.status === "pre_reservation_requested" ||
-    depositPayments.some(
-      (payment) =>
-        payment.status === "requested" ||
-        payment.status === "pending" ||
-        payment.status === "partially_paid",
-    );
+  const hasPendingPreReservationRequest = depositPayments.some(
+    (payment) =>
+      payment.status === "requested" ||
+      payment.status === "pending" ||
+      payment.status === "partially_paid",
+  );
 
   if (hasPendingPreReservationRequest) {
     return {
       label: "Pré-réservation à régler",
       className: getPreReservationDepositBadgeClassName("requested"),
+    };
+  }
+
+  if (reservation.status === "draft") {
+    return {
+      label: "Aucun paiement demandé",
+      className: getPreReservationDepositBadgeClassName("absent"),
     };
   }
 

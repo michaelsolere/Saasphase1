@@ -7,7 +7,6 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
-import { createReservationFromApplication } from "@/features/applications/actions";
 import {
   ApplicationLitterScopeForm,
   type ApplicationLitter,
@@ -279,13 +278,6 @@ export default async function ApplicationDetailPage({
     : { data: null, error: null };
 
   const applicationReservations = rawReservations as ReservationOverview[] | null;
-  const hasApplicationReservation =
-    Boolean(applicationReservations && applicationReservations.length > 0);
-  const canCreateDraftReservation =
-    application?.status === "qualified" &&
-    !reservationsError &&
-    applicationReservations !== null &&
-    !hasApplicationReservation;
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = applicationId
@@ -609,27 +601,10 @@ export default async function ApplicationDetailPage({
                         Réservations liées
                       </h2>
                       <p className="mt-2 text-sm text-muted">
-                        Une candidature validée peut créer une demande de
-                        pré-réservation. Elle sera ajoutée ici, sans
-                        paiement, document ou attribution animal.
+                        Les dossiers adoptants apparaissent ici après le
+                        lancement de la campagne de pré-réservation.
                       </p>
                     </div>
-
-                    {canCreateDraftReservation && applicationId ? (
-                      <form action={createReservationFromApplication}>
-                        <input
-                          type="hidden"
-                          name="application_id"
-                          value={applicationId}
-                        />
-                        <button
-                          type="submit"
-                          className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                        >
-                          Créer une demande de pré-réservation
-                        </button>
-                      </form>
-                    ) : null}
                   </div>
 
                   {reservationsError ? (
