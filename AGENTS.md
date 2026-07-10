@@ -68,10 +68,15 @@ Avant toute modification importante :
 ## Données temporaires de test — règle impérative
 
 - Toute donnée créée uniquement pour tester une fonctionnalité doit être supprimée avant la finalisation du lot.
+- « Supprimer » signifie supprimer physiquement la ligne avec `DELETE`.
+- Un soft delete par `deleted_at` ne constitue pas un nettoyage des fixtures de test.
 - Cette règle concerne notamment les contacts, rôles, candidatures, soumissions de formulaire, réservations ou parcours adoptants, paiements, documents, portées, groupes de portées, animaux, modèles d’e-mail, notes, événements et tables de liaison.
 - Lorsqu’une donnée de test est créée, conserver immédiatement son identifiant afin de pouvoir la supprimer sans ambiguïté.
 - Effectuer le nettoyage avant le commit, le merge et le rapport final.
 - Vérifier après nettoyage que les enregistrements créés pour le test n’existent plus et qu’aucun enregistrement dépendant ou orphelin ne subsiste.
+- La vérification finale doit compter toutes les lignes concernées avec `count(*)`, sans filtre sur `deleted_at`.
+- Un reset de base ne remplace pas la vérification du mécanisme de cleanup du test.
+- Toute spec qui crée des fixtures persistantes doit les hard-delete dans son `finally`, dans l’ordre des dépendances.
 - Ne jamais supprimer une donnée ambiguë ou potentiellement réelle.
 - Une donnée de démonstration ne peut être conservée que si son ajout au seed minimal a été explicitement demandé et validé.
 - Privilégier les tests ne nécessitant aucune donnée persistante. Lorsqu’une création est nécessaire, créer puis supprimer les données dans le même lot.

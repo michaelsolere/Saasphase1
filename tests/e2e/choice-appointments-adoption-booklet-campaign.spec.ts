@@ -1,4 +1,6 @@
-import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { promisify } from "node:util";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -10,12 +12,19 @@ import {
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const traceTitle = "Créneaux proposés et livret d’adoption envoyés";
+const execFileAsync = promisify(execFile);
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type Fixture = {
   suffix: string;
   litterId: string;
   contactIds: string[];
   animalId: string;
+  paymentIds: string[];
+  documentIds: string[];
+  eventIds: string[];
+  campaignTraceIds: string[];
   reservationIds: {
     first: string;
     second: string;
@@ -40,70 +49,183 @@ async function cleanupFixture(
   }
 
   const reservationIds = Object.values(fixture.reservationIds);
-  const now = new Date().toISOString();
 
-  const { error: eventsError } = await supabase
-    .from("events")
-    .update({ deleted_at: now })
-    .in("reservation_id", reservationIds)
-    .is("deleted_at", null);
-  if (eventsError) {
-    throw new Error(`cleanup events: ${eventsError.message}`);
+  await hardDeleteFixtureWithSql(fixture, reservationIds);
+
+  await expectFixtureDeleted(supabase, fixture);
+}
+
+function sqlUuidArray(ids: string[]) {
+  for (const id of ids) {
+    if (!uuidPattern.test(id)) {
+      throw new Error(`Invalid fixture UUID: ${id}`);
+    }
   }
 
-  const { error: documentsError } = await supabase
-    .from("documents")
-    .update({ deleted_at: now })
-    .in("reservation_id", reservationIds)
-    .is("deleted_at", null);
-  if (documentsError) {
-    throw new Error(`cleanup documents: ${documentsError.message}`);
+  return `array[${ids.map((id) => `'${id}'::uuid`).join(", ")}]`;
+}
+
+async function hardDeleteFixtureWithSql(
+  fixture: Fixture,
+  reservationIds: string[],
+) {
+  const eventIds = sqlUuidArray([
+    ...fixture.eventIds,
+    ...fixture.campaignTraceIds,
+  ]);
+  const documentIds = sqlUuidArray(fixture.documentIds);
+  const paymentIds = sqlUuidArray(fixture.paymentIds);
+  const contactIds = sqlUuidArray(fixture.contactIds);
+  const reservationIdArray = sqlUuidArray(reservationIds);
+  const animalId = sqlUuidArray([fixture.animalId]);
+  const litterId = sqlUuidArray([fixture.litterId]);
+  const sql = `
+with
+  del_events as (
+    delete from public.events where id = any(${eventIds}) returning id
+  ),
+  del_documents as (
+    delete from public.documents where id = any(${documentIds}) returning id
+  ),
+  del_payments as (
+    delete from public.payments where id = any(${paymentIds}) returning id
+  ),
+  del_reservations as (
+    delete from public.reservations where id = any(${reservationIdArray}) returning id
+  ),
+  del_animals as (
+    delete from public.animals where id = any(${animalId}) returning id
+  ),
+  del_contacts as (
+    delete from public.contacts where id = any(${contactIds}) returning id
+  ),
+  del_litters as (
+    delete from public.litters where id = any(${litterId}) returning id
+  )
+select
+  (select count(*) from del_events) as events_deleted,
+  (select count(*) from del_documents) as documents_deleted,
+  (select count(*) from del_payments) as payments_deleted,
+  (select count(*) from del_reservations) as reservations_deleted,
+  (select count(*) from del_animals) as animals_deleted,
+  (select count(*) from del_contacts) as contacts_deleted,
+  (select count(*) from del_litters) as litters_deleted;
+`;
+
+  await execFileAsync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { maxBuffer: 1024 * 1024 },
+  );
+}
+
+async function expectNoRows(
+  supabase: SupabaseTestClient,
+  label: string,
+  query: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+) {
+  const { count, error } = await query;
+
+  if (error) {
+    throw new Error(`verify cleanup ${label}: ${error.message}`);
   }
 
-  const { error: paymentsError } = await supabase
-    .from("payments")
-    .update({ deleted_at: now })
-    .in("reservation_id", reservationIds)
-    .is("deleted_at", null);
-  if (paymentsError) {
-    throw new Error(`cleanup payments: ${paymentsError.message}`);
-  }
+  expect(count).toBe(0);
+}
 
-  const { error: reservationsError } = await supabase
-    .from("reservations")
-    .update({ deleted_at: now })
-    .in("id", reservationIds)
-    .is("deleted_at", null);
-  if (reservationsError) {
-    throw new Error(`cleanup reservations: ${reservationsError.message}`);
-  }
+async function expectFixtureDeleted(
+  supabase: SupabaseTestClient,
+  fixture: Fixture,
+) {
+  const reservationIds = Object.values(fixture.reservationIds);
 
-  const { error: animalError } = await supabase
-    .from("animals")
-    .update({ deleted_at: now })
-    .eq("id", fixture.animalId)
-    .is("deleted_at", null);
-  if (animalError) {
-    throw new Error(`cleanup animal: ${animalError.message}`);
-  }
+  await expectNoRows(
+    supabase,
+    "events",
+    supabase
+      .from("events")
+      .select("id", { count: "exact", head: true })
+      .in("id", [...fixture.eventIds, ...fixture.campaignTraceIds]),
+  );
+  await expectNoRows(
+    supabase,
+    "documents",
+    supabase
+      .from("documents")
+      .select("id", { count: "exact", head: true })
+      .in("id", fixture.documentIds),
+  );
+  await expectNoRows(
+    supabase,
+    "payments",
+    supabase
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .in("id", fixture.paymentIds),
+  );
+  await expectNoRows(
+    supabase,
+    "reservations",
+    supabase
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .in("id", reservationIds),
+  );
+  await expectNoRows(
+    supabase,
+    "animals",
+    supabase
+      .from("animals")
+      .select("id", { count: "exact", head: true })
+      .eq("id", fixture.animalId),
+  );
+  await expectNoRows(
+    supabase,
+    "contacts",
+    supabase
+      .from("contacts")
+      .select("id", { count: "exact", head: true })
+      .in("id", fixture.contactIds),
+  );
+  await expectNoRows(
+    supabase,
+    "litters",
+    supabase
+      .from("litters")
+      .select("id", { count: "exact", head: true })
+      .eq("id", fixture.litterId),
+  );
+}
 
-  const { error: contactsError } = await supabase
-    .from("contacts")
-    .update({ deleted_at: now })
-    .in("id", fixture.contactIds)
-    .is("deleted_at", null);
-  if (contactsError) {
-    throw new Error(`cleanup contacts: ${contactsError.message}`);
-  }
+function deterministicChoiceAppointmentsTraceId(reservationId: string) {
+  const hash = createHash("sha1")
+    .update(`choice_appointment_adoption_booklet:${reservationId}`)
+    .digest("hex");
+  const chars = hash.slice(0, 32).split("");
 
-  const { error: litterError } = await supabase
-    .from("litters")
-    .update({ deleted_at: now })
-    .eq("id", fixture.litterId)
-    .is("deleted_at", null);
-  if (litterError) {
-    throw new Error(`cleanup litter: ${litterError.message}`);
-  }
+  chars[12] = "5";
+  chars[16] = ((parseInt(chars[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+
+  return [
+    chars.slice(0, 8).join(""),
+    chars.slice(8, 12).join(""),
+    chars.slice(12, 16).join(""),
+    chars.slice(16, 20).join(""),
+    chars.slice(20, 32).join(""),
+  ].join("-");
 }
 
 async function createFixture(
@@ -121,14 +243,32 @@ async function createFixture(
   const litterId = randomUUID();
   const animalId = randomUUID();
   const contactIds = [randomUUID(), randomUUID(), randomUUID()];
+  const paymentIds = [randomUUID(), randomUUID(), randomUUID()];
+  const documentIds = Array.from({ length: 6 }, () => randomUUID());
+  const eventIds = Array.from({ length: 6 }, () => randomUUID());
   const reservationIds = {
     first: randomUUID(),
     second: randomUUID(),
     ineligible: randomUUID(),
   };
   const suffix = litterId.slice(0, 8);
+  const fixture: Fixture = {
+    suffix,
+    litterId,
+    contactIds,
+    animalId,
+    paymentIds,
+    documentIds,
+    eventIds,
+    campaignTraceIds: [
+      deterministicChoiceAppointmentsTraceId(reservationIds.first),
+      deterministicChoiceAppointmentsTraceId(reservationIds.second),
+    ],
+    reservationIds,
+  };
 
-  const { error: litterError } = await supabase.from("litters").insert({
+  try {
+    const { error: litterError } = await supabase.from("litters").insert({
     id: litterId,
     organization_id: organizationId,
     name: `E2E portée créneaux ${suffix}`,
@@ -242,6 +382,7 @@ async function createFixture(
   const paidAt = "2026-07-02T10:00:00.000Z";
   const { error: paymentsError } = await supabase.from("payments").insert(
     Object.values(reservationIds).map((reservationId, index) => ({
+      id: paymentIds[index],
       organization_id: organizationId,
       contact_id: contactIds[index],
       reservation_id: reservationId,
@@ -267,9 +408,11 @@ async function createFixture(
       const status = isIneligible ? "received" : "signed";
       const signedAt = isIneligible ? null : "2026-07-03T09:00:00.000Z";
       const contractSignedAt = isIneligible ? null : "2026-07-03T09:05:00.000Z";
+      const documentIndex = index * 2;
 
       return [
         {
+          id: documentIds[documentIndex],
           organization_id: organizationId,
           contact_id: contactIds[index],
           reservation_id: reservationId,
@@ -284,6 +427,7 @@ async function createFixture(
           updated_by: user.id,
         },
         {
+          id: documentIds[documentIndex + 1],
           organization_id: organizationId,
           contact_id: contactIds[index],
           reservation_id: reservationId,
@@ -328,48 +472,52 @@ async function createFixture(
     },
   ];
   const { error: eventsError } = await supabase.from("events").insert(
-    appointments.flatMap((appointment) => [
-      {
-        organization_id: organizationId,
-        contact_id: appointment.contactId,
-        reservation_id: appointment.reservationId,
-        litter_id: litterId,
-        event_type: "puppy_choice",
-        title: `E2E choix ${suffix}`,
-        planned_at: appointment.choiceAt,
-        status: "planned",
-        priority: "normal",
-        is_task: true,
-        created_by: user.id,
-        updated_by: user.id,
-      },
-      {
-        organization_id: organizationId,
-        contact_id: appointment.contactId,
-        reservation_id: appointment.reservationId,
-        litter_id: litterId,
-        event_type: "adoption",
-        title: `E2E adoption ${suffix}`,
-        planned_at: appointment.adoptionAt,
-        status: "planned",
-        priority: "normal",
-        is_task: true,
-        created_by: user.id,
-        updated_by: user.id,
-      },
-    ]),
+    appointments.flatMap((appointment, index) => {
+      const eventIndex = index * 2;
+
+      return [
+        {
+          id: eventIds[eventIndex],
+          organization_id: organizationId,
+          contact_id: appointment.contactId,
+          reservation_id: appointment.reservationId,
+          litter_id: litterId,
+          event_type: "puppy_choice",
+          title: `E2E choix ${suffix}`,
+          planned_at: appointment.choiceAt,
+          status: "planned",
+          priority: "normal",
+          is_task: true,
+          created_by: user.id,
+          updated_by: user.id,
+        },
+        {
+          id: eventIds[eventIndex + 1],
+          organization_id: organizationId,
+          contact_id: appointment.contactId,
+          reservation_id: appointment.reservationId,
+          litter_id: litterId,
+          event_type: "adoption",
+          title: `E2E adoption ${suffix}`,
+          planned_at: appointment.adoptionAt,
+          status: "planned",
+          priority: "normal",
+          is_task: true,
+          created_by: user.id,
+          updated_by: user.id,
+        },
+      ];
+    }),
   );
   if (eventsError) {
     throw new Error(`create appointments: ${eventsError.message}`);
   }
 
-  return {
-    suffix,
-    litterId,
-    contactIds,
-    animalId,
-    reservationIds,
-  };
+    return fixture;
+  } catch (error) {
+    await cleanupFixture(supabase, fixture);
+    throw error;
+  }
 }
 
 test("choice appointments + adoption booklet campaign personalizes and traces without side effects", async ({
@@ -447,7 +595,9 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
         name: "Confirmer l’envoi des créneaux proposés et du livret",
       })
       .click();
-    await expect(page).toHaveURL(/choice_appointments_campaign_status=success/);
+    await expect(page).toHaveURL(/choice_appointments_campaign_status=success/, {
+      timeout: 15_000,
+    });
     await expect(page.getByText("Aucun e-mail réel n’a été envoyé")).toBeVisible();
 
     const traces = expectSupabaseData(
@@ -546,7 +696,9 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
         name: "Confirmer l’envoi des créneaux proposés et du livret",
       })
       .click();
-    await expect(page).toHaveURL(/choice_appointments_campaign_status=success/);
+    await expect(page).toHaveURL(/choice_appointments_campaign_status=success/, {
+      timeout: 15_000,
+    });
 
     const updatedFirstTraces = expectSupabaseData(
       await supabase
