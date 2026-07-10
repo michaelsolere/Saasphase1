@@ -183,7 +183,7 @@ type ChoiceCampaignAppointment = Pick<
 >;
 type ChoiceCampaignTrace = Pick<
   Database["public"]["Tables"]["events"]["Row"],
-  "reservation_id"
+  "reservation_id" | "description"
 >;
 type ChoiceCampaignContact = Pick<
   Database["public"]["Tables"]["contacts"]["Row"],
@@ -244,14 +244,25 @@ function getChoiceCampaignAnimalName(
   );
 }
 
-function isChoiceCampaignDocumentReceivedOrSigned(
+function isChoiceCampaignDocumentSigned(
   document: ChoiceCampaignDocument,
 ) {
+  return document.status === "signed";
+}
+
+function traceDescriptionMatchesChoiceAppointments({
+  description,
+  choiceAppointmentAt,
+  adoptionAppointmentAt,
+}: {
+  description: string | null;
+  choiceAppointmentAt: string;
+  adoptionAppointmentAt: string;
+}) {
   return (
-    document.status === "signed" ||
-    document.status === "received" ||
-    Boolean(document.signed_at) ||
-    Boolean(document.received_at)
+    Boolean(description) &&
+    description?.includes(`Créneau de choix ISO : ${choiceAppointmentAt}`) &&
+    description?.includes(`Créneau de départ ISO : ${adoptionAppointmentAt}`)
   );
 }
 
@@ -1724,7 +1735,7 @@ export default async function LitterDetailPage({
     choiceCampaignReservationIds.length > 0 && litter?.organization_id
       ? await supabase
           .from("events")
-          .select("reservation_id")
+          .select("reservation_id, description")
           .eq("organization_id", litter.organization_id)
           .in("reservation_id", choiceCampaignReservationIds)
           .eq("title", CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE)
@@ -1763,6 +1774,11 @@ export default async function LitterDetailPage({
       .map((trace) => trace.reservation_id)
       .filter((reservationId): reservationId is string => Boolean(reservationId)),
   );
+  const choiceCampaignTracesByReservationId = new Map(
+    ((rawChoiceCampaignTraces ?? []) as ChoiceCampaignTrace[])
+      .filter((trace) => trace.reservation_id)
+      .map((trace) => [trace.reservation_id as string, trace]),
+  );
   const choiceCampaignContactsById = new Map(
     ((rawChoiceCampaignContacts ?? []) as ChoiceCampaignContact[]).map(
       (contact) => [contact.id, contact],
@@ -1779,8 +1795,7 @@ export default async function LitterDetailPage({
         !reservation.contact_id ||
         !reservation.status ||
         !CHOICE_APPOINTMENTS_ELIGIBLE_STATUSES.has(reservation.status) ||
-        FINAL_RESERVATION_STATUSES.has(reservation.status) ||
-        choiceCampaignTraceReservationIds.has(reservation.id)
+        FINAL_RESERVATION_STATUSES.has(reservation.status)
       ) {
         return [];
       }
@@ -1798,8 +1813,8 @@ export default async function LitterDetailPage({
       if (
         !commitmentDocument ||
         !reservationContract ||
-        !isChoiceCampaignDocumentReceivedOrSigned(commitmentDocument) ||
-        !isChoiceCampaignDocumentReceivedOrSigned(reservationContract)
+        !isChoiceCampaignDocumentSigned(commitmentDocument) ||
+        !isChoiceCampaignDocumentSigned(reservationContract)
       ) {
         return [];
       }
@@ -1831,6 +1846,19 @@ export default async function LitterDetailPage({
         return [];
       }
 
+      const existingTrace = choiceCampaignTracesByReservationId.get(
+        reservation.id,
+      );
+      const hasCurrentTrace = traceDescriptionMatchesChoiceAppointments({
+        description: existingTrace?.description ?? null,
+        choiceAppointmentAt: choiceAppointment.planned_at,
+        adoptionAppointmentAt: adoptionAppointment.planned_at,
+      });
+
+      if (hasCurrentTrace) {
+        return [];
+      }
+
       const contact = choiceCampaignContactsById.get(reservation.contact_id);
       const contactName = contact?.display_name ?? "Contact inconnu";
       const contactFirstName =
@@ -1843,6 +1871,7 @@ export default async function LitterDetailPage({
         litterName: getLitterDisplayName(litter?.name ?? null, id),
         choiceAppointmentAt: choiceAppointment.planned_at,
         adoptionAppointmentAt: adoptionAppointment.planned_at,
+        hasObsoleteTrace: choiceCampaignTraceReservationIds.has(reservation.id),
         animalName: reservation.animal_id
           ? getChoiceCampaignAnimalName(
               choiceCampaignAnimalsById.get(reservation.animal_id),
@@ -2146,7 +2175,7 @@ export default async function LitterDetailPage({
       : null,
     choice_appointments_campaign_missing_documents_count &&
     choice_appointments_campaign_missing_documents_count !== "0"
-      ? `${choice_appointments_campaign_missing_documents_count} documents non reçus/signés`
+      ? `${choice_appointments_campaign_missing_documents_count} documents non signés`
       : null,
     choice_appointments_campaign_deposit_incomplete_count &&
     choice_appointments_campaign_deposit_incomplete_count !== "0"
@@ -2594,13 +2623,27 @@ export default async function LitterDetailPage({
                       Impossible de charger les modèles d’e-mails pour cette
                       campagne.
                     </p>
+                  ) : choiceAppointmentCampaignTemplate ? (
+                    <div
+                      data-testid="choice-appointments-template-summary"
+                      className="mt-5 rounded-xl border bg-background p-4"
+                    >
+                      <p className="text-sm font-semibold text-foreground">
+                        Modèle d’e-mail
+                      </p>
+                      <p className="mt-2 rounded-md border bg-surface px-3 py-2 text-sm text-foreground">
+                        {choiceAppointmentCampaignTemplate.title} - Parcours adoptant
+                      </p>
+                      <p className="mt-3 text-xs text-muted">
+                        Le sujet et le corps sont rendus séparément pour chaque
+                        destinataire ci-dessous avant copie.
+                      </p>
+                    </div>
                   ) : (
-                    <CampaignEmailTemplatePicker
-                      templates={campaignEmailTemplates}
-                      preferredTemplateKey="choice_appointment_adoption_booklet"
-                      exactTemplateKey="choice_appointment_adoption_booklet"
-                      instanceId="litter-choice-appointments-booklet-template"
-                    />
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Le modèle choice_appointment_adoption_booklet est
+                      introuvable ou inactif.
+                    </p>
                   )}
 
                   <form

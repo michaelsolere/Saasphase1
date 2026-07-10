@@ -19,6 +19,7 @@ export type ChoiceAppointmentCampaignReservation = {
   litterName: string;
   choiceAppointmentAt: string;
   adoptionAppointmentAt: string;
+  hasObsoleteTrace: boolean;
   animalName: string | null;
 };
 
@@ -165,6 +166,12 @@ export function ChoiceAppointmentCampaignList({
                     <span className="block text-xs leading-5 text-muted">
                       Animal : {reservation.animalName ?? "votre futur animal"}
                     </span>
+                    {reservation.hasObsoleteTrace ? (
+                      <span className="block text-xs font-medium leading-5 text-amber-800">
+                        Les créneaux ont été modifiés depuis le dernier envoi.
+                        Un nouvel envoi doit être confirmé.
+                      </span>
+                    ) : null}
                   </span>
                 </label>
                 <button

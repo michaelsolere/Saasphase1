@@ -1272,12 +1272,24 @@ export default async function LitterGroupDetailPage({
                       campagne.
                     </p>
                   ) : (
-                    <CampaignEmailTemplatePicker
-                      templates={campaignEmailTemplates}
-                      preferredTemplateKey="choice_appointment_adoption_booklet"
-                      exactTemplateKey="choice_appointment_adoption_booklet"
-                      instanceId="group-choice-appointments-booklet-template"
-                    />
+                    <div className="mt-5 rounded-xl border bg-background p-4">
+                      <p className="text-sm font-semibold text-foreground">
+                        Modèle d’e-mail
+                      </p>
+                      <p className="mt-2 rounded-md border bg-surface px-3 py-2 text-sm text-foreground">
+                        {campaignEmailTemplates.find(
+                          (template) =>
+                            template.templateKey ===
+                            "choice_appointment_adoption_booklet",
+                        )?.title ??
+                          "choice_appointment_adoption_booklet"}{" "}
+                        - Parcours adoptant
+                      </p>
+                      <p className="mt-3 text-xs text-muted">
+                        La copie se fait depuis les e-mails personnalisés sur
+                        les fiches portées.
+                      </p>
+                    </div>
                   )}
                 </div>
 

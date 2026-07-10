@@ -345,6 +345,22 @@ function hasAppointmentChronologyWarning({
   return adoptionDate.getTime() < choiceDate.getTime();
 }
 
+function traceDescriptionMatchesAppointments({
+  description,
+  choiceAppointmentAt,
+  adoptionAppointmentAt,
+}: {
+  description: string | null;
+  choiceAppointmentAt: string | null;
+  adoptionAppointmentAt: string | null;
+}) {
+  return (
+    Boolean(description && choiceAppointmentAt && adoptionAppointmentAt) &&
+    description?.includes(`Créneau de choix ISO : ${choiceAppointmentAt}`) &&
+    description?.includes(`Créneau de départ ISO : ${adoptionAppointmentAt}`)
+  );
+}
+
 function AppointmentSummaryCard({
   reservationId,
   appointment,
@@ -1174,6 +1190,7 @@ function getAdopterJourneySteps({
   choiceAppointment,
   adoptionAppointment,
   hasChoiceAppointmentsCampaignTrace,
+  hasObsoleteChoiceAppointmentsCampaignTrace,
   adoptionCompletedAt,
 }: {
   preReservationDepositState: PreReservationDepositState;
@@ -1189,6 +1206,7 @@ function getAdopterJourneySteps({
   choiceAppointment: ReservationAppointmentSummary;
   adoptionAppointment: ReservationAppointmentSummary;
   hasChoiceAppointmentsCampaignTrace: boolean;
+  hasObsoleteChoiceAppointmentsCampaignTrace: boolean;
   adoptionCompletedAt: string | null | undefined;
 }): JourneyStep[] {
   const visibleDocuments = reservationDocuments ?? [];
@@ -1301,6 +1319,8 @@ function getAdopterJourneySteps({
         ? "Événements liés indisponibles."
         : hasChoiceAppointmentsCampaignTrace
           ? "Les créneaux proposés et le livret d’adoption ont été envoyés."
+        : hasObsoleteChoiceAppointmentsCampaignTrace
+          ? "Les créneaux ont été modifiés depuis le dernier envoi. Un nouvel envoi doit être confirmé."
         : hasAnyAppointmentProposal
           ? "Les créneaux sont renseignés mais leur envoi n’est pas confirmé."
           : "Aucun créneau de rendez-vous renseigné.",
@@ -2366,12 +2386,21 @@ export default async function ReservationDetailPage({
     events: reservationEvents,
     fallbackPlannedAt: reservation?.adoption_planned_at,
   });
+  const choiceAppointmentsCampaignTrace = reservationEvents?.find(
+    (event) =>
+      event.title === CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE &&
+      event.status === "done",
+  );
   const hasChoiceAppointmentsCampaignTrace = Boolean(
-    reservationEvents?.some(
-      (event) =>
-        event.title === CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE &&
-        event.status === "done",
-    ),
+    choiceAppointmentsCampaignTrace &&
+      traceDescriptionMatchesAppointments({
+        description: choiceAppointmentsCampaignTrace.description,
+        choiceAppointmentAt: choiceAppointment.plannedAt,
+        adoptionAppointmentAt: adoptionAppointment.plannedAt,
+      }),
+  );
+  const hasObsoleteChoiceAppointmentsCampaignTrace = Boolean(
+    choiceAppointmentsCampaignTrace && !hasChoiceAppointmentsCampaignTrace,
   );
   const showAppointmentChronologyWarning = hasAppointmentChronologyWarning({
     choiceAppointment,
@@ -2392,6 +2421,7 @@ export default async function ReservationDetailPage({
         choiceAppointment,
         adoptionAppointment,
         hasChoiceAppointmentsCampaignTrace,
+        hasObsoleteChoiceAppointmentsCampaignTrace,
         adoptionCompletedAt: reservation.adoption_completed_at,
       })
     : [];

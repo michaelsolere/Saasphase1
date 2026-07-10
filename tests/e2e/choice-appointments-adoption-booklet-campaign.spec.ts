@@ -261,11 +261,12 @@ async function createFixture(
     throw new Error(`create payments: ${paymentsError.message}`);
   }
 
-  const signedDocuments = Object.values(reservationIds).flatMap(
+  const documents = Object.values(reservationIds).flatMap(
     (reservationId, index) => {
-      if (reservationId === reservationIds.ineligible) {
-        return [];
-      }
+      const isIneligible = reservationId === reservationIds.ineligible;
+      const status = isIneligible ? "received" : "signed";
+      const signedAt = isIneligible ? null : "2026-07-03T09:00:00.000Z";
+      const contractSignedAt = isIneligible ? null : "2026-07-03T09:05:00.000Z";
 
       return [
         {
@@ -275,9 +276,9 @@ async function createFixture(
           litter_id: litterId,
           title: `E2E CEC ${suffix}`,
           document_type: "commitment_certificate",
-          status: "signed",
+          status,
           signature_required: true,
-          signed_at: "2026-07-03T09:00:00.000Z",
+          signed_at: signedAt,
           received_at: "2026-07-03T09:00:00.000Z",
           created_by: user.id,
           updated_by: user.id,
@@ -289,9 +290,9 @@ async function createFixture(
           litter_id: litterId,
           title: `E2E contrat ${suffix}`,
           document_type: "reservation_contract",
-          status: "signed",
+          status,
           signature_required: true,
-          signed_at: "2026-07-03T09:05:00.000Z",
+          signed_at: contractSignedAt,
           received_at: "2026-07-03T09:05:00.000Z",
           created_by: user.id,
           updated_by: user.id,
@@ -301,7 +302,7 @@ async function createFixture(
   );
   const { error: documentsError } = await supabase
     .from("documents")
-    .insert(signedDocuments);
+    .insert(documents);
   if (documentsError) {
     throw new Error(`create documents: ${documentsError.message}`);
   }
@@ -405,6 +406,11 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
     await expect(page.getByText("Créneaux de choix + livret d’adoption", { exact: true })).toBeVisible();
     await expect(page.getByText("Solde avant départ", { exact: true })).toBeVisible();
     await expect(page.locator("select[id$='template']")).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId("choice-appointments-template-summary")
+        .getByRole("button", { name: /copier/i }),
+    ).toHaveCount(0);
 
     await expect(
       page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.first}"]`),
@@ -461,6 +467,8 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
       expect(trace.actual_at).toBeTruthy();
       expect(trace.litter_id).toBe(fixture.litterId);
       expect(trace.description).toContain("choice_appointment_adoption_booklet");
+      expect(trace.description).toContain("Créneau de choix ISO : 2026-08-");
+      expect(trace.description).toContain("Créneau de départ ISO : 2026-09-");
       expect(trace.description).toContain("Créneau de choix proposé");
       expect(trace.description).toContain("Créneau de départ proposé");
     }
@@ -490,6 +498,73 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
       "read traces after reload",
     );
     expect(afterTraces).toHaveLength(2);
+
+    const originalFirstTrace = traces.find(
+      (trace) => trace.reservation_id === fixture.reservationIds.first,
+    );
+    expect(originalFirstTrace?.actual_at).toBeTruthy();
+
+    const { error: updateAppointmentError } = await supabase
+      .from("events")
+      .update({
+        planned_at: "2026-08-14T07:45:00.000Z",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("reservation_id", fixture.reservationIds.first)
+      .eq("event_type", "puppy_choice")
+      .is("deleted_at", null);
+    if (updateAppointmentError) {
+      throw new Error(`update choice appointment: ${updateAppointmentError.message}`);
+    }
+
+    await page.goto(`/reservations/${fixture.reservationIds.first}`);
+    await expect(
+      page.getByText(
+        "Les créneaux ont été modifiés depuis le dernier envoi. Un nouvel envoi doit être confirmé.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByText("Confirmation partielle ou à vérifier.")).toBeVisible();
+
+    await page.goto(`/litters/${fixture.litterId}`);
+    await page.getByText("Campagnes d’e-mails").click();
+    await expect(
+      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.first}"]`),
+    ).toBeVisible();
+    await expect(
+      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.second}"]`),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText(
+        "Les créneaux ont été modifiés depuis le dernier envoi. Un nouvel envoi doit être confirmé.",
+      ),
+    ).toBeVisible();
+
+    const updatedPreviewBody = await previewTextarea.inputValue();
+    expect(updatedPreviewBody).toContain("vendredi 14 août 2026 à 09:45");
+    await page
+      .getByRole("button", {
+        name: "Confirmer l’envoi des créneaux proposés et du livret",
+      })
+      .click();
+    await expect(page).toHaveURL(/choice_appointments_campaign_status=success/);
+
+    const updatedFirstTraces = expectSupabaseData(
+      await supabase
+        .from("events")
+        .select("id, reservation_id, description, actual_at")
+        .eq("reservation_id", fixture.reservationIds.first)
+        .eq("title", traceTitle)
+        .is("deleted_at", null),
+      "read updated first trace",
+    );
+    expect(updatedFirstTraces).toHaveLength(1);
+    expect(updatedFirstTraces[0].description).toContain(
+      "Créneau de choix ISO : 2026-08-14T07:45:00+00:00",
+    );
+    expect(updatedFirstTraces[0].description).toContain(
+      "vendredi 14 août 2026 à 09:45",
+    );
+    expect(updatedFirstTraces[0].actual_at).not.toBe(originalFirstTrace?.actual_at);
 
     const afterReservations = expectSupabaseData(
       await supabase

@@ -1837,16 +1837,25 @@ function formatTraceAppointmentDate(value: string) {
   }).format(date);
 }
 
-function isDocumentReceivedOrSigned(document: {
+function isDocumentSigned(document: {
   status: string | null;
-  received_at?: string | null;
-  signed_at?: string | null;
+}) {
+  return document.status === "signed";
+}
+
+function traceDescriptionIncludesCurrentAppointments({
+  description,
+  choiceAppointmentAt,
+  adoptionAppointmentAt,
+}: {
+  description: string | null;
+  choiceAppointmentAt: string;
+  adoptionAppointmentAt: string;
 }) {
   return (
-    document.status === "signed" ||
-    document.status === "received" ||
-    Boolean(document.signed_at) ||
-    Boolean(document.received_at)
+    Boolean(description) &&
+    description?.includes(`Créneau de choix ISO : ${choiceAppointmentAt}`) &&
+    description?.includes(`Créneau de départ ISO : ${adoptionAppointmentAt}`)
   );
 }
 
@@ -1874,26 +1883,9 @@ async function createChoiceAppointmentsTraceForReservation({
     return { outcome: "not_in_journey" };
   }
 
-  const traceId = deterministicChoiceAppointmentsTraceId(reservation.id);
-  const { data: existingTrace, error: existingTraceError } = await supabase
-    .from("events")
-    .select("id, deleted_at")
-    .eq("organization_id", reservation.organization_id)
-    .eq("id", traceId)
-    .eq("reservation_id", reservation.id)
-    .maybeSingle();
-
-  if (existingTraceError) {
-    return { outcome: "error" };
-  }
-
-  if (existingTrace && !existingTrace.deleted_at) {
-    return { outcome: "already_confirmed" };
-  }
-
   const { data: documents, error: documentsError } = await supabase
     .from("documents")
-    .select("document_type, status, received_at, signed_at")
+    .select("document_type, status")
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservation.id)
     .in("document_type", ["commitment_certificate", "reservation_contract"])
@@ -1913,8 +1905,8 @@ async function createChoiceAppointmentsTraceForReservation({
   if (
     !commitmentDocument ||
     !reservationContract ||
-    !isDocumentReceivedOrSigned(commitmentDocument) ||
-    !isDocumentReceivedOrSigned(reservationContract)
+    !isDocumentSigned(commitmentDocument) ||
+    !isDocumentSigned(reservationContract)
   ) {
     return { outcome: "missing_documents" };
   }
@@ -1972,10 +1964,37 @@ async function createChoiceAppointmentsTraceForReservation({
     return { outcome: "missing_adoption_appointment" };
   }
 
+  const traceId = deterministicChoiceAppointmentsTraceId(reservation.id);
+  const { data: existingTrace, error: existingTraceError } = await supabase
+    .from("events")
+    .select("id, description, deleted_at")
+    .eq("organization_id", reservation.organization_id)
+    .eq("id", traceId)
+    .eq("reservation_id", reservation.id)
+    .maybeSingle();
+
+  if (existingTraceError) {
+    return { outcome: "error" };
+  }
+
+  if (
+    existingTrace &&
+    !existingTrace.deleted_at &&
+    traceDescriptionIncludesCurrentAppointments({
+      description: existingTrace.description,
+      choiceAppointmentAt: choiceAppointment.planned_at,
+      adoptionAppointmentAt: adoptionAppointment.planned_at,
+    })
+  ) {
+    return { outcome: "already_confirmed" };
+  }
+
   const now = new Date().toISOString();
   const description = [
     `Modèle utilisé : ${CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY}`,
+    `Créneau de choix ISO : ${choiceAppointment.planned_at}`,
     `Créneau de choix proposé : ${formatTraceAppointmentDate(choiceAppointment.planned_at)}`,
+    `Créneau de départ ISO : ${adoptionAppointment.planned_at}`,
     `Créneau de départ proposé : ${formatTraceAppointmentDate(adoptionAppointment.planned_at)}`,
     "Aucun e-mail réel envoyé par l’application.",
   ].join("\n");
@@ -1998,7 +2017,7 @@ async function createChoiceAppointmentsTraceForReservation({
     deleted_at: null,
   };
 
-  if (existingTrace?.deleted_at) {
+  if (existingTrace) {
     const { error: updateDeletedTraceError } = await supabase
       .from("events")
       .update({
