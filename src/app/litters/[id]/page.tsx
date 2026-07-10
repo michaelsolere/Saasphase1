@@ -50,10 +50,13 @@ import {
 } from "@/features/litters/formatters";
 import type { LitterOverview } from "@/features/litters/types";
 import {
+  readDepositSettingsForOrganization,
+  resolveDepositSettings,
+  type ResolvedDepositSettings,
+} from "@/features/payments/deposit-thresholds";
+import {
   formatPrice,
   getPreReservationDepositBadgeClassName,
-  getPreReservationDepositLabel,
-  getPreReservationDepositStateFromStatus,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
 import {
@@ -117,6 +120,14 @@ type RelatedReservation = Pick<
   | "reserved_sex_preference"
   | "created_at"
 >;
+type RelatedReservationPayment = Pick<
+  Database["public"]["Tables"]["payments"]["Row"],
+  "reservation_id" | "amount_cents" | "payment_type" | "status"
+>;
+type ReservationFinancialBadge = {
+  label: string;
+  className: string;
+};
 type QualifiedApplication = Pick<
   Database["public"]["Tables"]["applications"]["Row"],
   | "id"
@@ -162,6 +173,76 @@ type LitterSummary = Pick<
   | "animal_count"
   | "reservation_count"
 >;
+
+const FINAL_RESERVATION_STATUSES = new Set([
+  "adopted",
+  "withdrawn",
+  "cancelled",
+  "expired",
+  "archived",
+]);
+
+const DEPOSIT_PAYMENT_TYPES = new Set([
+  "arrhes",
+  "pre_reservation_deposit_refundable",
+]);
+
+function getReservationFinancialBadge({
+  reservation,
+  payments,
+  depositSettings,
+}: {
+  reservation: RelatedReservation;
+  payments: RelatedReservationPayment[];
+  depositSettings: ResolvedDepositSettings;
+}): ReservationFinancialBadge | null {
+  if (
+    reservation.status &&
+    FINAL_RESERVATION_STATUSES.has(reservation.status)
+  ) {
+    return null;
+  }
+
+  const depositPayments = payments.filter((payment) =>
+    DEPOSIT_PAYMENT_TYPES.has(payment.payment_type),
+  );
+  const paidDepositCents = depositPayments
+    .filter((payment) => payment.status === "paid")
+    .reduce((total, payment) => total + payment.amount_cents, 0);
+
+  if (paidDepositCents >= depositSettings.completeDepositCents) {
+    return {
+      label: "Arrhes complètes réglées",
+      className: getPreReservationDepositBadgeClassName("paid"),
+    };
+  }
+
+  if (paidDepositCents > 0) {
+    return {
+      label: "Pré-réservation réglée",
+      className: getPreReservationDepositBadgeClassName("paid"),
+    };
+  }
+
+  const hasPendingPreReservationRequest =
+    reservation.status === "draft" ||
+    reservation.status === "pre_reservation_requested" ||
+    depositPayments.some(
+      (payment) =>
+        payment.status === "requested" ||
+        payment.status === "pending" ||
+        payment.status === "partially_paid",
+    );
+
+  if (hasPendingPreReservationRequest) {
+    return {
+      label: "Pré-réservation à régler",
+      className: getPreReservationDepositBadgeClassName("requested"),
+    };
+  }
+
+  return null;
+}
 
 const litterEventTypeOptions = [
   ["mating", "Saillie"],
@@ -721,12 +802,16 @@ function RelatedAnimalsSection({
 
 function RelatedReservationsSection({
   reservations,
+  paymentsByReservationId,
+  depositSettings,
   hasError,
   sectionId,
   banner,
   footer,
 }: {
   reservations: RelatedReservation[] | null;
+  paymentsByReservationId: Map<string, RelatedReservationPayment[]>;
+  depositSettings: ResolvedDepositSettings;
   hasError: boolean;
   sectionId?: string;
   banner?: React.ReactNode;
@@ -752,15 +837,16 @@ function RelatedReservationsSection({
         <div className="mt-6 divide-y divide-border">
           {reservations.map((reservation, index) => {
             const dateText = formatLitterDate(reservation.created_at);
-            const preReservationDepositState =
-              getPreReservationDepositStateFromStatus(reservation.status);
             const reservationStatusLabel = getReservationStatusLabel(
               reservation.status,
             );
-            const preReservationDepositLabel =
-              preReservationDepositState === "paid"
-                ? getPreReservationDepositLabel(preReservationDepositState)
-                : "Pré-réservation non réglée";
+            const financialBadge = getReservationFinancialBadge({
+              reservation,
+              payments: reservation.id
+                ? (paymentsByReservationId.get(reservation.id) ?? [])
+                : [],
+              depositSettings,
+            });
 
             return (
               <div
@@ -784,18 +870,18 @@ function RelatedReservationsSection({
                             "Contact non renseigné"
                         )}
                       </span>
-                      {reservationStatusLabel !== preReservationDepositLabel ? (
+                      {financialBadge?.label !== reservationStatusLabel ? (
                         <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                           {reservationStatusLabel}
                         </span>
                       ) : null}
-                      <span
-                        className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
-                          preReservationDepositState,
-                        )}`}
-                      >
-                        {preReservationDepositLabel}
-                      </span>
+                      {financialBadge ? (
+                        <span
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${financialBadge.className}`}
+                        >
+                          {financialBadge.label}
+                        </span>
+                      ) : null}
                       {reservation.id ? (
                         <Link
                           href={`/reservations/${reservation.id}`}
@@ -1277,6 +1363,14 @@ export default async function LitterDetailPage({
 
   const litter = rawLitter as DBLitter | null;
 
+  const depositSettings =
+    litter?.organization_id
+      ? await readDepositSettingsForOrganization({
+          supabase,
+          organizationId: litter.organization_id,
+        })
+      : resolveDepositSettings(null);
+
   const { data: rawSummary, error: summaryError } = litter
     ? await supabase
         .from("litter_overview")
@@ -1372,6 +1466,34 @@ export default async function LitterDetailPage({
     : { data: null, error: null };
 
   const litterReservations = rawReservations as RelatedReservation[] | null;
+  const reservationIds = (litterReservations ?? []).flatMap((reservation) =>
+    reservation.id ? [reservation.id] : [],
+  );
+
+  const { data: rawReservationPayments, error: reservationPaymentsError } =
+    reservationIds.length > 0
+      ? await supabase
+          .from("payments")
+          .select("reservation_id, amount_cents, payment_type, status")
+          .in("reservation_id", reservationIds)
+          .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
+          .in("status", ["requested", "pending", "partially_paid", "paid"])
+          .is("deleted_at", null)
+      : { data: null, error: null };
+
+  const reservationPayments =
+    (rawReservationPayments ?? []) as RelatedReservationPayment[];
+  const paymentsByReservationId = new Map<string, RelatedReservationPayment[]>();
+
+  for (const payment of reservationPayments) {
+    if (!payment.reservation_id) {
+      continue;
+    }
+
+    const existing = paymentsByReservationId.get(payment.reservation_id) ?? [];
+    existing.push(payment);
+    paymentsByReservationId.set(payment.reservation_id, existing);
+  }
 
   const { data: rawNotes, error: notesError } = litter
     ? await supabase
@@ -1925,7 +2047,9 @@ export default async function LitterDetailPage({
 
               <RelatedReservationsSection
                 reservations={litterReservations}
-                hasError={Boolean(reservationsError)}
+                paymentsByReservationId={paymentsByReservationId}
+                depositSettings={depositSettings}
+                hasError={Boolean(reservationsError || reservationPaymentsError)}
                 sectionId="reservations-liees"
               />
 
