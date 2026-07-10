@@ -56,6 +56,16 @@ type RelatedEvent = {
   created_at: string;
 };
 
+type PaymentContact = {
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+};
+
+type PaymentWithContact = DBPayment & {
+  contacts: PaymentContact | null;
+};
+
 function formatDate(value: string | null) {
   if (!value) {
     return "Non renseigné";
@@ -95,6 +105,19 @@ function getUsefulEventDate(event: RelatedEvent) {
 
 function getEventTypeLabel(value: string) {
   return value.replaceAll("_", " ");
+}
+
+function getContactName(contact: PaymentContact | null) {
+  if (!contact) {
+    return null;
+  }
+
+  const firstAndLastName = [contact.first_name, contact.last_name]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" ");
+
+  return firstAndLastName || contact.display_name || null;
 }
 
 function NotFoundOrUnauthorized() {
@@ -286,13 +309,14 @@ export default async function PaymentDetailPage({
   const { data: rawPayment, error: readError } = await supabase
     .from("payments")
     .select(
-      "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, created_at, updated_at, contact_id, reservation_id",
+      "id, amount_cents, currency, payment_type, status, payment_method, requested_at, due_date, paid_at, refunded_at, external_reference, notes, created_at, updated_at, contact_id, reservation_id, contacts!payments_contact_organization_fk(display_name, first_name, last_name)",
     )
     .eq("id", id)
     .is("deleted_at", null)
     .maybeSingle();
 
-  const payment = rawPayment as DBPayment | null;
+  const payment = rawPayment as PaymentWithContact | null;
+  const contactName = getContactName(payment?.contacts ?? null);
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = payment?.id
@@ -602,39 +626,22 @@ export default async function PaymentDetailPage({
 
               <aside className="h-fit space-y-6 rounded-2xl border bg-surface p-6">
                 <div>
-                  <h2 className="text-lg font-semibold">Contact lié</h2>
-                  <div className="mt-4">
-                    {payment.contact_id ? (
-                      <Link
-                        href={`/contacts/${payment.contact_id}`}
-                        className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la fiche contact
-                      </Link>
-                    ) : (
-                      <p className="text-sm text-muted">
-                        Aucun contact lié.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="border-t pt-6">
-                  <h2 className="text-lg font-semibold">Réservation liée</h2>
-                  <div className="mt-4">
-                    {payment.reservation_id ? (
-                      <Link
-                        href={`/reservations/${payment.reservation_id}`}
-                        className="inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                      >
-                        Consulter la réservation
-                      </Link>
-                    ) : (
-                      <p className="text-sm text-muted">
-                        Aucune réservation liée.
-                      </p>
-                    )}
-                  </div>
+                  <h2 className="text-lg font-semibold">Parcours adoptant</h2>
+                  <dl className="mt-4">
+                    <DetailItem label="Contact lié" value={contactName} />
+                  </dl>
+                  {payment.reservation_id ? (
+                    <Link
+                      href={`/reservations/${payment.reservation_id}`}
+                      className="mt-5 inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Consulter le parcours de l’adoptant
+                    </Link>
+                  ) : (
+                    <p className="mt-5 text-sm text-muted">
+                      Aucun parcours adoptant lié.
+                    </p>
+                  )}
                 </div>
               </aside>
             </div>
