@@ -204,6 +204,15 @@ function getCollarDisplayName(
   return `Collier ${collarColor} — ${parentDisplayNames.join(" × ")}`;
 }
 
+function getParentDisplayName(parent: {
+  call_name: string | null;
+  display_name: string;
+}) {
+  const callName = parent.call_name?.trim();
+
+  return callName || parent.display_name;
+}
+
 /**
  * Crée un groupe de portées (période) depuis l'interface Portées.
  *
@@ -769,7 +778,7 @@ export async function createLitterOffspring(formData: FormData) {
   if (parentIds.length > 0) {
     const { data: parents, error: parentsError } = await supabase
       .from("animals")
-      .select("id, display_name")
+      .select("id, display_name, call_name")
       .eq("organization_id", litter.organization_id)
       .in("id", parentIds)
       .is("deleted_at", null);
@@ -778,12 +787,11 @@ export async function createLitterOffspring(formData: FormData) {
       redirect(litterOffspringUrl(litterId, "error"));
     }
 
-    motherDisplayName =
-      parents?.find((parent) => parent.id === litter.mother_id)
-        ?.display_name ?? null;
-    fatherDisplayName =
-      parents?.find((parent) => parent.id === litter.father_id)
-        ?.display_name ?? null;
+    const mother = parents?.find((parent) => parent.id === litter.mother_id);
+    const father = parents?.find((parent) => parent.id === litter.father_id);
+
+    motherDisplayName = mother ? getParentDisplayName(mother) : null;
+    fatherDisplayName = father ? getParentDisplayName(father) : null;
   }
 
   const animalsToCreate: AnimalInsert[] = [];

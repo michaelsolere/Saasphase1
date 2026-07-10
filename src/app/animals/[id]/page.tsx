@@ -1407,10 +1407,10 @@ export default async function AnimalDetailPage({
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Identité</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                  <DetailItem label="Nom complet" value={animal.official_name} />
+                  <DetailItem label="Nom d’usage" value={animal.call_name} />
                   <DetailItem label="Nom principal" value={animal.display_name} />
                   <DetailItem label="Nom temporaire" value={animal.temporary_name} />
-                  <DetailItem label="Nom d’appel" value={animal.call_name} />
-                  <DetailItem label="Nom officiel" value={animal.official_name} />
                   <DetailItem
                     label="Nom choisi par l’adoptant"
                     value={animal.chosen_name_by_adopter}
@@ -1456,7 +1456,7 @@ export default async function AnimalDetailPage({
                     />
                     <FinalIdentityField
                       id="animal-final-official-name"
-                      label="Nom officiel"
+                      label="Nom complet"
                       name="official_name"
                       defaultValue={animal.official_name}
                     />
