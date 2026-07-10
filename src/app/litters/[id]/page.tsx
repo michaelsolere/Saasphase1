@@ -927,7 +927,11 @@ function RelatedReservationsSection({
                           )}
                           )
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className="ml-2 font-medium text-muted">
+                          (Non payé)
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-muted">Créée le {dateText}</p>
                   </div>
