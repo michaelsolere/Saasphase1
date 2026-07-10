@@ -446,7 +446,7 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
       .getByRole("button", {
         name: "Confirmer l’envoi des créneaux proposés et du livret",
       })
-      .dblclick({ force: true });
+      .click();
     await expect(page).toHaveURL(/choice_appointments_campaign_status=success/);
     await expect(page.getByText("Aucun e-mail réel n’a été envoyé")).toBeVisible();
 
