@@ -328,7 +328,7 @@ export default async function Home() {
           <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Candidats à suivre</h2>
+                <h2 className="text-lg font-semibold text-foreground">Candidats à valider</h2>
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                   applicationsNeedReview.length > 0
                     ? "bg-amber-50 text-amber-700 border border-amber-200"
@@ -388,7 +388,7 @@ export default async function Home() {
                 href="/candidatures?filter=attention"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
-                Voir les candidats à suivre ({applicationsNeedReview.length}) →
+                Voir les candidats à valider ({applicationsNeedReview.length}) →
               </Link>
             </div>
           </div>
