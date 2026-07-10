@@ -1275,21 +1275,8 @@ export async function attachReservationToPreciseLitter(formData: FormData) {
 // Campagne de pré-réservation
 // ---------------------------------------------------------------------------
 
-const ACTIVE_DEPOSIT_PAYMENT_STATUSES = [
-  "requested",
-  "pending",
-  "partially_paid",
-  "paid",
-] as const;
-
-const PRE_RESERVATION_DEPOSIT_PAYMENT_TYPES = [
-  "arrhes",
-  "pre_reservation_deposit_refundable",
-] as const;
-
 type PreReservationCampaignApplication = {
   id: string;
-  contact_id: string;
   species: string | null;
   breed: string | null;
   desired_sex_preference: string | null;
@@ -1364,308 +1351,61 @@ type DepartureBalanceCreationResult =
         | "error";
     };
 
-function isReservationCompatibleWithCampaignTarget({
-  reservation,
-  targetLitterId,
-  targetLitterGroupId,
-}: {
-  reservation: {
-    litter_id: string | null;
-    litter_group_id: string | null;
-  };
-  targetLitterId: string | null;
-  targetLitterGroupId: string | null;
-}) {
-  if (targetLitterId) {
-    return (
-      reservation.litter_id === targetLitterId ||
-      (!reservation.litter_id && reservation.litter_group_id === targetLitterGroupId)
-    );
-  }
-
-  return (
-    reservation.litter_id === null &&
-    reservation.litter_group_id === targetLitterGroupId
-  );
-}
-
-async function cleanupCreatedPreReservationCampaignObjects({
-  supabase,
-  organizationId,
-  userId,
-  createdReservationId,
-  createdPaymentId,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  organizationId: string;
-  userId: string;
-  createdReservationId: string | null;
-  createdPaymentId: string | null;
-}) {
-  const now = new Date().toISOString();
-
-  if (createdPaymentId) {
-    await supabase
-      .from("payments")
-      .update({
-        deleted_at: now,
-        updated_at: now,
-        updated_by: userId,
-      })
-      .eq("id", createdPaymentId)
-      .eq("organization_id", organizationId)
-      .is("deleted_at", null);
-  }
-
-  if (createdReservationId) {
-    await supabase
-      .from("reservations")
-      .update({
-        deleted_at: now,
-        updated_at: now,
-        updated_by: userId,
-      })
-      .eq("id", createdReservationId)
-      .eq("organization_id", organizationId)
-      .is("deleted_at", null);
-  }
-}
-
-async function hasActivePreReservationDepositPayment({
-  supabase,
-  reservationId,
-  amountCents,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  reservationId: string;
-  amountCents: number;
-}) {
-  const { data, error } = await supabase
-    .from("payments")
-    .select("id")
-    .eq("reservation_id", reservationId)
-    .eq("amount_cents", amountCents)
-    .in("payment_type", [...PRE_RESERVATION_DEPOSIT_PAYMENT_TYPES])
-    .in("status", [...ACTIVE_DEPOSIT_PAYMENT_STATUSES])
-    .is("deleted_at", null)
-    .limit(1);
-
-  if (error) {
-    return { ok: false as const, hasPayment: false };
-  }
-
-  return { ok: true as const, hasPayment: (data ?? []).length > 0 };
-}
-
-async function validatePreReservationCampaignPair({
-  supabase,
-  organizationId,
-  reservationId,
-  amountCents,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  organizationId: string;
-  reservationId: string;
-  amountCents: number;
-}) {
-  const { data: reservation, error: reservationError } = await supabase
-    .from("reservations")
-    .select("id")
-    .eq("id", reservationId)
-    .eq("organization_id", organizationId)
-    .eq("status", "pre_reservation_requested")
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (reservationError || !reservation) {
-    return false;
-  }
-
-  const paymentCheck = await hasActivePreReservationDepositPayment({
-    supabase,
-    reservationId,
-    amountCents,
-  });
-
-  return paymentCheck.ok && paymentCheck.hasPayment;
-}
-
 async function runPreReservationCampaignForApplications({
   supabase,
-  userId,
-  organizationId,
   applications,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
-  userId: string;
-  organizationId: string;
   applications: PreReservationCampaignApplication[];
 }): Promise<PreReservationCampaignResult> {
-  const depositSettings = await readDepositSettingsForOrganization({
-    supabase,
-    organizationId,
-  });
-  const dueDateStr = addDaysAsIsoDate(
-    depositSettings.preReservationResponseDelayDays,
-  );
-
-  const note =
-    `Demande 1/2 — avance sur arrhes de pré-réservation. Échéance J+${depositSettings.preReservationResponseDelayDays} après confirmation de gestation.`;
-
   let reservationsPreparedCount = 0;
   let paymentsCreatedCount = 0;
   let ignoredDraftConflictCount = 0;
   let errorCount = 0;
 
   for (const app of applications) {
-    const { data: existingReservations, error: existingReservationErr } =
-      await supabase
-        .from("reservations")
-        .select("id, status, litter_id, litter_group_id")
-        .eq("organization_id", organizationId)
-        .eq("application_id", app.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true })
-        .limit(1);
+    const { data, error } = await supabase.rpc(
+      "create_pre_reservation_request_for_application",
+      {
+        p_application_id: app.id,
+        p_target_litter_id: app.target_litter_id ?? undefined,
+        p_target_litter_group_id: app.target_litter_group_id ?? undefined,
+      },
+    );
 
-    if (existingReservationErr) {
+    if (error) {
+      console.error("create_pre_reservation_request_for_application failed:", {
+        applicationId: app.id,
+        error,
+      });
       errorCount++;
       continue;
     }
 
-    const existingReservation = existingReservations?.[0] ?? null;
+    const result = data?.[0];
 
-    let reservationId: string | null = null;
-    let createdReservationId: string | null = null;
-    let createdPaymentId: string | null = null;
+    if (!result) {
+      errorCount++;
+      continue;
+    }
 
-    if (existingReservation) {
-      const isCompatible = isReservationCompatibleWithCampaignTarget({
-        reservation: existingReservation,
-        targetLitterId: app.target_litter_id,
-        targetLitterGroupId: app.target_litter_group_id,
-      });
-
-      if (!isCompatible) {
-        continue;
+    if (result.outcome === "created") {
+      if (result.reservation_created || result.payment_created) {
+        reservationsPreparedCount++;
       }
-
-      reservationId = existingReservation.id;
-
-      if (existingReservation.status === "draft") {
+      if (result.payment_created) {
+        paymentsCreatedCount++;
+      }
+    } else if (result.outcome === "already_exists") {
+      continue;
+    } else if (result.outcome === "conflict") {
+      if (result.reason === "draft_reservation_exists") {
         ignoredDraftConflictCount++;
-        continue;
       }
-
-      if (existingReservation.status !== "pre_reservation_requested") {
-        continue;
-      }
+    } else if (result.outcome === "ineligible") {
+      continue;
     } else {
-      const { data: newReservation, error: insertErr } = await supabase
-        .from("reservations")
-        .insert({
-          organization_id: organizationId,
-          contact_id: app.contact_id,
-          application_id: app.id,
-          litter_id: app.target_litter_id,
-          litter_group_id: app.target_litter_group_id,
-          species: app.species ?? "dog",
-          breed: app.breed ?? "Golden Retriever",
-          reserved_sex_preference: app.desired_sex_preference ?? "unknown",
-          status: "pre_reservation_requested",
-          created_by: userId,
-          updated_by: userId,
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (insertErr || !newReservation) {
         errorCount++;
-        continue;
-      }
-
-      reservationId = newReservation.id;
-      createdReservationId = newReservation.id;
-    }
-
-    const paymentCheck = await hasActivePreReservationDepositPayment({
-      supabase,
-      reservationId,
-      amountCents: depositSettings.preReservationDepositCents,
-    });
-
-    if (!paymentCheck.ok) {
-      await cleanupCreatedPreReservationCampaignObjects({
-        supabase,
-        organizationId,
-        userId,
-        createdReservationId,
-        createdPaymentId,
-      });
-      errorCount++;
-      continue;
-    }
-
-    if (!paymentCheck.hasPayment) {
-      const { data: payment, error: paymentErr } = await supabase
-        .from("payments")
-        .insert({
-          organization_id: organizationId,
-          contact_id: app.contact_id,
-          reservation_id: reservationId,
-          amount_cents: depositSettings.preReservationDepositCents,
-          currency: "EUR",
-          payment_type: "arrhes",
-          status: "requested",
-          payment_method: "bank_transfer",
-          requested_at: new Date().toISOString(),
-          due_date: dueDateStr,
-          notes: note,
-          created_by: userId,
-          updated_by: userId,
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (paymentErr || !payment) {
-        await cleanupCreatedPreReservationCampaignObjects({
-          supabase,
-          organizationId,
-          userId,
-          createdReservationId,
-          createdPaymentId,
-        });
-        errorCount++;
-        continue;
-      }
-
-      createdPaymentId = payment.id;
-    }
-
-    const hasExpectedPair = await validatePreReservationCampaignPair({
-      supabase,
-      organizationId,
-      reservationId,
-      amountCents: depositSettings.preReservationDepositCents,
-    });
-
-    if (!hasExpectedPair) {
-      await cleanupCreatedPreReservationCampaignObjects({
-        supabase,
-        organizationId,
-        userId,
-        createdReservationId,
-        createdPaymentId,
-      });
-      errorCount++;
-      continue;
-    }
-
-    if (createdReservationId || createdPaymentId) {
-      reservationsPreparedCount++;
-    }
-    if (createdPaymentId) {
-      paymentsCreatedCount++;
     }
   }
 
@@ -2088,11 +1828,8 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
-    userId: user.id,
-    organizationId: litter.organization_id,
     applications: applications.map((app) => ({
       id: app.id,
-      contact_id: app.contact_id,
       species: app.species ?? litter.species ?? "dog",
       breed: app.breed ?? litter.breed ?? "Golden Retriever",
       desired_sex_preference: app.desired_sex_preference,
@@ -2208,8 +1945,6 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
-    userId: user.id,
-    organizationId: group.organization_id,
     applications: eligibleApplications.map((app) => {
       const targetLitterId =
         app.desired_litter_id && groupLitterIds.has(app.desired_litter_id)
@@ -2218,7 +1953,6 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
 
       return {
         id: app.id,
-        contact_id: app.contact_id,
         species: app.species ?? group.species ?? "dog",
         breed: app.breed ?? "Golden Retriever",
         desired_sex_preference: app.desired_sex_preference,

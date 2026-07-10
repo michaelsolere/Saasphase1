@@ -15,6 +15,7 @@ export type ApplicationOverview = Pick<
   | "status"
   | "public_form_name"
   | "public_form_slug"
+  | "has_started_adopter_journey"
   | "submitted_at"
   | "created_at"
 > & {
@@ -34,6 +35,7 @@ export type ApplicationDetail = Pick<
   | "status"
   | "public_form_name"
   | "public_form_slug"
+  | "has_started_adopter_journey"
   | "species"
   | "breed"
   | "submitted_at"

@@ -652,7 +652,7 @@ test("marks a 250 euro pre-reservation payment as paid from reservation detail",
   expect(updatedPayment.paid_at).not.toBeNull();
 });
 
-test("marks a direct 500 euro arrhes payment as reservation holder without keeping pre-reservation role", async ({
+test("marks a direct 500 euro arrhes payment as pre-reservation holder", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
@@ -681,19 +681,15 @@ test("marks a direct 500 euro arrhes payment as reservation holder without keepi
 
   await expect
     .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
-    .toEqual(["reservation_holder"]);
+    .toEqual(["pre_reservation_holder"]);
 
   await page.goto(`/reservations/${reservationId}`);
-  await page
-    .getByRole("button", { name: "Initialiser les documents de réservation" })
-    .click();
-  await expect(page).toHaveURL(/document_action_status=success/);
+  await expect(
+    page.getByRole("button", { name: "Initialiser les documents de réservation" }),
+  ).toHaveCount(0);
 
   const documents = await readReservationDocuments(supabase, reservationId);
-  expect(documents.map((document) => document.document_type).sort()).toEqual([
-    "commitment_certificate",
-    "reservation_contract",
-  ]);
+  expect(documents).toHaveLength(0);
 });
 
 test("does not display complete deposit for a paid non-arrhes 500 euro payment", async ({

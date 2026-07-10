@@ -11,8 +11,6 @@ export function reservationNeedsAttention(
   paidArrhesCents: number,
   completeDepositCents = COMPLETE_DEPOSIT_AMOUNT_CENTS,
 ) {
-  const isPreReservationRequested =
-    reservation.status === "pre_reservation_requested";
   const isPreReservationPaid = reservation.status === "pre_reservation_paid";
   const isArrhesCompleteWithoutAnimal =
     paidArrhesCents >= completeDepositCents &&
@@ -21,7 +19,6 @@ export function reservationNeedsAttention(
     !isFinalReservationStatus(reservation.status);
 
   return (
-    isPreReservationRequested ||
     isPreReservationPaid ||
     isArrhesCompleteWithoutAnimal
   );

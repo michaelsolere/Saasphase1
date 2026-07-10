@@ -292,6 +292,7 @@ export default async function LitterGroupDetailPage({
           "id, contact_id, contact_display_name, status, litter_id, litter_name, animal_id, animal_display_name",
         )
         .eq("litter_group_id", id)
+        .neq("status", "pre_reservation_requested")
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
@@ -420,9 +421,29 @@ export default async function LitterGroupDetailPage({
     group &&
     group.organization_id
   ) {
+    const qualifiedApplicationIds = rawQualifiedApplications.map((app) => app.id);
+    const applicationIdsWithPreReservationRequest = new Set<string>();
+    const { data: existingPreReservationRequests } = await supabase
+      .from("reservations")
+      .select("application_id")
+      .eq("organization_id", group.organization_id)
+      .eq("status", "pre_reservation_requested")
+      .is("deleted_at", null)
+      .in("application_id", qualifiedApplicationIds);
+
+    existingPreReservationRequests?.forEach((reservation) => {
+      if (reservation.application_id) {
+        applicationIdsWithPreReservationRequest.add(reservation.application_id);
+      }
+    });
+
+    const campaignApplications = rawQualifiedApplications.filter(
+      (app) => !applicationIdsWithPreReservationRequest.has(app.id),
+    );
+
     const qualifiedContactIds = Array.from(
       new Set(
-        rawQualifiedApplications
+        campaignApplications
           .map((app) => app.contact_id)
           .filter((cid): cid is string => Boolean(cid)),
       ),
@@ -442,7 +463,7 @@ export default async function LitterGroupDetailPage({
       });
     }
 
-    qualifiedApplications = rawQualifiedApplications.map((app) => ({
+    qualifiedApplications = campaignApplications.map((app) => ({
       id: app.id,
       contact_id: app.contact_id,
       desired_sex_preference: app.desired_sex_preference,

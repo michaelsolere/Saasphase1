@@ -114,17 +114,23 @@ export default async function ApplicationsPage({
   let query = supabase
     .from("application_overview")
     .select(
-      "id, contact_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, submitted_at, created_at",
+      "id, contact_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, has_started_adopter_journey, submitted_at, created_at",
     )
     .order("submitted_at", { ascending: false, nullsFirst: false })
     .order("created_at", { ascending: false });
 
   if (filter === "attention") {
-    query = query.in("status", attentionStatuses);
+    query = query
+      .in("status", attentionStatuses)
+      .eq("has_started_adopter_journey", false);
   } else if (filter === "to_validate") {
-    query = query.in("status", toValidateStatuses);
+    query = query
+      .in("status", toValidateStatuses)
+      .eq("has_started_adopter_journey", false);
   } else if (filter === "validated") {
-    query = query.in("status", ["qualified", "waiting_litter"]);
+    query = query
+      .in("status", ["qualified", "waiting_litter"])
+      .eq("has_started_adopter_journey", false);
   } else if (filter === "unsuccessful") {
     query = query.in("status", ["rejected", "withdrawn", "archived"]);
   }

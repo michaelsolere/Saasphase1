@@ -2286,10 +2286,15 @@ export default async function ReservationDetailPage({
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Parcours adoptant · Consultation · complétion limitée
+                  {reservation.status === "pre_reservation_requested"
+                    ? "Demande de pré-réservation · Consultation technique"
+                    : "Parcours adoptant · Consultation · complétion limitée"}
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  Parcours adoptant de {reservation.contact_display_name ?? "Client anonyme"}
+                  {reservation.status === "pre_reservation_requested"
+                    ? "Demande de pré-réservation de "
+                    : "Parcours adoptant de "}
+                  {reservation.contact_display_name ?? "Client anonyme"}
                 </h1>
                 <p className="mt-3 text-sm text-muted">
                   Créée le {formatApplicationDate(reservation.created_at)}
@@ -2298,9 +2303,17 @@ export default async function ReservationDetailPage({
             </header>
 
             <JourneyTimeline
-              description="Synthèse indicative des grandes étapes. Les détails restent dans les sections métier du dossier."
+              description={
+                reservation.status === "pre_reservation_requested"
+                  ? "Demande technique en attente de règlement. Le parcours adoptant commencera après paiement de la pré-réservation."
+                  : "Synthèse indicative des grandes étapes. Les détails restent dans les sections métier du dossier."
+              }
               steps={adopterJourneySteps}
-              title="Progression du parcours adoptant"
+              title={
+                reservation.status === "pre_reservation_requested"
+                  ? "Progression de la demande"
+                  : "Progression du parcours adoptant"
+              }
               titleId="adopter-journey-progress-title"
             />
 

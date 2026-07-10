@@ -66,6 +66,12 @@ type PaymentWithContact = DBPayment & {
   contacts: PaymentContact | null;
 };
 
+type PaymentReservationLink = {
+  id: string;
+  application_id: string | null;
+  status: string | null;
+};
+
 function formatDate(value: string | null) {
   if (!value) {
     return "Non renseigné";
@@ -318,6 +324,22 @@ export default async function PaymentDetailPage({
   const payment = rawPayment as PaymentWithContact | null;
   const contactName = getContactName(payment?.contacts ?? null);
 
+  const { data: rawReservationLink } = payment?.reservation_id
+    ? await supabase
+        .from("reservations")
+        .select("id, application_id, status")
+        .eq("id", payment.reservation_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null };
+
+  const reservationLink = rawReservationLink as PaymentReservationLink | null;
+  const hasStartedAdopterJourney =
+    reservationLink?.status !== null &&
+    reservationLink?.status !== undefined &&
+    reservationLink.status !== "draft" &&
+    reservationLink.status !== "pre_reservation_requested";
+
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = payment?.id
     ? await supabase
@@ -418,13 +440,16 @@ export default async function PaymentDetailPage({
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="space-y-6">
-                {payment.status === "requested" && (
+                {["requested", "pending", "partially_paid"].includes(payment.status) && (
                   <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                     <h2 className="text-xl font-semibold mb-2">
                       Marquer comme payé
                     </h2>
                     <p className="text-xs text-muted mb-6">
-                      Cette action marque cette demande de paiement comme réglée. Elle ne modifie pas le montant, le type de paiement, la réservation et ne génère aucun document.
+                      Cette action marque cette demande de paiement comme réglée.
+                      Pour une pré-réservation, elle déclenche aussi l’entrée
+                      transactionnelle dans le parcours adoptant. Elle ne modifie
+                      pas le montant et ne génère aucun document.
                     </p>
 
                     <form action={markPaymentAsPaid} className="space-y-4">
@@ -626,20 +651,31 @@ export default async function PaymentDetailPage({
 
               <aside className="h-fit space-y-6 rounded-2xl border bg-surface p-6">
                 <div>
-                  <h2 className="text-lg font-semibold">Parcours adoptant</h2>
+                  <h2 className="text-lg font-semibold">
+                    {hasStartedAdopterJourney
+                      ? "Parcours adoptant"
+                      : "Candidature liée"}
+                  </h2>
                   <dl className="mt-4">
                     <DetailItem label="Contact lié" value={contactName} />
                   </dl>
-                  {payment.reservation_id ? (
+                  {hasStartedAdopterJourney && payment.reservation_id ? (
                     <Link
                       href={`/reservations/${payment.reservation_id}`}
                       className="mt-5 inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
                     >
                       Consulter le parcours de l’adoptant
                     </Link>
+                  ) : reservationLink?.application_id ? (
+                    <Link
+                      href={`/candidatures/${reservationLink.application_id}`}
+                      className="mt-5 inline-flex w-full justify-center rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                    >
+                      Consulter la fiche du candidat
+                    </Link>
                   ) : (
                     <p className="mt-5 text-sm text-muted">
-                      Aucun parcours adoptant lié.
+                      Aucune candidature ou parcours adoptant lié.
                     </p>
                   )}
                 </div>

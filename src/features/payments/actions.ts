@@ -3,12 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import {
-  promoteContactJourneyRole,
-} from "@/features/contacts/roles";
-import {
-  readDepositSettingsForOrganization,
-} from "@/features/payments/deposit-thresholds";
 import { createClient } from "@/lib/supabase/server";
 
 function paymentRedirectUrl(
@@ -25,204 +19,155 @@ function reservationPaymentMarkUrl(
   return `/reservations/${reservationId}?payment_mark_status=${outcome}#payments`;
 }
 
+const PRE_RESERVATION_PAYMENT_TYPES = [
+  "arrhes",
+  "pre_reservation_deposit_refundable",
+] as const;
+
+const PRE_RESERVATION_MARKABLE_STATUSES = [
+  "requested",
+  "pending",
+  "partially_paid",
+] as const;
+
 function isUuid(value: string) {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
   return uuidRegex.test(value);
 }
 
-async function markLinkedPreReservationAsPaidIfNeeded({
+function isPreReservationPaymentType(paymentType: string | null) {
+  return PRE_RESERVATION_PAYMENT_TYPES.includes(
+    paymentType as (typeof PRE_RESERVATION_PAYMENT_TYPES)[number],
+  );
+}
+
+function canMarkPreReservationPaymentStatus(status: string | null) {
+  return PRE_RESERVATION_MARKABLE_STATUSES.includes(
+    status as (typeof PRE_RESERVATION_MARKABLE_STATUSES)[number],
+  );
+}
+
+async function markPreReservationPaymentPaidViaRpc({
   supabase,
-  reservationId,
-  paymentType,
-  amountCents,
-  userId,
+  paymentId,
+  paidAt,
+  paymentMethod,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
-  reservationId: string | null;
-  paymentType: string;
-  amountCents: number;
-  userId: string;
+  paymentId: string;
+  paidAt?: string;
+  paymentMethod?: string;
 }) {
-  const isPreReservationPayment =
-    paymentType === "arrhes" ||
-    paymentType === "pre_reservation_deposit_refundable";
+  const { data, error } = await supabase.rpc(
+    "mark_pre_reservation_payment_paid",
+    {
+      p_payment_id: paymentId,
+      ...(paidAt ? { p_paid_at: paidAt } : {}),
+      ...(paymentMethod ? { p_payment_method: paymentMethod } : {}),
+    },
+  );
 
-  if (!reservationId || !isPreReservationPayment) {
-    return;
+  if (error) {
+    console.error("mark_pre_reservation_payment_paid RPC failed:", error);
+    return { ok: false as const, outcome: "error", reservationId: null };
+  }
+
+  const result = data?.[0] ?? null;
+  const outcome = result?.outcome ?? "error";
+
+  return {
+    ok: outcome === "paid" || outcome === "already_paid",
+    outcome,
+    reservationId: result?.reservation_id ?? null,
+  };
+}
+
+async function isPreReservationTransitionPayment({
+  supabase,
+  payment,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  payment: {
+    payment_type: string | null;
+    reservation_id: string | null;
+    status: string | null;
+  };
+}) {
+  if (
+    !payment.reservation_id ||
+    !isPreReservationPaymentType(payment.payment_type) ||
+    !canMarkPreReservationPaymentStatus(payment.status)
+  ) {
+    return false;
   }
 
   const { data: reservation } = await supabase
     .from("reservations")
-    .select("id, organization_id, contact_id, status")
-    .eq("id", reservationId)
+    .select("id, status")
+    .eq("id", payment.reservation_id)
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (!reservation || reservation.status !== "pre_reservation_requested") {
-    return;
-  }
-
-  const depositSettings = await readDepositSettingsForOrganization({
-    supabase,
-    organizationId: reservation.organization_id,
-  });
-
-  if (amountCents < depositSettings.preReservationDepositCents) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  const { data: updatedReservation, error: resUpdateError } = await supabase
-    .from("reservations")
-    .update({
-      status: "pre_reservation_paid",
-      updated_at: now,
-      updated_by: userId,
-    })
-    .eq("id", reservationId)
-    .eq("status", "pre_reservation_requested")
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (resUpdateError || !updatedReservation) {
-    console.error(
-      "Failed to update reservation status to pre_reservation_paid:",
-      resUpdateError,
-    );
-    return;
-  }
-
-  const preReservationRoleResult = await promoteContactJourneyRole({
-    supabase,
-    organizationId: reservation.organization_id,
-    contactId: reservation.contact_id,
-    role: "pre_reservation_holder",
-    userId,
-    now,
-  });
-
-  if (
-    preReservationRoleResult.error ||
-    preReservationRoleResult.deactivationError
-  ) {
-    console.error(
-      "Failed to read active pre_reservation_holder contact role:",
-      preReservationRoleResult.error ?? preReservationRoleResult.deactivationError,
-    );
-    return;
-  }
-
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${reservation.contact_id}`);
-  revalidatePath("/");
+  return reservation?.status === "pre_reservation_requested";
 }
 
-async function markLinkedReservationHolderRoleIfDepositCompleted({
-  supabase,
+async function revalidatePaymentTransitionPaths({
+  paymentId,
   reservationId,
-  paymentType,
-  userId,
 }: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
+  paymentId: string;
   reservationId: string | null;
-  paymentType: string;
-  userId: string;
 }) {
-  if (!reservationId || paymentType !== "arrhes") {
-    return;
+  revalidatePath(`/payments/${paymentId}`);
+  revalidatePath("/payments");
+  revalidatePath("/");
+  revalidatePath("/candidatures");
+  revalidatePath("/reservations");
+
+  if (reservationId) {
+    revalidatePath(`/reservations/${reservationId}`);
+  }
+}
+
+export async function markPreReservationPaymentAsPaidFromApplication(
+  formData: FormData,
+) {
+  const paymentId = formData.get("payment_id");
+  const applicationId = formData.get("application_id");
+
+  if (
+    typeof paymentId !== "string" ||
+    !isUuid(paymentId) ||
+    typeof applicationId !== "string" ||
+    !isUuid(applicationId)
+  ) {
+    redirect("/candidatures?payment_mark_status=error");
   }
 
-  const { data: reservation, error: reservationError } = await supabase
-    .from("reservations")
-    .select("id, organization_id, contact_id, status")
-    .eq("id", reservationId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (reservationError || !reservation) {
-    console.error(
-      "Failed to read reservation for completed deposit role update:",
-      reservationError,
-    );
-    return;
+  if (!user) {
+    redirect("/login");
   }
 
-  const { data: paidArrhesPayments, error: paymentsError } = await supabase
-    .from("payments")
-    .select("amount_cents")
-    .eq("organization_id", reservation.organization_id)
-    .eq("reservation_id", reservation.id)
-    .eq("payment_type", "arrhes")
-    .eq("status", "paid")
-    .is("deleted_at", null);
-
-  if (paymentsError) {
-    console.error(
-      "Failed to read paid arrhes payments for completed deposit role update:",
-      paymentsError,
-    );
-    return;
-  }
-
-  const paidArrhesTotalCents = (paidArrhesPayments ?? []).reduce(
-    (total, payment) => total + payment.amount_cents,
-    0,
-  );
-
-  const depositSettings = await readDepositSettingsForOrganization({
+  const result = await markPreReservationPaymentPaidViaRpc({
     supabase,
-    organizationId: reservation.organization_id,
+    paymentId,
   });
 
-  if (paidArrhesTotalCents < depositSettings.completeDepositCents) {
-    return;
-  }
-
-  const now = new Date().toISOString();
-
-  if (reservation.status === "pre_reservation_requested") {
-    const { error: reservationUpdateError } = await supabase
-      .from("reservations")
-      .update({
-        status: "pre_reservation_paid",
-        updated_at: now,
-        updated_by: userId,
-      })
-      .eq("id", reservation.id)
-      .eq("organization_id", reservation.organization_id)
-      .eq("status", "pre_reservation_requested")
-      .is("deleted_at", null);
-
-    if (reservationUpdateError) {
-      console.error(
-        "Failed to align reservation status after completed deposit:",
-        reservationUpdateError,
-      );
-      return;
-    }
-  }
-
-  const holderRoleResult = await promoteContactJourneyRole({
-    supabase,
-    organizationId: reservation.organization_id,
-    contactId: reservation.contact_id,
-    role: "reservation_holder",
-    userId,
-    now,
+  await revalidatePaymentTransitionPaths({
+    paymentId,
+    reservationId: result?.reservationId ?? null,
   });
 
-  if (holderRoleResult.error || holderRoleResult.deactivationError) {
-    console.error(
-      "Failed to read active reservation_holder contact role:",
-      holderRoleResult.error ?? holderRoleResult.deactivationError,
-    );
-    return;
+  if (!result?.ok || !result.reservationId) {
+    redirect(`/candidatures/${applicationId}?payment_mark_status=error`);
   }
 
-  revalidatePath("/contacts");
-  revalidatePath(`/contacts/${reservation.contact_id}`);
+  redirect(`/reservations/${result.reservationId}?payment_mark_status=success`);
 }
 
 export async function createReservationPayment(formData: FormData) {
@@ -245,7 +190,7 @@ export async function createReservationPayment(formData: FormData) {
   // 2. Relecture serveur de la réservation
   const { data: reservation, error: readError } = await supabase
     .from("reservations")
-    .select("id, organization_id, contact_id, deleted_at")
+    .select("id, organization_id, contact_id, status, deleted_at")
     .eq("id", reservationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -344,8 +289,14 @@ export async function createReservationPayment(formData: FormData) {
     notes = trimmedNotes || null;
   }
 
-  // 9. Insertion du paiement
-  const { error: insertError } = await supabase
+  const shouldTransitionPreReservation =
+    status === "paid" &&
+    reservation.status === "pre_reservation_requested" &&
+    isPreReservationPaymentType(paymentType);
+
+  // 9. Insertion du paiement. Pour une pré-réservation réglée dès la saisie,
+  // on insère d'abord une demande puis la RPC effectue la transition atomique.
+  const { data: insertedPayment, error: insertError } = await supabase
     .from("payments")
     .insert({
       organization_id: reservation.organization_id,
@@ -354,35 +305,33 @@ export async function createReservationPayment(formData: FormData) {
       amount_cents: amountCents,
       currency: "EUR",
       payment_type: paymentType,
-      status: status,
+      status: shouldTransitionPreReservation ? "requested" : status,
       payment_method: paymentMethod,
-      paid_at: paidAt,
-      requested_at: requestedAt,
-      due_date: dueDate,
+      paid_at: shouldTransitionPreReservation ? null : paidAt,
+      requested_at: shouldTransitionPreReservation ? new Date().toISOString() : requestedAt,
+      due_date: shouldTransitionPreReservation ? null : dueDate,
       notes: notes,
       created_by: user.id,
       updated_by: user.id,
-    });
+    })
+    .select("id")
+    .maybeSingle();
 
-  if (insertError) {
+  if (insertError || !insertedPayment) {
     redirect(paymentRedirectUrl(reservationId, "error"));
   }
 
-  if (status === "paid") {
-    await markLinkedPreReservationAsPaidIfNeeded({
+  if (shouldTransitionPreReservation) {
+    const transitionResult = await markPreReservationPaymentPaidViaRpc({
       supabase,
-      reservationId: reservation.id,
-      paymentType,
-      amountCents,
-      userId: user.id,
+      paymentId: insertedPayment.id,
+      paidAt: paidAt ?? undefined,
+      paymentMethod,
     });
 
-    await markLinkedReservationHolderRoleIfDepositCompleted({
-      supabase,
-      reservationId: reservation.id,
-      paymentType,
-      userId: user.id,
-    });
+    if (!transitionResult?.ok) {
+      redirect(paymentRedirectUrl(reservationId, "error"));
+    }
   }
 
   revalidatePath(`/reservations/${reservationId}`);
@@ -422,7 +371,11 @@ export async function markPaymentAsPaid(formData: FormData) {
   }
 
   // 3. Vérifier le statut
-  if (payment.status !== "requested") {
+  if (
+    payment.status !== "requested" &&
+    payment.status !== "pending" &&
+    payment.status !== "partially_paid"
+  ) {
     redirect(`/payments/${paymentId}?payment_mark_status=invalid_state`);
   }
 
@@ -473,6 +426,31 @@ export async function markPaymentAsPaid(formData: FormData) {
     notes = trimmedNotes || null;
   }
 
+  if (
+    await isPreReservationTransitionPayment({
+      supabase,
+      payment,
+    })
+  ) {
+    const transitionResult = await markPreReservationPaymentPaidViaRpc({
+      supabase,
+      paymentId,
+      paidAt,
+      paymentMethod,
+    });
+
+    await revalidatePaymentTransitionPaths({
+      paymentId,
+      reservationId: transitionResult?.reservationId ?? payment.reservation_id,
+    });
+
+    if (!transitionResult?.ok) {
+      redirect(`/payments/${paymentId}?payment_mark_status=error`);
+    }
+
+    redirect(`/payments/${payment.id}?payment_mark_status=success`);
+  }
+
   // 7. Mise à jour du paiement
   const { error: updateError } = await supabase
     .from("payments")
@@ -489,21 +467,6 @@ export async function markPaymentAsPaid(formData: FormData) {
   if (updateError) {
     redirect(`/payments/${paymentId}?payment_mark_status=error`);
   }
-
-  await markLinkedPreReservationAsPaidIfNeeded({
-    supabase,
-    reservationId: payment.reservation_id,
-    paymentType: payment.payment_type,
-    amountCents: payment.amount_cents,
-    userId: user.id,
-  });
-
-  await markLinkedReservationHolderRoleIfDepositCompleted({
-    supabase,
-    reservationId: payment.reservation_id,
-    paymentType: payment.payment_type,
-    userId: user.id,
-  });
 
   // 8. Revalidation des chemins
   revalidatePath(`/payments/${paymentId}`);
@@ -567,8 +530,35 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
     redirect(reservationPaymentMarkUrl(reservationId, "error"));
   }
 
-  if (payment.status !== "requested") {
+  if (
+    payment.status !== "requested" &&
+    payment.status !== "pending" &&
+    payment.status !== "partially_paid"
+  ) {
     redirect(reservationPaymentMarkUrl(reservationId, "invalid_state"));
+  }
+
+  if (
+    await isPreReservationTransitionPayment({
+      supabase,
+      payment,
+    })
+  ) {
+    const transitionResult = await markPreReservationPaymentPaidViaRpc({
+      supabase,
+      paymentId,
+    });
+
+    await revalidatePaymentTransitionPaths({
+      paymentId,
+      reservationId: transitionResult?.reservationId ?? reservationId,
+    });
+
+    if (!transitionResult?.ok) {
+      redirect(reservationPaymentMarkUrl(reservationId, "error"));
+    }
+
+    redirect(reservationPaymentMarkUrl(transitionResult.reservationId ?? reservationId, "success"));
   }
 
   const { data: updatedPayment, error: updateError } = await supabase
@@ -589,21 +579,6 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
   if (updateError || !updatedPayment) {
     redirect(reservationPaymentMarkUrl(reservationId, "error"));
   }
-
-  await markLinkedPreReservationAsPaidIfNeeded({
-    supabase,
-    reservationId: payment.reservation_id,
-    paymentType: payment.payment_type,
-    amountCents: payment.amount_cents,
-    userId: user.id,
-  });
-
-  await markLinkedReservationHolderRoleIfDepositCompleted({
-    supabase,
-    reservationId: payment.reservation_id,
-    paymentType: payment.payment_type,
-    userId: user.id,
-  });
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");

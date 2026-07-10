@@ -2984,6 +2984,7 @@ export type Database = {
           contact_phone: string | null
           created_at: string | null
           desired_sex_preference: string | null
+          has_started_adopter_journey: boolean | null
           id: string | null
           initial_rank: number | null
           organization_id: string | null
@@ -3226,11 +3227,44 @@ export type Database = {
         Args: { p_name: string; p_slug: string }
         Returns: string
       }
+      create_pre_reservation_request_for_application: {
+        Args: {
+          p_application_id: string
+          p_target_litter_group_id?: string
+          p_target_litter_id?: string
+        }
+        Returns: {
+          application_id: string
+          outcome: string
+          payment_created: boolean
+          payment_id: string
+          reason: string
+          reservation_created: boolean
+          reservation_id: string
+        }[]
+      }
       has_organization_role: {
         Args: { allowed_roles: string[]; org_id: string }
         Returns: boolean
       }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
+      mark_pre_reservation_payment_paid: {
+        Args: {
+          p_paid_at?: string
+          p_payment_id: string
+          p_payment_method?: string
+        }
+        Returns: {
+          candidate_role_deactivated: boolean
+          contact_id: string
+          outcome: string
+          payment_id: string
+          pre_reservation_holder_activated: boolean
+          reason: string
+          reservation_id: string
+          reservation_updated: boolean
+        }[]
+      }
       resolve_suspect_form_submission_existing_contact: {
         Args: { p_contact_id: string; p_form_submission_id: string }
         Returns: {

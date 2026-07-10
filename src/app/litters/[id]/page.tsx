@@ -1472,6 +1472,7 @@ export default async function LitterDetailPage({
           "id, contact_id, contact_display_name, status, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, created_at",
         )
         .eq("litter_id", id)
+        .neq("status", "pre_reservation_requested")
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
@@ -1596,11 +1597,30 @@ export default async function LitterDetailPage({
   }
 
   let qualifiedApplications: QualifiedApplication[] | null = null;
+  const applicationIdsWithPreReservationRequest = new Set<string>();
 
   if (litter && rawQualifiedApplications && rawQualifiedApplications.length > 0) {
+    const qualifiedApplicationIds = rawQualifiedApplications.map((app) => app.id);
+    const { data: existingPreReservationRequests } = await supabase
+      .from("reservations")
+      .select("application_id")
+      .eq("organization_id", litter.organization_id)
+      .eq("status", "pre_reservation_requested")
+      .is("deleted_at", null)
+      .in("application_id", qualifiedApplicationIds);
+
+    existingPreReservationRequests?.forEach((reservation) => {
+      if (reservation.application_id) {
+        applicationIdsWithPreReservationRequest.add(reservation.application_id);
+      }
+    });
+
+    const campaignApplications = rawQualifiedApplications.filter(
+      (app) => !applicationIdsWithPreReservationRequest.has(app.id),
+    );
     const contactIds = Array.from(
       new Set(
-        rawQualifiedApplications
+        campaignApplications
           .map((app) => app.contact_id)
           .filter((cid): cid is string => Boolean(cid)),
       ),
@@ -1615,7 +1635,7 @@ export default async function LitterDetailPage({
 
       if (contactsError) {
         console.error("QUALIFIED_APPS_CONTACTS_ERROR:", contactsError);
-        qualifiedApplications = rawQualifiedApplications.map((app) => ({
+        qualifiedApplications = campaignApplications.map((app) => ({
           ...app,
           contacts: { display_name: "Contact non chargé" },
         }));
@@ -1625,13 +1645,13 @@ export default async function LitterDetailPage({
           contactMap.set(c.id, { display_name: c.display_name });
         });
 
-        qualifiedApplications = rawQualifiedApplications.map((app) => ({
+        qualifiedApplications = campaignApplications.map((app) => ({
           ...app,
           contacts: app.contact_id ? (contactMap.get(app.contact_id) ?? null) : null,
         }));
       }
     } else {
-      qualifiedApplications = rawQualifiedApplications.map((app) => ({
+      qualifiedApplications = campaignApplications.map((app) => ({
         ...app,
         contacts: null,
       }));

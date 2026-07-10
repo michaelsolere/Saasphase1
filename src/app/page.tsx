@@ -167,8 +167,9 @@ export default async function Home() {
   // Load applications needing review
   const { data: rawApplications } = await supabase
     .from("application_overview")
-    .select("id, contact_display_name, status, desired_sex_preference, breed, submitted_at, created_at")
+    .select("id, contact_display_name, status, desired_sex_preference, breed, has_started_adopter_journey, submitted_at, created_at")
     .in("status", ["new", "to_review"])
+    .eq("has_started_adopter_journey", false)
     .order("created_at", { ascending: false });
   const applicationsNeedReview = rawApplications || [];
   const { count: suspectFormSubmissionsCount } = await supabase
@@ -197,6 +198,7 @@ export default async function Home() {
   const { data: rawReservations } = await supabase
     .from("reservation_overview")
     .select("id, organization_id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
+    .neq("status", "pre_reservation_requested")
     .order("created_at", { ascending: false });
   const organizationIds = Array.from(
     new Set(

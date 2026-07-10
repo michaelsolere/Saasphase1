@@ -1,6 +1,16 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { JourneyTimeline, type JourneyStep } from "@/components/journey-timeline";
 import {
   formatApplicationDate,
@@ -15,6 +25,12 @@ import {
 import { NoteForm } from "@/features/applications/note-form";
 import { QualificationActions } from "@/features/applications/qualification-actions";
 import type { ApplicationDetail } from "@/features/applications/types";
+import {
+  getPaymentTypeLabel,
+} from "@/features/payments/formatters";
+import {
+  markPreReservationPaymentAsPaidFromApplication,
+} from "@/features/payments/actions";
 import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
@@ -59,6 +75,17 @@ type ApplicationNote = {
   created_by: string | null;
   note_type: string;
   profiles: { display_name: string | null } | null;
+};
+
+type ActivePreReservationPayment = {
+  id: string;
+  reservation_id: string | null;
+  amount_cents: number;
+  currency: string;
+  payment_type: string;
+  status: string;
+  due_date: string | null;
+  requested_at: string | null;
 };
 
 function getUsefulDocumentDate(document: RelatedDocument) {
@@ -231,6 +258,7 @@ export default async function ApplicationDetailPage({
     reservation_status?: string;
     role_status?: string;
     litter_status?: string;
+    payment_mark_status?: string;
   }>;
 }) {
   const { id } = await params;
@@ -247,7 +275,7 @@ export default async function ApplicationDetailPage({
   const { data, error } = await supabase
     .from("application_overview")
     .select(
-      "id, organization_id, contact_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, species, breed, submitted_at, created_at",
+      "id, organization_id, contact_id, contact_display_name, contact_email, contact_phone, desired_sex_preference, project_description, status, public_form_name, public_form_slug, has_started_adopter_journey, species, breed, submitted_at, created_at",
     )
     .eq("id", id)
     .maybeSingle();
@@ -278,6 +306,26 @@ export default async function ApplicationDetailPage({
     : { data: null, error: null };
 
   const applicationReservations = rawReservations as ReservationOverview[] | null;
+  const activePreReservation = applicationReservations?.find(
+    (reservation) => reservation.status === "pre_reservation_requested",
+  ) ?? null;
+
+  const { data: rawActivePreReservationPayments } = activePreReservation?.id
+    ? await supabase
+        .from("payments")
+        .select("id, reservation_id, amount_cents, currency, payment_type, status, due_date, requested_at")
+        .eq("reservation_id", activePreReservation.id)
+        .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
+        .in("status", ["requested", "pending", "partially_paid"])
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(1)
+    : { data: null };
+
+  const activePreReservationPayment =
+    (rawActivePreReservationPayments?.[0] ?? null) as
+      | ActivePreReservationPayment
+      | null;
 
   // Fetch documents
   const { data: rawDocuments, error: documentsError } = applicationId
@@ -472,6 +520,16 @@ export default async function ApplicationDetailPage({
               </p>
             ) : null}
 
+            {query.payment_mark_status === "error" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                La pré-réservation n’a pas pu être marquée comme payée. Aucune
+                nouvelle demande de paiement n’a été créée.
+              </p>
+            ) : null}
+
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>
                 <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -502,6 +560,95 @@ export default async function ApplicationDetailPage({
               title="Parcours candidat"
               titleId="candidate-journey-progress-title"
             />
+
+            {activePreReservationPayment ? (
+              <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950 sm:p-8">
+                <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-start">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-wide">
+                      Pré-réservation en attente de règlement
+                    </p>
+                    <h2 className="mt-2 text-xl font-semibold">
+                      {formatPrice(
+                        activePreReservationPayment.amount_cents,
+                        activePreReservationPayment.currency,
+                      )}{" "}
+                      à régler
+                    </h2>
+                    <dl className="mt-5 grid gap-4 text-sm sm:grid-cols-3">
+                      <DetailItem
+                        label="Montant demandé"
+                        value={formatPrice(
+                          activePreReservationPayment.amount_cents,
+                          activePreReservationPayment.currency,
+                        )}
+                      />
+                      <DetailItem
+                        label="Échéance"
+                        value={formatApplicationDate(
+                          activePreReservationPayment.due_date,
+                        )}
+                      />
+                      <DetailItem
+                        label="Type de paiement"
+                        value={getPaymentTypeLabel(
+                          activePreReservationPayment.payment_type,
+                        )}
+                      />
+                    </dl>
+                  </div>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
+                      >
+                        Marquer la pré-réservation de{" "}
+                        {formatPrice(
+                          activePreReservationPayment.amount_cents,
+                          activePreReservationPayment.currency,
+                        )}{" "}
+                        comme payée
+                      </button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>
+                          Confirmer le règlement de pré-réservation
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Cette action utilise la demande de paiement existante,
+                          marque la pré-réservation comme réglée et ouvre le
+                          parcours adoptant. Aucun nouveau paiement ne sera créé.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Annuler</AlertDialogCancel>
+                        <form action={markPreReservationPaymentAsPaidFromApplication}>
+                          <input
+                            type="hidden"
+                            name="application_id"
+                            value={application.id ?? ""}
+                          />
+                          <input
+                            type="hidden"
+                            name="payment_id"
+                            value={activePreReservationPayment.id}
+                          />
+                          <button
+                            type="submit"
+                            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          >
+                            Confirmer le règlement
+                          </button>
+                        </form>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </div>
+              </section>
+            ) : null}
 
             {application.id ? (
               <section className="border-b py-6">
