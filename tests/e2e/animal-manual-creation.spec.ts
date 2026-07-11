@@ -882,6 +882,29 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
       "https://www.centrale-canine.fr/chien/new-scc",
     );
     await page.goto(`/animals/${manualAnimalId}/edit`);
+    await expect(page.getByLabel("Race")).toHaveValue("Maine Coon QA");
+    await expect(page.getByLabel("Race")).toHaveAttribute("required", "");
+    await page.getByLabel("Nom d’usage").fill(`QA edition race vide ${suffix}`);
+    await page.getByLabel("Race").fill("");
+    await page.locator("form").evaluate((form) => {
+      (form as HTMLFormElement).noValidate = true;
+    });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    const rejectedEmptyBreedAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, breed")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected empty breed animal",
+    );
+    expect(rejectedEmptyBreedAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      breed: "Maine Coon QA",
+    });
+
+    await page.goto(`/animals/${manualAnimalId}/edit`);
     await page
       .getByLabel("Lien vers la page SCC de l’animal")
       .evaluate((input) => {

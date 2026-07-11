@@ -354,6 +354,7 @@ export default async function AnimalEditPage({
                   label="Race"
                   name="breed"
                   defaultValue={animal.breed}
+                  required
                 />
                 <SelectField
                   id="animal-edit-sex"

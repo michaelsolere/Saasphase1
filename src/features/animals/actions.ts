@@ -463,7 +463,7 @@ export async function updateAnimalIdentity(formData: FormData) {
     typeof speciesRaw === "string" && allowedSpecies.has(speciesRaw.trim())
       ? speciesRaw.trim()
       : "invalid";
-  const breed = normalizeOptionalText(formData.get("breed")) ?? "Golden Retriever";
+  const breed = normalizeOptionalText(formData.get("breed"));
   const sexRaw = formData.get("sex");
   const sex =
     typeof sexRaw === "string" && allowedSexes.has(sexRaw.trim())
@@ -476,7 +476,12 @@ export async function updateAnimalIdentity(formData: FormData) {
 
   const pedigreeUrl = normalizeOptionalHttpUrl(formData.get("pedigree_url"));
 
-  if (pedigreeUrl === "invalid" || species === "invalid" || sex === "invalid") {
+  if (
+    pedigreeUrl === "invalid" ||
+    species === "invalid" ||
+    sex === "invalid" ||
+    !breed
+  ) {
     redirect(animalIdentityEditUrl(animalId, "invalid"));
   }
 
