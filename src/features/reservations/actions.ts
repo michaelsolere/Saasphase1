@@ -1308,9 +1308,25 @@ type PreReservationCampaignApplication = {
 type PreReservationCampaignResult = {
   reservationsPreparedCount: number;
   paymentsCreatedCount: number;
+  emailsSentCount: number;
+  emailsAlreadySentCount: number;
+  emailsFailedCount: number;
+  emailsMissingCount: number;
+  emailsInProgressCount: number;
+  missingTemplateCount: number;
+  brevoNotConfiguredCount: number;
   ignoredDraftConflictCount: number;
+  conflictCount: number;
   errorCount: number;
 };
+
+type PreReservationCampaignSendResult = Awaited<
+  ReturnType<typeof sendPreReservationEmailForReservation>
+>;
+
+type SendPreReservationCampaignEmail = (input: {
+  reservationId: string;
+}) => Promise<PreReservationCampaignSendResult>;
 
 type PreReservationBalanceCampaignReservation = {
   id: string;
@@ -1423,16 +1439,26 @@ const CHOICE_APPOINTMENTS_CAMPAIGN_ELIGIBLE_STATUSES = new Set([
   "adoption_ready",
 ]);
 
-async function runPreReservationCampaignForApplications({
+export async function runPreReservationCampaignForApplications({
   supabase,
   applications,
+  sendEmail = sendPreReservationEmailForReservation,
 }: {
   supabase: Awaited<ReturnType<typeof createClient>>;
   applications: PreReservationCampaignApplication[];
+  sendEmail?: SendPreReservationCampaignEmail;
 }): Promise<PreReservationCampaignResult> {
   let reservationsPreparedCount = 0;
   let paymentsCreatedCount = 0;
+  let emailsSentCount = 0;
+  let emailsAlreadySentCount = 0;
+  let emailsFailedCount = 0;
+  let emailsMissingCount = 0;
+  let emailsInProgressCount = 0;
+  let missingTemplateCount = 0;
+  let brevoNotConfiguredCount = 0;
   let ignoredDraftConflictCount = 0;
+  let conflictCount = 0;
   let errorCount = 0;
 
   for (const app of applications) {
@@ -1456,23 +1482,67 @@ async function runPreReservationCampaignForApplications({
 
     const result = data?.[0];
 
-    if (!result) {
+    if (!result || !result.reservation_id || !result.payment_id) {
       errorCount++;
       continue;
     }
 
-    if (result.outcome === "created") {
-      if (result.reservation_created || result.payment_created) {
-        reservationsPreparedCount++;
+    if (result.outcome === "created" || result.outcome === "already_exists") {
+      const { data: storedReservation, error: reservationReadError } =
+        await supabase
+          .from("reservations")
+          .select("id, status, application_id")
+          .eq("id", result.reservation_id)
+          .eq("application_id", app.id)
+          .is("deleted_at", null)
+          .maybeSingle();
+
+      const { data: storedPayment, error: paymentReadError } = await supabase
+        .from("payments")
+        .select("id, reservation_id")
+        .eq("id", result.payment_id)
+        .eq("reservation_id", result.reservation_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (
+        reservationReadError ||
+        paymentReadError ||
+        !storedReservation ||
+        !storedPayment ||
+        storedReservation.status !== "pre_reservation_requested"
+      ) {
+        errorCount++;
+        continue;
       }
+
+      reservationsPreparedCount++;
       if (result.payment_created) {
         paymentsCreatedCount++;
       }
-    } else if (result.outcome === "already_exists") {
-      continue;
+
+      const sendResult = await sendEmail({ reservationId: storedReservation.id });
+
+      if (sendResult.status === "success") {
+        emailsSentCount++;
+      } else if (sendResult.status === "already_sent") {
+        emailsAlreadySentCount++;
+      } else if (sendResult.status === "in_progress") {
+        emailsInProgressCount++;
+      } else if (sendResult.status === "missing_email") {
+        emailsMissingCount++;
+      } else if (sendResult.status === "missing_template") {
+        missingTemplateCount++;
+      } else if (sendResult.status === "brevo_not_configured") {
+        brevoNotConfiguredCount++;
+      } else {
+        emailsFailedCount++;
+      }
     } else if (result.outcome === "conflict") {
       if (result.reason === "draft_reservation_exists") {
         ignoredDraftConflictCount++;
+      } else {
+        conflictCount++;
       }
     } else if (result.outcome === "ineligible") {
       continue;
@@ -1484,7 +1554,15 @@ async function runPreReservationCampaignForApplications({
   return {
     reservationsPreparedCount,
     paymentsCreatedCount,
+    emailsSentCount,
+    emailsAlreadySentCount,
+    emailsFailedCount,
+    emailsMissingCount,
+    emailsInProgressCount,
+    missingTemplateCount,
+    brevoNotConfiguredCount,
     ignoredDraftConflictCount,
+    conflictCount,
     errorCount,
   };
 }
@@ -1507,6 +1585,21 @@ function preReservationCampaignParams({
     [countParam]: String(result.reservationsPreparedCount),
     [paymentCountParam]: String(result.paymentsCreatedCount),
     [draftConflictCountParam]: String(result.ignoredDraftConflictCount),
+    pre_reservation_email_sent_count: String(result.emailsSentCount),
+    pre_reservation_email_already_sent_count: String(
+      result.emailsAlreadySentCount,
+    ),
+    pre_reservation_email_failed_count: String(result.emailsFailedCount),
+    pre_reservation_email_missing_count: String(result.emailsMissingCount),
+    pre_reservation_email_in_progress_count: String(
+      result.emailsInProgressCount,
+    ),
+    pre_reservation_missing_template_count: String(result.missingTemplateCount),
+    pre_reservation_brevo_not_configured_count: String(
+      result.brevoNotConfiguredCount,
+    ),
+    pre_reservation_conflict_count: String(result.conflictCount),
+    pre_reservation_error_count: String(result.errorCount),
   });
 }
 
@@ -2133,9 +2226,14 @@ function choiceAppointmentsCampaignParams(
  */
 export async function launchPreReservationCampaign(formData: FormData) {
   const litterId = formData.get("litter_id");
+  const campaignConfirmation = formData.get("campaign_confirmation");
 
   if (typeof litterId !== "string" || !isUuid(litterId)) {
     redirect("/litters?campaign_status=error");
+  }
+
+  if (campaignConfirmation !== "confirmed") {
+    redirect(`/litters/${litterId}?campaign_status=confirmation_required`);
   }
 
   // Auth
@@ -2344,9 +2442,16 @@ export async function confirmChoiceAppointmentsAdoptionBookletCampaign(
 
 export async function launchGroupPreReservationCampaign(formData: FormData) {
   const groupId = formData.get("litter_group_id");
+  const campaignConfirmation = formData.get("campaign_confirmation");
 
   if (typeof groupId !== "string" || !isUuid(groupId)) {
     redirect("/litter-groups?group_campaign_status=error");
+  }
+
+  if (campaignConfirmation !== "confirmed") {
+    redirect(
+      `/litter-groups/${groupId}?group_campaign_status=confirmation_required`,
+    );
   }
 
   const rawApplicationIds = formData.getAll("application_ids[]");

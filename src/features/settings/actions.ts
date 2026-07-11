@@ -24,6 +24,10 @@ function brevoStatusUrl(outcome: string) {
   return `${settingsPath}?brevo_status=${outcome}`;
 }
 
+function brevoTemplatesStatusUrl(outcome: "success" | "error") {
+  return `${settingsPath}?brevo_templates_status=${outcome}#brevo-templates`;
+}
+
 function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
   if (typeof value !== "string") {
     return null;
@@ -53,6 +57,28 @@ function normalizeOptionalUrl(value: FormDataEntryValue | null) {
   }
 
   return /^https?:\/\/[^\s]+$/i.test(url) ? url : undefined;
+}
+
+function parseOptionalPositiveInteger(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return { ok: false as const };
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return { ok: true as const, value: null };
+  }
+
+  if (!/^\d+$/.test(trimmedValue)) {
+    return { ok: false as const };
+  }
+
+  const numericValue = Number(trimmedValue);
+  if (!Number.isSafeInteger(numericValue) || numericValue <= 0) {
+    return { ok: false as const };
+  }
+
+  return { ok: true as const, value: numericValue };
 }
 
 function buildDisplayName({
@@ -365,4 +391,52 @@ export async function testOrganizationBrevoConnection() {
       normalizeBrevoStatus(result.reason === "api_error" ? "error" : result.reason),
     ),
   );
+}
+
+export async function updatePreReservationBrevoTemplateId(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const brevoTemplateId = parseOptionalPositiveInteger(
+    formData.get("pre_reservation_brevo_template_id"),
+  );
+
+  if (!organizationId || !brevoTemplateId.ok) {
+    redirect(brevoTemplatesStatusUrl("error"));
+  }
+
+  const { supabase, userId } = await requireAdminOrganization(
+    organizationId,
+    "brevo_templates_status",
+  );
+
+  const { data: template, error: readError } = await supabase
+    .from("email_templates")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .eq("template_key", "pre_reservation")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (readError || !template) {
+    redirect(brevoTemplatesStatusUrl("error"));
+  }
+
+  const { error } = await supabase
+    .from("email_templates")
+    .update({
+      brevo_template_id: brevoTemplateId.value,
+      updated_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("organization_id", organizationId)
+    .eq("id", template.id)
+    .eq("template_key", "pre_reservation")
+    .is("deleted_at", null);
+
+  if (error) {
+    redirect(brevoTemplatesStatusUrl("error"));
+  }
+
+  revalidatePath(settingsPath);
+  redirect(brevoTemplatesStatusUrl("success"));
 }

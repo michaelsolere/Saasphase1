@@ -10,6 +10,7 @@ export type CampaignEmailTemplateOption = {
   category: CampaignEmailTemplateCategory;
   subject: string;
   body: string;
+  brevoTemplateId: number | null;
   isActive: boolean;
 };
 

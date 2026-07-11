@@ -2,9 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
-  getSexPreferenceLabel,
-} from "@/features/applications/formatters";
-import {
   CampaignEmailTemplatePicker,
 } from "@/features/documents/campaign-email-template-picker";
 import {
@@ -27,11 +24,20 @@ import {
   getSpeciesLabel,
 } from "@/features/litters/formatters";
 import {
+  addDaysAsIsoDate,
+  readDepositSettingsForOrganization,
+  resolveDepositSettings,
+} from "@/features/payments/deposit-thresholds";
+import {
+  formatPrice,
   getPreReservationDepositBadgeClassName,
   getPreReservationDepositLabel,
   getPreReservationDepositStateFromStatus,
   getReservationStatusLabel,
 } from "@/features/reservations/formatters";
+import {
+  PreReservationCampaignConfirmDialog,
+} from "@/features/reservations/pre-reservation-campaign-confirm-dialog";
 import { updateLitterGroupDetails } from "@/features/litters/actions";
 import {
   launchGroupDepartureBalanceCampaign,
@@ -88,7 +94,12 @@ type GroupQualifiedApplication = Pick<
   | "active_rank"
   | "initial_rank"
 > & {
-  contacts: { display_name: string | null } | null;
+  contacts: {
+    display_name: string | null;
+    first_name: string | null;
+    last_name: string | null;
+    email: string | null;
+  } | null;
 };
 
 function NotFoundOrUnauthorized() {
@@ -203,6 +214,15 @@ export default async function LitterGroupDetailPage({
     group_campaign_count?: string;
     group_campaign_payment_count?: string;
     group_campaign_draft_conflict_count?: string;
+    pre_reservation_email_sent_count?: string;
+    pre_reservation_email_already_sent_count?: string;
+    pre_reservation_email_failed_count?: string;
+    pre_reservation_email_missing_count?: string;
+    pre_reservation_email_in_progress_count?: string;
+    pre_reservation_missing_template_count?: string;
+    pre_reservation_brevo_not_configured_count?: string;
+    pre_reservation_conflict_count?: string;
+    pre_reservation_error_count?: string;
     balance_campaign_status?: string;
     balance_campaign_count?: string;
     balance_campaign_payment_count?: string;
@@ -230,6 +250,15 @@ export default async function LitterGroupDetailPage({
     group_campaign_count,
     group_campaign_payment_count,
     group_campaign_draft_conflict_count,
+    pre_reservation_email_sent_count,
+    pre_reservation_email_already_sent_count,
+    pre_reservation_email_failed_count,
+    pre_reservation_email_missing_count,
+    pre_reservation_email_in_progress_count,
+    pre_reservation_missing_template_count,
+    pre_reservation_brevo_not_configured_count,
+    pre_reservation_conflict_count,
+    pre_reservation_error_count,
     balance_campaign_status,
     balance_campaign_count,
     balance_campaign_payment_count,
@@ -266,6 +295,22 @@ export default async function LitterGroupDetailPage({
     .maybeSingle();
 
   const group = rawGroup as DBLitterGroup | null;
+  const depositSettings =
+    group?.organization_id
+      ? await readDepositSettingsForOrganization({
+          supabase,
+          organizationId: group.organization_id,
+        })
+      : resolveDepositSettings(null);
+
+  const { data: organizationForCampaign } = group?.organization_id
+    ? await supabase
+        .from("organizations")
+        .select("name, affix_name, dog_affix_name")
+        .eq("id", group.organization_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null };
 
   // Portées du groupe.
   const { data: rawGroupLitters, error: littersError } = group
@@ -302,7 +347,9 @@ export default async function LitterGroupDetailPage({
     group && group.organization_id
       ? await supabase
           .from("email_templates")
-          .select("id, template_key, title, category, subject, body, is_active")
+          .select(
+            "id, template_key, title, category, subject, body, brevo_template_id, is_active",
+          )
           .eq("organization_id", group.organization_id)
           .eq("is_active", true)
           .is("deleted_at", null)
@@ -322,10 +369,23 @@ export default async function LitterGroupDetailPage({
         category: template.category,
         subject: template.subject,
         body: template.body,
+        brevoTemplateId: template.brevo_template_id,
         isActive: template.is_active,
       }];
     }),
   );
+  const preReservationCampaignTemplate =
+    campaignEmailTemplates.find(
+      (template) => template.templateKey === "pre_reservation",
+    ) ?? null;
+  const preReservationDeadlineLabel = formatLitterDate(
+    addDaysAsIsoDate(depositSettings.preReservationResponseDelayDays),
+  );
+  const organizationCampaignName =
+    organizationForCampaign?.dog_affix_name ??
+    organizationForCampaign?.affix_name ??
+    organizationForCampaign?.name ??
+    "Élevage";
 
   // Candidatures souhaitant ce groupe (lecture seule).
   const { data: rawLinkedApplications, error: linkedAppsError } =
@@ -449,17 +509,30 @@ export default async function LitterGroupDetailPage({
       ),
     );
 
-    const contactNameMap = new Map<string, string | null>();
+    const contactMap = new Map<
+      string,
+      {
+        display_name: string | null;
+        first_name: string | null;
+        last_name: string | null;
+        email: string | null;
+      }
+    >();
 
     if (qualifiedContactIds.length > 0) {
       const { data: qualifiedContacts } = await supabase
         .from("contacts")
-        .select("id, display_name")
+        .select("id, display_name, first_name, last_name, email")
         .eq("organization_id", group.organization_id)
         .in("id", qualifiedContactIds);
 
       qualifiedContacts?.forEach((contact) => {
-        contactNameMap.set(contact.id, contact.display_name);
+        contactMap.set(contact.id, {
+          display_name: contact.display_name,
+          first_name: contact.first_name,
+          last_name: contact.last_name,
+          email: contact.email,
+        });
       });
     }
 
@@ -472,9 +545,7 @@ export default async function LitterGroupDetailPage({
       status: app.status,
       active_rank: app.active_rank,
       initial_rank: app.initial_rank,
-      contacts: app.contact_id
-        ? { display_name: contactNameMap.get(app.contact_id) ?? null }
-        : null,
+      contacts: app.contact_id ? (contactMap.get(app.contact_id) ?? null) : null,
     }));
   } else if (rawQualifiedApplications) {
     qualifiedApplications = [];
@@ -715,13 +786,28 @@ export default async function LitterGroupDetailPage({
                 role="status"
                 className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
               >
-                Campagne confirmée — {group_campaign_count ?? "0"} dossier(s),{" "}
-                {group_campaign_payment_count ?? "0"} demande(s) de paiement
-                créée(s).
+                Campagne Brevo traitée — {group_campaign_count ?? "0"} dossier(s)
+                préparé(s), {group_campaign_payment_count ?? "0"} paiement(s)
+                créé(s), {pre_reservation_email_sent_count ?? "0"} e-mail(s)
+                envoyé(s), {pre_reservation_email_already_sent_count ?? "0"} déjà
+                envoyé(s), {pre_reservation_email_in_progress_count ?? "0"} en
+                cours, {pre_reservation_email_missing_count ?? "0"} e-mail(s)
+                manquant(s), {pre_reservation_email_failed_count ?? "0"} échec(s).
                 {Number(group_campaign_draft_conflict_count ?? "0") > 0
                   ? ` ${group_campaign_draft_conflict_count} dossier brouillon à vérifier.`
-                  : " "}
-                Aucun e-mail réel n’a été envoyé par l’application.
+                  : ""}
+                {Number(pre_reservation_conflict_count ?? "0") > 0
+                  ? ` ${pre_reservation_conflict_count} conflit(s) à vérifier.`
+                  : ""}
+                {Number(pre_reservation_missing_template_count ?? "0") > 0
+                  ? ` ${pre_reservation_missing_template_count} modèle(s) Brevo absent(s).`
+                  : ""}
+                {Number(pre_reservation_brevo_not_configured_count ?? "0") > 0
+                  ? ` ${pre_reservation_brevo_not_configured_count} envoi(s) sans configuration Brevo serveur.`
+                  : ""}
+                {Number(pre_reservation_error_count ?? "0") > 0
+                  ? ` ${pre_reservation_error_count} erreur(s) technique(s).`
+                  : ""}
               </div>
             )}
             {group_campaign_status === "no_selection" && (
@@ -740,6 +826,15 @@ export default async function LitterGroupDetailPage({
               >
                 Aucune candidature validée trouvée pour ce groupe parmi les
                 sélections.
+              </div>
+            )}
+            {group_campaign_status === "confirmation_required" && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Confirmation explicite requise avant de préparer et envoyer la
+                campagne de pré-réservation.
               </div>
             )}
             {group_campaign_status === "error" && (
@@ -1106,114 +1201,74 @@ export default async function LitterGroupDetailPage({
                   Campagnes d’e-mails
                 </h2>
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-foreground">
-                    Pré-réservation
+                  <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                    Parcours candidat
+                  </p>
+                  <p className="mt-4 text-sm font-medium text-foreground">
+                    Demande de pré-réservation
                   </p>
                   <p className="mt-2 text-sm text-muted">
-                    Copiez le modèle d’e-mail, envoyez-le manuellement, puis
-                    confirmez l’envoi dans le SaaS.
+                    L’envoi utilise le modèle transactionnel Brevo configuré
+                    pour pre_reservation. Le sujet, le corps, l’expéditeur et
+                    le reply-to restent gérés dans Brevo.
                   </p>
-                  <p className="mt-2 text-sm text-muted">
-                    Aucun e-mail réel n’est envoyé par l’application.
-                  </p>
+                  <div className="mt-4 rounded-xl border bg-background p-4 text-sm">
+                    <p className="font-semibold text-foreground">
+                      Modèle Brevo
+                    </p>
+                    <p className="mt-2 text-muted">
+                      {preReservationCampaignTemplate?.brevoTemplateId
+                        ? `${preReservationCampaignTemplate.title} (#${preReservationCampaignTemplate.brevoTemplateId})`
+                        : "pre_reservation non configuré"}
+                    </p>
+                  </div>
                 </div>
-                {campaignEmailTemplatesError ? (
+
+                {campaignEmailTemplatesError || qualifiedAppsError ? (
                   <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger les modèles d’e-mails pour cette
-                    campagne.
+                    Impossible de charger toutes les données de campagne.
                   </p>
                 ) : (
-                  <CampaignEmailTemplatePicker
-                    templates={campaignEmailTemplates}
-                    preferredTemplateKey="pre_reservation"
-                    exactTemplateKey="pre_reservation"
-                    instanceId="group-pre-reservation-template"
+                  <PreReservationCampaignConfirmDialog
+                    action={launchGroupPreReservationCampaign}
+                    hiddenFieldName="litter_group_id"
+                    hiddenFieldValue={id}
+                    applications={(qualifiedApplications ?? []).map((app) => ({
+                      id: app.id,
+                      contactName:
+                        app.contacts?.display_name ?? "Contact inconnu",
+                      contactFirstName: app.contacts?.first_name ?? null,
+                      contactLastName: app.contacts?.last_name ?? null,
+                      contactEmail: app.contacts?.email ?? null,
+                      desiredSexPreference: app.desired_sex_preference,
+                      rank: app.active_rank ?? app.initial_rank,
+                      scopeLabel: app.desired_litter_id
+                        ? "Portée du groupe"
+                        : "Groupe",
+                    }))}
+                    template={
+                      preReservationCampaignTemplate
+                        ? {
+                            title: preReservationCampaignTemplate.title,
+                            brevoTemplateId:
+                              preReservationCampaignTemplate.brevoTemplateId,
+                          }
+                        : null
+                    }
+                    scopeLabel={group.name || `Groupe ${group.id.slice(0, 8)}`}
+                    amountLabel={formatPrice(
+                      depositSettings.preReservationDepositCents,
+                      "EUR",
+                    )}
+                    deadlineLabel={preReservationDeadlineLabel}
+                    organizationName={organizationCampaignName}
                   />
                 )}
 
-                <form
-                  action={launchGroupPreReservationCampaign}
-                  className="mt-6"
-                >
-                  <input type="hidden" name="litter_group_id" value={id} />
-
-                  {qualifiedAppsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les candidatures validées.
-                    </p>
-                  ) : !qualifiedApplications || qualifiedApplications.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      Aucune candidature validée liée à ce groupe ou à une
-                      portée du groupe.
-                    </p>
-                  ) : (
-                    <fieldset>
-                      <legend className="sr-only">
-                        Candidatures validées
-                      </legend>
-                      <div className="divide-y divide-border rounded-xl border bg-background">
-                        {qualifiedApplications.map((app) => {
-                          const contactName =
-                            app.contacts?.display_name ?? "Contact inconnu";
-                          const sexPref = getSexPreferenceLabel(
-                            app.desired_sex_preference,
-                          );
-                          const rank = app.active_rank ?? app.initial_rank;
-                          const scopeLabel = app.desired_litter_id
-                            ? "Portée du groupe"
-                            : "Groupe";
-
-                          return (
-                            <label
-                              key={app.id}
-                              htmlFor={`group-campaign-app-${app.id}`}
-                              className="flex cursor-pointer items-start gap-4 px-4 py-4 hover:bg-muted-soft"
-                            >
-                              <input
-                                type="checkbox"
-                                id={`group-campaign-app-${app.id}`}
-                                name="application_ids[]"
-                                value={app.id}
-                                defaultChecked
-                                className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-accent"
-                              />
-                              <div className="min-w-0 flex-1 space-y-0.5">
-                                <p className="text-sm font-semibold text-foreground">
-                                  {contactName}
-                                </p>
-                                <p className="text-xs text-muted">
-                                  {scopeLabel} · Préférence : {sexPref}
-                                  {rank ? ` · Rang : ${rank}` : ""}
-                                </p>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </fieldset>
-                  )}
-
-                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <button
-                      type="submit"
-                      disabled={
-                        Boolean(qualifiedAppsError) ||
-                        !qualifiedApplications ||
-                        qualifiedApplications.length === 0
-                      }
-                      className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
-                    >
-                      Campagne de pré-réservation envoyée
-                    </button>
-                    <p className="text-xs text-muted">
-                      À utiliser après l’envoi manuel du message. Cette action
-                      crée les demandes de paiement de pré-réservation pour les
-                      candidats concernés. Aucun e-mail réel n’est envoyé.
-                    </p>
-                  </div>
-                </form>
-
                 <div className="mt-8 border-t pt-8">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                    Parcours adoptant
+                  </p>
                   <p className="text-sm font-medium text-foreground">
                     Contrat + certificat
                   </p>

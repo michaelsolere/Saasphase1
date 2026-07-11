@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -9,6 +9,21 @@ import {
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
+const fixedFixture = {
+  groupId: "93000000-0000-4000-8000-000000000001",
+  litterId: "93000000-0000-4000-8000-000000000002",
+  contactIds: [
+    "93000000-0000-4000-8000-000000000003",
+    "93000000-0000-4000-8000-000000000004",
+    "93000000-0000-4000-8000-000000000005",
+  ],
+  applicationIds: {
+    litter: "93000000-0000-4000-8000-000000000006",
+    draftConflict: "93000000-0000-4000-8000-000000000007",
+    group: "93000000-0000-4000-8000-000000000008",
+  },
+  draftConflictReservationId: "93000000-0000-4000-8000-000000000009",
+};
 
 type Fixture = {
   groupId: string;
@@ -30,6 +45,33 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/connexion=success/);
 }
 
+function sqlQuote(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function runSql(sql: string) {
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-A",
+      "-t",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+}
+
 async function cleanupFixture(
   supabase: SupabaseTestClient,
   fixture: Fixture | null,
@@ -38,69 +80,80 @@ async function cleanupFixture(
     return;
   }
 
-  const reservationIds = expectSupabaseData(
-    await supabase
-      .from("reservations")
-      .select("id")
-      .in("application_id", Object.values(fixture.applicationIds)),
-    "read pre-reservation campaign reservations for cleanup",
-  ).map((reservation) => reservation.id);
-  const now = new Date().toISOString();
+  void supabase;
 
-  if (reservationIds.length > 0) {
-    const { error: paymentsError } = await supabase
-      .from("payments")
-      .update({ deleted_at: now })
-      .in("reservation_id", reservationIds)
-      .is("deleted_at", null);
-    if (paymentsError) {
-      throw new Error(`cleanup payments: ${paymentsError.message}`);
-    }
+  const applicationIds = Object.values(fixture.applicationIds)
+    .map((id) => `${sqlQuote(id)}::uuid`)
+    .join(",");
+  const contactIds = fixture.contactIds.map((id) => `${sqlQuote(id)}::uuid`).join(",");
 
-    const { error: reservationsError } = await supabase
-      .from("reservations")
-      .update({ deleted_at: now })
-      .in("id", reservationIds)
-      .is("deleted_at", null);
-    if (reservationsError) {
-      throw new Error(`cleanup reservations: ${reservationsError.message}`);
-    }
-  }
+  runSql(`
+    with target_reservations as (
+      select id
+      from public.reservations
+      where application_id in (${applicationIds})
+    )
+    delete from public.email_delivery_attempts
+    where reservation_id in (select id from target_reservations);
 
-  const { error: applicationsError } = await supabase
-    .from("applications")
-    .update({ deleted_at: now })
-    .in("id", Object.values(fixture.applicationIds))
-    .is("deleted_at", null);
-  if (applicationsError) {
-    throw new Error(`cleanup applications: ${applicationsError.message}`);
-  }
+    with target_reservations as (
+      select id
+      from public.reservations
+      where application_id in (${applicationIds})
+    )
+    delete from public.payments
+    where reservation_id in (select id from target_reservations);
 
-  const { error: contactsError } = await supabase
-    .from("contacts")
-    .update({ deleted_at: now })
-    .in("id", fixture.contactIds)
-    .is("deleted_at", null);
-  if (contactsError) {
-    throw new Error(`cleanup contacts: ${contactsError.message}`);
-  }
+    delete from public.reservations
+    where application_id in (${applicationIds});
 
-  const { error: litterError } = await supabase
-    .from("litters")
-    .update({ deleted_at: now })
-    .eq("id", fixture.litterId)
-    .is("deleted_at", null);
-  if (litterError) {
-    throw new Error(`cleanup litter: ${litterError.message}`);
-  }
+    delete from public.applications
+    where id in (${applicationIds});
 
-  const { error: groupError } = await supabase
-    .from("litter_groups")
-    .update({ deleted_at: now })
-    .eq("id", fixture.groupId)
-    .is("deleted_at", null);
-  if (groupError) {
-    throw new Error(`cleanup group: ${groupError.message}`);
+    delete from public.contacts
+    where id in (${contactIds});
+
+    delete from public.litters
+    where id = ${sqlQuote(fixture.litterId)}::uuid;
+
+    delete from public.litter_groups
+    where id = ${sqlQuote(fixture.groupId)}::uuid;
+  `);
+
+  const remaining = Number(
+    runSql(`
+      select count(*)
+      from (
+        select id::text from public.email_delivery_attempts
+        where reservation_id in (
+          select id from public.reservations where application_id in (${applicationIds})
+        )
+        union all
+        select id::text from public.payments
+        where reservation_id in (
+          select id from public.reservations where application_id in (${applicationIds})
+        )
+        union all
+        select id::text from public.reservations
+        where application_id in (${applicationIds})
+        union all
+        select id::text from public.applications
+        where id in (${applicationIds})
+        union all
+        select id::text from public.contacts
+        where id in (${contactIds})
+        union all
+        select id::text from public.litters
+        where id = ${sqlQuote(fixture.litterId)}::uuid
+        union all
+        select id::text from public.litter_groups
+        where id = ${sqlQuote(fixture.groupId)}::uuid
+      ) remaining;
+    `),
+  );
+
+  if (remaining !== 0) {
+    throw new Error(`cleanup pre-reservation campaign: ${remaining} row(s) remain`);
   }
 }
 
@@ -116,16 +169,14 @@ async function createFixture(
     throw new Error("Unable to read authenticated test user");
   }
 
-  const groupId = randomUUID();
-  const litterId = randomUUID();
+  await cleanupFixture(supabase, fixedFixture);
+
+  const groupId = fixedFixture.groupId;
+  const litterId = fixedFixture.litterId;
   const suffix = groupId.slice(0, 8);
-  const contactIds = [randomUUID(), randomUUID(), randomUUID()];
-  const applicationIds = {
-    litter: randomUUID(),
-    draftConflict: randomUUID(),
-    group: randomUUID(),
-  };
-  const draftConflictReservationId = randomUUID();
+  const contactIds = fixedFixture.contactIds;
+  const applicationIds = fixedFixture.applicationIds;
+  const draftConflictReservationId = fixedFixture.draftConflictReservationId;
 
   const { error: groupError } = await supabase.from("litter_groups").insert({
     id: groupId,
@@ -162,7 +213,7 @@ async function createFixture(
       contact_type: "person",
       first_name: "E2E",
       last_name: `PreRes Litter ${suffix}`,
-      call_name: `E2E pré-réservation portée ${suffix}`,
+      display_name: `E2E pré-réservation portée ${suffix}`,
       email: `pre-res-button-litter-${suffix}@example.invalid`,
       origin_channel: "manual",
       primary_status: "active",
@@ -175,7 +226,7 @@ async function createFixture(
       contact_type: "person",
       first_name: "E2E",
       last_name: `PreRes Draft ${suffix}`,
-      call_name: `E2E brouillon pré-réservation ${suffix}`,
+      display_name: `E2E brouillon pré-réservation ${suffix}`,
       email: `pre-res-button-draft-${suffix}@example.invalid`,
       origin_channel: "manual",
       primary_status: "active",
@@ -188,8 +239,8 @@ async function createFixture(
       contact_type: "person",
       first_name: "E2E",
       last_name: `PreRes Group ${suffix}`,
-      call_name: `E2E pré-réservation groupe ${suffix}`,
-      email: `pre-res-button-group-${suffix}@example.invalid`,
+      display_name: `E2E pré-réservation groupe ${suffix}`,
+      email: null,
       origin_channel: "manual",
       primary_status: "active",
       created_by: user.id,
@@ -323,6 +374,35 @@ async function countActivePreReservationPayments(
   return result.count ?? 0;
 }
 
+async function countEmailDeliveryAttemptsForApplication(
+  supabase: SupabaseTestClient,
+  applicationId: string,
+) {
+  const reservations = expectSupabaseData(
+    await supabase
+      .from("reservations")
+      .select("id")
+      .eq("application_id", applicationId),
+    "read campaign reservations for attempts",
+  );
+  const reservationIds = reservations.map((reservation) => reservation.id);
+
+  if (reservationIds.length === 0) {
+    return 0;
+  }
+
+  const result = await supabase
+    .from("email_delivery_attempts")
+    .select("id", { count: "exact", head: true })
+    .in("reservation_id", reservationIds);
+
+  if (result.error) {
+    throw new Error(`count email attempts: ${result.error.message}`);
+  }
+
+  return result.count ?? 0;
+}
+
 async function countActiveReservations(
   supabase: SupabaseTestClient,
   applicationId: string,
@@ -370,7 +450,7 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
     await page.goto(`/litters/${fixture.litterId}`);
     await page.getByText("Campagnes d’e-mails").click();
     await expect(
-      page.getByRole("button", { name: "Campagne de pré-réservation envoyée" }),
+      page.getByRole("button", { name: "Préparer et envoyer via Brevo" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Campagne contrat + certificat envoyée" }),
@@ -379,12 +459,52 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
       page.getByRole("button", { name: "Campagne solde envoyée" }),
     ).toBeVisible();
 
+    await page.evaluate((targetLitterId) => {
+      const form = Array.from(document.forms).find(
+        (candidate) =>
+          new FormData(candidate).get("litter_id") === targetLitterId &&
+          new FormData(candidate).has("application_ids[]"),
+      );
+
+      if (!form) {
+        throw new Error("Pre-reservation campaign form not found");
+      }
+
+      HTMLFormElement.prototype.submit.call(form);
+    }, fixture.litterId);
+    await expect(page).toHaveURL(/campaign_status=confirmation_required/);
+    await expect(page.getByRole("alert")).toContainText(
+      "Confirmation explicite requise",
+    );
+    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
+    expect(
+      await countActivePreReservationPayments(
+        supabase,
+        fixture.applicationIds.litter,
+      ),
+    ).toBe(0);
+    expect(
+      await countEmailDeliveryAttemptsForApplication(
+        supabase,
+        fixture.applicationIds.litter,
+      ),
+    ).toBe(0);
+
+    await page.goto(`/litters/${fixture.litterId}`);
+    await page.getByText("Campagnes d’e-mails").click();
     await page
-      .getByRole("button", { name: "Campagne de pré-réservation envoyée" })
+      .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
+    await expect(
+      page.getByRole("dialog", {
+        name: "Confirmer l’envoi Brevo de pré-réservation",
+      }),
+    ).toBeVisible();
+    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
+    await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/campaign_status=success/);
     await expect(page.getByRole("status")).toContainText(
-      "Campagne confirmée — 1 dossier(s), 1 demande(s) de paiement créée(s). 1 dossier brouillon à vérifier.",
+      "Campagne Brevo traitée — 1 dossier(s) préparé(s), 1 paiement(s) créé(s)",
     );
     expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(1);
     expect(
@@ -411,8 +531,9 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
 
     await page.getByText("Campagnes d’e-mails").click();
     await page
-      .getByRole("button", { name: "Campagne de pré-réservation envoyée" })
+      .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
+    await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/campaign_status=success/);
     expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(1);
     expect(
@@ -424,7 +545,7 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
 
     await page.goto(`/litter-groups/${fixture.groupId}`);
     await expect(
-      page.getByRole("button", { name: "Campagne de pré-réservation envoyée" }),
+      page.getByRole("button", { name: "Préparer et envoyer via Brevo" }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Campagne contrat + certificat envoyée" }),
@@ -433,12 +554,45 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
       page.getByRole("button", { name: "Campagne solde envoyée" }),
     ).toBeVisible();
 
+    await page.evaluate((targetGroupId) => {
+      const form = Array.from(document.forms).find(
+        (candidate) =>
+          new FormData(candidate).get("litter_group_id") === targetGroupId &&
+          new FormData(candidate).has("application_ids[]"),
+      );
+
+      if (!form) {
+        throw new Error("Group pre-reservation campaign form not found");
+      }
+
+      HTMLFormElement.prototype.submit.call(form);
+    }, fixture.groupId);
+    await expect(page).toHaveURL(/group_campaign_status=confirmation_required/);
+    await expect(page.getByRole("alert")).toContainText(
+      "Confirmation explicite requise",
+    );
+    expect(await countActiveReservations(supabase, fixture.applicationIds.group)).toBe(0);
+    expect(
+      await countActivePreReservationPayments(
+        supabase,
+        fixture.applicationIds.group,
+      ),
+    ).toBe(0);
+    expect(
+      await countEmailDeliveryAttemptsForApplication(
+        supabase,
+        fixture.applicationIds.group,
+      ),
+    ).toBe(0);
+
+    await page.goto(`/litter-groups/${fixture.groupId}`);
     await page
-      .getByRole("button", { name: "Campagne de pré-réservation envoyée" })
+      .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
+    await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/group_campaign_status=success/);
     await expect(page.getByRole("status")).toContainText(
-      "Campagne confirmée — 1 dossier(s), 1 demande(s) de paiement créée(s).",
+      "Campagne Brevo traitée — 1 dossier(s) préparé(s), 1 paiement(s) créé(s)",
     );
     expect(
       await countActivePreReservationPayments(
@@ -448,8 +602,9 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
     ).toBe(1);
 
     await page
-      .getByRole("button", { name: "Campagne de pré-réservation envoyée" })
+      .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
+    await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/group_campaign_status=success/);
     expect(
       await countActivePreReservationPayments(

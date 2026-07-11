@@ -5,6 +5,7 @@ import {
   testOrganizationBrevoConnection,
   updateOrganizationDocumentSettings,
   updateOrganizationIdentity,
+  updatePreReservationBrevoTemplateId,
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
@@ -223,6 +224,7 @@ export default async function OrganizationSettingsPage({
     identity_status?: StatusValue;
     representative_status?: StatusValue;
     document_settings_status?: StatusValue;
+    brevo_templates_status?: StatusValue;
     brevo_status?: BrevoStatusValue;
   }>;
 }) {
@@ -309,6 +311,15 @@ export default async function OrganizationSettingsPage({
     .order("created_at", { ascending: false })
     .limit(10);
 
+  const { data: preReservationEmailTemplate } = await supabase
+    .from("email_templates")
+    .select("id, brevo_template_id, updated_at")
+    .eq("organization_id", membership.organization_id)
+    .eq("template_key", "pre_reservation")
+    .eq("is_active", true)
+    .is("deleted_at", null)
+    .maybeSingle();
+
   if (organizationError || !organization) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -387,6 +398,11 @@ export default async function OrganizationSettingsPage({
           value={query.document_settings_status}
           success="Les paramètres documentaires ont bien été mis à jour."
           error="Impossible de mettre à jour les paramètres documentaires."
+        />
+        <StatusMessage
+          value={query.brevo_templates_status}
+          success="Le modèle transactionnel Brevo a bien été mis à jour."
+          error="Impossible de mettre à jour le modèle transactionnel Brevo."
         />
         <BrevoStatusMessage value={query.brevo_status} />
       </div>
@@ -468,6 +484,68 @@ export default async function OrganizationSettingsPage({
             mais pas le test de connexion.
           </p>
         )}
+
+        <section id="brevo-templates" className="mt-8 border-t pt-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-base font-semibold">
+                Modèles transactionnels Brevo
+              </h3>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                Le contenu, le sujet, l’expéditeur et l’adresse de réponse des
+                e-mails transactionnels restent configurés dans Brevo.
+              </p>
+            </div>
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                preReservationEmailTemplate?.brevo_template_id
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                  : "border-amber-200 bg-amber-50 text-amber-950"
+              }`}
+            >
+              {preReservationEmailTemplate?.brevo_template_id
+                ? "pre_reservation configuré"
+                : "pre_reservation non configuré"}
+            </span>
+          </div>
+
+          <form
+            action={updatePreReservationBrevoTemplateId}
+            className="mt-5 rounded-xl border bg-background p-4"
+          >
+            <input
+              type="hidden"
+              name="organization_id"
+              value={organization.id}
+            />
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+              <Field
+                id="pre-reservation-brevo-template-id"
+                name="pre_reservation_brevo_template_id"
+                label="Identifiant numérique Brevo · pre_reservation"
+                type="number"
+                defaultValue={
+                  preReservationEmailTemplate?.brevo_template_id?.toString() ??
+                  ""
+                }
+                disabled={!canEdit}
+              />
+              <button
+                type="submit"
+                disabled={!canEdit}
+                className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Enregistrer
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-muted">
+              Dernière mise à jour :{" "}
+              {preReservationEmailTemplate?.updated_at
+                ? formatDateTime(preReservationEmailTemplate.updated_at)
+                : "Non renseignée"}
+            </p>
+          </form>
+        </section>
 
         <section className="mt-8 border-t pt-6">
           <h3 className="text-base font-semibold">Dernières tentatives d’e-mail</h3>

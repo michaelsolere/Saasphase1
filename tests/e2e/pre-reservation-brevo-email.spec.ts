@@ -98,6 +98,17 @@ const otherIdempotencyKey = buildIdempotencyKey({
 
 function restoreSeedRows() {
   runSql(`
+    update public.email_templates
+    set
+      template_key = 'pre_reservation',
+      deleted_at = null,
+      is_active = true,
+      brevo_template_id = null,
+      updated_by = ${sqlQuote(ownerId)}::uuid
+    where organization_id = ${sqlQuote(organizationId)}::uuid
+      and template_key = 'pre_reservation_seed_qa_disabled'
+      and id <> ${sqlQuote(templateId)}::uuid;
+
     update public.contacts
     set
       email = 'nicolas.bernard@example.com',
@@ -166,10 +177,10 @@ function cleanupQaFixtures() {
     delete from public.organizations
     where id = ${sqlQuote(otherOrganizationId)}::uuid;
   `);
+  restoreSeedRows();
 }
 
 function countRemainingFixtures() {
-  restoreSeedRows();
   return Number(
     runSql(`
       select count(*)
@@ -213,6 +224,15 @@ function countRemainingFixtures() {
 
 function insertQaTemplate() {
   runSql(`
+    update public.email_templates
+    set
+      template_key = 'pre_reservation_seed_qa_disabled',
+      deleted_at = now(),
+      updated_by = ${sqlQuote(ownerId)}::uuid
+    where organization_id = ${sqlQuote(organizationId)}::uuid
+      and template_key = 'pre_reservation'
+      and id <> ${sqlQuote(templateId)}::uuid;
+
     insert into public.email_templates (
       id,
       organization_id,
@@ -534,13 +554,11 @@ test("client components do not import protected server communication modules", (
   expect(violations).toEqual([]);
 });
 
-test("sends and retries the individual pre-reservation Brevo email without real Brevo calls", async ({
+test("reservation page does not call Brevo when the template id is absent", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   cleanupQaFixtures();
-  insertQaTemplate();
-  const mock = await startBrevoMock({ failFirstPost: true });
 
   try {
     await login(page);
@@ -549,90 +567,21 @@ test("sends and retries the individual pre-reservation Brevo email without real 
     await expect(
       page.getByRole("heading", { name: "E-mail de pré-réservation" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Envoyer via Brevo" }).click();
-    await expect(page.getByText("Un véritable e-mail transactionnel")).toBeVisible();
-    await page.getByRole("button", { name: "Envoyer via Brevo" }).last().click();
-
-    await expect(page).toHaveURL(/pre_reservation_email_status=failed/);
-    await expect(page.getByText("L’envoi Brevo a échoué")).toBeVisible();
-
-    let attempt = expectSupabaseData(
-      await supabase
-        .from("email_delivery_attempts")
-        .select(
-          "id, status, attempt_count, brevo_message_id, brevo_template_id, brevo_template_modified_at, subject_snapshot, last_error_code",
-        )
-        .eq("organization_id", organizationId)
-        .eq("idempotency_key", idempotencyKey)
-        .single(),
-      "read failed attempt",
-    );
-
-    expect(attempt).toMatchObject({
-      status: "failed",
-      attempt_count: 1,
-      brevo_message_id: null,
-      brevo_template_id: brevoTemplateId,
-      subject_snapshot: "Votre pré-réservation",
-      last_error_code: "provider_unavailable",
-    });
-
-    await page.getByRole("button", { name: "Réessayer l’envoi" }).click();
-    await page.getByRole("button", { name: "Réessayer l’envoi" }).last().click();
-
-    await expect(page).toHaveURL(/pre_reservation_email_status=success/);
-    await expect(page.getByText("a bien été envoyé via Brevo")).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Envoyer via Brevo" }),
-    ).not.toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Réessayer l’envoi" }),
-    ).not.toBeVisible();
-
-    attempt = expectSupabaseData(
-      await supabase
-        .from("email_delivery_attempts")
-        .select(
-          "id, status, attempt_count, brevo_message_id, brevo_template_id, brevo_template_modified_at, subject_snapshot, last_error_code",
-        )
-        .eq("organization_id", organizationId)
-        .eq("idempotency_key", idempotencyKey)
-        .single(),
-      "read sent attempt",
-    );
-
-    expect(attempt).toMatchObject({
-      status: "sent",
-      attempt_count: 2,
-      brevo_message_id: "qa-message-2",
-      brevo_template_id: brevoTemplateId,
-      subject_snapshot: "Votre pré-réservation",
-      last_error_code: null,
-    });
-    expect(attempt.brevo_template_modified_at).toBe(
-      "2026-07-10T12:34:56+00:00",
-    );
-
-    const postRequests = mock.requests.filter(
-      (request) => request.method === "POST" && request.url === "/v3/smtp/email",
-    );
-    expect(postRequests).toHaveLength(2);
-    expect(postRequests[1].body).toMatchObject({
-      templateId: brevoTemplateId,
-      params: {
-        prenom: "Nicolas",
-        nom: "Bernard",
-        nom_complet: "Nicolas Bernard",
-        montant_pre_reservation: "250,00 €",
-        nom_elevage: "du Val de Démo",
-      },
-      headers: {
-        "Idempotency-Key": idempotencyKey,
-      },
-      tags: ["saas_elevage", "pre_reservation"],
-    });
+    ).toBeDisabled();
+    await expect(page.getByText("Envoi transactionnel")).toBeVisible();
+    expect(
+      expectSupabaseData(
+        await supabase
+          .from("email_delivery_attempts")
+          .select("id")
+          .eq("organization_id", organizationId)
+          .eq("idempotency_key", idempotencyKey),
+        "read missing template attempts from page",
+      ),
+    ).toHaveLength(0);
   } finally {
-    await mock.stop();
     cleanupQaFixtures();
     expect(countRemainingFixtures()).toBe(0);
   }
