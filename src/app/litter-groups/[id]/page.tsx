@@ -5,6 +5,11 @@ import {
   CampaignEmailTemplatePicker,
 } from "@/features/documents/campaign-email-template-picker";
 import {
+  formatPreReservationContactFullName,
+  formatPreReservationEuros,
+  formatPreReservationParisDate,
+} from "@/features/communications/pre-reservation-email-core";
+import {
   getCampaignEmailTemplateOptions,
   isCampaignEmailTemplateCategory,
 } from "@/features/documents/campaign-email-template-options";
@@ -29,7 +34,6 @@ import {
   resolveDepositSettings,
 } from "@/features/payments/deposit-thresholds";
 import {
-  formatPrice,
   getPreReservationDepositBadgeClassName,
   getPreReservationDepositLabel,
   getPreReservationDepositStateFromStatus,
@@ -44,6 +48,7 @@ import {
   launchGroupPreReservationBalanceCampaign,
   launchGroupPreReservationCampaign,
 } from "@/features/reservations/actions";
+import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -378,14 +383,22 @@ export default async function LitterGroupDetailPage({
     campaignEmailTemplates.find(
       (template) => template.templateKey === "pre_reservation",
     ) ?? null;
-  const preReservationDeadlineLabel = formatLitterDate(
+  const brevoConfiguration = getBrevoConfigurationStatus();
+  const preReservationDeadlineLabel = formatPreReservationParisDate(
     addDaysAsIsoDate(depositSettings.preReservationResponseDelayDays),
+  );
+  const preReservationAmountLabel = formatPreReservationEuros(
+    depositSettings.preReservationDepositCents,
   );
   const organizationCampaignName =
     organizationForCampaign?.dog_affix_name ??
     organizationForCampaign?.affix_name ??
     organizationForCampaign?.name ??
-    "Élevage";
+    "";
+  const preReservationLitterNameById = new Map(
+    (groupLitters ?? []).map((litter) => [litter.id, litter.name ?? ""]),
+  );
+  const preReservationGroupName = group?.name ?? "";
 
   // Candidatures souhaitant ce groupe (lecture seule).
   const { data: rawLinkedApplications, error: linkedAppsError } =
@@ -1236,15 +1249,35 @@ export default async function LitterGroupDetailPage({
                     applications={(qualifiedApplications ?? []).map((app) => ({
                       id: app.id,
                       contactName:
-                        app.contacts?.display_name ?? "Contact inconnu",
-                      contactFirstName: app.contacts?.first_name ?? null,
-                      contactLastName: app.contacts?.last_name ?? null,
+                        formatPreReservationContactFullName({
+                          first_name: app.contacts?.first_name ?? null,
+                          last_name: app.contacts?.last_name ?? null,
+                          display_name: app.contacts?.display_name ?? null,
+                        }) || "Contact inconnu",
                       contactEmail: app.contacts?.email ?? null,
                       desiredSexPreference: app.desired_sex_preference,
                       rank: app.active_rank ?? app.initial_rank,
                       scopeLabel: app.desired_litter_id
                         ? "Portée du groupe"
                         : "Groupe",
+                      variables: {
+                        prenom: app.contacts?.first_name ?? "",
+                        nom: app.contacts?.last_name ?? "",
+                        nom_complet: formatPreReservationContactFullName({
+                          first_name: app.contacts?.first_name ?? null,
+                          last_name: app.contacts?.last_name ?? null,
+                          display_name: app.contacts?.display_name ?? null,
+                        }),
+                        portee: app.desired_litter_id
+                          ? (preReservationLitterNameById.get(
+                              app.desired_litter_id,
+                            ) ?? "")
+                          : "",
+                        groupe_portees: preReservationGroupName,
+                        montant_pre_reservation: preReservationAmountLabel,
+                        echeance_pre_reservation: preReservationDeadlineLabel,
+                        nom_elevage: organizationCampaignName,
+                      },
                     }))}
                     template={
                       preReservationCampaignTemplate
@@ -1256,12 +1289,13 @@ export default async function LitterGroupDetailPage({
                         : null
                     }
                     scopeLabel={group.name || `Groupe ${group.id.slice(0, 8)}`}
-                    amountLabel={formatPrice(
-                      depositSettings.preReservationDepositCents,
-                      "EUR",
-                    )}
+                    amountLabel={preReservationAmountLabel}
                     deadlineLabel={preReservationDeadlineLabel}
-                    organizationName={organizationCampaignName}
+                    brevoConfiguration={{
+                      senderEmail: brevoConfiguration.senderEmail,
+                      senderName: brevoConfiguration.senderName,
+                      replyToEmail: brevoConfiguration.replyToEmail,
+                    }}
                   />
                 )}
 

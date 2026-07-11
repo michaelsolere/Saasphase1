@@ -7,12 +7,11 @@ import { getSexPreferenceLabel } from "@/features/applications/formatters";
 type CampaignApplication = {
   id: string;
   contactName: string;
-  contactFirstName: string | null;
-  contactLastName: string | null;
   contactEmail: string | null;
   desiredSexPreference: string | null;
   rank: number | null;
   scopeLabel?: string;
+  variables: PreReservationCampaignVariables;
 };
 
 type CampaignTemplate = {
@@ -20,16 +19,46 @@ type CampaignTemplate = {
   brevoTemplateId: number | null;
 };
 
+type PreReservationCampaignVariables = {
+  prenom: string;
+  nom: string;
+  nom_complet: string;
+  portee: string;
+  groupe_portees: string;
+  montant_pre_reservation: string;
+  echeance_pre_reservation: string;
+  nom_elevage: string;
+};
+
+type BrevoCampaignConfiguration = {
+  senderEmail: string | null;
+  senderName: string | null;
+  replyToEmail: string | null;
+};
+
+const variableLabels: Array<keyof PreReservationCampaignVariables> = [
+  "prenom",
+  "nom",
+  "nom_complet",
+  "portee",
+  "groupe_portees",
+  "montant_pre_reservation",
+  "echeance_pre_reservation",
+  "nom_elevage",
+];
+
 function isValidEmail(value: string | null) {
   return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
 }
 
-function splitName(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return {
-    firstName: parts[0] ?? "",
-    lastName: parts.slice(1).join(" "),
-  };
+function formatSender(configuration: BrevoCampaignConfiguration) {
+  if (!configuration.senderEmail) {
+    return "Valeur définie dans le modèle Brevo";
+  }
+
+  return configuration.senderName
+    ? `${configuration.senderName} <${configuration.senderEmail}>`
+    : configuration.senderEmail;
 }
 
 export function PreReservationCampaignConfirmDialog({
@@ -41,7 +70,7 @@ export function PreReservationCampaignConfirmDialog({
   scopeLabel,
   amountLabel,
   deadlineLabel,
-  organizationName,
+  brevoConfiguration,
   disabled,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -52,7 +81,7 @@ export function PreReservationCampaignConfirmDialog({
   scopeLabel: string;
   amountLabel: string;
   deadlineLabel: string;
-  organizationName: string;
+  brevoConfiguration: BrevoCampaignConfiguration;
   disabled?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
@@ -199,12 +228,13 @@ export function PreReservationCampaignConfirmDialog({
                   : "Non configuré"}
               </p>
               <p>
-                <span className="font-semibold">Expéditeur :</span> Brevo,
-                modèle #{template?.brevoTemplateId ?? "non configuré"}
+                <span className="font-semibold">Expéditeur :</span>{" "}
+                {formatSender(brevoConfiguration)}
               </p>
               <p>
-                <span className="font-semibold">Reply-to :</span> Brevo,
-                modèle #{template?.brevoTemplateId ?? "non configuré"}
+                <span className="font-semibold">Adresse de réponse :</span>{" "}
+                {brevoConfiguration.replyToEmail ??
+                  "Valeur définie dans le modèle Brevo"}
               </p>
             </div>
 
@@ -219,16 +249,6 @@ export function PreReservationCampaignConfirmDialog({
               ) : (
                 <div className="mt-3 divide-y divide-border rounded-xl border">
                   {selectedApplications.map((app) => {
-                    const fallback = splitName(app.contactName);
-                    const variables = {
-                      prenom: app.contactFirstName ?? fallback.firstName,
-                      nom: app.contactLastName ?? fallback.lastName,
-                      nom_complet: app.contactName,
-                      montant_pre_reservation: amountLabel,
-                      echeance_pre_reservation: deadlineLabel,
-                      nom_elevage: organizationName,
-                    };
-
                     return (
                       <div key={app.id} className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -245,9 +265,21 @@ export function PreReservationCampaignConfirmDialog({
                             {app.contactEmail || "E-mail manquant"}
                           </p>
                         </div>
-                        <p className="mt-2 text-xs text-muted">
-                          Variables : {JSON.stringify(variables)}
-                        </p>
+                        <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                          {variableLabels.map((variableName) => (
+                            <div
+                              key={variableName}
+                              className="rounded-md border bg-surface px-2 py-1.5"
+                            >
+                              <dt className="font-semibold text-muted">
+                                {variableName}
+                              </dt>
+                              <dd className="mt-0.5 break-words text-foreground">
+                                {app.variables[variableName] || "Chaîne vide"}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
                       </div>
                     );
                   })}

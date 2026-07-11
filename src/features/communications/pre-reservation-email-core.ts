@@ -141,7 +141,11 @@ function isValidEmail(value: string | null | undefined) {
   return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
 }
 
-function formatFullName(contact: ContactForEmail) {
+export function formatPreReservationContactFullName(contact: {
+  first_name: string | null;
+  last_name: string | null;
+  display_name: string | null;
+}) {
   return (
     [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim() ||
     contact.display_name ||
@@ -149,14 +153,14 @@ function formatFullName(contact: ContactForEmail) {
   );
 }
 
-function formatEuros(cents: number) {
+export function formatPreReservationEuros(cents: number) {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "EUR",
   }).format(cents / 100);
 }
 
-function formatParisDate(value: string | null) {
+export function formatPreReservationParisDate(value: string | null) {
   if (!value) {
     return "";
   }
@@ -364,7 +368,7 @@ function buildVariables({
   reservation: RelatedReservation;
   scope: LitterScopeForEmail;
 }) {
-  const fullName = formatFullName(contact);
+  const fullName = formatPreReservationContactFullName(contact);
 
   return {
     prenom: contact.first_name ?? "",
@@ -372,8 +376,8 @@ function buildVariables({
     nom_complet: fullName,
     portee: scope.litterName,
     groupe_portees: scope.litterGroupName,
-    montant_pre_reservation: formatEuros(payment.amount_cents),
-    echeance_pre_reservation: formatParisDate(
+    montant_pre_reservation: formatPreReservationEuros(payment.amount_cents),
+    echeance_pre_reservation: formatPreReservationParisDate(
       payment.due_date ?? reservation.pre_reservation_deadline,
     ),
     nom_elevage:

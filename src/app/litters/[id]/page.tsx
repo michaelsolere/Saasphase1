@@ -18,6 +18,11 @@ import {
   CampaignEmailTemplatePicker,
 } from "@/features/documents/campaign-email-template-picker";
 import {
+  formatPreReservationContactFullName,
+  formatPreReservationEuros,
+  formatPreReservationParisDate,
+} from "@/features/communications/pre-reservation-email-core";
+import {
   getCampaignEmailTemplateOptions,
   isCampaignEmailTemplateCategory,
 } from "@/features/documents/campaign-email-template-options";
@@ -73,6 +78,7 @@ import {
   launchLitterPreReservationBalanceCampaign,
   launchPreReservationCampaign,
 } from "@/features/reservations/actions";
+import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -1740,17 +1746,27 @@ export default async function LitterDetailPage({
     campaignEmailTemplates.find(
       (template) => template.templateKey === "pre_reservation",
     ) ?? null;
+  const brevoConfiguration = getBrevoConfigurationStatus();
   const preReservationDeadlineDate = addDaysAsIsoDate(
     depositSettings.preReservationResponseDelayDays,
   );
-  const preReservationDeadlineLabel = formatLitterDate(
+  const preReservationDeadlineLabel = formatPreReservationParisDate(
     preReservationDeadlineDate,
   );
+  const preReservationAmountLabel = formatPreReservationEuros(
+    depositSettings.preReservationDepositCents,
+  );
+  const preReservationLitterName = litter?.name ?? "";
+  const preReservationLitterGroupName =
+    litter?.litter_group_id
+      ? (groupOptions.find((group) => group.id === litter.litter_group_id)?.name ??
+        "")
+      : "";
   const organizationCampaignName =
     organizationForCampaign?.dog_affix_name ??
     organizationForCampaign?.affix_name ??
     organizationForCampaign?.name ??
-    "Élevage";
+    "";
 
   const { data: rawChoiceCampaignReservations } =
     litter && litter.organization_id
@@ -2619,12 +2635,28 @@ export default async function LitterDetailPage({
                     applications={(qualifiedApplications ?? []).map((app) => ({
                       id: app.id,
                       contactName:
-                        app.contacts?.display_name ?? "Contact inconnu",
-                      contactFirstName: app.contacts?.first_name ?? null,
-                      contactLastName: app.contacts?.last_name ?? null,
+                        formatPreReservationContactFullName({
+                          first_name: app.contacts?.first_name ?? null,
+                          last_name: app.contacts?.last_name ?? null,
+                          display_name: app.contacts?.display_name ?? null,
+                        }) || "Contact inconnu",
                       contactEmail: app.contacts?.email ?? null,
                       desiredSexPreference: app.desired_sex_preference,
                       rank: app.active_rank ?? app.initial_rank,
+                      variables: {
+                        prenom: app.contacts?.first_name ?? "",
+                        nom: app.contacts?.last_name ?? "",
+                        nom_complet: formatPreReservationContactFullName({
+                          first_name: app.contacts?.first_name ?? null,
+                          last_name: app.contacts?.last_name ?? null,
+                          display_name: app.contacts?.display_name ?? null,
+                        }),
+                        portee: preReservationLitterName,
+                        groupe_portees: preReservationLitterGroupName,
+                        montant_pre_reservation: preReservationAmountLabel,
+                        echeance_pre_reservation: preReservationDeadlineLabel,
+                        nom_elevage: organizationCampaignName,
+                      },
                     }))}
                     template={
                       preReservationCampaignTemplate
@@ -2636,12 +2668,13 @@ export default async function LitterDetailPage({
                         : null
                     }
                     scopeLabel={getLitterDisplayName(litter.name, litter.id)}
-                    amountLabel={formatPrice(
-                      depositSettings.preReservationDepositCents,
-                      "EUR",
-                    )}
+                    amountLabel={preReservationAmountLabel}
                     deadlineLabel={preReservationDeadlineLabel}
-                    organizationName={organizationCampaignName}
+                    brevoConfiguration={{
+                      senderEmail: brevoConfiguration.senderEmail,
+                      senderName: brevoConfiguration.senderName,
+                      replyToEmail: brevoConfiguration.replyToEmail,
+                    }}
                   />
                 )}
 

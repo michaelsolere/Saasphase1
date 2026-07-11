@@ -12,15 +12,18 @@ const organizationId = "20000000-0000-4000-8000-000000000001";
 const fixedFixture = {
   groupId: "93000000-0000-4000-8000-000000000001",
   litterId: "93000000-0000-4000-8000-000000000002",
+  standaloneLitterId: "93000000-0000-4000-8000-000000000010",
   contactIds: [
     "93000000-0000-4000-8000-000000000003",
     "93000000-0000-4000-8000-000000000004",
     "93000000-0000-4000-8000-000000000005",
+    "93000000-0000-4000-8000-000000000011",
   ],
   applicationIds: {
     litter: "93000000-0000-4000-8000-000000000006",
     draftConflict: "93000000-0000-4000-8000-000000000007",
     group: "93000000-0000-4000-8000-000000000008",
+    litterOnly: "93000000-0000-4000-8000-000000000012",
   },
   draftConflictReservationId: "93000000-0000-4000-8000-000000000009",
 };
@@ -28,11 +31,13 @@ const fixedFixture = {
 type Fixture = {
   groupId: string;
   litterId: string;
+  standaloneLitterId: string;
   contactIds: string[];
   applicationIds: {
     litter: string;
     draftConflict: string;
     group: string;
+    litterOnly: string;
   };
   draftConflictReservationId: string;
 };
@@ -70,6 +75,24 @@ function runSql(sql: string) {
     ],
     { encoding: "utf8" },
   ).trim();
+}
+
+function formatEuros(cents: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "EUR",
+  }).format(cents / 100);
+}
+
+function expectedPreReservationDeadline() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 15);
+  const isoDate = date.toISOString().slice(0, 10);
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "long",
+    timeZone: "Europe/Paris",
+  }).format(new Date(isoDate));
 }
 
 async function cleanupFixture(
@@ -114,7 +137,10 @@ async function cleanupFixture(
     where id in (${contactIds});
 
     delete from public.litters
-    where id = ${sqlQuote(fixture.litterId)}::uuid;
+    where id in (
+      ${sqlQuote(fixture.litterId)}::uuid,
+      ${sqlQuote(fixture.standaloneLitterId)}::uuid
+    );
 
     delete from public.litter_groups
     where id = ${sqlQuote(fixture.groupId)}::uuid;
@@ -144,7 +170,10 @@ async function cleanupFixture(
         where id in (${contactIds})
         union all
         select id::text from public.litters
-        where id = ${sqlQuote(fixture.litterId)}::uuid
+        where id in (
+          ${sqlQuote(fixture.litterId)}::uuid,
+          ${sqlQuote(fixture.standaloneLitterId)}::uuid
+        )
         union all
         select id::text from public.litter_groups
         where id = ${sqlQuote(fixture.groupId)}::uuid
@@ -173,6 +202,7 @@ async function createFixture(
 
   const groupId = fixedFixture.groupId;
   const litterId = fixedFixture.litterId;
+  const standaloneLitterId = fixedFixture.standaloneLitterId;
   const suffix = groupId.slice(0, 8);
   const contactIds = fixedFixture.contactIds;
   const applicationIds = fixedFixture.applicationIds;
@@ -204,6 +234,21 @@ async function createFixture(
   });
   if (litterError) {
     throw new Error(`create litter: ${litterError.message}`);
+  }
+
+  const { error: standaloneLitterError } = await supabase.from("litters").insert({
+    id: standaloneLitterId,
+    organization_id: organizationId,
+    litter_group_id: null,
+    name: `E2E portée seule pré-réservation ${suffix}`,
+    species: "dog",
+    breed: "Golden Retriever",
+    status: "pregnancy_confirmed",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+  if (standaloneLitterError) {
+    throw new Error(`create standalone litter: ${standaloneLitterError.message}`);
   }
 
   const { error: contactsError } = await supabase.from("contacts").insert([
@@ -241,6 +286,19 @@ async function createFixture(
       last_name: `PreRes Group ${suffix}`,
       display_name: `E2E pré-réservation groupe ${suffix}`,
       email: null,
+      origin_channel: "manual",
+      primary_status: "active",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+    {
+      id: contactIds[3],
+      organization_id: organizationId,
+      contact_type: "person",
+      first_name: "E2E",
+      last_name: `PreRes Solo ${suffix}`,
+      display_name: `E2E pré-réservation portée seule ${suffix}`,
+      email: `pre-res-button-solo-${suffix}@example.invalid`,
       origin_channel: "manual",
       primary_status: "active",
       created_by: user.id,
@@ -307,6 +365,24 @@ async function createFixture(
         created_by: user.id,
         updated_by: user.id,
       },
+      {
+        id: applicationIds.litterOnly,
+        organization_id: organizationId,
+        contact_id: contactIds[3],
+        species: "dog",
+        breed: "Golden Retriever",
+        desired_litter_id: standaloneLitterId,
+        desired_litter_group_id: null,
+        desired_period: "Test bouton campagne portée seule",
+        desired_sex_preference: "no_preference",
+        desired_quantity: 1,
+        project_description: "Fixture e2e bouton pré-réservation portée seule.",
+        status: "qualified",
+        reviewed_at: "2026-07-09T10:00:00+00:00",
+        reviewed_by: user.id,
+        created_by: user.id,
+        updated_by: user.id,
+      },
     ]);
   if (applicationsError) {
     throw new Error(`create applications: ${applicationsError.message}`);
@@ -335,6 +411,7 @@ async function createFixture(
   return {
     groupId,
     litterId,
+    standaloneLitterId,
     contactIds,
     applicationIds,
     draftConflictReservationId,
@@ -435,6 +512,62 @@ async function readOnlyReservation(
   );
 }
 
+async function expectBrevoCampaignDialogData({
+  page,
+  expected,
+}: {
+  page: Page;
+  expected: {
+    prenom: string;
+    nom: string;
+    nomComplet: string;
+    portee: string;
+    groupePortees: string;
+    montant: string;
+    echeance: string;
+    nomElevage: string;
+  };
+}) {
+  const dialog = page.getByRole("dialog", {
+    name: "Confirmer l’envoi Brevo de pré-réservation",
+  });
+
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText(
+    "Les Golden du Pays Pourpre <contact@lepayspourpre.fr>",
+  );
+  await expect(dialog).toContainText("Adresse de réponse : contact@lepayspourpre.fr");
+
+  for (const variableName of [
+    "prenom",
+    "nom",
+    "nom_complet",
+    "portee",
+    "groupe_portees",
+    "montant_pre_reservation",
+    "echeance_pre_reservation",
+    "nom_elevage",
+  ]) {
+    await expect(dialog).toContainText(variableName);
+  }
+
+  await expect(dialog).toContainText(expected.prenom);
+  await expect(dialog).toContainText(expected.nom);
+  await expect(dialog).toContainText(expected.nomComplet);
+  await expect(dialog).toContainText(expected.portee);
+  if (expected.groupePortees) {
+    await expect(dialog).toContainText(expected.groupePortees);
+  } else {
+    await expect(dialog).toContainText("Chaîne vide");
+  }
+  await expect(dialog).toContainText(expected.montant);
+  await expect(dialog).toContainText(expected.echeance);
+  await expect(dialog).toContainText(expected.nomElevage);
+
+  const html = await page.content();
+  expect(html).not.toContain("xkeysib");
+}
+
 test("pre-reservation campaign action stays visible and avoids duplicates", async ({
   page,
 }) => {
@@ -446,6 +579,29 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
   try {
     fixture = await createFixture(supabase);
     await login(page);
+    const suffix = fixture.groupId.slice(0, 8);
+    const expectedAmount = formatEuros(25000);
+    const expectedDeadline = expectedPreReservationDeadline();
+
+    await page.goto(`/litters/${fixture.standaloneLitterId}`);
+    await page.getByText("Campagnes d’e-mails").click();
+    await page
+      .getByRole("button", { name: "Préparer et envoyer via Brevo" })
+      .click();
+    await expectBrevoCampaignDialogData({
+      page,
+      expected: {
+        prenom: "E2E",
+        nom: `PreRes Solo ${suffix}`,
+        nomComplet: `E2E PreRes Solo ${suffix}`,
+        portee: `E2E portée seule pré-réservation ${suffix}`,
+        groupePortees: "",
+        montant: expectedAmount,
+        echeance: expectedDeadline,
+        nomElevage: "du Val de Démo",
+      },
+    });
+    await page.getByRole("button", { name: "Annuler" }).click();
 
     await page.goto(`/litters/${fixture.litterId}`);
     await page.getByText("Campagnes d’e-mails").click();
@@ -500,6 +656,19 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
         name: "Confirmer l’envoi Brevo de pré-réservation",
       }),
     ).toBeVisible();
+    await expectBrevoCampaignDialogData({
+      page,
+      expected: {
+        prenom: "E2E",
+        nom: `PreRes Litter ${suffix}`,
+        nomComplet: `E2E PreRes Litter ${suffix}`,
+        portee: `E2E portée pré-réservation ${suffix}`,
+        groupePortees: `E2E bouton pré-réservation ${suffix}`,
+        montant: expectedAmount,
+        echeance: expectedDeadline,
+        nomElevage: "du Val de Démo",
+      },
+    });
     expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/campaign_status=success/);
@@ -589,6 +758,19 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
     await page
       .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
+    await expectBrevoCampaignDialogData({
+      page,
+      expected: {
+        prenom: "E2E",
+        nom: `PreRes Group ${suffix}`,
+        nomComplet: `E2E PreRes Group ${suffix}`,
+        portee: "",
+        groupePortees: `E2E bouton pré-réservation ${suffix}`,
+        montant: expectedAmount,
+        echeance: expectedDeadline,
+        nomElevage: "du Val de Démo",
+      },
+    });
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
     await expect(page).toHaveURL(/group_campaign_status=success/);
     await expect(page.getByRole("status")).toContainText(
