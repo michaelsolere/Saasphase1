@@ -24,6 +24,19 @@ const allowedManualStatuses = new Set([
   "deceased",
   "archived",
 ]);
+const editableAdministrativeStatuses = new Set([
+  "active",
+  "breeding",
+  "retired",
+  "deceased",
+  "archived",
+]);
+const allowedAdministrativeStatusUpdates = new Set([
+  "active",
+  "retired",
+  "deceased",
+  "archived",
+]);
 const allowedManualOwnershipStatuses = new Set([
   "owned",
   "external_stud",
@@ -496,13 +509,37 @@ export async function updateAnimalIdentity(formData: FormData) {
 
   const { data: animal, error: readError } = await supabase
     .from("animals")
-    .select("id, organization_id, litter_id")
+    .select("id, organization_id, litter_id, status")
     .eq("id", animalId)
     .is("deleted_at", null)
     .maybeSingle();
 
   if (readError || !animal) {
     redirect(animalIdentityEditUrl(animalId, "error"));
+  }
+
+  const statusRaw = formData.get("status");
+  let nextAdministrativeStatus: string | null = null;
+
+  if (statusRaw !== null) {
+    if (typeof statusRaw !== "string") {
+      redirect(animalIdentityEditUrl(animalId, "invalid"));
+    }
+
+    const currentStatus = String(animal.status ?? "");
+    const requestedStatus = statusRaw.trim();
+
+    if (!editableAdministrativeStatuses.has(currentStatus)) {
+      redirect(animalIdentityEditUrl(animalId, "invalid"));
+    }
+
+    if (requestedStatus === "breeding" && currentStatus === "breeding") {
+      nextAdministrativeStatus = null;
+    } else if (allowedAdministrativeStatusUpdates.has(requestedStatus)) {
+      nextAdministrativeStatus = requestedStatus;
+    } else {
+      redirect(animalIdentityEditUrl(animalId, "invalid"));
+    }
   }
 
   const animalToUpdate: AnimalUpdate = {
@@ -520,6 +557,11 @@ export async function updateAnimalIdentity(formData: FormData) {
     updated_at: new Date().toISOString(),
     updated_by: user.id,
   };
+
+  if (nextAdministrativeStatus) {
+    animalToUpdate.status = nextAdministrativeStatus;
+    animalToUpdate.is_retired = nextAdministrativeStatus === "retired";
+  }
 
   if (!animal.litter_id) {
     const birthDate = normalizeOptionalDate(formData.get("birth_date"));

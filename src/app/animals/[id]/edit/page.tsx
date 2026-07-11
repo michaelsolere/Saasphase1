@@ -12,6 +12,7 @@ import {
   getAnimalDisplayName,
   getAnimalSexLabel,
   getAnimalSpeciesLabel,
+  getAnimalStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
 import { createClient } from "@/lib/supabase/server";
@@ -28,6 +29,20 @@ const errorMessages: Record<string, string> = {
 const inputClass =
   "mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none";
 const labelClass = "text-xs font-semibold uppercase tracking-wide text-muted";
+const administrativeStatusOptions = [
+  ["active", "Actif"],
+  ["retired", "Retraité"],
+  ["deceased", "Décédé"],
+  ["archived", "Archivé"],
+] as const;
+const workflowControlledStatuses = new Set([
+  "born",
+  "available",
+  "reserved",
+  "kept",
+  "adopted",
+  "planned",
+]);
 
 function ReadOnlyItem({
   label,
@@ -129,6 +144,37 @@ function SelectField({
         ))}
       </select>
     </div>
+  );
+}
+
+function AdministrativeStatusField({ status }: { status: string | null }) {
+  if (status && workflowControlledStatuses.has(status)) {
+    return (
+      <div className="sm:col-span-2">
+        <dt className={labelClass}>Statut administratif</dt>
+        <dd className="mt-1.5 text-sm leading-6">
+          {getAnimalStatusLabel(status)}
+        </dd>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Ce statut est piloté par le parcours de l’animal et se modifie avec les actions dédiées.
+        </p>
+      </div>
+    );
+  }
+
+  const options =
+    status === "breeding"
+      ? ([["breeding", "Reproducteur — ancien statut"], ...administrativeStatusOptions] as const)
+      : administrativeStatusOptions;
+
+  return (
+    <SelectField
+      id="animal-edit-status"
+      label="Statut administratif"
+      name="status"
+      defaultValue={status}
+      options={options}
+    />
   );
 }
 
@@ -363,6 +409,7 @@ export default async function AnimalEditPage({
                   defaultValue={animal.sex}
                   options={animalSexOptions}
                 />
+                <AdministrativeStatusField status={animal.status} />
                 {animal.litter_id ? (
                   <ReadOnlyItem
                     label="Date de naissance"

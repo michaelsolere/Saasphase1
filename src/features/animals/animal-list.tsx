@@ -16,6 +16,22 @@ function OptionalValue({ value }: { value: string | null }) {
   return <span className="text-muted">{value || "Non renseigné"}</span>;
 }
 
+function getBreederRoleLabel(animal: AnimalListItem) {
+  if (!animal.is_breeder) {
+    return null;
+  }
+
+  if (
+    animal.is_external ||
+    animal.ownership_status === "external_stud" ||
+    animal.ownership_status === "external_female"
+  ) {
+    return "Rôle : Reproducteur extérieur";
+  }
+
+  return "Rôle : Reproducteur maison";
+}
+
 export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
   if (animals.length === 0) {
     return (
@@ -82,6 +98,11 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
                 <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
                   {getAnimalStatusLabel(animal.status)}
                 </span>
+                {getBreederRoleLabel(animal) ? (
+                  <p className="mt-2 text-xs font-medium text-muted">
+                    {getBreederRoleLabel(animal)}
+                  </p>
+                ) : null}
                 {getBornOffspringLabel(animal) ? (
                   <p className="mt-2 max-w-44 text-xs leading-5 text-muted">
                     {getBornOffspringLabel(animal)}

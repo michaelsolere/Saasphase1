@@ -22,6 +22,7 @@ const animalCallNameCleanupPrefixes = [
   "QA femelle exterieure ",
   "QA animal retraite ",
   "QA animal historique ",
+  "QA ancien reproducteur ",
   "QA produced force ",
   "QA status breeding force ",
   "QA edition legere ",
@@ -514,6 +515,13 @@ test("creates manual animals without confusing them with litter offspring", asyn
       await expect(row).toBeVisible();
       await expect(row).toContainText("Portée : Non renseigné");
     }
+    const modernHomeBreederRow = page
+      .locator("tbody tr")
+      .filter({ hasText: cases[0].label });
+    await expect(modernHomeBreederRow).toContainText("Actif");
+    await expect(modernHomeBreederRow).toContainText(
+      "Rôle : Reproducteur maison",
+    );
 
     await page.goto("/animals?filter=home_breeders");
     await expect(page.getByText(cases[0].label)).toBeVisible();
@@ -579,6 +587,150 @@ test("creates manual animals without confusing them with litter offspring", asyn
   } finally {
     await cleanupAnimalManualFixtures(
       "manual animal creation variants",
+      createdAnimalIds,
+    );
+  }
+});
+
+test("normalizes a legacy breeding administrative status without losing breeder role", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalId = randomUUID();
+  const suffix = animalId.slice(0, 8);
+  const animalName = `QA ancien reproducteur ${suffix}`;
+  const createdAnimalIds = [animalId];
+
+  try {
+    const { error: animalInsertError } = await supabase.from("animals").insert({
+      id: animalId,
+      organization_id: organizationId,
+      call_name: animalName,
+      species: "dog",
+      breed: "Golden Retriever",
+      sex: "female",
+      status: "breeding",
+      ownership_status: "owned",
+      is_breeder: true,
+      is_external: false,
+      is_retired: false,
+      created_by: ownerId,
+      updated_by: ownerId,
+    });
+
+    expect(animalInsertError).toBeNull();
+
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
+
+    await page.goto("/animals");
+    const legacyRow = page.locator("tbody tr").filter({ hasText: animalName });
+    await expect(legacyRow).toBeVisible();
+    await expect(legacyRow).toContainText("Reproducteur");
+    await expect(legacyRow).toContainText("Rôle : Reproducteur maison");
+
+    await page.goto(`/animals/${animalId}/edit`);
+    const statusSelect = page.getByLabel("Statut administratif");
+    await expect(
+      statusSelect.locator("option", {
+        hasText: "Reproducteur — ancien statut",
+      }),
+    ).toHaveCount(1);
+    await expect(statusSelect).toHaveValue("breeding");
+    await statusSelect.selectOption("active");
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${animalId}?identity_status=success`);
+
+    let animal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("id, status, is_breeder, is_retired")
+        .eq("id", animalId)
+        .single(),
+      "read normalized legacy breeding animal",
+    );
+    expect(animal).toMatchObject({
+      id: animalId,
+      status: "active",
+      is_breeder: true,
+      is_retired: false,
+    });
+
+    await page.goto(`/animals/${animalId}/edit`);
+    await page.getByLabel("Statut administratif").selectOption("retired");
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${animalId}?identity_status=success`);
+    animal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("id, status, is_breeder, is_retired")
+        .eq("id", animalId)
+        .single(),
+      "read retired administrative status animal",
+    );
+    expect(animal).toMatchObject({
+      id: animalId,
+      status: "retired",
+      is_breeder: true,
+      is_retired: true,
+    });
+
+    await page.goto(`/animals/${animalId}/edit`);
+    await page.getByLabel("Statut administratif").selectOption("active");
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${animalId}?identity_status=success`);
+    animal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("id, status, is_breeder, is_retired")
+        .eq("id", animalId)
+        .single(),
+      "read unretired administrative status animal",
+    );
+    expect(animal).toMatchObject({
+      id: animalId,
+      status: "active",
+      is_breeder: true,
+      is_retired: false,
+    });
+
+    await page.goto(`/animals/${animalId}/edit`);
+    await expect(
+      page.locator('select[name="status"] option[value="breeding"]'),
+    ).toHaveCount(0);
+    await page.getByLabel("Nom d’usage").fill(`QA ancien reproducteur forge ${suffix}`);
+    await page.locator('select[name="status"]').evaluate((select) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = "reserved";
+      forgedOption.textContent = "Réservé forgé";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = forgedOption.value;
+    });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${animalId}/edit?status=invalid`);
+
+    animal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("id, call_name, status, is_breeder")
+        .eq("id", animalId)
+        .single(),
+      "read rejected normalized forged-status animal",
+    );
+    expect(animal).toMatchObject({
+      id: animalId,
+      call_name: animalName,
+      status: "active",
+      is_breeder: true,
+    });
+  } finally {
+    await cleanupAnimalManualFixtures(
+      "legacy breeding normalization",
       createdAnimalIds,
     );
   }
@@ -781,7 +933,6 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     await page.getByLabel("Père").selectOption(fatherId);
     await page.locator("form").evaluate((form) => {
       for (const [name, value] of [
-        ["status", "adopted"],
         ["ownership_status", "adopted_out"],
         ["litter_id", "c0000000-0000-4000-8000-000000000001"],
         ["is_breeder", "yes"],
@@ -905,6 +1056,31 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     });
 
     await page.goto(`/animals/${manualAnimalId}/edit`);
+    await page.getByLabel("Nom d’usage").fill(`QA edition statut forge ${suffix}`);
+    await page.locator('select[name="status"]').evaluate((select) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = "reserved";
+      forgedOption.textContent = "Réservé forgé";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = forgedOption.value;
+    });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    const rejectedForgedStatusAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, status, is_breeder")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected forged-status animal",
+    );
+    expect(rejectedForgedStatusAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      status: "active",
+      is_breeder: false,
+    });
+
+    await page.goto(`/animals/${manualAnimalId}/edit`);
     await page
       .getByLabel("Lien vers la page SCC de l’animal")
       .evaluate((input) => {
@@ -975,6 +1151,36 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
       call_name: `QA edition modifiee ${suffix}`,
       mother_id: motherId,
       father_id: fatherId,
+    });
+
+    await page.goto(`/animals/${litterAnimalId}/edit`);
+    await expect(page.locator('select[name="status"]')).toHaveCount(0);
+    await expect(page.getByText("Statut administratif")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Ce statut est piloté par le parcours de l’animal et se modifie avec les actions dédiées.",
+      ),
+    ).toBeVisible();
+    await page.getByLabel("Nom d’usage").fill(`QA edition statut chiot ${suffix}`);
+    await page.locator("form").evaluate((form) => {
+      const input = document.createElement("input");
+      input.name = "status";
+      input.value = "adopted";
+      form.append(input);
+    });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${litterAnimalId}/edit?status=invalid`);
+    const rejectedWorkflowStatusAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, status")
+        .eq("id", litterAnimalId)
+        .single(),
+      "read rejected workflow-status animal",
+    );
+    expect(rejectedWorkflowStatusAnimal).toMatchObject({
+      call_name: `QA edition chiot ${suffix}`,
+      status: "born",
     });
 
     await page.goto(`/animals/${litterAnimalId}/edit`);
