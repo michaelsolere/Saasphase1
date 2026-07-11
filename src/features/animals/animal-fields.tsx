@@ -21,7 +21,6 @@ export const animalSexOptions = [
 
 export const manualAnimalStatusOptions = [
   ["active", "Actif"],
-  ["breeding", "Reproducteur"],
   ["retired", "Retraité"],
   ["archived", "Archivé"],
   ["deceased", "Décédé"],
@@ -218,9 +217,10 @@ export function AnimalFields({
           className="mt-1"
         />
         <span>
-          <span className="font-semibold">Reproducteur</span>
+          <span className="font-semibold">Reproducteur maison</span>
           <span className="mt-1 block text-xs leading-5 text-muted">
-            Activé automatiquement pour les étalons et femelles extérieurs.
+            À cocher pour un reproducteur détenu par l’élevage. Pour un étalon
+            ou une femelle extérieure, ce rôle est activé automatiquement.
           </span>
         </span>
       </label>
@@ -251,7 +251,11 @@ export function AnimalFields({
         label="Identification"
         name="identification_number"
       />
-      <TextField id={`${idPrefix}-color`} label="Couleur" name="color" />
+      <TextField
+        id={`${idPrefix}-lof-number`}
+        label="Numéro LOF"
+        name="lof_number"
+      />
       <TextField id={`${idPrefix}-coat-color`} label="Robe" name="coat_color" />
 
       <div>

@@ -20,7 +20,6 @@ const allowedManualStatuses = new Set([
   "reserved",
   "adopted",
   "kept",
-  "breeding",
   "retired",
   "deceased",
   "archived",
@@ -398,7 +397,7 @@ export async function createManualAnimal(formData: FormData) {
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
-    color: normalizeOptionalText(formData.get("color")),
+    lof_number: normalizeOptionalText(formData.get("lof_number")),
     coat_color: normalizeOptionalText(formData.get("coat_color")),
     mother_id: motherId,
     father_id: fatherId,

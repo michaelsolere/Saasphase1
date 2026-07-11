@@ -1583,6 +1583,7 @@ export default async function AnimalDetailPage({
                     label="Numéro LOF"
                     value={animal.lof_number}
                   />
+                  <DetailItem label="Robe" value={animal.coat_color} />
                   <DetailItem
                     label="Statut de propriété"
                     value={getOwnershipStatusLabel(animal.ownership_status)}

@@ -23,6 +23,7 @@ const animalCallNameCleanupPrefixes = [
   "QA animal retraite ",
   "QA animal historique ",
   "QA produced force ",
+  "QA status breeding force ",
   "QA edition legere ",
   "QA edition modifiee ",
   "QA edition chiot ",
@@ -303,7 +304,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
       label: `QA reproductrice maison ${suffix}`,
       expected: {
         sex: "female",
-        status: "breeding",
+        status: "active",
         ownership_status: "owned",
         is_breeder: true,
         is_external: false,
@@ -312,17 +313,16 @@ test("creates manual animals without confusing them with litter offspring", asyn
       },
       fill: async (formPage) => {
         await formPage.getByLabel("Sexe", { exact: true }).selectOption("female");
-        await formPage
-          .getByLabel("Statut", { exact: true })
-          .selectOption("breeding");
         await formPage.locator('input[name="is_breeder"]').check();
+        await formPage.getByLabel("Numéro LOF").fill(`LOF QA ${suffix}`);
+        await formPage.getByLabel("Robe").fill("Fauve clair QA");
       },
     },
     {
       label: `QA male reproducteur maison ${suffix}`,
       expected: {
         sex: "male",
-        status: "breeding",
+        status: "active",
         ownership_status: "owned",
         is_breeder: true,
         is_external: false,
@@ -331,9 +331,6 @@ test("creates manual animals without confusing them with litter offspring", asyn
       },
       fill: async (formPage) => {
         await formPage.getByLabel("Sexe", { exact: true }).selectOption("male");
-        await formPage
-          .getByLabel("Statut", { exact: true })
-          .selectOption("breeding");
         await formPage.locator('input[name="is_breeder"]').check();
       },
     },
@@ -420,6 +417,18 @@ test("creates manual animals without confusing them with litter offspring", asyn
       await expect(
         page.getByText("ce formulaire ne crée pas de chiot/chaton"),
       ).toBeVisible();
+      await expect(page.getByLabel("Numéro LOF")).toBeVisible();
+      await expect(page.getByLabel("Robe")).toBeVisible();
+      await expect(page.getByText("Reproducteur maison", { exact: true })).toBeVisible();
+      await expect(page.getByLabel("Couleur", { exact: true })).toHaveCount(0);
+      await expect(
+        page.locator('select[name="status"] option[value="breeding"]'),
+      ).toHaveCount(0);
+      await expect(
+        page.getByLabel("Statut", { exact: true }).locator("option", {
+          hasText: "Reproducteur",
+        }),
+      ).toHaveCount(0);
       await page.getByLabel("Nom d’usage").fill(manualCase.label);
       await manualCase.fill(page);
       await page.getByRole("button", { name: "Créer l’animal" }).click();
@@ -441,7 +450,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
         await supabase
           .from("animals")
           .select(
-            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id",
+            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, lof_number, color, coat_color",
           )
           .eq("call_name", manualCase.label)
           .single(),
@@ -452,6 +461,30 @@ test("creates manual animals without confusing them with litter offspring", asyn
         call_name: manualCase.label,
         ...manualCase.expected,
       });
+
+      if (manualCase.label === cases[0].label) {
+        expect(animal).toMatchObject({
+          lof_number: `LOF QA ${suffix}`,
+          color: null,
+          coat_color: "Fauve clair QA",
+        });
+        await expect(
+          page.locator("section").filter({
+            has: page.getByRole("heading", {
+              name: "Fiche d’identité",
+              exact: true,
+            }),
+          }),
+        ).toContainText(`LOF QA ${suffix}`);
+        await expect(
+          page.locator("section").filter({
+            has: page.getByRole("heading", {
+              name: "Fiche d’identité",
+              exact: true,
+            }),
+          }),
+        ).toContainText("Fauve clair QA");
+      }
     }
 
     await page.goto("/animals");
@@ -500,6 +533,28 @@ test("creates manual animals without confusing them with litter offspring", asyn
 
     expect(error).toBeNull();
     expect(count).toBe(0);
+
+    const forcedBreedingStatusName = `QA status breeding force ${suffix}`;
+    await page.goto("/animals/new");
+    await page.getByLabel("Nom d’usage").fill(forcedBreedingStatusName);
+    await page.locator('select[name="status"]').evaluate((select) => {
+      const option = document.createElement("option");
+      option.value = "breeding";
+      option.textContent = "Reproducteur";
+      select.append(option);
+      (select as HTMLSelectElement).value = "breeding";
+    });
+    await page.getByRole("button", { name: "Créer l’animal" }).click();
+    await expect(page).toHaveURL(/\/animals\/new\?status=invalid$/);
+
+    const { count: forcedBreedingStatusCount, error: forcedBreedingStatusError } =
+      await supabase
+        .from("animals")
+        .select("id", { count: "exact", head: true })
+        .eq("call_name", forcedBreedingStatusName);
+
+    expect(forcedBreedingStatusError).toBeNull();
+    expect(forcedBreedingStatusCount).toBe(0);
   } finally {
     await cleanupAnimalManualFixtures(
       "manual animal creation variants",
