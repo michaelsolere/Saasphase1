@@ -1,3 +1,5 @@
+import "server-only";
+
 const DEFAULT_BREVO_API_BASE_URL = "https://api.brevo.com/v3";
 const BREVO_REQUEST_TIMEOUT_MS = 8_000;
 

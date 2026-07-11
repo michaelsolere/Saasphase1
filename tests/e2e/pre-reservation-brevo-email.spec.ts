@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import http from "node:http";
+import { join } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
@@ -11,7 +13,7 @@ import {
 import {
   sendPreReservationEmailForReservation,
   type PreReservationEmailTransport,
-} from "../../src/features/communications/pre-reservation-email";
+} from "../../src/features/communications/pre-reservation-email-core";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -28,6 +30,11 @@ const otherContactId = "71000000-0000-4000-8000-000000009101";
 const otherReservationId = "91000000-0000-4000-8000-000000009101";
 const otherPaymentId = "a1000000-0000-4000-8000-000000009101";
 const otherTemplateId = "92000000-0000-4000-8000-000000009101";
+const protectedServerImports = [
+  "@/lib/brevo/server",
+  "@/features/communications/pre-reservation-email",
+  "@/features/communications/email-delivery-attempts",
+];
 
 function sqlQuote(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -408,6 +415,19 @@ function createInjectedTransport({
   return { transport, getTemplateCalls, sendEmailCalls };
 }
 
+function listSourceFiles(directory: string): string[] {
+  return readdirSync(directory).flatMap((entry) => {
+    const path = join(directory, entry);
+    const stats = statSync(path);
+
+    if (stats.isDirectory()) {
+      return listSourceFiles(path);
+    }
+
+    return /\.(ts|tsx)$/.test(entry) ? [path] : [];
+  });
+}
+
 function startBrevoMock({
   failFirstPost = false,
   inactiveTemplate = false,
@@ -497,6 +517,22 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 }
+
+test("client components do not import protected server communication modules", () => {
+  const violations = listSourceFiles(join(process.cwd(), "src"))
+    .filter((filePath) => {
+      const content = readFileSync(filePath, "utf8");
+      const firstStatement = content.trimStart().split(/\r?\n/, 1)[0];
+
+      return (
+        (firstStatement === '"use client";' || firstStatement === "'use client';") &&
+        protectedServerImports.some((importPath) => content.includes(importPath))
+      );
+    })
+    .map((filePath) => filePath.replace(`${process.cwd()}/`, ""));
+
+  expect(violations).toEqual([]);
+});
 
 test("sends and retries the individual pre-reservation Brevo email without real Brevo calls", async ({
   page,
