@@ -62,7 +62,7 @@ export function AnimalList({ animals }: { animals: AnimalListItem[] }) {
               <td className="min-w-72 px-6 py-4">
                 <div className="flex flex-col items-start gap-1.5">
                   <p className="font-semibold text-foreground">
-                    {getAnimalDisplayName(animal)}
+                    {animal.official_name?.trim() || getAnimalDisplayName(animal)}
                   </p>
                   <Link
                     href={`/animals/${animal.id}`}

@@ -10,6 +10,7 @@ import {
   updateAnimalFinalIdentity,
 } from "@/features/animals/actions";
 import {
+  formatAnimalAge,
   formatAnimalDate,
   getAnimalDisplayName,
   getAnimalSexLabel,
@@ -387,6 +388,34 @@ function DetailItem({
       </dt>
       <dd className="mt-1.5 text-sm leading-6">
         {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+function OwnerDetailItem({
+  contactId,
+  contactName,
+}: {
+  contactId: string | null;
+  contactName: string | null;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        Propriétaire
+      </dt>
+      <dd className="mt-1.5 text-sm leading-6">
+        {contactId ? (
+          <Link
+            href={`/contacts/${contactId}`}
+            className="font-medium text-accent hover:underline"
+          >
+            {contactName || "Contact non renseigné"}
+          </Link>
+        ) : (
+          contactName || "Non renseigné"
+        )}
       </dd>
     </div>
   );
@@ -1147,6 +1176,27 @@ export default async function AnimalDetailPage({
   const relatedReservation =
     ((rawReservations as ReservationOverview[] | null) ?? [])[0] ?? null;
   const isKennelBornAnimal = Boolean(animal?.litter_id);
+  const isAdoptedOrSoldKennelBornAnimal = Boolean(
+    animal?.litter_id &&
+      (animal.status === "adopted" ||
+        animal.ownership_status === "sold" ||
+        animal.ownership_status === "adopted_out" ||
+        relatedReservation?.status === "adopted"),
+  );
+  const isExternalBreeder = Boolean(
+    animal?.ownership_status === "external_stud" ||
+      animal?.ownership_status === "external_female",
+  );
+  const shouldShowOwner =
+    isAdoptedOrSoldKennelBornAnimal || isExternalBreeder;
+  const ownerContactId = isAdoptedOrSoldKennelBornAnimal
+    ? relatedReservation?.contact_id ?? null
+    : null;
+  const ownerContactName = isAdoptedOrSoldKennelBornAnimal
+    ? relatedReservation?.contact_display_name ?? null
+    : null;
+  const shouldShowBreederBoolean =
+    animal?.status !== "breeding" && animal?.is_breeder === true;
   const canKeepAnimalAtKennel = animal ? canKeepAtKennel(animal) : false;
   const canMakeAnimalAvailable = animal ? canMakeAvailable(animal) : false;
   const canToggleAvailability = animal
@@ -1193,10 +1243,13 @@ export default async function AnimalDetailPage({
                   {animalTitle}
                 </h1>
                 {shouldShowCallName ? (
-                  <p className="mt-2 text-lg font-medium text-muted">
+                  <p className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">
                     {animalCallName}
                   </p>
                 ) : null}
+                <p className="mt-3 text-sm font-medium text-muted">
+                  {formatAnimalAge(animal.birth_date, animal.death_date)}
+                </p>
                 <p className="mt-3 text-sm text-muted">
                   Créé le {formatAnimalDate(animal.created_at)}
                 </p>
@@ -1209,7 +1262,7 @@ export default async function AnimalDetailPage({
               <div className="flex flex-wrap items-center gap-3">
                 <Link
                   href={`/animals/${animal.id}/edit`}
-                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                  className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
                 >
                   Modifier les informations
                 </Link>
@@ -1523,13 +1576,29 @@ export default async function AnimalDetailPage({
                     value={getAnimalStatusLabel(animal.status)}
                   />
                   <DetailItem
+                    label="Numéro d’identification"
+                    value={animal.identification_number}
+                  />
+                  <DetailItem
+                    label="Numéro LOF"
+                    value={animal.lof_number}
+                  />
+                  <DetailItem
                     label="Statut de propriété"
                     value={getOwnershipStatusLabel(animal.ownership_status)}
                   />
-                  <DetailItem
-                    label="Reproducteur"
-                    value={booleanLabel(animal.is_breeder)}
-                  />
+                  {shouldShowOwner ? (
+                    <OwnerDetailItem
+                      contactId={ownerContactId}
+                      contactName={ownerContactName}
+                    />
+                  ) : null}
+                  {shouldShowBreederBoolean ? (
+                    <DetailItem
+                      label="Reproducteur"
+                      value={booleanLabel(animal.is_breeder)}
+                    />
+                  ) : null}
                   <DetailItem
                     label="Animal extérieur"
                     value={booleanLabel(animal.is_external)}
@@ -1608,11 +1677,6 @@ export default async function AnimalDetailPage({
                 </section>
               ) : null}
 
-              <RelatedReservationSection
-                reservation={relatedReservation}
-                hasError={Boolean(reservationError)}
-              />
-
               <AnimalHealthSection
                 animalId={animal.id}
                 notes={healthNotes}
@@ -1620,6 +1684,11 @@ export default async function AnimalDetailPage({
                 documents={healthDocuments}
                 hasError={Boolean(documentsError || eventsError || notesError)}
                 eventStatus={query.health_event_status}
+              />
+
+              <RelatedReservationSection
+                reservation={relatedReservation}
+                hasError={Boolean(reservationError)}
               />
 
               <RelatedDocumentsSection

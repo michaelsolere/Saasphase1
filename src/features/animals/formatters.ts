@@ -157,6 +157,95 @@ export function formatAnimalDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function parsePostgresDateOnly(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day, date };
+}
+
+function getTodayDateOnly() {
+  const today = new Date();
+
+  return {
+    year: today.getFullYear(),
+    month: today.getMonth() + 1,
+    day: today.getDate(),
+    date: new Date(
+      Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()),
+    ),
+  };
+}
+
+function pluralizeAgeUnit(value: number, singular: string, plural: string) {
+  return `${value} ${value === 1 ? singular : plural}`;
+}
+
+export function formatAnimalAge(
+  birthDate: string | null,
+  deathDate?: string | null,
+) {
+  const birth = parsePostgresDateOnly(birthDate);
+
+  if (!birth) {
+    return "Âge non renseigné";
+  }
+
+  const end = parsePostgresDateOnly(deathDate ?? null) ?? getTodayDateOnly();
+  const diffDays = Math.max(
+    0,
+    Math.floor(
+      (end.date.getTime() - birth.date.getTime()) / (1000 * 60 * 60 * 24),
+    ),
+  );
+
+  if (diffDays < 14) {
+    return pluralizeAgeUnit(diffDays, "jour", "jours");
+  }
+
+  if (diffDays < 56) {
+    return pluralizeAgeUnit(Math.floor(diffDays / 7), "semaine", "semaines");
+  }
+
+  let totalMonths =
+    (end.year - birth.year) * 12 + (end.month - birth.month);
+
+  if (end.day < birth.day) {
+    totalMonths -= 1;
+  }
+
+  totalMonths = Math.max(0, totalMonths);
+
+  if (totalMonths < 24) {
+    return pluralizeAgeUnit(totalMonths, "mois", "mois");
+  }
+
+  const years = Math.floor(totalMonths / 12);
+  const months = totalMonths % 12;
+  const yearLabel = pluralizeAgeUnit(years, "an", "ans");
+
+  return months > 0
+    ? `${yearLabel} et ${pluralizeAgeUnit(months, "mois", "mois")}`
+    : yearLabel;
+}
+
 export function formatAnimalCoat(animal: Pick<AnimalListItem, "coat_color" | "color">) {
   return animal.coat_color || animal.color || "Non renseignée";
 }
