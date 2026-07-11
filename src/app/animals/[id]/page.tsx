@@ -10,7 +10,6 @@ import {
   updateAnimalFinalIdentity,
 } from "@/features/animals/actions";
 import {
-  formatAnimalCoat,
   formatAnimalDate,
   getAnimalDisplayName,
   getAnimalSexLabel,
@@ -27,11 +26,7 @@ import {
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
 import {
-  formatLitterCount,
-  formatLitterDate,
   getLitterDisplayName,
-  getLitterStatusLabel,
-  getSpeciesLabel as getLitterSpeciesLabel,
 } from "@/features/litters/formatters";
 import {
   formatPrice,
@@ -397,36 +392,6 @@ function DetailItem({
   );
 }
 
-function DetailLink({
-  label,
-  href,
-}: {
-  label: string;
-  href: string | null;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-        {label}
-      </dt>
-      <dd className="mt-1.5 break-all text-sm leading-6">
-        {href ? (
-          <a
-            href={href}
-            target="_blank"
-            rel="noreferrer"
-            className="font-medium text-accent hover:underline"
-          >
-            {href}
-          </a>
-        ) : (
-          "Non renseigné"
-        )}
-      </dd>
-    </div>
-  );
-}
-
 function FinalIdentityField({
   id,
   label,
@@ -453,105 +418,6 @@ function FinalIdentityField({
         className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
       />
     </div>
-  );
-}
-
-function RelatedLitterSection({
-  animalLitterId,
-  litter,
-}: {
-  animalLitterId: string | null;
-  litter: LitterLookup | null;
-}) {
-  if (!animalLitterId) {
-    return (
-      <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-        <h2 className="text-xl font-semibold">Portée liée</h2>
-        <p className="mt-5 text-sm text-muted">
-          Aucune portée liée à cet animal.
-        </p>
-      </section>
-    );
-  }
-
-  if (!litter) {
-    return (
-      <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-        <h2 className="text-xl font-semibold">Portée liée</h2>
-        <p className="mt-5 text-sm text-muted">
-          Portée non renseignée ou inaccessible.
-        </p>
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
-          <h2 className="text-xl font-semibold">Portée liée</h2>
-          <p className="mt-2 text-sm text-muted">
-            {getLitterDisplayName(litter.name, litter.id)}
-          </p>
-          {litter.id ? (
-            <Link
-              href={`/litters/${litter.id}`}
-              className="mt-2 inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
-            >
-              Fiche
-            </Link>
-          ) : null}
-        </div>
-      </div>
-
-      <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-        <DetailItem
-          label="Nom"
-          value={getLitterDisplayName(litter.name, litter.id)}
-        />
-        <DetailItem
-          label="Groupe de portée"
-          value={litter.litter_group_name}
-        />
-        <DetailItem
-          label="Espèce"
-          value={getLitterSpeciesLabel(litter.species)}
-        />
-        <DetailItem label="Race" value={litter.breed} />
-        <DetailItem
-          label="Statut"
-          value={getLitterStatusLabel(litter.status)}
-        />
-        <DetailItem
-          label="Naissance prévue"
-          value={formatLitterDate(litter.expected_birth_date)}
-        />
-        <DetailItem
-          label="Naissance réelle"
-          value={formatLitterDate(litter.actual_birth_date)}
-        />
-        <DetailItem
-          label="Nombre attendu"
-          value={formatLitterCount(litter.expected_puppy_count)}
-        />
-        <DetailItem
-          label="Nombre né total"
-          value={formatLitterCount(litter.born_total_count)}
-        />
-        <DetailItem
-          label="Nombre vivant"
-          value={formatLitterCount(litter.alive_count)}
-        />
-        <DetailItem
-          label="Nombre d’animaux"
-          value={formatLitterCount(litter.animal_count)}
-        />
-        <DetailItem
-          label="Nombre de réservations"
-          value={formatLitterCount(litter.reservation_count)}
-        />
-      </dl>
-    </section>
   );
 }
 
@@ -1222,6 +1088,10 @@ export default async function AnimalDetailPage({
         fatherCallName: fatherDisplayName,
       })
     : null;
+  const animalTitle = animal?.official_name?.trim() || animalDisplay;
+  const animalCallName = animal?.call_name?.trim() || null;
+  const shouldShowCallName =
+    Boolean(animalCallName) && animalCallName !== animalTitle;
 
   const { data: rawDocuments, error: documentsError } = animal
     ? await supabase
@@ -1276,6 +1146,7 @@ export default async function AnimalDetailPage({
 
   const relatedReservation =
     ((rawReservations as ReservationOverview[] | null) ?? [])[0] ?? null;
+  const isKennelBornAnimal = Boolean(animal?.litter_id);
   const canKeepAnimalAtKennel = animal ? canKeepAtKennel(animal) : false;
   const canMakeAnimalAvailable = animal ? canMakeAvailable(animal) : false;
   const canToggleAvailability = animal
@@ -1284,6 +1155,11 @@ export default async function AnimalDetailPage({
   const canPromoteAnimalToHomeBreeder = animal
     ? canPromoteToHomeBreeder(animal)
     : false;
+  const hasAvailableBreedingDecision =
+    canToggleAvailability ||
+    canKeepAnimalAtKennel ||
+    canMakeAnimalAvailable ||
+    canPromoteAnimalToHomeBreeder;
   const hasUnavailableBreedingDecision =
     !canKeepAnimalAtKennel ||
     !canMakeAnimalAvailable ||
@@ -1314,8 +1190,13 @@ export default async function AnimalDetailPage({
                   Animal · Lecture seule
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {animalDisplay}
+                  {animalTitle}
                 </h1>
+                {shouldShowCallName ? (
+                  <p className="mt-2 text-lg font-medium text-muted">
+                    {animalCallName}
+                  </p>
+                ) : null}
                 <p className="mt-3 text-sm text-muted">
                   Créé le {formatAnimalDate(animal.created_at)}
                 </p>
@@ -1411,220 +1292,217 @@ export default async function AnimalDetailPage({
                 </section>
               ) : null}
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Identité</h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem label="Nom complet" value={animal.official_name} />
-                  <DetailItem label="Nom d’usage" value={animal.call_name} />
-                </dl>
-              </section>
-
-              <section
-                id="identite-definitive"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      Renseigner l’identité définitive
-                    </h2>
-                    <p className="mt-2 text-sm leading-6 text-muted">
-                      Mise à jour des informations utiles avant départ, sans
-                      modifier le collier ou les données de portée.
-                    </p>
-                  </div>
-                  <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
-                    Avant départ
-                  </span>
-                </div>
-
-                <form
-                  action={updateAnimalFinalIdentity}
-                  className="mt-6 border-t pt-6"
+              {isKennelBornAnimal ? (
+                <section
+                  id="identite-definitive"
+                  className="rounded-2xl border bg-surface p-6 sm:p-8"
                 >
-                  <input type="hidden" name="animal_id" value={animal.id} />
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <FinalIdentityField
-                      id="animal-final-identification"
-                      label="Numéro d’identification"
-                      name="identification_number"
-                      defaultValue={animal.identification_number}
-                    />
-                    <FinalIdentityField
-                      id="animal-final-official-name"
-                      label="Nom complet"
-                      name="official_name"
-                      defaultValue={animal.official_name}
-                    />
-                    <FinalIdentityField
-                      id="animal-final-call-name"
-                      label="Nom d’usage"
-                      name="call_name"
-                      defaultValue={animal.call_name}
-                    />
-                    <FinalIdentityField
-                      id="animal-final-lof-number"
-                      label="Numéro LOF"
-                      name="lof_number"
-                      defaultValue={animal.lof_number}
-                    />
-                  </div>
-                  <div className="mt-6 flex justify-end border-t pt-6">
-                    <button
-                      type="submit"
-                      className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                    >
-                      Enregistrer l’identité définitive
-                    </button>
-                  </div>
-                </form>
-              </section>
-
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                  <div>
-                    <h2 className="text-xl font-semibold">
-                      Décisions d’élevage
-                    </h2>
-                    {hasUnavailableBreedingDecision ? (
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Renseigner l’identité définitive
+                      </h2>
                       <p className="mt-2 text-sm leading-6 text-muted">
-                        Les actions dépendent du statut, de la réservation et
-                        du rôle de l’animal.
+                        Mise à jour des informations utiles avant départ, sans
+                        modifier le collier ou les données de portée.
                       </p>
-                    ) : null}
+                    </div>
+                    <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                      Avant départ
+                    </span>
                   </div>
-                  <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
-                    Statut opérationnel
-                  </span>
-                </div>
 
-                {canToggleAvailability ? (
                   <form
-                    action={updateProducedOffspringAvailability}
+                    action={updateAnimalFinalIdentity}
                     className="mt-6 border-t pt-6"
                   >
                     <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="animal-produced-offspring-availability"
-                      className="text-xs font-semibold uppercase tracking-wide text-muted"
-                    >
-                      Statut de disponibilité
-                    </label>
-                    <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <select
-                        id="animal-produced-offspring-availability"
-                        name="next_status"
-                        defaultValue={animal.status}
-                        className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent sm:max-w-xs"
-                      >
-                        <option value="born">Né</option>
-                        <option value="available">Disponible</option>
-                      </select>
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <FinalIdentityField
+                        id="animal-final-identification"
+                        label="Numéro d’identification"
+                        name="identification_number"
+                        defaultValue={animal.identification_number}
+                      />
+                      <FinalIdentityField
+                        id="animal-final-official-name"
+                        label="Nom complet"
+                        name="official_name"
+                        defaultValue={animal.official_name}
+                      />
+                      <FinalIdentityField
+                        id="animal-final-call-name"
+                        label="Nom d’usage"
+                        name="call_name"
+                        defaultValue={animal.call_name}
+                      />
+                      <FinalIdentityField
+                        id="animal-final-lof-number"
+                        label="Numéro LOF"
+                        name="lof_number"
+                        defaultValue={animal.lof_number}
+                      />
+                    </div>
+                    <div className="mt-6 flex justify-end border-t pt-6">
                       <button
                         type="submit"
-                        className="inline-flex w-fit rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                       >
-                        Mettre à jour
+                        Enregistrer l’identité définitive
                       </button>
                     </div>
                   </form>
-                ) : null}
+                </section>
+              ) : null}
 
-                {canKeepAnimalAtKennel ? (
-                  <form
-                    action={keepAnimalAtKennel}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-keep-at-kennel"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
-                    >
-                      <input
-                        id="confirm-keep-at-kennel"
-                        name="confirm_keep_at_kennel"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal doit rester à l’élevage. Il ne
-                      sera pas promu reproducteur automatiquement et sortira de
-                      la logique disponible/réservable.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Garder à l’élevage
-                    </button>
-                  </form>
-                ) : null}
+              {hasAvailableBreedingDecision ? (
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Décisions d’élevage
+                      </h2>
+                      {hasUnavailableBreedingDecision ? (
+                        <p className="mt-2 text-sm leading-6 text-muted">
+                          Les actions dépendent du statut, de la réservation et
+                          du rôle de l’animal.
+                        </p>
+                      ) : null}
+                    </div>
+                    <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
+                      Statut opérationnel
+                    </span>
+                  </div>
 
-                {canMakeAnimalAvailable ? (
-                  <form
-                    action={makeKeptAnimalAvailable}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-make-available"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                  {canToggleAvailability ? (
+                    <form
+                      action={updateProducedOffspringAvailability}
+                      className="mt-6 border-t pt-6"
                     >
-                      <input
-                        id="confirm-make-available"
-                        name="confirm_make_available"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal ne sera plus marqué comme
-                      restant à l’élevage, qu’il pourra de nouveau être proposé
-                      ou attribué, et qu’aucune autre donnée ne sera modifiée.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                    >
-                      Remettre disponible
-                    </button>
-                  </form>
-                ) : null}
+                      <input type="hidden" name="animal_id" value={animal.id} />
+                      <label
+                        htmlFor="animal-produced-offspring-availability"
+                        className="text-xs font-semibold uppercase tracking-wide text-muted"
+                      >
+                        Statut de disponibilité
+                      </label>
+                      <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <select
+                          id="animal-produced-offspring-availability"
+                          name="next_status"
+                          defaultValue={animal.status}
+                          className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent sm:max-w-xs"
+                        >
+                          <option value="born">Né</option>
+                          <option value="available">Disponible</option>
+                        </select>
+                        <button
+                          type="submit"
+                          className="inline-flex w-fit rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                        >
+                          Mettre à jour
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
 
-                {canPromoteAnimalToHomeBreeder ? (
-                  <form
-                    action={promoteAnimalToHomeBreeder}
-                    className="mt-6 border-t pt-6"
-                  >
-                    <input type="hidden" name="animal_id" value={animal.id} />
-                    <label
-                      htmlFor="confirm-home-breeder-promotion"
-                      className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                  {canKeepAnimalAtKennel ? (
+                    <form
+                      action={keepAnimalAtKennel}
+                      className="mt-6 border-t pt-6"
                     >
-                      <input
-                        id="confirm-home-breeder-promotion"
-                        name="confirm_home_breeder_promotion"
-                        type="checkbox"
-                        value="yes"
-                        required
-                        className="mt-1 h-4 w-4 rounded border-border accent-accent"
-                      />
-                      Je confirme que cet animal doit devenir reproductrice
-                      maison. Le LOF, la confirmation, les radios
-                      hanches-coudes et les tests ADN ont été contrôlés
-                      manuellement ; ces validations ne sont pas automatisées
-                      en Phase 1.
-                    </label>
-                    <button
-                      type="submit"
-                      className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      <input type="hidden" name="animal_id" value={animal.id} />
+                      <label
+                        htmlFor="confirm-keep-at-kennel"
+                        className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                      >
+                        <input
+                          id="confirm-keep-at-kennel"
+                          name="confirm_keep_at_kennel"
+                          type="checkbox"
+                          value="yes"
+                          required
+                          className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                        />
+                        Je confirme que cet animal doit rester à l’élevage. Il
+                        ne sera pas promu reproducteur automatiquement et sortira
+                        de la logique disponible/réservable.
+                      </label>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Garder à l’élevage
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {canMakeAnimalAvailable ? (
+                    <form
+                      action={makeKeptAnimalAvailable}
+                      className="mt-6 border-t pt-6"
                     >
-                      Promouvoir en reproductrice maison
-                    </button>
-                  </form>
-                ) : null}
-              </section>
+                      <input type="hidden" name="animal_id" value={animal.id} />
+                      <label
+                        htmlFor="confirm-make-available"
+                        className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                      >
+                        <input
+                          id="confirm-make-available"
+                          name="confirm_make_available"
+                          type="checkbox"
+                          value="yes"
+                          required
+                          className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                        />
+                        Je confirme que cet animal ne sera plus marqué comme
+                        restant à l’élevage, qu’il pourra de nouveau être
+                        proposé ou attribué, et qu’aucune autre donnée ne sera
+                        modifiée.
+                      </label>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Remettre disponible
+                      </button>
+                    </form>
+                  ) : null}
+
+                  {canPromoteAnimalToHomeBreeder ? (
+                    <form
+                      action={promoteAnimalToHomeBreeder}
+                      className="mt-6 border-t pt-6"
+                    >
+                      <input type="hidden" name="animal_id" value={animal.id} />
+                      <label
+                        htmlFor="confirm-home-breeder-promotion"
+                        className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm leading-6 text-muted"
+                      >
+                        <input
+                          id="confirm-home-breeder-promotion"
+                          name="confirm_home_breeder_promotion"
+                          type="checkbox"
+                          value="yes"
+                          required
+                          className="mt-1 h-4 w-4 rounded border-border accent-accent"
+                        />
+                        Je confirme que cet animal doit devenir reproductrice
+                        maison. Le LOF, la confirmation, les radios
+                        hanches-coudes et les tests ADN ont été contrôlés
+                        manuellement ; ces validations ne sont pas automatisées
+                        en Phase 1.
+                      </label>
+                      <button
+                        type="submit"
+                        className="mt-4 inline-flex rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                      >
+                        Promouvoir en reproductrice maison
+                      </button>
+                    </form>
+                  ) : null}
+                </section>
+              ) : null}
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
@@ -1663,48 +1541,72 @@ export default async function AnimalDetailPage({
                 </dl>
               </section>
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">
-                  Naissance et filiation
-                </h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Date de naissance"
-                    value={formatAnimalDate(animal.birth_date)}
-                  />
-                  <DetailItem
-                    label="Date de décès"
-                    value={formatAnimalDate(animal.death_date)}
-                  />
-                  <DetailItem
-                    label="Portée liée"
-                    value={litter ? getLitterDisplayName(litter.name, litter.id) : null}
-                  />
-                  <DetailItem
-                    label="Groupe de portée"
-                    value={litter?.litter_group_name ?? null}
-                  />
-                  <DetailItem label="Mère" value={motherDisplayName} />
-                  <DetailItem label="Père" value={fatherDisplayName} />
-                  <DetailItem
-                    label="Ordre de naissance"
-                    value={formatBirthOrder(animal.birth_order)}
-                  />
-                  <DetailItem
-                    label="Heure de naissance"
-                    value={formatBirthTime(animal.birth_time)}
-                  />
-                  <DetailItem
-                    label="Poids de naissance"
-                    value={formatBirthWeight(animal.birth_weight_grams)}
-                  />
-                </dl>
-              </section>
-
-              <RelatedLitterSection
-                animalLitterId={animal.litter_id}
-                litter={litter}
-              />
+              {isKennelBornAnimal ? (
+                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <h2 className="text-xl font-semibold">
+                    Naissance, filiation et suivi de portée
+                  </h2>
+                  <dl className="mt-6 grid gap-6 sm:grid-cols-2">
+                    <DetailItem
+                      label="Date de naissance"
+                      value={formatAnimalDate(animal.birth_date)}
+                    />
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Portée liée
+                      </dt>
+                      <dd className="mt-1.5 text-sm leading-6">
+                        {litter?.id ? (
+                          <Link
+                            href={`/litters/${litter.id}`}
+                            className="font-medium text-accent hover:underline"
+                          >
+                            {getLitterDisplayName(litter.name, litter.id)}
+                          </Link>
+                        ) : litter ? (
+                          getLitterDisplayName(litter.name, litter.id)
+                        ) : (
+                          "Portée non renseignée ou inaccessible"
+                        )}
+                      </dd>
+                    </div>
+                    <DetailItem
+                      label="Groupe de portée"
+                      value={litter?.litter_group_name ?? null}
+                    />
+                    <DetailItem label="Mère" value={motherDisplayName} />
+                    <DetailItem label="Père" value={fatherDisplayName} />
+                    <DetailItem
+                      label="Ordre de naissance"
+                      value={formatBirthOrder(animal.birth_order)}
+                    />
+                    <DetailItem
+                      label="Heure de naissance"
+                      value={formatBirthTime(animal.birth_time)}
+                    />
+                    <DetailItem
+                      label="Poids de naissance"
+                      value={formatBirthWeight(animal.birth_weight_grams)}
+                    />
+                    <DetailItem
+                      label="Couleur de collier initiale"
+                      value={animal.collar_color_initial}
+                    />
+                    <DetailItem
+                      label="Couleur de collier actuelle"
+                      value={animal.collar_color_current}
+                    />
+                    <div className="sm:col-span-2">
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                        Note de collier
+                      </dt>
+                      <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
+                        {animal.collar_color_note || "Non renseigné"}
+                      </dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
 
               <RelatedReservationSection
                 reservation={relatedReservation}
@@ -1734,51 +1636,6 @@ export default async function AnimalDetailPage({
                 notes={animalNotes}
                 hasError={Boolean(notesError)}
               />
-
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">
-                  Identification et robe
-                </h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Numéro d’identification"
-                    value={animal.identification_number}
-                  />
-                  <DetailItem label="Numéro LOF" value={animal.lof_number} />
-                  <DetailItem label="Couleur" value={animal.color} />
-                  <DetailItem label="Robe" value={animal.coat_color} />
-                  <DetailItem
-                    label="Couleur ou robe"
-                    value={formatAnimalCoat(animal)}
-                  />
-                  <DetailLink
-                    label="Lien pedigree"
-                    href={animal.pedigree_url}
-                  />
-                </dl>
-              </section>
-
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                <h2 className="text-xl font-semibold">Collier et suivi</h2>
-                <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                  <DetailItem
-                    label="Couleur de collier initiale"
-                    value={animal.collar_color_initial}
-                  />
-                  <DetailItem
-                    label="Couleur de collier actuelle"
-                    value={animal.collar_color_current}
-                  />
-                  <div className="sm:col-span-2">
-                    <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                      Note de collier
-                    </dt>
-                    <dd className="mt-1.5 whitespace-pre-wrap text-sm leading-6">
-                      {animal.collar_color_note || "Non renseigné"}
-                    </dd>
-                  </div>
-                </dl>
-              </section>
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Notes</h2>
