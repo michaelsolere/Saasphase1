@@ -25,6 +25,8 @@ const animalCallNameCleanupPrefixes = [
   "QA produced force ",
   "QA status breeding force ",
   "QA edition legere ",
+  "QA edition mere ",
+  "QA edition pere ",
   "QA edition modifiee ",
   "QA edition chiot ",
   "QA edition chiot modifie ",
@@ -582,32 +584,109 @@ test("creates manual animals without confusing them with litter offspring", asyn
   }
 });
 
-test("edits only lightweight animal identity fields", async ({ page }) => {
+test("edits the full descriptive identity of a manual animal", async ({ page }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   const manualAnimalId = randomUUID();
+  const motherId = randomUUID();
+  const fatherId = randomUUID();
   const litterAnimalId = randomUUID();
+  const litterMotherId = randomUUID();
+  const litterFatherId = randomUUID();
   const suffix = manualAnimalId.slice(0, 8);
-  const createdAnimalIds = [manualAnimalId, litterAnimalId];
+  const createdAnimalIds = [
+    manualAnimalId,
+    motherId,
+    fatherId,
+    litterAnimalId,
+    litterMotherId,
+    litterFatherId,
+  ];
 
   try {
-    const { error: manualInsertError } = await supabase.from("animals").insert({
-      id: manualAnimalId,
-      organization_id: organizationId,
-      call_name: `QA edition legere ${suffix}`,
-      species: "dog",
-      breed: "Golden Retriever",
-      sex: "female",
-      status: "active",
-      ownership_status: "owned",
-      birth_date: "2023-01-10",
-      identification_number: "OLD-ID",
-      pedigree_url: "https://www.centrale-canine.fr/chien/old-scc",
-      lof_number: "OLD-LOF",
-      color: "Sable",
-      coat_color: "Claire",
-      created_by: ownerId,
-      updated_by: ownerId,
-    });
+    const { error: manualInsertError } = await supabase.from("animals").insert([
+      {
+        id: motherId,
+        organization_id: organizationId,
+        call_name: `QA edition mere ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: fatherId,
+        organization_id: organizationId,
+        call_name: `QA edition pere ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "male",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: litterMotherId,
+        organization_id: organizationId,
+        call_name: `QA edition mere portee ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: litterFatherId,
+        organization_id: organizationId,
+        call_name: `QA edition pere portee ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "male",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: manualAnimalId,
+        organization_id: organizationId,
+        call_name: `QA edition legere ${suffix}`,
+        official_name: `QA officiel ancien ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: false,
+        is_external: false,
+        is_retired: false,
+        birth_date: "2023-01-10",
+        identification_number: "OLD-ID",
+        pedigree_url: "https://www.centrale-canine.fr/chien/old-scc",
+        lof_number: "OLD-LOF",
+        color: "Sable",
+        coat_color: "Claire",
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+    ]);
 
     expect(manualInsertError).toBeNull();
 
@@ -623,7 +702,12 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
         sex: "male",
         status: "born",
         ownership_status: "produced",
+        is_breeder: false,
+        is_external: false,
+        is_retired: false,
         birth_date: "2026-04-15",
+        mother_id: litterMotherId,
+        father_id: litterFatherId,
         created_by: ownerId,
         updated_by: ownerId,
       });
@@ -639,7 +723,46 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await page.goto(`/animals/${manualAnimalId}`);
     await page.getByRole("link", { name: "Modifier les informations" }).click();
     await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit`);
+    await expect(
+      page.getByText("Informations structurelles en lecture seule"),
+    ).toHaveCount(0);
+    await expect(page.getByText("Animal · Édition légère")).toHaveCount(0);
+    await expect(page.getByText("Animal · Modification")).toBeVisible();
+    await expect(
+      page.getByText("Corrigez les informations descriptives de la fiche de l’animal."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Modifier la fiche de l’animal" }),
+    ).toHaveCount(1);
+    await expect(
+      page.locator("section, form").filter({
+        has: page.getByRole("heading", {
+          name: "Modifier la fiche de l’animal",
+        }),
+      }),
+    ).toHaveCount(1);
+    await expect(
+      page.locator(`select[name="mother_id"] option[value="${manualAnimalId}"]`),
+    ).toHaveCount(0);
+    await expect(
+      page.locator(`select[name="father_id"] option[value="${manualAnimalId}"]`),
+    ).toHaveCount(0);
+    await expect(page.locator('select[name="mother_id"]')).not.toContainText(
+      `QA edition legere ${suffix}`,
+    );
+    await expect(page.locator('select[name="father_id"]')).not.toContainText(
+      `QA edition legere ${suffix}`,
+    );
+    await expect(page.locator('input[name="official_name"]')).toHaveValue(
+      `QA officiel ancien ${suffix}`,
+    );
     await page.getByLabel("Nom d’usage").fill(`QA edition modifiee ${suffix}`);
+    await page
+      .getByLabel("Nom complet")
+      .fill(`QA officiel modifie ${suffix}`);
+    await page.getByLabel("Espèce").selectOption("cat");
+    await page.getByLabel("Race").fill("Maine Coon QA");
+    await page.getByLabel("Sexe", { exact: true }).selectOption("male");
     await expect(page.getByLabel("Numéro d’identification")).toHaveValue("OLD-ID");
     await expect(page.getByLabel("Lien vers la page SCC de l’animal")).toHaveValue(
       "https://www.centrale-canine.fr/chien/old-scc",
@@ -654,16 +777,13 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await page.getByLabel("Numéro LOF").fill("LOF-NEW-123");
     await page.getByLabel("Robe").fill("Fauve clair");
     await page.getByLabel("Date de naissance").fill("2023-02-11");
+    await page.getByLabel("Mère").selectOption(motherId);
+    await page.getByLabel("Père").selectOption(fatherId);
     await page.locator("form").evaluate((form) => {
       for (const [name, value] of [
         ["status", "adopted"],
         ["ownership_status", "adopted_out"],
-        ["sex", "male"],
-        ["species", "cat"],
-        ["breed", "Persan"],
         ["litter_id", "c0000000-0000-4000-8000-000000000001"],
-        ["mother_id", "c0000000-0000-4000-8000-000000000002"],
-        ["father_id", "c0000000-0000-4000-8000-000000000003"],
         ["is_breeder", "yes"],
         ["is_external", "yes"],
         ["is_retired", "yes"],
@@ -686,7 +806,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       await supabase
         .from("animals")
         .select(
-          "call_name, identification_number, pedigree_url, lof_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
+          "call_name, official_name, identification_number, pedigree_url, lof_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
         )
         .eq("id", manualAnimalId)
         .single(),
@@ -695,6 +815,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
 
     expect(updatedManualAnimal).toMatchObject({
       call_name: `QA edition modifiee ${suffix}`,
+      official_name: `QA officiel modifie ${suffix}`,
       identification_number: "NEW-ID",
       pedigree_url: "https://www.centrale-canine.fr/chien/new-scc",
       lof_number: "LOF-NEW-123",
@@ -703,12 +824,12 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       birth_date: "2023-02-11",
       status: "active",
       ownership_status: "owned",
-      sex: "female",
-      species: "dog",
-      breed: "Golden Retriever",
+      sex: "male",
+      species: "cat",
+      breed: "Maine Coon QA",
       litter_id: null,
-      mother_id: null,
-      father_id: null,
+      mother_id: motherId,
+      father_id: fatherId,
       is_breeder: false,
       is_external: false,
       is_retired: false,
@@ -721,6 +842,30 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
         }),
       }),
     ).toContainText("LOF-NEW-123");
+    await expect(
+      page.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      }),
+    ).toContainText("Maine Coon QA");
+    await expect(
+      page.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      }),
+    ).toContainText("Chat");
+    await expect(
+      page.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      }),
+    ).toContainText("Mâle");
     const identitySccLink = page
       .locator("section")
       .filter({
@@ -743,11 +888,11 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
         (input as HTMLInputElement).value = "javascript:alert(1)";
       });
     await page.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=error`);
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
     const rejectedUrlAnimal = expectSupabaseData(
       await supabase
         .from("animals")
-        .select("pedigree_url")
+        .select("pedigree_url, call_name, mother_id, father_id")
         .eq("id", manualAnimalId)
         .single(),
       "read rejected SCC URL animal",
@@ -755,6 +900,9 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     expect(rejectedUrlAnimal.pedigree_url).toBe(
       "https://www.centrale-canine.fr/chien/new-scc",
     );
+    expect(rejectedUrlAnimal.call_name).toBe(`QA edition modifiee ${suffix}`);
+    expect(rejectedUrlAnimal.mother_id).toBe(motherId);
+    expect(rejectedUrlAnimal.father_id).toBe(fatherId);
 
     await page.goto(`/animals/${manualAnimalId}/edit`);
     await expect(page.getByLabel("Numéro LOF")).toHaveValue("LOF-NEW-123");
@@ -762,15 +910,77 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await expect(page.getByLabel("Lien vers la page SCC de l’animal")).toHaveValue(
       "https://www.centrale-canine.fr/chien/new-scc",
     );
+    await page.getByLabel("Nom d’usage").fill(`QA edition same parent ${suffix}`);
+    await page.getByLabel("Mère").selectOption(motherId);
+    await page.getByLabel("Père").selectOption(motherId);
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    let rejectedParentAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, mother_id, father_id")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected same-parent animal",
+    );
+    expect(rejectedParentAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      mother_id: motherId,
+      father_id: fatherId,
+    });
+
+    await page.goto(`/animals/${manualAnimalId}/edit`);
+    await page.getByLabel("Nom d’usage").fill(`QA edition forged parent ${suffix}`);
+    await page.locator('select[name="mother_id"]').evaluate((select) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = "c0000000-0000-4000-8000-999999999999";
+      forgedOption.textContent = "Parent forge";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = forgedOption.value;
+    });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    rejectedParentAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, mother_id, father_id")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected forged-parent animal",
+    );
+    expect(rejectedParentAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      mother_id: motherId,
+      father_id: fatherId,
+    });
 
     await page.goto(`/animals/${litterAnimalId}/edit`);
     await expect(page.locator('input[name="birth_date"]')).toHaveCount(0);
+    await expect(page.locator('select[name="mother_id"]')).toHaveCount(0);
+    await expect(page.locator('select[name="father_id"]')).toHaveCount(0);
+    await expect(page.getByText("QA edition mere portee")).toBeVisible();
+    await expect(page.getByText("QA edition pere portee")).toBeVisible();
+    await expect(
+      page.getByText(
+        "Ces informations proviennent de la portée liée et doivent être corrigées depuis la fiche de la portée.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "fiche de la portée" }),
+    ).toHaveAttribute("href", `/litters/${litterId}`);
     await page.getByLabel("Nom d’usage").fill(`QA edition chiot modifie ${suffix}`);
     await page.locator("form").evaluate((form) => {
-      const input = document.createElement("input");
-      input.name = "birth_date";
-      input.value = "2026-05-20";
-      form.append(input);
+      for (const [name, value] of [
+        ["birth_date", "2026-05-20"],
+        ["mother_id", "c0000000-0000-4000-8000-999999999998"],
+        ["father_id", "c0000000-0000-4000-8000-999999999997"],
+        ["litter_id", ""],
+      ]) {
+        const input = document.createElement("input");
+        input.name = name;
+        input.value = value;
+        form.append(input);
+      }
     });
     await page.getByRole("button", { name: "Enregistrer" }).click();
     await expect(page).toHaveURL(
@@ -780,7 +990,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     const updatedLitterAnimal = expectSupabaseData(
       await supabase
         .from("animals")
-        .select("call_name, birth_date, litter_id, status, ownership_status")
+        .select("call_name, birth_date, litter_id, mother_id, father_id, status, ownership_status")
         .eq("id", litterAnimalId)
         .single(),
       "read updated litter animal",
@@ -790,11 +1000,16 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       call_name: `QA edition chiot modifie ${suffix}`,
       birth_date: "2026-04-15",
       litter_id: litterId,
+      mother_id: litterMotherId,
+      father_id: litterFatherId,
       status: "born",
       ownership_status: "produced",
     });
   } finally {
-    await cleanupAnimalManualFixtures("lightweight identity edit", createdAnimalIds);
+    await cleanupAnimalManualFixtures(
+      "full descriptive identity edit",
+      createdAnimalIds,
+    );
   }
 });
 

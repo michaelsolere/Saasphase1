@@ -3,12 +3,15 @@ import { redirect } from "next/navigation";
 
 import { updateAnimalIdentity } from "@/features/animals/actions";
 import {
+  animalSexOptions,
+  animalSpeciesOptions,
+  type AnimalParentOption,
+} from "@/features/animals/animal-fields";
+import {
   formatAnimalDate,
   getAnimalDisplayName,
   getAnimalSexLabel,
   getAnimalSpeciesLabel,
-  getAnimalStatusLabel,
-  getOwnershipStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +21,7 @@ export const dynamic = "force-dynamic";
 const errorMessages: Record<string, string> = {
   name_required: "Renseignez au moins un nom complet ou un nom d’usage.",
   invalid_date: "La date de naissance est invalide.",
+  invalid: "Les informations envoyées sont invalides.",
   error: "Impossible d’enregistrer les informations pour le moment.",
 };
 
@@ -40,6 +44,26 @@ function ReadOnlyItem({
       </dd>
     </div>
   );
+}
+
+function parentOptionLabel(animal: AnimalParentOption) {
+  const parts = [
+    animal.call_name ?? animal.official_name ?? "Animal sans nom",
+    getAnimalSexLabel(animal.sex),
+  ];
+  const speciesBreed = [getAnimalSpeciesLabel(animal.species), animal.breed]
+    .filter(Boolean)
+    .join(" / ");
+
+  if (speciesBreed) {
+    parts.push(speciesBreed);
+  }
+
+  if (animal.status) {
+    parts.push(animal.status);
+  }
+
+  return parts.join(" · ");
 }
 
 function TextField({
@@ -70,6 +94,77 @@ function TextField({
         required={required}
         className={inputClass}
       />
+    </div>
+  );
+}
+
+function SelectField({
+  id,
+  label,
+  name,
+  defaultValue,
+  options,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  defaultValue: string | null;
+  options: readonly (readonly [string, string])[];
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <select
+        id={id}
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        className={inputClass}
+      >
+        {options.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function ParentSelectField({
+  id,
+  label,
+  name,
+  defaultValue,
+  options,
+  emptyLabel,
+}: {
+  id: string;
+  label: string;
+  name: string;
+  defaultValue: string | null;
+  options: AnimalParentOption[];
+  emptyLabel: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className={labelClass}>
+        {label}
+      </label>
+      <select
+        id={id}
+        name={name}
+        defaultValue={defaultValue ?? ""}
+        className={inputClass}
+      >
+        <option value="">{emptyLabel}</option>
+        {options.map((animal) => (
+          <option key={animal.id} value={animal.id}>
+            {parentOptionLabel(animal)}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -113,7 +208,7 @@ export default async function AnimalEditPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, pedigree_url, lof_number, color, coat_color, is_breeder, is_external, is_retired",
+      "id, organization_id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, pedigree_url, lof_number, color, coat_color, is_breeder, is_external, is_retired",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -141,6 +236,17 @@ export default async function AnimalEditPage({
   const fatherDisplayName = animal?.father_id
     ? parentsById.get(animal.father_id) ?? null
     : null;
+  const { data: parentOptionsRaw } = animal
+    ? await supabase
+        .from("animals")
+        .select("id, call_name, official_name, sex, species, breed, status")
+        .eq("organization_id", animal.organization_id)
+        .neq("id", animal.id)
+        .is("deleted_at", null)
+        .order("call_name", { ascending: true, nullsFirst: false })
+        .order("official_name", { ascending: true, nullsFirst: false })
+    : { data: [] };
+  const parentOptions = (parentOptionsRaw ?? []) as AnimalParentOption[];
   const animalDisplay = animal
     ? getAnimalDisplayName({
         ...animal,
@@ -189,14 +295,13 @@ export default async function AnimalEditPage({
           <>
             <header className="border-b pb-7">
               <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                Animal · Édition légère
+                Animal · Modification
               </p>
               <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
                 Modifier {animalDisplay}
               </h1>
               <p className="mt-3 max-w-2xl leading-7 text-muted">
-                Édition légère limitée aux informations d’identité non
-                structurelles.
+                Corrigez les informations descriptives de la fiche de l’animal.
               </p>
             </header>
 
@@ -209,71 +314,16 @@ export default async function AnimalEditPage({
               </section>
             ) : null}
 
-            <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
-              <h2 className="text-xl font-semibold">
-                Informations structurelles en lecture seule
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted">
-                Ces valeurs ne sont pas modifiables dans l’édition légère.
-              </p>
-              <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                <ReadOnlyItem
-                  label="Espèce"
-                  value={getAnimalSpeciesLabel(animal.species)}
-                />
-                <ReadOnlyItem label="Race" value={animal.breed} />
-                <ReadOnlyItem
-                  label="Sexe"
-                  value={getAnimalSexLabel(animal.sex)}
-                />
-                <ReadOnlyItem
-                  label="Statut"
-                  value={getAnimalStatusLabel(animal.status)}
-                />
-                <ReadOnlyItem
-                  label="Origine"
-                  value={getOwnershipStatusLabel(animal.ownership_status)}
-                />
-                <ReadOnlyItem
-                  label="Portée liée"
-                  value={animal.litter_id ? "Oui" : "Non"}
-                />
-                <ReadOnlyItem label="Mère" value={motherDisplayName} />
-                <ReadOnlyItem label="Père" value={fatherDisplayName} />
-                <ReadOnlyItem
-                  label="Reproducteur"
-                  value={animal.is_breeder ? "Oui" : "Non"}
-                />
-                <ReadOnlyItem
-                  label="Animal extérieur"
-                  value={animal.is_external ? "Oui" : "Non"}
-                />
-                <ReadOnlyItem
-                  label="Retraité"
-                  value={animal.is_retired ? "Oui" : "Non"}
-                />
-              </dl>
-            </section>
-
             <form
               action={updateAnimalIdentity}
               className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
             >
               <input type="hidden" name="animal_id" value={animal.id} />
               <h2 className="text-xl font-semibold">
-                Informations d’identité modifiables
+                Modifier la fiche de l’animal
               </h2>
 
               <div className="mt-6 grid gap-5 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <TextField
-                    id="animal-edit-call-name"
-                    label="Nom d’usage"
-                    name="call_name"
-                    defaultValue={animal.call_name}
-                  />
-                </div>
-
                 <div className="sm:col-span-2">
                   <TextField
                     id="animal-edit-official-name"
@@ -283,6 +333,54 @@ export default async function AnimalEditPage({
                   />
                 </div>
 
+                <div className="sm:col-span-2">
+                  <TextField
+                    id="animal-edit-call-name"
+                    label="Nom d’usage"
+                    name="call_name"
+                    defaultValue={animal.call_name}
+                  />
+                </div>
+
+                <SelectField
+                  id="animal-edit-species"
+                  label="Espèce"
+                  name="species"
+                  defaultValue={animal.species}
+                  options={animalSpeciesOptions}
+                />
+                <TextField
+                  id="animal-edit-breed"
+                  label="Race"
+                  name="breed"
+                  defaultValue={animal.breed}
+                />
+                <SelectField
+                  id="animal-edit-sex"
+                  label="Sexe"
+                  name="sex"
+                  defaultValue={animal.sex}
+                  options={animalSexOptions}
+                />
+                {animal.litter_id ? (
+                  <ReadOnlyItem
+                    label="Date de naissance"
+                    value={formatAnimalDate(animal.birth_date)}
+                  />
+                ) : (
+                  <div>
+                    <label htmlFor="animal-edit-birth-date" className={labelClass}>
+                      Date de naissance
+                    </label>
+                    <input
+                      id="animal-edit-birth-date"
+                      name="birth_date"
+                      type="date"
+                      defaultValue={animal.birth_date ?? ""}
+                      className={inputClass}
+                    />
+                  </div>
+                )}
                 <TextField
                   id="animal-edit-identification"
                   label="Numéro d’identification"
@@ -312,30 +410,43 @@ export default async function AnimalEditPage({
                 />
 
                 {animal.litter_id ? (
-                  <ReadOnlyItem
-                    label="Date de naissance"
-                    value={formatAnimalDate(animal.birth_date)}
-                  />
+                  <>
+                    <ReadOnlyItem label="Mère" value={motherDisplayName} />
+                    <ReadOnlyItem label="Père" value={fatherDisplayName} />
+                  </>
                 ) : (
-                  <div>
-                    <label htmlFor="animal-edit-birth-date" className={labelClass}>
-                      Date de naissance
-                    </label>
-                    <input
-                      id="animal-edit-birth-date"
-                      name="birth_date"
-                      type="date"
-                      defaultValue={animal.birth_date ?? ""}
-                      className={inputClass}
+                  <>
+                    <ParentSelectField
+                      id="animal-edit-mother"
+                      label="Mère"
+                      name="mother_id"
+                      defaultValue={animal.mother_id}
+                      options={parentOptions}
+                      emptyLabel="Aucune mère"
                     />
-                  </div>
+                    <ParentSelectField
+                      id="animal-edit-father"
+                      label="Père"
+                      name="father_id"
+                      defaultValue={animal.father_id}
+                      options={parentOptions}
+                      emptyLabel="Aucun père"
+                    />
+                  </>
                 )}
               </div>
 
               {animal.litter_id ? (
                 <p className="mt-5 text-sm leading-6 text-muted">
-                  La date de naissance provient de la portée liée et n’est pas
-                  modifiable dans ce lot.
+                  Ces informations proviennent de la portée liée et doivent être
+                  corrigées depuis la{" "}
+                  <Link
+                    href={`/litters/${animal.litter_id}`}
+                    className="font-semibold text-accent hover:underline"
+                  >
+                    fiche de la portée
+                  </Link>
+                  .
                 </p>
               ) : null}
 

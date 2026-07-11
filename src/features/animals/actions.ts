@@ -71,7 +71,7 @@ function animalCreateUrl(
 
 function animalIdentityEditUrl(
   animalId: string,
-  code: "name_required" | "invalid_date" | "error",
+  code: "name_required" | "invalid_date" | "invalid" | "error",
 ) {
   return `/animals/${animalId}/edit?status=${code}`;
 }
@@ -458,6 +458,17 @@ export async function updateAnimalIdentity(formData: FormData) {
 
   const callName = normalizeOptionalText(formData.get("call_name"));
   const officialName = normalizeOptionalText(formData.get("official_name"));
+  const speciesRaw = formData.get("species");
+  const species =
+    typeof speciesRaw === "string" && allowedSpecies.has(speciesRaw.trim())
+      ? speciesRaw.trim()
+      : "invalid";
+  const breed = normalizeOptionalText(formData.get("breed")) ?? "Golden Retriever";
+  const sexRaw = formData.get("sex");
+  const sex =
+    typeof sexRaw === "string" && allowedSexes.has(sexRaw.trim())
+      ? sexRaw.trim()
+      : "invalid";
 
   if (!callName && !officialName) {
     redirect(animalIdentityEditUrl(animalId, "name_required"));
@@ -465,8 +476,8 @@ export async function updateAnimalIdentity(formData: FormData) {
 
   const pedigreeUrl = normalizeOptionalHttpUrl(formData.get("pedigree_url"));
 
-  if (pedigreeUrl === "invalid") {
-    redirect(animalIdentityEditUrl(animalId, "error"));
+  if (pedigreeUrl === "invalid" || species === "invalid" || sex === "invalid") {
+    redirect(animalIdentityEditUrl(animalId, "invalid"));
   }
 
   const supabase = await createClient();
@@ -492,6 +503,9 @@ export async function updateAnimalIdentity(formData: FormData) {
   const animalToUpdate: AnimalUpdate = {
     call_name: callName,
     official_name: officialName,
+    species,
+    breed,
+    sex,
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
@@ -504,12 +518,50 @@ export async function updateAnimalIdentity(formData: FormData) {
 
   if (!animal.litter_id) {
     const birthDate = normalizeOptionalDate(formData.get("birth_date"));
+    const motherId = parseOptionalUuid(formData.get("mother_id"));
+    const fatherId = parseOptionalUuid(formData.get("father_id"));
+
+    if (
+      birthDate === "invalid" ||
+      motherId === "invalid" ||
+      fatherId === "invalid" ||
+      motherId === animal.id ||
+      fatherId === animal.id ||
+      (motherId && fatherId && motherId === fatherId)
+    ) {
+      redirect(
+        animalIdentityEditUrl(
+          animalId,
+          birthDate === "invalid" ? "invalid_date" : "invalid",
+        ),
+      );
+    }
+
+    const parentIds = [motherId, fatherId].filter(Boolean) as string[];
+    const { data: parents, error: parentsError } = parentIds.length
+      ? await supabase
+          .from("animals")
+          .select("id")
+          .eq("organization_id", animal.organization_id)
+          .in("id", parentIds)
+          .is("deleted_at", null)
+      : { data: [], error: null };
+    const foundParentIds = new Set((parents ?? []).map((parent) => parent.id));
+
+    if (
+      parentsError ||
+      parentIds.some((parentId) => !foundParentIds.has(parentId))
+    ) {
+      redirect(animalIdentityEditUrl(animalId, "invalid"));
+    }
 
     if (birthDate === "invalid") {
       redirect(animalIdentityEditUrl(animalId, "invalid_date"));
     }
 
     animalToUpdate.birth_date = birthDate;
+    animalToUpdate.mother_id = motherId;
+    animalToUpdate.father_id = fatherId;
   }
 
   const { error: updateError } = await supabase
