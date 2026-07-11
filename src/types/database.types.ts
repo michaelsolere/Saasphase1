@@ -1106,6 +1106,168 @@ export type Database = {
           },
         ]
       }
+      email_delivery_attempts: {
+        Row: {
+          attempt_count: number
+          brevo_message_id: string | null
+          contact_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          email_template_id: string | null
+          failed_at: string | null
+          id: string
+          idempotency_key: string
+          last_attempt_at: string | null
+          last_error_code: string | null
+          litter_group_id: string | null
+          litter_id: string | null
+          message_type: string
+          organization_id: string
+          recipient_email: string
+          recipient_name: string | null
+          reservation_id: string | null
+          sent_at: string | null
+          status: string
+          subject_snapshot: string | null
+          updated_at: string
+          updated_by: string | null
+          variables_snapshot: Json
+        }
+        Insert: {
+          attempt_count?: number
+          brevo_message_id?: string | null
+          contact_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email_template_id?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          litter_group_id?: string | null
+          litter_id?: string | null
+          message_type: string
+          organization_id: string
+          recipient_email: string
+          recipient_name?: string | null
+          reservation_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject_snapshot?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          variables_snapshot?: Json
+        }
+        Update: {
+          attempt_count?: number
+          brevo_message_id?: string | null
+          contact_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          email_template_id?: string | null
+          failed_at?: string | null
+          id?: string
+          idempotency_key?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          litter_group_id?: string | null
+          litter_id?: string | null
+          message_type?: string
+          organization_id?: string
+          recipient_email?: string
+          recipient_name?: string | null
+          reservation_id?: string | null
+          sent_at?: string | null
+          status?: string
+          subject_snapshot?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          variables_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_delivery_attempts_contact_organization_fk"
+            columns: ["organization_id", "contact_id"]
+            isOneToOne: false
+            referencedRelation: "contact_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_contact_organization_fk"
+            columns: ["organization_id", "contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_email_template_organization_fk"
+            columns: ["organization_id", "email_template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_litter_group_organization_fk"
+            columns: ["organization_id", "litter_group_id"]
+            isOneToOne: false
+            referencedRelation: "litter_groups"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_reservation_organization_fk"
+            columns: ["organization_id", "reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_reservation_organization_fk"
+            columns: ["organization_id", "reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "email_delivery_attempts_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_templates: {
         Row: {
           body: string

@@ -194,6 +194,27 @@ function SubmitRow({
   );
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "Non renseignée";
+  }
+
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatAttemptStatus(status: string) {
+  const labels: Record<string, string> = {
+    pending: "En attente",
+    sent: "Envoyé",
+    failed: "Échec",
+  };
+
+  return labels[status] ?? status;
+}
+
 export default async function OrganizationSettingsPage({
   searchParams,
 }: {
@@ -276,6 +297,16 @@ export default async function OrganizationSettingsPage({
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
     .maybeSingle();
+
+  const { data: emailDeliveryAttempts } = await supabase
+    .from("email_delivery_attempts")
+    .select(
+      "id, created_at, message_type, recipient_email, recipient_name, status, attempt_count, sent_at",
+    )
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(10);
 
   if (organizationError || !organization) {
     return (
@@ -436,6 +467,73 @@ export default async function OrganizationSettingsPage({
             mais pas le test de connexion.
           </p>
         )}
+
+        <section className="mt-8 border-t pt-6">
+          <h3 className="text-base font-semibold">Dernières tentatives d’e-mail</h3>
+          {emailDeliveryAttempts && emailDeliveryAttempts.length > 0 ? (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b text-xs uppercase tracking-wide text-muted">
+                  <tr>
+                    <th scope="col" className="py-3 pr-4 font-semibold">
+                      Préparation
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
+                      Type
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
+                      Destinataire
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
+                      Statut
+                    </th>
+                    <th scope="col" className="px-4 py-3 font-semibold">
+                      Tentatives
+                    </th>
+                    <th scope="col" className="py-3 pl-4 font-semibold">
+                      Envoi
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {emailDeliveryAttempts.map((attempt) => (
+                    <tr key={attempt.id}>
+                      <td className="py-3 pr-4 align-top text-muted">
+                        {formatDateTime(attempt.created_at)}
+                      </td>
+                      <td className="px-4 py-3 align-top font-medium">
+                        {attempt.message_type}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <span className="block font-medium">
+                          {attempt.recipient_name || attempt.recipient_email}
+                        </span>
+                        {attempt.recipient_name ? (
+                          <span className="mt-1 block text-muted">
+                            {attempt.recipient_email}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {formatAttemptStatus(attempt.status)}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {attempt.attempt_count}
+                      </td>
+                      <td className="py-3 pl-4 align-top text-muted">
+                        {formatDateTime(attempt.sent_at)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-4 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
+              Aucune tentative d’e-mail enregistrée pour cette organisation.
+            </p>
+          )}
+        </section>
       </section>
 
       <form

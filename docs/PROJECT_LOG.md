@@ -20,6 +20,25 @@ Documentation projet à jour jusqu'au lot cockpit Réservation / actions sensibl
 > [!IMPORTANT]
 > **Règle de méthode** : Tous les prochains lots de développement doivent obligatoirement être intégrés via des branches de travail et des Pull Requests GitHub. Les commits directs sur `main` sont strictement proscrits. Si l'outil de ligne de commande `gh` est indisponible pour créer la PR en CLI, l'agent doit pousser sa branche sur origin, puis s'arrêter en invitant l'utilisateur à finaliser la création/fusion de la PR depuis l'interface web de GitHub.
 
+## Jalon Communications — journal des tentatives e-mail
+
+Objectif : préparer les futurs envois transactionnels Brevo avec un journal persistant provider-neutral, sans envoyer d'e-mail et sans appeler l'API Brevo.
+
+État documenté :
+
+* création de `email_delivery_attempts` pour représenter une opération logique d'envoi individuel réutilisable lors des réessais ;
+* contrainte stricte `unique (organization_id, idempotency_key)` comme garde-fou principal contre les doublons concurrents ;
+* statuts Phase 1 limités à `pending`, `sent` et `failed`, sans enum PostgreSQL ;
+* clés étrangères composites vers contacts, réservations, portées, groupes de portées et modèles d'e-mail, sans cascade destructive ;
+* RLS activée : lecture membre actif, écriture `owner` / `admin` / `member`, aucune policy ni grant de suppression ;
+* service serveur `prepareEmailDeliveryAttempt`, `markEmailDeliveryAttemptSent` et `markEmailDeliveryAttemptFailed`, sans dépendance Brevo ;
+* helper déterministe de clé d'idempotence basé sur l'organisation, le type de message, les objets métier et une version logique ;
+* historique sobre des dix dernières tentatives dans `/settings/organization`, sans clé d'idempotence, variables JSON brutes, erreur brute, secret ou contenu d'e-mail.
+
+Validations réalisées : `supabase db reset`, génération des types Supabase, `pnpm lint`, `pnpm build`, spec ciblée `tests/e2e/email-delivery-attempt-foundation.spec.ts`, vérification locale de `/settings/organization`.
+
+Hors périmètre conservé : aucun `POST /smtp/email`, aucun envoi réel ou simulé, aucun template Brevo, aucun webhook, aucune synchronisation de contacts, aucune campagne collective, aucune file d'attente, aucun stockage de clé API par organisation.
+
 ## Jalon Animaux
 
 Objectif : consolider le module Animaux autour des animaux produits, des reproducteurs et de l'attribution à une réservation, sans créer de modèle séparé pour les chiots ou chatons.
