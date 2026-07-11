@@ -1,5 +1,3 @@
-import "server-only";
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -519,6 +517,10 @@ export async function sendPreReservationEmailForReservation(
     {
       organizationId: reservation.organization_id,
       attemptId: claim.attempt.id,
+      emailTemplateId: template.id,
+      recipientEmail,
+      recipientName,
+      variablesSnapshot: variables,
       brevoTemplateId: templateResult.template.id,
       brevoTemplateModifiedAt: normalizeBrevoModifiedAt(
         templateResult.template.modifiedAt,

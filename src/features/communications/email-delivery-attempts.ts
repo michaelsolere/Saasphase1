@@ -1,5 +1,3 @@
-import "server-only";
-
 import { createHash } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -487,15 +485,6 @@ export async function markEmailDeliveryAttemptSent(
     return transitionErrorResult("invalid_input", "Invalid sent transition input.");
   }
 
-  const currentAttempt = await readAttemptForTransition(
-    supabase,
-    organizationId,
-    attemptId,
-  );
-  if (!currentAttempt) {
-    return transitionErrorResult("not_found", "Email delivery attempt not found.");
-  }
-
   const sentAt = input.sentAt ?? new Date().toISOString();
   const { data, error } = await supabase
     .from("email_delivery_attempts")
@@ -510,11 +499,15 @@ export async function markEmailDeliveryAttemptSent(
     .eq("organization_id", organizationId)
     .eq("id", attemptId)
     .is("deleted_at", null)
+    .eq("status", "sending")
     .select("*")
     .maybeSingle();
 
   if (error || !data) {
-    return transitionErrorResult("database_error", "Unable to mark attempt sent.");
+    return transitionErrorResult(
+      error ? "database_error" : "not_found",
+      "Unable to mark sending attempt sent.",
+    );
   }
 
   return { outcome: "updated", attempt: data };
@@ -540,15 +533,6 @@ export async function markEmailDeliveryAttemptFailed(
     return transitionErrorResult("invalid_input", "Invalid failed transition input.");
   }
 
-  const currentAttempt = await readAttemptForTransition(
-    supabase,
-    organizationId,
-    attemptId,
-  );
-  if (!currentAttempt) {
-    return transitionErrorResult("not_found", "Email delivery attempt not found.");
-  }
-
   const failedAt = input.failedAt ?? new Date().toISOString();
   const { data, error } = await supabase
     .from("email_delivery_attempts")
@@ -561,11 +545,15 @@ export async function markEmailDeliveryAttemptFailed(
     .eq("organization_id", organizationId)
     .eq("id", attemptId)
     .is("deleted_at", null)
+    .eq("status", "sending")
     .select("*")
     .maybeSingle();
 
   if (error || !data) {
-    return transitionErrorResult("database_error", "Unable to mark attempt failed.");
+    return transitionErrorResult(
+      error ? "database_error" : "not_found",
+      "Unable to mark sending attempt failed.",
+    );
   }
 
   return { outcome: "updated", attempt: data };
@@ -661,6 +649,10 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
   input: {
     organizationId: string;
     attemptId: string;
+    emailTemplateId: string;
+    recipientEmail: string;
+    recipientName?: string | null;
+    variablesSnapshot: unknown;
     brevoTemplateId: number;
     subjectSnapshot: string;
     brevoTemplateModifiedAt?: string | null;
@@ -671,17 +663,34 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
   const supabase = supabaseClient ?? (await createClient());
   const organizationId = normalizeRequiredText(input.organizationId, 64);
   const attemptId = normalizeRequiredText(input.attemptId, 64);
+  const emailTemplateId = normalizeOptionalId(input.emailTemplateId);
+  const recipientEmail = normalizeEmail(input.recipientEmail);
+  const recipientName = normalizeOptionalText(input.recipientName);
+  const variablesSnapshot = normalizeVariablesSnapshot(input.variablesSnapshot);
   const brevoTemplateId = normalizePositiveInteger(input.brevoTemplateId);
   const subjectSnapshot = normalizeOptionalText(input.subjectSnapshot, 500);
   const userId = normalizeRequiredText(input.userId, 64);
 
-  if (!organizationId || !attemptId || !brevoTemplateId || !subjectSnapshot || !userId) {
+  if (
+    !organizationId ||
+    !attemptId ||
+    !emailTemplateId ||
+    !recipientEmail ||
+    !variablesSnapshot ||
+    !brevoTemplateId ||
+    !subjectSnapshot ||
+    !userId
+  ) {
     return snapshotErrorResult("invalid_input", "Invalid template snapshot input.");
   }
 
   const { data, error } = await supabase
     .from("email_delivery_attempts")
     .update({
+      email_template_id: emailTemplateId,
+      recipient_email: recipientEmail,
+      recipient_name: recipientName,
+      variables_snapshot: variablesSnapshot,
       brevo_template_id: brevoTemplateId,
       brevo_template_modified_at: input.brevoTemplateModifiedAt ?? null,
       subject_snapshot: subjectSnapshot,
