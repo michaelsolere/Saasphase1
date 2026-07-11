@@ -21,6 +21,7 @@ export type AnimalFilterState = {
   sex: AnimalSexFilter | null;
   origin: AnimalOriginFilter | null;
   litter_id: string | null;
+  q: string | null;
 };
 
 export type AnimalLitterFilterOption = {
@@ -54,6 +55,9 @@ function animalsHref(filters: AnimalFilterState) {
   if (filters.litter_id) {
     params.set("litter_id", filters.litter_id);
   }
+  if (filters.q) {
+    params.set("q", filters.q);
+  }
 
   const query = params.toString();
 
@@ -70,6 +74,15 @@ function cleanEmptyFilterFields(event: FormEvent<HTMLFormElement>) {
   controls.forEach((control) => {
     control.disabled = !control.value;
   });
+
+  const searchInput = event.currentTarget.elements.namedItem("q");
+
+  if (searchInput instanceof HTMLInputElement) {
+    const query = searchInput.value.trim();
+
+    searchInput.value = query;
+    searchInput.disabled = !query;
+  }
 }
 
 export function AnimalFilters({
@@ -113,13 +126,24 @@ export function AnimalFilters({
         </div>
 
         <form
-          className="grid gap-4 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]"
+          className="grid gap-4 md:grid-cols-[repeat(4,minmax(0,1fr))_auto]"
           method="get"
           onSubmit={cleanEmptyFilterFields}
         >
           {filters.filter ? (
             <input type="hidden" name="filter" value={filters.filter} />
           ) : null}
+          <label className="grid gap-1.5 text-sm font-medium">
+            <span>Rechercher un animal</span>
+            <input
+              name="q"
+              type="search"
+              defaultValue={filters.q ?? ""}
+              placeholder="Nom, identification, LOF"
+              className="rounded-lg border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent"
+            />
+          </label>
+
           <label className="grid gap-1.5 text-sm font-medium">
             <span>Sexe</span>
             <select

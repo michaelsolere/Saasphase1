@@ -23,6 +23,7 @@ export type AnimalListItem = Pick<
   | "collar_color_current"
   | "collar_color_initial"
   | "identification_number"
+  | "lof_number"
   | "color"
   | "coat_color"
   | "created_at"

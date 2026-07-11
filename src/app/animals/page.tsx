@@ -81,6 +81,7 @@ function parseAnimalFilters(params: Record<string, string | string[] | undefined
   const sex = firstParam(params.sex);
   const origin = firstParam(params.origin);
   const litterId = firstParam(params.litter_id);
+  const query = firstParam(params.q)?.trim();
 
   return {
     filter:
@@ -96,7 +97,32 @@ function parseAnimalFilters(params: Record<string, string | string[] | undefined
         ? (origin as AnimalOriginFilter)
         : null,
     litter_id: litterId || null,
+    q: query || null,
   } satisfies AnimalFilterState;
+}
+
+function normalizeSearchText(value: string | null) {
+  return value
+    ?.normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("fr")
+    .trim()
+    .replace(/\s+/g, " ") || "";
+}
+
+function matchesTextSearch(animal: AnimalListItem, query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [
+    animal.call_name,
+    animal.official_name,
+    animal.identification_number,
+    animal.lof_number,
+  ].some((value) => normalizeSearchText(value).includes(normalizedQuery));
 }
 
 function isExternalAnimal(animal: Pick<AnimalListItem, "is_external" | "ownership_status">) {
@@ -159,6 +185,10 @@ function applyAnimalFilters(
   filters: AnimalFilterState,
 ) {
   return animals.filter((animal) => {
+    if (filters.q && !matchesTextSearch(animal, filters.q)) {
+      return false;
+    }
+
     if (filters.filter && !matchesQuickFilter(animal, filters.filter)) {
       return false;
     }
@@ -283,7 +313,7 @@ export default async function AnimalsPage({
   const result = await supabase
     .from("animals")
     .select(
-      "id, call_name, official_name, species, breed, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, created_at",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, lof_number, color, coat_color, created_at",
     )
     .is("deleted_at", null)
     .order("created_at", { ascending: false });

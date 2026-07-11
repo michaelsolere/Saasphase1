@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
@@ -96,6 +95,11 @@ async function createQaAnimal(
   animalId: string,
   callName: string,
   sex: "male" | "female",
+  options: {
+    officialName?: string | null;
+    identificationNumber?: string | null;
+    lofNumber?: string | null;
+  } = {},
 ) {
   const { error } = await supabase.from("animals").insert({
     id: animalId,
@@ -104,6 +108,9 @@ async function createQaAnimal(
     breed: "Golden Retriever",
     sex,
     call_name: callName,
+    official_name: options.officialName ?? null,
+    identification_number: options.identificationNumber ?? null,
+    lof_number: options.lofNumber ?? null,
     birth_date: "2026-02-14",
     status: "available",
     ownership_status: "produced",
@@ -179,11 +186,11 @@ test("shows animal list primary photo thumbnails with grouped media loading", as
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const withPhotoAnimalId = randomUUID();
-  const withoutPhotoAnimalId = randomUUID();
-  const brokenPhotoAnimalId = randomUUID();
-  const withPhotoMediaId = randomUUID();
-  const brokenPhotoMediaId = randomUUID();
+  const withPhotoAnimalId = "30000000-0000-4000-8000-000000000001";
+  const withoutPhotoAnimalId = "30000000-0000-4000-8000-000000000002";
+  const brokenPhotoAnimalId = "30000000-0000-4000-8000-000000000003";
+  const withPhotoMediaId = "40000000-0000-4000-8000-000000000001";
+  const brokenPhotoMediaId = "40000000-0000-4000-8000-000000000003";
   const withPhotoName = `QA list photo ${withPhotoAnimalId.slice(0, 8)}`;
   const withoutPhotoName = `QA list no photo ${withoutPhotoAnimalId.slice(0, 8)}`;
   const brokenPhotoName = `QA list broken photo ${brokenPhotoAnimalId.slice(0, 8)}`;
@@ -271,6 +278,147 @@ test("shows animal list primary photo thumbnails with grouped media loading", as
     expect(thumbnailBox?.width).toBeGreaterThan(40);
     expect(thumbnailBox?.height).toBeGreaterThan(56);
     await expect(page.getByText(withoutPhotoName)).toBeVisible();
+  } finally {
+    runSql(`
+      delete from public.media
+      where id in (${mediaIds.map((id) => `${sqlQuote(id)}::uuid`).join(",")});
+    `);
+
+    const storageDelete = await supabase.storage
+      .from(bucketName)
+      .remove(storagePaths);
+    if (storageDelete.error) {
+      throw new Error(`Storage cleanup failed: ${storageDelete.error.message}`);
+    }
+
+    runSql(`
+      delete from public.animals
+      where id in (${animalIds.map((id) => `${sqlQuote(id)}::uuid`).join(",")});
+    `);
+
+    finalCounts = {
+      animals: countRows("animals", animalIds),
+      media: countRows("media", mediaIds),
+      mediaByAnimal: countMediaRowsForAnimals(animalIds),
+      storageObjects: countStorageObjects(storagePaths),
+    };
+
+    expect(finalCounts).toEqual({
+      animals: 0,
+      media: 0,
+      mediaByAnimal: 0,
+      storageObjects: 0,
+    });
+  }
+});
+
+test("filters animals with URL text search before loading primary photos", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  const animalIds = [
+    "30000000-0000-4000-8000-000000000101",
+    "30000000-0000-4000-8000-000000000102",
+    "30000000-0000-4000-8000-000000000103",
+    "30000000-0000-4000-8000-000000000104",
+    "30000000-0000-4000-8000-000000000105",
+  ];
+  const mediaIds = [
+    "40000000-0000-4000-8000-000000000101",
+    "40000000-0000-4000-8000-000000000105",
+  ];
+  const [salomeId, officialId, identifiedId, lofId, decoyId] = animalIds;
+  const [salomeMediaId, decoyMediaId] = mediaIds;
+  const salomeName = "QA Recherche Salomé Rubis";
+  const officialName = "Princesse Officielle Boréale QA";
+  const identifiedName = "QA Recherche Identification";
+  const lofName = "QA Recherche LOF";
+  const decoyName = "QA Recherche Photo hors filtre";
+  const identificationNumber = "250 269 610 123 456";
+  const lofNumber = "LOF-SEARCH-2026-XYZ";
+  const salomePath =
+    `organizations/${organizationId}/animals/${salomeId}/primary/${salomeMediaId}.webp`;
+  const decoyPath =
+    `organizations/${organizationId}/animals/${decoyId}/primary/${decoyMediaId}.webp`;
+  const storagePaths = [salomePath, decoyPath];
+  const imageRequests: string[] = [];
+  let finalCounts = {
+    animals: -1,
+    media: -1,
+    mediaByAnimal: -1,
+    storageObjects: -1,
+  };
+
+  page.on("request", (request) => {
+    const url = request.url();
+
+    if (url.includes("/storage/v1/object/sign/animal-media/")) {
+      imageRequests.push(url);
+    }
+  });
+
+  try {
+    await createQaAnimal(supabase, salomeId, salomeName, "female");
+    await createQaAnimal(supabase, officialId, "QA Recherche Nom officiel", "male", {
+      officialName,
+    });
+    await createQaAnimal(
+      supabase,
+      identifiedId,
+      identifiedName,
+      "female",
+      { identificationNumber },
+    );
+    await createQaAnimal(supabase, lofId, lofName, "male", { lofNumber });
+    await createQaAnimal(supabase, decoyId, decoyName, "female");
+    await uploadWebpFixture(supabase, salomePath);
+    await uploadWebpFixture(supabase, decoyPath);
+    await createPrimaryMedia(supabase, salomeMediaId, salomeId, salomePath);
+    await createPrimaryMedia(supabase, decoyMediaId, decoyId, decoyPath);
+
+    await login(page);
+
+    await page.goto("/animals?q=salome");
+    await expect(page.getByText(salomeName)).toBeVisible();
+    await expect(page.getByText(decoyName)).toHaveCount(0);
+    await expect(
+      page.getByTestId(`animal-list-primary-photo-${salomeId}`),
+    ).toBeVisible();
+    expect(imageRequests.some((url) => url.includes(salomeId))).toBe(true);
+    expect(imageRequests.some((url) => url.includes(decoyId))).toBe(false);
+
+    await page.goto("/animals?q=officielle%20boreale");
+    await expect(page.getByText(officialName)).toBeVisible();
+    await expect(page.getByText(salomeName)).toHaveCount(0);
+
+    await page.goto("/animals?q=250%20269%20610");
+    await expect(page.getByText(identifiedName)).toBeVisible();
+    await expect(page.getByText(lofName)).toHaveCount(0);
+
+    await page.goto("/animals?q=lof-search-2026");
+    await expect(page.getByText(lofName)).toBeVisible();
+    await expect(page.getByText(identifiedName)).toHaveCount(0);
+
+    await page.goto("/animals?q=qa%20recherche&sex=male");
+    await expect(page.getByText(officialName)).toBeVisible();
+    await expect(page.getByText(lofName)).toBeVisible();
+    await expect(page.getByText(salomeName)).toHaveCount(0);
+    await expect(page.getByText(identifiedName)).toHaveCount(0);
+
+    await page.goto("/animals?q=aucun-resultat-qa-recherche");
+    await expect(page.getByText("Aucun animal trouvé.")).toBeVisible();
+
+    await page.goto("/animals?q=salome");
+    await page.getByRole("link", { name: "Disponibles" }).click();
+    await expect(page).toHaveURL(/\/animals\?filter=available&q=salome/);
+    await expect(page.getByText(salomeName)).toBeVisible();
+
+    await page.getByRole("link", { name: "Réinitialiser" }).click();
+    await expect(page).toHaveURL("/animals");
+
+    await page.getByLabel("Rechercher un animal").fill("   ");
+    await page.getByRole("button", { name: "Filtrer" }).click();
+    await expect(page).toHaveURL("/animals");
   } finally {
     runSql(`
       delete from public.media
