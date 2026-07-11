@@ -7,6 +7,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { isApplicationToValidateStatus } from "@/features/applications/statuses";
 import type {
   ApplicationFilter,
   ApplicationOverview,
@@ -30,10 +31,6 @@ function getEmptyMessage(filter: ApplicationFilter) {
   }
 
   return "Aucune candidature reçue";
-}
-
-function isToValidateStatus(status: string | null) {
-  return status === "new" || status === "to_review" || status === "to_call";
 }
 
 function getReturnPath(filter: ApplicationFilter) {
@@ -91,7 +88,7 @@ export function ApplicationList({
           </thead>
           <tbody className="divide-y divide-border">
             {applications.map((application) => {
-              const isToValidate = isToValidateStatus(application.status);
+              const isToValidate = isApplicationToValidateStatus(application.status);
               const candidateName =
                 application.contact_display_name ?? "Nom non disponible";
 

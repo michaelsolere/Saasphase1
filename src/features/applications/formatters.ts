@@ -1,7 +1,7 @@
 const statusLabels: Record<string, string> = {
   new: "À valider",
   to_review: "À valider",
-  to_call: "À appeler",
+  to_call: "À valider",
   qualified: "Validée",
   waiting_litter: "En attente de portée",
   rejected: "Refusée",

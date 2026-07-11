@@ -22,7 +22,7 @@ const actionLabels: Record<QualificationAction, string> = {
   qualify: "Valider",
   reactivate: "Réactiver vers À valider",
   reject: "Refuser",
-  to_call: "À appeler",
+  to_call: "À valider",
 };
 
 const actionStyles: Record<QualificationAction, string> = {

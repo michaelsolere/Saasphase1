@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ApplicationList } from "@/features/applications/application-list";
+import { APPLICATION_TO_VALIDATE_STATUSES } from "@/features/applications/statuses";
 import type { ApplicationFilter } from "@/features/applications/types";
 import { createClient } from "@/lib/supabase/server";
 
@@ -33,9 +34,6 @@ const filters = [
   label: string;
   href: string;
 }>;
-
-const attentionStatuses = ["new", "to_review"];
-const toValidateStatuses = [...attentionStatuses, "to_call"];
 
 function getDecisionPreview(value: string | null) {
   if (!value) {
@@ -121,11 +119,11 @@ export default async function ApplicationsPage({
 
   if (filter === "attention") {
     query = query
-      .in("status", attentionStatuses)
+      .in("status", APPLICATION_TO_VALIDATE_STATUSES)
       .eq("has_started_adopter_journey", false);
   } else if (filter === "to_validate") {
     query = query
-      .in("status", toValidateStatuses)
+      .in("status", APPLICATION_TO_VALIDATE_STATUSES)
       .eq("has_started_adopter_journey", false);
   } else if (filter === "validated") {
     query = query

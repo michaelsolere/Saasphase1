@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { APPLICATION_TO_VALIDATE_STATUSES } from "@/features/applications/statuses";
 import {
   formatPrice,
   getReservationStatusLabel,
@@ -21,7 +22,10 @@ import {
   getLitterStatusLabel,
   formatLitterDate,
 } from "@/features/litters/formatters";
-import { resolveDepositSettings } from "@/features/payments/deposit-thresholds";
+import {
+  readCompleteDepositCentsByOrganizationId,
+  resolveDepositSettings,
+} from "@/features/payments/deposit-thresholds";
 
 export const dynamic = "force-dynamic";
 
@@ -168,7 +172,7 @@ export default async function Home() {
   const { data: rawApplications } = await supabase
     .from("application_overview")
     .select("id, contact_display_name, status, desired_sex_preference, breed, has_started_adopter_journey, submitted_at, created_at")
-    .in("status", ["new", "to_review"])
+    .in("status", APPLICATION_TO_VALIDATE_STATUSES)
     .eq("has_started_adopter_journey", false)
     .order("created_at", { ascending: false });
   const applicationsNeedReview = rawApplications || [];
@@ -207,22 +211,11 @@ export default async function Home() {
         .filter((id): id is string => Boolean(id)),
     ),
   );
-  const { data: rawPaymentSettings } = organizationIds.length > 0
-    ? await supabase
-        .from("organization_settings")
-        .select(
-          "organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents, pre_reservation_response_delay_days",
-        )
-        .in("organization_id", organizationIds)
-        .is("deleted_at", null)
-    : { data: [] };
-  const completeDepositCentsByOrganizationId = new Map<string, number>();
-  for (const settings of rawPaymentSettings || []) {
-    completeDepositCentsByOrganizationId.set(
-      settings.organization_id,
-      resolveDepositSettings(settings).completeDepositCents,
-    );
-  }
+  const completeDepositCentsByOrganizationId =
+    await readCompleteDepositCentsByOrganizationId({
+      supabase,
+      organizationIds,
+    });
   const reservationIds = (rawReservations || [])
     .map((reservation) => reservation.id)
     .filter((id): id is string => Boolean(id));
@@ -387,7 +380,7 @@ export default async function Home() {
 
             <div className="mt-6 border-t pt-4">
               <Link
-                href="/candidatures?filter=attention"
+                href="/candidatures"
                 className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
               >
                 Voir les candidats à valider ({applicationsNeedReview.length}) →

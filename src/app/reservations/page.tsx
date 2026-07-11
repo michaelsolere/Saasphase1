@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import {
+  readCompleteDepositCentsByOrganizationId,
+} from "@/features/payments/deposit-thresholds";
 import { reservationNeedsAttention } from "@/features/reservations/attention";
 import { ReservationList } from "@/features/reservations/reservation-list";
 import type { ReservationOverview } from "@/features/reservations/types";
@@ -72,7 +75,7 @@ export default async function ReservationsPage({
   let reservationQuery = supabase
     .from("reservation_overview")
     .select(
-      "id, contact_id, contact_display_name, status, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
+      "id, organization_id, contact_id, contact_display_name, status, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
     )
     .neq("status", "pre_reservation_requested")
     .order("created_at", { ascending: false });
@@ -106,7 +109,15 @@ export default async function ReservationsPage({
     const reservationIds = reservations
       .map((reservation) => reservation.id)
       .filter((id): id is string => Boolean(id));
+    const organizationIds = reservations
+      .map((reservation) => reservation.organization_id)
+      .filter((id): id is string => Boolean(id));
     const paidArrhesCentsByReservationId = new Map<string, number>();
+    const completeDepositCentsByOrganizationId =
+      await readCompleteDepositCentsByOrganizationId({
+        supabase,
+        organizationIds,
+      });
 
     if (reservationIds.length > 0) {
       const { data: rawPaidArrhesPayments, error: paidArrhesError } =
@@ -137,8 +148,15 @@ export default async function ReservationsPage({
       const paidArrhesCents = reservation.id
         ? paidArrhesCentsByReservationId.get(reservation.id) ?? 0
         : 0;
+      const completeDepositCents = reservation.organization_id
+        ? completeDepositCentsByOrganizationId.get(reservation.organization_id)
+        : undefined;
 
-      return reservationNeedsAttention(reservation, paidArrhesCents);
+      return reservationNeedsAttention(
+        reservation,
+        paidArrhesCents,
+        completeDepositCents,
+      );
     });
   }
   litterGroups = (litterGroupsResult.data ?? []) as LitterGroupFilterOption[];
