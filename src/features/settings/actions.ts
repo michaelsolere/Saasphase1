@@ -3,13 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
 const settingsPath = "/settings/organization";
 const legalForms = new Set(["individual", "earl", "company", "association", "other"]);
+const brevoStatuses = new Set([
+  "success",
+  "not_configured",
+  "unauthorized",
+  "timeout",
+  "error",
+]);
 
 function statusUrl(key: string, outcome: "success" | "error") {
   return `${settingsPath}?${key}=${outcome}`;
+}
+
+function brevoStatusUrl(outcome: string) {
+  return `${settingsPath}?brevo_status=${outcome}`;
 }
 
 function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
@@ -84,6 +96,41 @@ async function requireAdminOrganization(organizationId: string, errorKey: string
   }
 
   return { supabase, userId: user.id, organizationId: membership.organization_id };
+}
+
+async function requireCurrentAdminOrganization(errorOutcome: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error } = await supabase
+    .from("memberships")
+    .select("organization_id, role")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (
+    error ||
+    !membership?.organization_id ||
+    (membership.role !== "owner" && membership.role !== "admin")
+  ) {
+    redirect(brevoStatusUrl(errorOutcome));
+  }
+
+  return { supabase, userId: user.id, organizationId: membership.organization_id };
+}
+
+function normalizeBrevoStatus(value: string) {
+  return brevoStatuses.has(value) ? value : "error";
 }
 
 export async function updateOrganizationIdentity(formData: FormData) {
@@ -298,4 +345,24 @@ export async function updateOrganizationDocumentSettings(formData: FormData) {
 
   revalidatePath(settingsPath);
   redirect(statusUrl("document_settings_status", "success"));
+}
+
+export async function testOrganizationBrevoConnection() {
+  const { userId, organizationId } = await requireCurrentAdminOrganization("error");
+  const result = await testBrevoConnection();
+
+  void userId;
+  void organizationId;
+
+  if (result.ok) {
+    revalidatePath(settingsPath);
+    redirect(brevoStatusUrl("success"));
+  }
+
+  revalidatePath(settingsPath);
+  redirect(
+    brevoStatusUrl(
+      normalizeBrevoStatus(result.reason === "api_error" ? "error" : result.reason),
+    ),
+  );
 }

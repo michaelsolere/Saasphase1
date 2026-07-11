@@ -2,10 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import {
+  testOrganizationBrevoConnection,
   updateOrganizationDocumentSettings,
   updateOrganizationIdentity,
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
+import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +22,13 @@ const legalFormOptions = [
 ] as const;
 
 type StatusValue = "success" | "error" | undefined;
+type BrevoStatusValue =
+  | "success"
+  | "not_configured"
+  | "unauthorized"
+  | "timeout"
+  | "error"
+  | undefined;
 
 function StatusMessage({
   value,
@@ -46,6 +55,40 @@ function StatusMessage({
       }`}
     >
       {isSuccess ? success : error}
+    </section>
+  );
+}
+
+function BrevoStatusMessage({
+  value,
+}: {
+  value: BrevoStatusValue;
+}) {
+  if (!value) {
+    return null;
+  }
+
+  const isSuccess = value === "success";
+  const messages = {
+    success: "Connexion Brevo réussie.",
+    not_configured: "La clé API Brevo n’est pas configurée côté serveur.",
+    unauthorized: "Brevo a refusé l’accès. Vérifiez la clé API côté serveur.",
+    timeout:
+      "Brevo n’a pas répondu dans le délai prévu. Réessayez dans quelques instants.",
+    error:
+      "Erreur de connexion à Brevo. Aucune donnée Brevo n’a été modifiée.",
+  };
+
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-6 py-5 text-sm ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {messages[value]}
     </section>
   );
 }
@@ -158,6 +201,7 @@ export default async function OrganizationSettingsPage({
     identity_status?: StatusValue;
     representative_status?: StatusValue;
     document_settings_status?: StatusValue;
+    brevo_status?: BrevoStatusValue;
   }>;
 }) {
   const query = await searchParams;
@@ -202,6 +246,7 @@ export default async function OrganizationSettingsPage({
   }
 
   const canEdit = membership.role === "owner" || membership.role === "admin";
+  const brevoConfiguration = getBrevoConfigurationStatus();
 
   const { data: organization, error: organizationError } = await supabase
     .from("organizations")
@@ -311,6 +356,7 @@ export default async function OrganizationSettingsPage({
           success="Les paramètres documentaires ont bien été mis à jour."
           error="Impossible de mettre à jour les paramètres documentaires."
         />
+        <BrevoStatusMessage value={query.brevo_status} />
       </div>
 
       {diagnostics.length > 0 ? (
@@ -325,6 +371,72 @@ export default async function OrganizationSettingsPage({
           </ul>
         </section>
       ) : null}
+
+      <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold">Connexion Brevo</h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted">
+              Brevo sera utilisé ultérieurement pour les campagnes et les
+              e-mails. Dans ce premier lot, la clé API reste uniquement côté
+              serveur : elle n’est ni affichée ni modifiable depuis
+              l’application.
+            </p>
+          </div>
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+              brevoConfiguration.isConfigured
+                ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                : "border-amber-200 bg-amber-50 text-amber-950"
+            }`}
+          >
+            {brevoConfiguration.isConfigured ? "Configuré" : "Non configuré"}
+          </span>
+        </div>
+
+        <dl className="mt-6 grid gap-4 text-sm sm:grid-cols-3">
+          <div className="rounded-xl border bg-background px-4 py-3">
+            <dt className="font-semibold text-foreground">Expéditeur</dt>
+            <dd className="mt-1 text-muted">
+              {brevoConfiguration.senderEmail
+                ? "Renseigné côté serveur"
+                : "Non renseigné"}
+            </dd>
+          </div>
+          <div className="rounded-xl border bg-background px-4 py-3">
+            <dt className="font-semibold text-foreground">Nom expéditeur</dt>
+            <dd className="mt-1 text-muted">
+              {brevoConfiguration.senderName
+                ? "Renseigné côté serveur"
+                : "Non renseigné"}
+            </dd>
+          </div>
+          <div className="rounded-xl border bg-background px-4 py-3">
+            <dt className="font-semibold text-foreground">Adresse de réponse</dt>
+            <dd className="mt-1 text-muted">
+              {brevoConfiguration.replyToEmail
+                ? "Renseignée côté serveur"
+                : "Non renseignée"}
+            </dd>
+          </div>
+        </dl>
+
+        {canEdit ? (
+          <form action={testOrganizationBrevoConnection} className="mt-6">
+            <button
+              type="submit"
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Tester la connexion Brevo
+            </button>
+          </form>
+        ) : (
+          <p className="mt-6 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
+            Votre rôle actuel permet la consultation de cette configuration,
+            mais pas le test de connexion.
+          </p>
+        )}
+      </section>
 
       <form
         action={updateOrganizationIdentity}
