@@ -20,6 +20,7 @@ export function EmailTemplateEditor({
   const bodyFieldId = `${template.templateKey}-body`;
   const titleFieldId = `${template.templateKey}-title`;
   const categoryFieldId = `${template.templateKey}-category`;
+  const brevoTemplateIdFieldId = `${template.templateKey}-brevo-template-id`;
   const copyText = buildEmailBodyWithSubject({
     subject: template.subject,
     body: template.body,
@@ -94,6 +95,24 @@ export function EmailTemplateEditor({
               <option value="post_adoption">Suivi post-adoption</option>
             </select>
           </div>
+        </div>
+        <div>
+          <label
+            htmlFor={brevoTemplateIdFieldId}
+            className="text-sm font-semibold"
+          >
+            Identifiant du modèle transactionnel Brevo
+          </label>
+          <input
+            id={brevoTemplateIdFieldId}
+            name="brevo_template_id"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            defaultValue={template.brevoTemplateId ?? ""}
+            className="mt-2 min-h-10 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
+          />
         </div>
         <div>
           <label

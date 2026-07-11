@@ -50,7 +50,37 @@ export type EmailDeliveryAttemptResult =
       };
     };
 
+export type ClaimEmailDeliveryAttemptForSendResult =
+  | {
+      outcome: "claimed";
+      attempt: EmailDeliveryAttempt;
+    }
+  | {
+      outcome: "already_sent" | "in_progress" | "not_found";
+      attempt?: EmailDeliveryAttempt;
+    }
+  | {
+      outcome: "error";
+      error: {
+        code: EmailDeliveryAttemptErrorCode;
+        message: string;
+      };
+    };
+
 export type EmailDeliveryAttemptTransitionResult =
+  | {
+      outcome: "updated";
+      attempt: EmailDeliveryAttempt;
+    }
+  | {
+      outcome: "error";
+      error: {
+        code: EmailDeliveryAttemptErrorCode;
+        message: string;
+      };
+    };
+
+export type EmailDeliveryAttemptSnapshotResult =
   | {
       outcome: "updated";
       attempt: EmailDeliveryAttempt;
@@ -84,6 +114,20 @@ function transitionErrorResult(
   code: EmailDeliveryAttemptErrorCode,
   message: string,
 ): Extract<EmailDeliveryAttemptTransitionResult, { outcome: "error" }> {
+  return { outcome: "error", error: { code, message } };
+}
+
+function snapshotErrorResult(
+  code: EmailDeliveryAttemptErrorCode,
+  message: string,
+): Extract<EmailDeliveryAttemptSnapshotResult, { outcome: "error" }> {
+  return { outcome: "error", error: { code, message } };
+}
+
+function claimErrorResult(
+  code: EmailDeliveryAttemptErrorCode,
+  message: string,
+): Extract<ClaimEmailDeliveryAttemptForSendResult, { outcome: "error" }> {
   return { outcome: "error", error: { code, message } };
 }
 
@@ -139,6 +183,18 @@ function normalizeVariablesSnapshot(value: unknown): JsonObject | null {
 function normalizeExternalMessageId(value: string) {
   const messageId = normalizeRequiredText(value, 255);
   return messageId;
+}
+
+function normalizePositiveInteger(value: number | null | undefined) {
+  if (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function normalizeLastErrorCode(value: string) {
@@ -445,11 +501,9 @@ export async function markEmailDeliveryAttemptSent(
     .from("email_delivery_attempts")
     .update({
       status: "sent",
-      attempt_count: currentAttempt.attempt_count + 1,
       brevo_message_id: brevoMessageId,
       sent_at: sentAt,
       failed_at: null,
-      last_attempt_at: sentAt,
       last_error_code: null,
       updated_by: userId,
     })
@@ -500,9 +554,7 @@ export async function markEmailDeliveryAttemptFailed(
     .from("email_delivery_attempts")
     .update({
       status: "failed",
-      attempt_count: currentAttempt.attempt_count + 1,
       failed_at: failedAt,
-      last_attempt_at: failedAt,
       last_error_code: lastErrorCode,
       updated_by: userId,
     })
@@ -514,6 +566,139 @@ export async function markEmailDeliveryAttemptFailed(
 
   if (error || !data) {
     return transitionErrorResult("database_error", "Unable to mark attempt failed.");
+  }
+
+  return { outcome: "updated", attempt: data };
+}
+
+export async function claimEmailDeliveryAttemptForSend(
+  input: {
+    organizationId: string;
+    attemptId: string;
+    userId: string;
+    claimedAt?: string;
+  },
+  supabaseClient?: Supabase,
+): Promise<ClaimEmailDeliveryAttemptForSendResult> {
+  const supabase = supabaseClient ?? (await createClient());
+  const organizationId = normalizeRequiredText(input.organizationId, 64);
+  const attemptId = normalizeRequiredText(input.attemptId, 64);
+  const userId = normalizeRequiredText(input.userId, 64);
+
+  if (!organizationId || !attemptId || !userId) {
+    return claimErrorResult("invalid_input", "Invalid claim input.");
+  }
+
+  const currentAttempt = await readAttemptForTransition(
+    supabase,
+    organizationId,
+    attemptId,
+  );
+
+  if (!currentAttempt) {
+    return { outcome: "not_found" };
+  }
+
+  if (currentAttempt.status === "sent") {
+    return { outcome: "already_sent", attempt: currentAttempt };
+  }
+
+  if (currentAttempt.status === "sending") {
+    return { outcome: "in_progress", attempt: currentAttempt };
+  }
+
+  if (currentAttempt.status !== "pending" && currentAttempt.status !== "failed") {
+    return { outcome: "not_found", attempt: currentAttempt };
+  }
+
+  const claimedAt = input.claimedAt ?? new Date().toISOString();
+  const { data, error } = await supabase
+    .from("email_delivery_attempts")
+    .update({
+      status: "sending",
+      attempt_count: currentAttempt.attempt_count + 1,
+      last_attempt_at: claimedAt,
+      updated_by: userId,
+    })
+    .eq("organization_id", organizationId)
+    .eq("id", attemptId)
+    .is("deleted_at", null)
+    .eq("status", currentAttempt.status)
+    .eq("attempt_count", currentAttempt.attempt_count)
+    .select("*")
+    .maybeSingle();
+
+  if (error) {
+    return claimErrorResult("database_error", "Unable to claim attempt.");
+  }
+
+  if (data) {
+    return { outcome: "claimed", attempt: data };
+  }
+
+  const refreshedAttempt = await readAttemptForTransition(
+    supabase,
+    organizationId,
+    attemptId,
+  );
+
+  if (!refreshedAttempt) {
+    return { outcome: "not_found" };
+  }
+
+  if (refreshedAttempt.status === "sent") {
+    return { outcome: "already_sent", attempt: refreshedAttempt };
+  }
+
+  if (refreshedAttempt.status === "sending") {
+    return { outcome: "in_progress", attempt: refreshedAttempt };
+  }
+
+  return { outcome: "not_found", attempt: refreshedAttempt };
+}
+
+export async function snapshotEmailDeliveryAttemptBrevoTemplate(
+  input: {
+    organizationId: string;
+    attemptId: string;
+    brevoTemplateId: number;
+    subjectSnapshot: string;
+    brevoTemplateModifiedAt?: string | null;
+    userId: string;
+  },
+  supabaseClient?: Supabase,
+): Promise<EmailDeliveryAttemptSnapshotResult> {
+  const supabase = supabaseClient ?? (await createClient());
+  const organizationId = normalizeRequiredText(input.organizationId, 64);
+  const attemptId = normalizeRequiredText(input.attemptId, 64);
+  const brevoTemplateId = normalizePositiveInteger(input.brevoTemplateId);
+  const subjectSnapshot = normalizeOptionalText(input.subjectSnapshot, 500);
+  const userId = normalizeRequiredText(input.userId, 64);
+
+  if (!organizationId || !attemptId || !brevoTemplateId || !subjectSnapshot || !userId) {
+    return snapshotErrorResult("invalid_input", "Invalid template snapshot input.");
+  }
+
+  const { data, error } = await supabase
+    .from("email_delivery_attempts")
+    .update({
+      brevo_template_id: brevoTemplateId,
+      brevo_template_modified_at: input.brevoTemplateModifiedAt ?? null,
+      subject_snapshot: subjectSnapshot,
+      updated_by: userId,
+    })
+    .eq("organization_id", organizationId)
+    .eq("id", attemptId)
+    .is("deleted_at", null)
+    .eq("status", "sending")
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) {
+    return snapshotErrorResult(
+      "database_error",
+      "Unable to snapshot Brevo template.",
+    );
   }
 
   return { outcome: "updated", attempt: data };

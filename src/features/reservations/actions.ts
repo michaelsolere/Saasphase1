@@ -18,6 +18,7 @@ import {
   readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
+import { sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
 import { resolveDefaultPuppyPriceCents } from "@/features/reservations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -64,6 +65,10 @@ function activationUrl(
   outcome: "success" | "invalid_state" | "error",
 ) {
   return `/reservations/${reservationId}?activation_status=${outcome}#reservation-details`;
+}
+
+function preReservationEmailUrl(reservationId: string, outcome: string) {
+  return `/reservations/${reservationId}?pre_reservation_email_status=${outcome}#pre-reservation-email`;
 }
 
 function adoptionUrl(
@@ -257,6 +262,20 @@ export async function updateReservationPrice(formData: FormData) {
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   redirect(priceUrl(reservationId, "success"));
+}
+
+export async function sendPreReservationEmail(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+
+  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+    redirect("/reservations?erreur=email_pre_reservation");
+  }
+
+  const result = await sendPreReservationEmailForReservation({ reservationId });
+
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/settings/organization");
+  redirect(preReservationEmailUrl(reservationId, result.status));
 }
 
 export async function updateReservationInternalComment(formData: FormData) {

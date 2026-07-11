@@ -1110,6 +1110,8 @@ export type Database = {
         Row: {
           attempt_count: number
           brevo_message_id: string | null
+          brevo_template_id: number | null
+          brevo_template_modified_at: string | null
           contact_id: string
           created_at: string
           created_by: string | null
@@ -1137,6 +1139,8 @@ export type Database = {
         Insert: {
           attempt_count?: number
           brevo_message_id?: string | null
+          brevo_template_id?: number | null
+          brevo_template_modified_at?: string | null
           contact_id: string
           created_at?: string
           created_by?: string | null
@@ -1164,6 +1168,8 @@ export type Database = {
         Update: {
           attempt_count?: number
           brevo_message_id?: string | null
+          brevo_template_id?: number | null
+          brevo_template_modified_at?: string | null
           contact_id?: string
           created_at?: string
           created_by?: string | null
@@ -1271,6 +1277,7 @@ export type Database = {
       email_templates: {
         Row: {
           body: string
+          brevo_template_id: number | null
           category: string
           created_at: string
           created_by: string | null
@@ -1286,6 +1293,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          brevo_template_id?: number | null
           category: string
           created_at?: string
           created_by?: string | null
@@ -1301,6 +1309,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          brevo_template_id?: number | null
           category?: string
           created_at?: string
           created_by?: string | null

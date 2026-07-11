@@ -208,6 +208,7 @@ function formatDateTime(value: string | null) {
 function formatAttemptStatus(status: string) {
   const labels: Record<string, string> = {
     pending: "En attente",
+    sending: "En cours",
     sent: "Envoyé",
     failed: "Échec",
   };

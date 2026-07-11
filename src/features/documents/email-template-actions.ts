@@ -22,6 +22,7 @@ export type EmailTemplateRecord = {
   context: string;
   subject: string;
   body: string;
+  brevoTemplateId: number | null;
   updatedAt: string;
 };
 
@@ -43,6 +44,34 @@ function normalizeRequiredText(
   }
 
   return trimmedValue.slice(0, maxLength);
+}
+
+function parseOptionalPositiveInteger(value: FormDataEntryValue | null) {
+  if (value === null || value === undefined || value === "") {
+    return { ok: true as const, value: null };
+  }
+
+  if (typeof value !== "string") {
+    return { ok: false as const };
+  }
+
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return { ok: true as const, value: null };
+  }
+
+  if (!/^[1-9]\d*$/.test(trimmedValue)) {
+    return { ok: false as const };
+  }
+
+  const parsedValue = Number(trimmedValue);
+
+  if (!Number.isSafeInteger(parsedValue)) {
+    return { ok: false as const };
+  }
+
+  return { ok: true as const, value: parsedValue };
 }
 
 function buildCustomTemplateKey(title: string) {
@@ -158,7 +187,7 @@ export async function getEmailTemplatesForCurrentOrganization() {
 
   const { data: emailTemplates, error } = await supabase
     .from("email_templates")
-    .select("id, template_key, title, category, subject, body, created_at, updated_at")
+    .select("id, template_key, title, category, subject, body, brevo_template_id, created_at, updated_at")
     .eq("organization_id", organizationId)
     .eq("is_active", true)
     .is("deleted_at", null)
@@ -182,9 +211,10 @@ export async function getEmailTemplatesForCurrentOrganization() {
         title: defaultTemplate.title,
         category: defaultTemplate.category,
         context: defaultTemplate.context,
-        subject: defaultTemplate.subject,
-        body: defaultTemplate.body,
-        updatedAt: "",
+      subject: defaultTemplate.subject,
+      body: defaultTemplate.body,
+      brevoTemplateId: null,
+      updatedAt: "",
       };
     }
 
@@ -196,6 +226,7 @@ export async function getEmailTemplatesForCurrentOrganization() {
       context: defaultTemplate.context,
       subject: template.subject,
       body: template.body,
+      brevoTemplateId: template.brevo_template_id,
       updatedAt: template.updated_at,
     };
   }) satisfies EmailTemplateRecord[];
@@ -210,6 +241,7 @@ export async function getEmailTemplatesForCurrentOrganization() {
       context: "Modèle personnalisé.",
       subject: template.subject,
       body: template.body,
+      brevoTemplateId: template.brevo_template_id,
       updatedAt: template.updated_at,
     })) satisfies EmailTemplateRecord[];
 
@@ -222,8 +254,18 @@ export async function updateEmailTemplate(formData: FormData) {
   const category = formData.get("category");
   const subject = normalizeRequiredText(formData.get("subject"), 255);
   const body = normalizeRequiredText(formData.get("body"), 20_000);
+  const brevoTemplateId = parseOptionalPositiveInteger(
+    formData.get("brevo_template_id"),
+  );
 
-  if (!templateKey || !title || !isEmailTemplateCategory(category) || !subject || !body) {
+  if (
+    !templateKey ||
+    !title ||
+    !isEmailTemplateCategory(category) ||
+    !subject ||
+    !body ||
+    !brevoTemplateId.ok
+  ) {
     redirect(statusUrl("error"));
   }
 
@@ -250,6 +292,7 @@ export async function updateEmailTemplate(formData: FormData) {
       category,
       subject,
       body,
+      brevo_template_id: brevoTemplateId.value,
       updated_by: userId,
       updated_at: new Date().toISOString(),
     })

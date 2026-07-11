@@ -36,6 +36,7 @@ import {
   syncReservationScopeFromApplication,
   attachReservationToScope,
 } from "@/features/reservations/actions";
+import { PreReservationEmailDialog } from "@/features/reservations/pre-reservation-email-dialog";
 import {
   ReservationAppointmentForm,
   type ReservationAppointmentFormValues,
@@ -98,6 +99,7 @@ type ReservationSearchParams = {
   note_status?: string;
   scope_sync_status?: string;
   appointment_status?: string;
+  pre_reservation_email_status?: string;
 };
 
 type RelatedPayment = {
@@ -112,6 +114,29 @@ type RelatedPayment = {
   notes: string | null;
   due_date: string | null;
   requested_at: string | null;
+};
+
+type RelatedPreReservationEmailAttempt = {
+  id: string;
+  status: string;
+  attempt_count: number;
+  last_attempt_at: string | null;
+  sent_at: string | null;
+  last_error_code: string | null;
+  brevo_template_id: number | null;
+  subject_snapshot: string | null;
+};
+
+type RelatedPreReservationEmailTemplate = {
+  id: string;
+  brevo_template_id: number | null;
+};
+
+type RelatedPreReservationContact = {
+  display_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 };
 
 type RelatedDocument = {
@@ -467,12 +492,24 @@ function ErrorMessage() {
 
 function TechnicalPreReservationPage({
   contactName,
+  contact,
+  emailAttempt,
+  emailTemplate,
+  litterLabel,
+  litterGroupLabel,
   payments,
   query,
+  reservationId,
 }: {
   contactName: string | null;
+  contact: RelatedPreReservationContact | null;
+  emailAttempt: RelatedPreReservationEmailAttempt | null;
+  emailTemplate: RelatedPreReservationEmailTemplate | null;
+  litterLabel: string | null;
+  litterGroupLabel: string | null;
   payments: RelatedPayment[];
   query: ReservationSearchParams;
+  reservationId: string;
 }) {
   const requestedPayments = payments.filter(
     (payment) =>
@@ -480,6 +517,39 @@ function TechnicalPreReservationPage({
       payment.status === "pending" ||
       payment.status === "partially_paid",
   );
+  const primaryPayment = requestedPayments[0] ?? null;
+  const recipientLabel =
+    contact?.email && contactName
+      ? `${contactName} · ${contact.email}`
+      : contact?.email ?? "E-mail absent";
+  const scopeLabel = [litterLabel, litterGroupLabel].filter(Boolean).join(" · ");
+  const emailStatusLabel = {
+    pending: "En attente",
+    sending: "En cours",
+    sent: "Envoyé",
+    failed: "Échec",
+  }[emailAttempt?.status ?? ""] ?? "Aucune tentative";
+  const sendOutcomeMessages: Record<string, string> = {
+    success: "L’e-mail de pré-réservation a bien été envoyé via Brevo.",
+    already_sent: "Cet e-mail a déjà été envoyé. Aucun nouvel envoi n’a été déclenché.",
+    in_progress: "Un envoi est déjà en cours pour cette réservation.",
+    failed: "L’envoi Brevo a échoué. La réservation et le paiement n’ont pas été modifiés.",
+    not_eligible: "Cette réservation n’est pas éligible à l’envoi de pré-réservation.",
+    missing_email: "Le contact n’a pas d’e-mail valide.",
+    missing_payment: "Aucun paiement de pré-réservation demandé ou en attente n’est lié.",
+    missing_template: "Le modèle interne de pré-réservation n’a pas d’identifiant Brevo actif.",
+    brevo_not_configured: "La configuration Brevo serveur est absente.",
+  };
+  const emailOutcomeMessage = query.pre_reservation_email_status
+    ? sendOutcomeMessages[query.pre_reservation_email_status]
+    : null;
+  const canSend =
+    Boolean(contact?.email) &&
+    Boolean(primaryPayment) &&
+    Boolean(emailTemplate?.brevo_template_id) &&
+    emailAttempt?.status !== "sent";
+  const triggerLabel =
+    emailAttempt?.status === "failed" ? "Réessayer l’envoi" : "Envoyer via Brevo";
 
   return (
     <>
@@ -490,6 +560,24 @@ function TechnicalPreReservationPage({
         >
           Cette demande de pré-réservation possède déjà un paiement demandé.
           Traitez ce paiement depuis la fiche Paiement.
+        </p>
+      ) : null}
+      {emailOutcomeMessage ? (
+        <p
+          role={
+            query.pre_reservation_email_status === "success" ||
+            query.pre_reservation_email_status === "already_sent"
+              ? "status"
+              : "alert"
+          }
+          className={
+            query.pre_reservation_email_status === "success" ||
+            query.pre_reservation_email_status === "already_sent"
+              ? successStatusMessageClassName
+              : errorStatusMessageClassName
+          }
+        >
+          {emailOutcomeMessage}
         </p>
       ) : null}
 
@@ -549,6 +637,83 @@ function TechnicalPreReservationPage({
             <p className="rounded-xl border border-dashed bg-background p-4 text-sm text-muted">
               Aucun paiement demandé n’est lié à cette demande.
             </p>
+          )}
+        </div>
+
+        <div
+          id="pre-reservation-email"
+          className="mt-8 rounded-xl border bg-background p-4"
+        >
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+            <div>
+              <h2 className="text-lg font-semibold">
+                E-mail de pré-réservation
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-muted">
+                Envoi transactionnel individuel via le modèle Brevo associé au
+                modèle interne pré-réservation.
+              </p>
+            </div>
+            <span className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-muted">
+              {emailStatusLabel}
+            </span>
+          </div>
+
+          <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+            <DetailItem label="Destinataire" value={recipientLabel} />
+            <DetailItem
+              label="Modèle Brevo"
+              value={
+                emailTemplate?.brevo_template_id
+                  ? `#${emailTemplate.brevo_template_id}`
+                  : "Non configuré"
+              }
+            />
+            <DetailItem label="État de la tentative" value={emailStatusLabel} />
+            <DetailItem
+              label="Dernier essai"
+              value={formatApplicationDate(emailAttempt?.last_attempt_at ?? null)}
+            />
+            <DetailItem
+              label="Envoyé le"
+              value={formatApplicationDate(emailAttempt?.sent_at ?? null)}
+            />
+            <DetailItem
+              label="Nombre de tentatives"
+              value={emailAttempt ? String(emailAttempt.attempt_count) : "0"}
+            />
+          </dl>
+
+          {emailAttempt?.last_error_code ? (
+            <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              Dernière erreur normalisée : {emailAttempt.last_error_code}
+            </p>
+          ) : null}
+
+          {emailAttempt?.status === "sent" ? (
+            <p className="mt-5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+              Aucun nouvel envoi n’est proposé après succès.
+            </p>
+          ) : (
+            <div className="mt-5">
+              <PreReservationEmailDialog
+                amountLabel={
+                  primaryPayment
+                    ? formatPrice(primaryPayment.amount_cents, primaryPayment.currency)
+                    : "Montant absent"
+                }
+                deadlineLabel={
+                  primaryPayment?.due_date
+                    ? formatApplicationDate(primaryPayment.due_date)
+                    : "Échéance absente"
+                }
+                disabled={!canSend}
+                recipientLabel={recipientLabel}
+                reservationId={reservationId}
+                scopeLabel={scopeLabel || "Portée ou groupe absent"}
+                triggerLabel={triggerLabel}
+              />
+            </div>
           )}
         </div>
       </section>
@@ -1545,23 +1710,101 @@ export default async function ReservationDetailPage({
     !readError &&
     reservation?.status === "pre_reservation_requested"
   ) {
-    if (reservation.application_id) {
-      redirect(`/candidatures/${reservation.application_id}`);
+    if (!reservation.organization_id || !reservation.contact_id) {
+      return (
+        <main className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-6 py-10 sm:px-10 lg:px-12">
+          <ErrorMessage />
+        </main>
+      );
     }
 
-    const { data: rawTechnicalPayments } = await supabase
-      .from("payments")
-      .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, notes, due_date, requested_at")
-      .eq("reservation_id", id)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false });
+    const technicalOrganizationId = reservation.organization_id;
+    const technicalContactId = reservation.contact_id;
+    const [
+      technicalPaymentsResult,
+      technicalContactResult,
+      technicalTemplateResult,
+      technicalAttemptResult,
+      technicalLitterResult,
+      technicalLitterGroupResult,
+    ] = await Promise.all([
+      supabase
+        .from("payments")
+        .select("id, amount_cents, currency, payment_type, status, payment_method, paid_at, created_at, notes, due_date, requested_at")
+        .eq("organization_id", technicalOrganizationId)
+        .eq("reservation_id", id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("contacts")
+        .select("display_name, first_name, last_name, email")
+        .eq("organization_id", technicalOrganizationId)
+        .eq("id", technicalContactId)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("email_templates")
+        .select("id, brevo_template_id")
+        .eq("organization_id", technicalOrganizationId)
+        .eq("template_key", "pre_reservation")
+        .eq("is_active", true)
+        .is("deleted_at", null)
+        .maybeSingle(),
+      supabase
+        .from("email_delivery_attempts")
+        .select("id, status, attempt_count, last_attempt_at, sent_at, last_error_code, brevo_template_id, subject_snapshot")
+        .eq("organization_id", technicalOrganizationId)
+        .eq("reservation_id", id)
+        .eq("message_type", "pre_reservation")
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      reservation.litter_id
+        ? supabase
+            .from("litters")
+            .select("name")
+            .eq("organization_id", technicalOrganizationId)
+            .eq("id", reservation.litter_id)
+            .is("deleted_at", null)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      reservation.litter_group_id
+        ? supabase
+            .from("litter_groups")
+            .select("name")
+            .eq("organization_id", technicalOrganizationId)
+            .eq("id", reservation.litter_group_id)
+            .is("deleted_at", null)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
     return (
       <main className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-6 py-10 sm:px-10 lg:px-12">
         <TechnicalPreReservationPage
           contactName={reservation.contact_display_name ?? null}
-          payments={(rawTechnicalPayments as RelatedPayment[] | null) ?? []}
+          contact={
+            (technicalContactResult.data as RelatedPreReservationContact | null) ??
+            null
+          }
+          emailAttempt={
+            (technicalAttemptResult.data as RelatedPreReservationEmailAttempt | null) ??
+            null
+          }
+          emailTemplate={
+            (technicalTemplateResult.data as RelatedPreReservationEmailTemplate | null) ??
+            null
+          }
+          litterLabel={technicalLitterResult.data?.name ?? reservation.litter_name ?? null}
+          litterGroupLabel={
+            technicalLitterGroupResult.data?.name ??
+            reservation.litter_group_name ??
+            null
+          }
+          payments={(technicalPaymentsResult.data as RelatedPayment[] | null) ?? []}
           query={query}
+          reservationId={id}
         />
       </main>
     );
