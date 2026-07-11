@@ -1781,7 +1781,9 @@ export type Database = {
           file_name: string | null
           file_path: string
           file_size_bytes: number | null
+          height_px: number | null
           id: string
+          is_primary: boolean
           litter_id: string | null
           media_type: string
           mime_type: string | null
@@ -1797,6 +1799,7 @@ export type Database = {
           updated_at: string
           updated_by: string | null
           visibility: string
+          width_px: number | null
         }
         Insert: {
           animal_id?: string | null
@@ -1808,7 +1811,9 @@ export type Database = {
           file_name?: string | null
           file_path: string
           file_size_bytes?: number | null
+          height_px?: number | null
           id?: string
+          is_primary?: boolean
           litter_id?: string | null
           media_type?: string
           mime_type?: string | null
@@ -1824,6 +1829,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           visibility?: string
+          width_px?: number | null
         }
         Update: {
           animal_id?: string | null
@@ -1835,7 +1841,9 @@ export type Database = {
           file_name?: string | null
           file_path?: string
           file_size_bytes?: number | null
+          height_px?: number | null
           id?: string
+          is_primary?: boolean
           litter_id?: string | null
           media_type?: string
           mime_type?: string | null
@@ -1851,6 +1859,7 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
           visibility?: string
+          width_px?: number | null
         }
         Relationships: [
           {
