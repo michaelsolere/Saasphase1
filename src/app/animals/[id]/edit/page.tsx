@@ -10,8 +10,6 @@ import {
 import {
   formatAnimalDate,
   getAnimalDisplayName,
-  getAnimalSexLabel,
-  getAnimalSpeciesLabel,
   getAnimalStatusLabel,
 } from "@/features/animals/formatters";
 import type { DBAnimal } from "@/features/animals/types";
@@ -23,6 +21,9 @@ const errorMessages: Record<string, string> = {
   name_required: "Renseignez au moins un nom complet ou un nom d’usage.",
   invalid_date: "La date de naissance est invalide.",
   invalid: "Les informations envoyées sont invalides.",
+  invalid_mother: "La mère sélectionnée est invalide ou inaccessible.",
+  invalid_father: "Le père sélectionné est invalide ou inaccessible.",
+  same_parents: "La mère et le père doivent être deux animaux différents.",
   error: "Impossible d’enregistrer les informations pour le moment.",
 };
 
@@ -62,23 +63,7 @@ function ReadOnlyItem({
 }
 
 function parentOptionLabel(animal: AnimalParentOption) {
-  const parts = [
-    animal.call_name ?? animal.official_name ?? "Animal sans nom",
-    getAnimalSexLabel(animal.sex),
-  ];
-  const speciesBreed = [getAnimalSpeciesLabel(animal.species), animal.breed]
-    .filter(Boolean)
-    .join(" / ");
-
-  if (speciesBreed) {
-    parts.push(speciesBreed);
-  }
-
-  if (animal.status) {
-    parts.push(animal.status);
-  }
-
-  return parts.join(" · ");
+  return animal.official_name ?? animal.call_name ?? "Animal sans nom";
 }
 
 function TextField({
@@ -193,6 +178,10 @@ function ParentSelectField({
   options: AnimalParentOption[];
   emptyLabel: string;
 }) {
+  const filteredOptions = options.filter((animal) =>
+    name === "mother_id" ? animal.sex === "female" : animal.sex === "male",
+  );
+
   return (
     <div>
       <label htmlFor={id} className={labelClass}>
@@ -205,7 +194,7 @@ function ParentSelectField({
         className={inputClass}
       >
         <option value="">{emptyLabel}</option>
-        {options.map((animal) => (
+        {filteredOptions.map((animal) => (
           <option key={animal.id} value={animal.id}>
             {parentOptionLabel(animal)}
           </option>
@@ -285,12 +274,12 @@ export default async function AnimalEditPage({
   const { data: parentOptionsRaw } = animal
     ? await supabase
         .from("animals")
-        .select("id, call_name, official_name, sex, species, breed, status")
+        .select("id, call_name, official_name, sex")
         .eq("organization_id", animal.organization_id)
         .neq("id", animal.id)
         .is("deleted_at", null)
-        .order("call_name", { ascending: true, nullsFirst: false })
         .order("official_name", { ascending: true, nullsFirst: false })
+        .order("call_name", { ascending: true, nullsFirst: false })
     : { data: [] };
   const parentOptions = (parentOptionsRaw ?? []) as AnimalParentOption[];
   const animalDisplay = animal

@@ -84,7 +84,14 @@ function animalCreateUrl(
 
 function animalIdentityEditUrl(
   animalId: string,
-  code: "name_required" | "invalid_date" | "invalid" | "error",
+  code:
+    | "name_required"
+    | "invalid_date"
+    | "invalid"
+    | "invalid_mother"
+    | "invalid_father"
+    | "same_parents"
+    | "error",
 ) {
   return `/animals/${animalId}/edit?status=${code}`;
 }
@@ -397,13 +404,13 @@ export async function createManualAnimal(formData: FormData) {
   if (motherId) {
     const { data: mother, error: motherError } = await supabase
       .from("animals")
-      .select("id")
+      .select("id, sex")
       .eq("id", motherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (motherError || !mother) {
+    if (motherError || !mother || mother.sex !== "female") {
       redirect(animalCreateUrl("invalid_mother"));
     }
   }
@@ -411,13 +418,13 @@ export async function createManualAnimal(formData: FormData) {
   if (fatherId) {
     const { data: father, error: fatherError } = await supabase
       .from("animals")
-      .select("id")
+      .select("id, sex")
       .eq("id", fatherId)
       .eq("organization_id", organizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
-    if (fatherError || !father) {
+    if (fatherError || !father || father.sex !== "male") {
       redirect(animalCreateUrl("invalid_father"));
     }
   }
@@ -568,42 +575,48 @@ export async function updateAnimalIdentity(formData: FormData) {
     const motherId = parseOptionalUuid(formData.get("mother_id"));
     const fatherId = parseOptionalUuid(formData.get("father_id"));
 
-    if (
-      birthDate === "invalid" ||
-      motherId === "invalid" ||
-      fatherId === "invalid" ||
-      motherId === animal.id ||
-      fatherId === animal.id ||
-      (motherId && fatherId && motherId === fatherId)
-    ) {
-      redirect(
-        animalIdentityEditUrl(
-          animalId,
-          birthDate === "invalid" ? "invalid_date" : "invalid",
-        ),
-      );
-    }
-
-    const parentIds = [motherId, fatherId].filter(Boolean) as string[];
-    const { data: parents, error: parentsError } = parentIds.length
-      ? await supabase
-          .from("animals")
-          .select("id")
-          .eq("organization_id", animal.organization_id)
-          .in("id", parentIds)
-          .is("deleted_at", null)
-      : { data: [], error: null };
-    const foundParentIds = new Set((parents ?? []).map((parent) => parent.id));
-
-    if (
-      parentsError ||
-      parentIds.some((parentId) => !foundParentIds.has(parentId))
-    ) {
-      redirect(animalIdentityEditUrl(animalId, "invalid"));
-    }
-
     if (birthDate === "invalid") {
       redirect(animalIdentityEditUrl(animalId, "invalid_date"));
+    }
+
+    if (motherId === "invalid" || motherId === animal.id) {
+      redirect(animalIdentityEditUrl(animalId, "invalid_mother"));
+    }
+
+    if (fatherId === "invalid" || fatherId === animal.id) {
+      redirect(animalIdentityEditUrl(animalId, "invalid_father"));
+    }
+
+    if (motherId && fatherId && motherId === fatherId) {
+      redirect(animalIdentityEditUrl(animalId, "same_parents"));
+    }
+
+    if (motherId) {
+      const { data: mother, error: motherError } = await supabase
+        .from("animals")
+        .select("id, sex")
+        .eq("id", motherId)
+        .eq("organization_id", animal.organization_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (motherError || !mother || mother.sex !== "female") {
+        redirect(animalIdentityEditUrl(animalId, "invalid_mother"));
+      }
+    }
+
+    if (fatherId) {
+      const { data: father, error: fatherError } = await supabase
+        .from("animals")
+        .select("id, sex")
+        .eq("id", fatherId)
+        .eq("organization_id", animal.organization_id)
+        .is("deleted_at", null)
+        .maybeSingle();
+
+      if (fatherError || !father || father.sex !== "male") {
+        redirect(animalIdentityEditUrl(animalId, "invalid_father"));
+      }
     }
 
     animalToUpdate.birth_date = birthDate;

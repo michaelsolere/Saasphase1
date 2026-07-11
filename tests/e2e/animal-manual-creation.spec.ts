@@ -23,6 +23,14 @@ const animalCallNameCleanupPrefixes = [
   "QA animal retraite ",
   "QA animal historique ",
   "QA ancien reproducteur ",
+  "QA parent mere surnom ",
+  "QA parent mere officielle ",
+  "QA parent pere surnom ",
+  "QA parent pere officiel ",
+  "QA parent mere usage ",
+  "QA parent pere usage ",
+  "QA invalid male mother ",
+  "QA invalid female father ",
   "QA produced force ",
   "QA status breeding force ",
   "QA edition legere ",
@@ -302,7 +310,16 @@ test("creates manual animals without confusing them with litter offspring", asyn
   const supabase = await createAuthenticatedSupabaseClient();
   const suffix = Date.now().toString(36);
   const sccUrl = `https://www.centrale-canine.fr/chien/${suffix}`;
-  const createdAnimalIds: string[] = [];
+  const femaleOfficialParentId = randomUUID();
+  const maleOfficialParentId = randomUUID();
+  const femaleCallOnlyParentId = randomUUID();
+  const maleCallOnlyParentId = randomUUID();
+  const createdAnimalIds: string[] = [
+    femaleOfficialParentId,
+    maleOfficialParentId,
+    femaleCallOnlyParentId,
+    maleCallOnlyParentId,
+  ];
 
   const cases: ManualAnimalCase[] = [
     {
@@ -414,6 +431,73 @@ test("creates manual animals without confusing them with litter offspring", asyn
   ];
 
   try {
+    const { error: parentInsertError } = await supabase.from("animals").insert([
+      {
+        id: femaleOfficialParentId,
+        organization_id: organizationId,
+        call_name: `QA parent mere surnom ${suffix}`,
+        official_name: `QA parent mere officielle ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: maleOfficialParentId,
+        organization_id: organizationId,
+        call_name: `QA parent pere surnom ${suffix}`,
+        official_name: `QA parent pere officiel ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "male",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: femaleCallOnlyParentId,
+        organization_id: organizationId,
+        call_name: `QA parent mere usage ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: maleCallOnlyParentId,
+        organization_id: organizationId,
+        call_name: `QA parent pere usage ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "male",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+    ]);
+
+    expect(parentInsertError).toBeNull();
+
     await page.goto("/login");
     await page.getByLabel("Email").fill("owner@saasphase1.invalid");
     await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
@@ -451,8 +535,37 @@ test("creates manual animals without confusing them with litter offspring", asyn
           hasText: "Reproducteur",
         }),
       ).toHaveCount(0);
+      const motherOptionTexts = await page
+        .locator('select[name="mother_id"] option')
+        .evaluateAll((options) =>
+          options.map((option) => (option as HTMLOptionElement).textContent ?? ""),
+        );
+      const fatherOptionTexts = await page
+        .locator('select[name="father_id"] option')
+        .evaluateAll((options) =>
+          options.map((option) => (option as HTMLOptionElement).textContent ?? ""),
+        );
+      expect(motherOptionTexts).toContain(`QA parent mere officielle ${suffix}`);
+      expect(motherOptionTexts).toContain(`QA parent mere usage ${suffix}`);
+      expect(motherOptionTexts).not.toContain(`QA parent pere officiel ${suffix}`);
+      expect(motherOptionTexts).not.toContain(`QA parent pere usage ${suffix}`);
+      expect(fatherOptionTexts).toContain(`QA parent pere officiel ${suffix}`);
+      expect(fatherOptionTexts).toContain(`QA parent pere usage ${suffix}`);
+      expect(fatherOptionTexts).not.toContain(`QA parent mere officielle ${suffix}`);
+      expect(fatherOptionTexts).not.toContain(`QA parent mere usage ${suffix}`);
+      for (const text of [...motherOptionTexts.slice(1), ...fatherOptionTexts.slice(1)]) {
+        expect(text).not.toContain("Chien");
+        expect(text).not.toContain("Golden Retriever");
+        expect(text).not.toContain("Actif");
+        expect(text).not.toContain("Femelle");
+        expect(text).not.toContain("Mâle");
+      }
       await page.getByLabel("Nom d’usage").fill(manualCase.label);
       await manualCase.fill(page);
+      if (manualCase.label === cases[0].label) {
+        await page.getByLabel("Mère").selectOption(femaleOfficialParentId);
+        await page.getByLabel("Père").selectOption(maleOfficialParentId);
+      }
       await page.getByRole("button", { name: "Créer l’animal" }).click();
       await expect(page).toHaveURL(/\/animals\/[0-9a-f-]{36}$/);
       createdAnimalIds.push(extractAnimalIdFromUrl(page));
@@ -472,7 +585,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
         await supabase
           .from("animals")
           .select(
-            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, lof_number, color, coat_color, pedigree_url",
+            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, lof_number, color, coat_color, pedigree_url, mother_id, father_id",
           )
           .eq("call_name", manualCase.label)
           .single(),
@@ -484,28 +597,72 @@ test("creates manual animals without confusing them with litter offspring", asyn
         ...manualCase.expected,
       });
 
+      const identitySection = page.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      });
+      await expect(page.getByText(/^Créé le /)).toHaveCount(0);
+      await expect(identitySection.locator("dt", { hasText: /^Situation$/ })).toHaveCount(1);
+      await expect(
+        identitySection.locator("dt", { hasText: /^Statut de propriété$/ }),
+      ).toHaveCount(0);
+      await expect(
+        identitySection.locator("dt", { hasText: /^Reproducteur$/ }),
+      ).toHaveCount(0);
+      await expect(
+        identitySection.locator("dt", { hasText: /^Animal extérieur$/ }),
+      ).toHaveCount(0);
+      await expect(
+        identitySection.locator("dt", { hasText: /^Retraité$/ }),
+      ).toHaveCount(0);
+
+      const expectedSituation =
+        manualCase.label === cases[0].label
+          ? "Actif · Reproductrice maison"
+          : manualCase.label === cases[1].label
+            ? "Actif · Reproducteur maison"
+            : manualCase.label === cases[2].label ||
+                manualCase.label === cases[3].label
+              ? "Actif · Reproducteur extérieur"
+              : manualCase.label === cases[4].label
+                ? "Retraité · Maison"
+                : "Archivé · Historique / origine inconnue";
+      await expect(identitySection).toContainText(expectedSituation);
+      if (manualCase.label === cases[4].label) {
+        await expect(identitySection).not.toContainText("Reproducteur maison");
+        await expect(identitySection).not.toContainText("Reproductrice maison");
+        await expect(identitySection).not.toContainText("Reproducteur extérieur");
+      }
+
       if (manualCase.label === cases[0].label) {
         expect(animal).toMatchObject({
           lof_number: `LOF QA ${suffix}`,
           color: null,
           coat_color: "Fauve clair QA",
           pedigree_url: sccUrl,
-        });
-        const identitySection = page.locator("section").filter({
-          has: page.getByRole("heading", {
-            name: "Fiche d’identité",
-            exact: true,
-          }),
+          mother_id: femaleOfficialParentId,
+          father_id: maleOfficialParentId,
         });
         await expect(identitySection).toContainText(`LOF QA ${suffix}`);
         await expect(identitySection).toContainText("Fauve clair QA");
-        const sccLink = identitySection.getByRole("link", { name: sccUrl });
+        const sccLink = identitySection.getByRole("link", {
+          name: /Centrale canine/,
+        });
         await expect(identitySection).toContainText(
           "Lien vers la page SCC de l’animal",
+        );
+        await expect(identitySection).toContainText(
+          `centrale-canine.fr/chien/${suffix}`,
         );
         await expect(sccLink).toHaveAttribute("href", sccUrl);
         await expect(sccLink).toHaveAttribute("target", "_blank");
         await expect(sccLink).toHaveAttribute("rel", "noreferrer");
+        await page.setViewportSize({ width: 390, height: 844 });
+        const cardBox = await sccLink.boundingBox();
+        expect(cardBox?.width ?? 0).toBeLessThanOrEqual(342);
+        await page.setViewportSize({ width: 1280, height: 720 });
       }
     }
 
@@ -584,6 +741,50 @@ test("creates manual animals without confusing them with litter offspring", asyn
 
     expect(forcedBreedingStatusError).toBeNull();
     expect(forcedBreedingStatusCount).toBe(0);
+
+    const invalidMaleMotherName = `QA invalid male mother ${suffix}`;
+    await page.goto("/animals/new");
+    await page.getByLabel("Nom d’usage").fill(invalidMaleMotherName);
+    await page.locator('select[name="mother_id"]').evaluate((select, id) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = id;
+      forgedOption.textContent = "Mere male forgee";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = id;
+    }, maleOfficialParentId);
+    await page.getByRole("button", { name: "Créer l’animal" }).click();
+    await expect(page).toHaveURL(/\/animals\/new\?status=invalid_mother$/);
+
+    const { count: invalidMaleMotherCount, error: invalidMaleMotherError } =
+      await supabase
+        .from("animals")
+        .select("id", { count: "exact", head: true })
+        .eq("call_name", invalidMaleMotherName);
+
+    expect(invalidMaleMotherError).toBeNull();
+    expect(invalidMaleMotherCount).toBe(0);
+
+    const invalidFemaleFatherName = `QA invalid female father ${suffix}`;
+    await page.goto("/animals/new");
+    await page.getByLabel("Nom d’usage").fill(invalidFemaleFatherName);
+    await page.locator('select[name="father_id"]').evaluate((select, id) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = id;
+      forgedOption.textContent = "Pere femelle forge";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = id;
+    }, femaleOfficialParentId);
+    await page.getByRole("button", { name: "Créer l’animal" }).click();
+    await expect(page).toHaveURL(/\/animals\/new\?status=invalid_father$/);
+
+    const { count: invalidFemaleFatherCount, error: invalidFemaleFatherError } =
+      await supabase
+        .from("animals")
+        .select("id", { count: "exact", head: true })
+        .eq("call_name", invalidFemaleFatherName);
+
+    expect(invalidFemaleFatherError).toBeNull();
+    expect(invalidFemaleFatherCount).toBe(0);
   } finally {
     await cleanupAnimalManualFixtures(
       "manual animal creation variants",
@@ -662,6 +863,10 @@ test("normalizes a legacy breeding administrative status without losing breeder 
     });
 
     await page.goto(`/animals/${animalId}/edit`);
+    await expect(
+      page.locator('select[name="status"] option[value="breeding"]'),
+    ).toHaveCount(0);
+    await expect(page.getByText("Reproducteur — ancien statut")).toHaveCount(0);
     await page.getByLabel("Statut administratif").selectOption("retired");
     await page.getByRole("button", { name: "Enregistrer" }).click();
     await expect(page).toHaveURL(`/animals/${animalId}?identity_status=success`);
@@ -703,6 +908,7 @@ test("normalizes a legacy breeding administrative status without losing breeder 
     await expect(
       page.locator('select[name="status"] option[value="breeding"]'),
     ).toHaveCount(0);
+    await expect(page.getByText("Reproducteur — ancien statut")).toHaveCount(0);
     await page.getByLabel("Nom d’usage").fill(`QA ancien reproducteur forge ${suffix}`);
     await page.locator('select[name="status"]').evaluate((select) => {
       const forgedOption = document.createElement("option");
@@ -741,6 +947,8 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
   const manualAnimalId = randomUUID();
   const motherId = randomUUID();
   const fatherId = randomUUID();
+  const motherCallOnlyId = randomUUID();
+  const fatherCallOnlyId = randomUUID();
   const litterAnimalId = randomUUID();
   const litterMotherId = randomUUID();
   const litterFatherId = randomUUID();
@@ -749,6 +957,8 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     manualAnimalId,
     motherId,
     fatherId,
+    motherCallOnlyId,
+    fatherCallOnlyId,
     litterAnimalId,
     litterMotherId,
     litterFatherId,
@@ -759,7 +969,8 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
       {
         id: motherId,
         organization_id: organizationId,
-        call_name: `QA edition mere ${suffix}`,
+        call_name: `QA edition mere surnom ${suffix}`,
+        official_name: `QA edition mere officielle ${suffix}`,
         species: "dog",
         breed: "Golden Retriever",
         sex: "female",
@@ -774,7 +985,38 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
       {
         id: fatherId,
         organization_id: organizationId,
-        call_name: `QA edition pere ${suffix}`,
+        call_name: `QA edition pere surnom ${suffix}`,
+        official_name: `QA edition pere officiel ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "male",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: motherCallOnlyId,
+        organization_id: organizationId,
+        call_name: `QA edition mere usage ${suffix}`,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      },
+      {
+        id: fatherCallOnlyId,
+        organization_id: organizationId,
+        call_name: `QA edition pere usage ${suffix}`,
         species: "dog",
         breed: "Golden Retriever",
         sex: "male",
@@ -905,6 +1147,34 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     await expect(page.locator('select[name="father_id"]')).not.toContainText(
       `QA edition legere ${suffix}`,
     );
+    const editMotherOptionTexts = await page
+      .locator('select[name="mother_id"] option')
+      .evaluateAll((options) =>
+        options.map((option) => (option as HTMLOptionElement).textContent ?? ""),
+      );
+    const editFatherOptionTexts = await page
+      .locator('select[name="father_id"] option')
+      .evaluateAll((options) =>
+        options.map((option) => (option as HTMLOptionElement).textContent ?? ""),
+      );
+    expect(editMotherOptionTexts).toContain(`QA edition mere officielle ${suffix}`);
+    expect(editMotherOptionTexts).toContain(`QA edition mere usage ${suffix}`);
+    expect(editMotherOptionTexts).not.toContain(`QA edition pere officiel ${suffix}`);
+    expect(editMotherOptionTexts).not.toContain(`QA edition pere usage ${suffix}`);
+    expect(editFatherOptionTexts).toContain(`QA edition pere officiel ${suffix}`);
+    expect(editFatherOptionTexts).toContain(`QA edition pere usage ${suffix}`);
+    expect(editFatherOptionTexts).not.toContain(`QA edition mere officielle ${suffix}`);
+    expect(editFatherOptionTexts).not.toContain(`QA edition mere usage ${suffix}`);
+    for (const text of [
+      ...editMotherOptionTexts.slice(1),
+      ...editFatherOptionTexts.slice(1),
+    ]) {
+      expect(text).not.toContain("Chien");
+      expect(text).not.toContain("Golden Retriever");
+      expect(text).not.toContain("Actif");
+      expect(text).not.toContain("Femelle");
+      expect(text).not.toContain("Mâle");
+    }
     await expect(page.locator('input[name="official_name"]')).toHaveValue(
       `QA officiel ancien ${suffix}`,
     );
@@ -1026,7 +1296,7 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
         }),
       })
       .getByRole("link", {
-        name: "https://www.centrale-canine.fr/chien/new-scc",
+        name: /Centrale canine/,
       });
     await expect(identitySccLink).toHaveAttribute(
       "href",
@@ -1111,9 +1381,17 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     );
     await page.getByLabel("Nom d’usage").fill(`QA edition same parent ${suffix}`);
     await page.getByLabel("Mère").selectOption(motherId);
-    await page.getByLabel("Père").selectOption(motherId);
+    await page.locator('select[name="father_id"]').evaluate((select, id) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = id;
+      forgedOption.textContent = "Meme parent forge";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = id;
+    }, motherId);
     await page.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    await expect(page).toHaveURL(
+      `/animals/${manualAnimalId}/edit?status=same_parents`,
+    );
     let rejectedParentAnimal = expectSupabaseData(
       await supabase
         .from("animals")
@@ -1121,6 +1399,62 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
         .eq("id", manualAnimalId)
         .single(),
       "read rejected same-parent animal",
+    );
+    expect(rejectedParentAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      mother_id: motherId,
+      father_id: fatherId,
+    });
+
+    await page.goto(`/animals/${manualAnimalId}/edit`);
+    await page.getByLabel("Nom d’usage").fill(`QA edition forged male mother ${suffix}`);
+    await page.getByLabel("Père").selectOption("");
+    await page.locator('select[name="mother_id"]').evaluate((select, id) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = id;
+      forgedOption.textContent = "Mere male forgee";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = id;
+    }, fatherId);
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(
+      `/animals/${manualAnimalId}/edit?status=invalid_mother`,
+    );
+    rejectedParentAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, mother_id, father_id")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected male-mother animal",
+    );
+    expect(rejectedParentAnimal).toMatchObject({
+      call_name: `QA edition modifiee ${suffix}`,
+      mother_id: motherId,
+      father_id: fatherId,
+    });
+
+    await page.goto(`/animals/${manualAnimalId}/edit`);
+    await page.getByLabel("Nom d’usage").fill(`QA edition forged female father ${suffix}`);
+    await page.getByLabel("Mère").selectOption("");
+    await page.locator('select[name="father_id"]').evaluate((select, id) => {
+      const forgedOption = document.createElement("option");
+      forgedOption.value = id;
+      forgedOption.textContent = "Pere femelle forge";
+      select.append(forgedOption);
+      (select as HTMLSelectElement).value = id;
+    }, motherId);
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(
+      `/animals/${manualAnimalId}/edit?status=invalid_father`,
+    );
+    rejectedParentAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("call_name, mother_id, father_id")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected female-father animal",
     );
     expect(rejectedParentAnimal).toMatchObject({
       call_name: `QA edition modifiee ${suffix}`,
@@ -1138,7 +1472,9 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
       (select as HTMLSelectElement).value = forgedOption.value;
     });
     await page.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=invalid`);
+    await expect(page).toHaveURL(
+      `/animals/${manualAnimalId}/edit?status=invalid_mother`,
+    );
     rejectedParentAnimal = expectSupabaseData(
       await supabase
         .from("animals")
@@ -1486,9 +1822,10 @@ test("promotes an eligible identified adult female to home breeder", async ({
         exact: true,
       }),
     });
+    await expect(statusSection).toContainText("Gardé à l’élevage · Reproductrice maison");
     await expect(
-      statusSection.locator("div").filter({ hasText: "Reproducteur" }),
-    ).toContainText("Oui");
+      statusSection.locator("dt", { hasText: /^Reproducteur$/ }),
+    ).toHaveCount(0);
 
     const promotedAnimal = expectSupabaseData(
       await supabase

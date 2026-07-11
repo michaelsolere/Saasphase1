@@ -133,10 +133,6 @@ const eventPriorityOptions = [
 
 const HOME_BREEDER_MIN_AGE_MONTHS = 15;
 
-function booleanLabel(value: boolean | null) {
-  return value ? "Oui" : "Non";
-}
-
 function parseDateOnly(value: string | null) {
   if (!value) {
     return null;
@@ -394,21 +390,81 @@ function DetailItem({
   );
 }
 
+function getAnimalSituationSummary(animal: DBAnimal) {
+  const statusLabel = getAnimalStatusLabel(animal.status);
+  const isRetired = animal.is_retired || animal.status === "retired";
+  const isExternal = Boolean(animal.is_external);
+  const isBreeder = Boolean(animal.is_breeder);
+
+  let situationLabel: string;
+
+  if (isRetired) {
+    situationLabel = isExternal ? "Extérieur" : "Maison";
+  } else if (isBreeder && isExternal) {
+    situationLabel = "Reproducteur extérieur";
+  } else if (isBreeder) {
+    situationLabel =
+      animal.sex === "female" ? "Reproductrice maison" : "Reproducteur maison";
+  } else if (isExternal) {
+    situationLabel = "Animal extérieur";
+  } else {
+    situationLabel = getOwnershipStatusLabel(animal.ownership_status);
+  }
+
+  return `${statusLabel} · ${situationLabel}`;
+}
+
+function getPedigreeCardInfo(value: string) {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.replace(/^www\./, "");
+    const isCentraleCanine =
+      hostname === "centrale-canine.fr" ||
+      hostname.endsWith(".centrale-canine.fr");
+    const path = `${url.pathname}${url.search}` || "/";
+
+    return {
+      title: isCentraleCanine ? "Centrale canine" : hostname,
+      preview: `${hostname}${path}`,
+    };
+  } catch {
+    return {
+      title: "Lien externe",
+      preview: value,
+    };
+  }
+}
+
 function PedigreeLinkItem({ value }: { value: string | null }) {
+  const cardInfo = value ? getPedigreeCardInfo(value) : null;
+
   return (
     <div>
       <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
         Lien vers la page SCC de l’animal
       </dt>
       <dd className="mt-1.5 text-sm leading-6">
-        {value ? (
+        {value && cardInfo ? (
           <a
             href={value}
             target="_blank"
             rel="noreferrer"
-            className="font-medium text-accent hover:underline"
+            className="group flex max-w-full items-center gap-3 rounded-xl border bg-background px-3 py-2.5 text-foreground transition hover:border-accent/40 hover:bg-accent-soft"
           >
-            {value}
+            <span
+              aria-hidden="true"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border bg-surface text-xs font-bold text-accent"
+            >
+              SCC
+            </span>
+            <span className="min-w-0">
+              <span className="block font-semibold leading-5">
+                {cardInfo.title}
+              </span>
+              <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-5 text-muted">
+                {cardInfo.preview}
+              </span>
+            </span>
           </a>
         ) : (
           "Non renseigné"
@@ -1220,8 +1276,6 @@ export default async function AnimalDetailPage({
   const ownerContactName = isAdoptedOrSoldKennelBornAnimal
     ? relatedReservation?.contact_display_name ?? null
     : null;
-  const shouldShowBreederBoolean =
-    animal?.status !== "breeding" && animal?.is_breeder === true;
   const canKeepAnimalAtKennel = animal ? canKeepAtKennel(animal) : false;
   const canMakeAnimalAvailable = animal ? canMakeAvailable(animal) : false;
   const canToggleAvailability = animal
@@ -1274,9 +1328,6 @@ export default async function AnimalDetailPage({
                 ) : null}
                 <p className="mt-3 text-sm font-medium text-muted">
                   {formatAnimalAge(animal.birth_date, animal.death_date)}
-                </p>
-                <p className="mt-3 text-sm text-muted">
-                  Créé le {formatAnimalDate(animal.created_at)}
                 </p>
                 {getBornOffspringLabel(animal) ? (
                   <p className="mt-3 w-fit rounded-xl border bg-surface px-4 py-2 text-sm font-medium text-muted">
@@ -1597,8 +1648,8 @@ export default async function AnimalDetailPage({
                     value={getAnimalSexLabel(animal.sex)}
                   />
                   <DetailItem
-                    label="Statut"
-                    value={getAnimalStatusLabel(animal.status)}
+                    label="Situation"
+                    value={getAnimalSituationSummary(animal)}
                   />
                   <DetailItem
                     label="Numéro d’identification"
@@ -1610,30 +1661,12 @@ export default async function AnimalDetailPage({
                     value={animal.lof_number}
                   />
                   <DetailItem label="Robe" value={animal.coat_color} />
-                  <DetailItem
-                    label="Statut de propriété"
-                    value={getOwnershipStatusLabel(animal.ownership_status)}
-                  />
                   {shouldShowOwner ? (
                     <OwnerDetailItem
                       contactId={ownerContactId}
                       contactName={ownerContactName}
                     />
                   ) : null}
-                  {shouldShowBreederBoolean ? (
-                    <DetailItem
-                      label="Reproducteur"
-                      value={booleanLabel(animal.is_breeder)}
-                    />
-                  ) : null}
-                  <DetailItem
-                    label="Animal extérieur"
-                    value={booleanLabel(animal.is_external)}
-                  />
-                  <DetailItem
-                    label="Retraité"
-                    value={booleanLabel(animal.is_retired)}
-                  />
                 </dl>
               </section>
 

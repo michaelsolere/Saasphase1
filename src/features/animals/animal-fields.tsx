@@ -3,9 +3,6 @@ export type AnimalParentOption = {
   call_name: string | null;
   official_name: string | null;
   sex: string | null;
-  species: string | null;
-  breed: string | null;
-  status: string | null;
 };
 
 export const animalSpeciesOptions = [
@@ -45,36 +42,8 @@ const inputClass =
   "mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none";
 const labelClass = "text-xs font-semibold uppercase tracking-wide text-muted";
 
-function speciesLabel(value: string | null) {
-  if (value === "dog") return "Chien";
-  if (value === "cat") return "Chat";
-  return value ?? "Espèce inconnue";
-}
-
-function sexLabel(value: string | null) {
-  if (value === "male") return "Mâle";
-  if (value === "female") return "Femelle";
-  return "Sexe inconnu";
-}
-
 function parentOptionLabel(animal: AnimalParentOption) {
-  const parts = [
-    animal.call_name ?? animal.official_name ?? "Animal sans nom",
-    sexLabel(animal.sex),
-  ];
-  const speciesBreed = [speciesLabel(animal.species), animal.breed]
-    .filter(Boolean)
-    .join(" / ");
-
-  if (speciesBreed) {
-    parts.push(speciesBreed);
-  }
-
-  if (animal.status) {
-    parts.push(animal.status);
-  }
-
-  return parts.join(" · ");
+  return animal.official_name ?? animal.call_name ?? "Animal sans nom";
 }
 
 function TextField({
@@ -113,6 +82,10 @@ export function AnimalFields({
   idPrefix: string;
   parentOptions: AnimalParentOption[];
 }) {
+  const motherOptions = parentOptions.filter((animal) => animal.sex === "female");
+  const fatherOptions = parentOptions.filter((animal) => animal.sex === "male");
+  const parentCount = motherOptions.length + fatherOptions.length;
+
   return (
     <div className="grid gap-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
@@ -277,7 +250,7 @@ export function AnimalFields({
           className={inputClass}
         >
           <option value="">Aucune mère</option>
-          {parentOptions.map((animal) => (
+          {motherOptions.map((animal) => (
             <option key={animal.id} value={animal.id}>
               {parentOptionLabel(animal)}
             </option>
@@ -296,7 +269,7 @@ export function AnimalFields({
           className={inputClass}
         >
           <option value="">Aucun père</option>
-          {parentOptions.map((animal) => (
+          {fatherOptions.map((animal) => (
             <option key={animal.id} value={animal.id}>
               {parentOptionLabel(animal)}
             </option>
@@ -304,15 +277,15 @@ export function AnimalFields({
         </select>
       </div>
 
-      {parentOptions.length === 0 ? (
+      {parentCount === 0 ? (
         <p className="sm:col-span-2 text-xs leading-5 text-muted">
           Aucun parent sélectionnable pour l’instant.
         </p>
       ) : (
         <p className="sm:col-span-2 text-xs leading-5 text-muted">
-          {parentOptions.length} parent
-          {parentOptions.length > 1 ? "s" : ""} disponible
-          {parentOptions.length > 1 ? "s" : ""}.
+          {parentCount} parent
+          {parentCount > 1 ? "s" : ""} disponible
+          {parentCount > 1 ? "s" : ""}.
         </p>
       )}
     </div>

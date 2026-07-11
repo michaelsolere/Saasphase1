@@ -37,9 +37,10 @@ export default async function NewAnimalPage({
 
   const { data: parentOptionsData } = await supabase
     .from("animals")
-    .select("id, call_name, official_name, sex, species, breed, status")
+    .select("id, call_name, official_name, sex")
     .is("deleted_at", null)
-    .order("call_name", { ascending: true });
+    .order("official_name", { ascending: true, nullsFirst: false })
+    .order("call_name", { ascending: true, nullsFirst: false });
 
   const parentOptions = (parentOptionsData ?? []) as AnimalParentOption[];
   const errorMessage = query.status ? errorMessages[query.status] : undefined;
