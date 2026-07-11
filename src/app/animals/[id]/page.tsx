@@ -10,6 +10,9 @@ import {
   updateAnimalFinalIdentity,
 } from "@/features/animals/actions";
 import {
+  AnimalPrimaryPhotoManager,
+} from "@/features/animals/animal-primary-photo-manager";
+import {
   formatAnimalAge,
   formatAnimalDate,
   getAnimalDisplayName,
@@ -37,6 +40,7 @@ import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type LitterLookup = {
   id: string | null;
@@ -89,6 +93,13 @@ type RelatedNote = {
   created_at: string;
   created_by: string | null;
   profiles: { display_name: string | null } | null;
+};
+type PrimaryPhoto = {
+  id: string;
+  file_path: string;
+  file_name: string | null;
+  width_px: number | null;
+  height_px: number | null;
 };
 
 const HEALTH_KEYWORDS = [
@@ -1203,6 +1214,28 @@ export default async function AnimalDetailPage({
   const shouldShowCallName =
     Boolean(animalCallName) && animalCallName !== animalTitle;
 
+  const { data: rawPrimaryPhoto, error: primaryPhotoError } = animal
+    ? await supabase
+        .from("media")
+        .select("id, file_path, file_name, width_px, height_px")
+        .eq("animal_id", id)
+        .eq("is_primary", true)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+
+  const primaryPhoto = rawPrimaryPhoto as PrimaryPhoto | null;
+  const { data: signedPhotoData, error: signedPhotoError } = primaryPhoto
+    ? await supabase.storage
+        .from("animal-media")
+        .createSignedUrl(primaryPhoto.file_path, 60 * 60)
+    : { data: null, error: null };
+  const primaryPhotoUrl = signedPhotoData?.signedUrl ?? null;
+  const hasStoredPhoto = Boolean(primaryPhoto);
+  const photoUnavailable =
+    Boolean(primaryPhotoError) ||
+    (hasStoredPhoto && Boolean(signedPhotoError || !primaryPhotoUrl));
+
   const { data: rawDocuments, error: documentsError } = animal
     ? await supabase
         .from("documents")
@@ -1313,27 +1346,39 @@ export default async function AnimalDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
-            <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  Animal · Lecture seule
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {animalTitle}
-                </h1>
-                {shouldShowCallName ? (
-                  <p className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">
-                    {animalCallName}
+            <header className="flex flex-col justify-between gap-6 border-b pb-8 lg:flex-row lg:items-end">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-end">
+                <AnimalPrimaryPhotoManager
+                  animalId={animal.id}
+                  animalName={animalTitle ?? animalDisplay ?? "l’animal"}
+                  hasStoredPhoto={hasStoredPhoto}
+                  photoUrl={primaryPhotoUrl}
+                  photoUnavailable={photoUnavailable}
+                  photoActionsDisabled={Boolean(primaryPhotoError)}
+                  photoWidth={primaryPhoto?.width_px ?? null}
+                  photoHeight={primaryPhoto?.height_px ?? null}
+                />
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+                    Animal · Lecture seule
                   </p>
-                ) : null}
-                <p className="mt-3 text-sm font-medium text-muted">
-                  {formatAnimalAge(animal.birth_date, animal.death_date)}
-                </p>
-                {getBornOffspringLabel(animal) ? (
-                  <p className="mt-3 w-fit rounded-xl border bg-surface px-4 py-2 text-sm font-medium text-muted">
-                    {getBornOffspringLabel(animal)}
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                    {animalTitle}
+                  </h1>
+                  {shouldShowCallName ? (
+                    <p className="mt-2 text-2xl font-bold text-foreground sm:text-3xl">
+                      {animalCallName}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 text-sm font-medium text-muted">
+                    {formatAnimalAge(animal.birth_date, animal.death_date)}
                   </p>
-                ) : null}
+                  {getBornOffspringLabel(animal) ? (
+                    <p className="mt-3 w-fit rounded-xl border bg-surface px-4 py-2 text-sm font-medium text-muted">
+                      {getBornOffspringLabel(animal)}
+                    </p>
+                  ) : null}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Link
