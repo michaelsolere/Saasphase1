@@ -23,6 +23,19 @@ type LitterLookup = {
 
 type ParentLookup = Pick<DBAnimal, "id" | "call_name">;
 
+type PrimaryPhotoRow = {
+  animal_id: string;
+  file_path: string;
+  width_px: number | null;
+  height_px: number | null;
+};
+
+type SignedPhotoResult = {
+  path?: string | null;
+  signedUrl?: string | null;
+  error?: unknown;
+};
+
 const quickFilters = new Set<AnimalQuickFilter>([
   "born",
   "available",
@@ -180,6 +193,72 @@ function buildLitterOptions(
     .sort((a, b) => a.label.localeCompare(b.label, "fr"));
 }
 
+async function fetchPrimaryPhotosForAnimals(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  animalIds: string[],
+) {
+  if (animalIds.length === 0) {
+    return new Map<string, AnimalListItem["primaryPhoto"]>();
+  }
+
+  const { data: rawPhotos, error: photosError } = await supabase
+    .from("media")
+    .select("animal_id, file_path, width_px, height_px")
+    .in("animal_id", animalIds)
+    .eq("is_primary", true)
+    .is("deleted_at", null);
+
+  if (photosError || !rawPhotos) {
+    console.error("Unable to load animal list primary photos", photosError);
+    return new Map<string, AnimalListItem["primaryPhoto"]>();
+  }
+
+  const photos = rawPhotos as PrimaryPhotoRow[];
+  const filePaths = photos.map((photo) => photo.file_path);
+
+  if (filePaths.length === 0) {
+    return new Map<string, AnimalListItem["primaryPhoto"]>();
+  }
+
+  const { data: rawSignedUrls, error: signedUrlsError } =
+    await supabase.storage
+      .from("animal-media")
+      .createSignedUrls(filePaths, 60 * 60);
+
+  if (signedUrlsError || !rawSignedUrls) {
+    console.error(
+      "Unable to sign animal list primary photo URLs",
+      signedUrlsError,
+    );
+    return new Map<string, AnimalListItem["primaryPhoto"]>();
+  }
+
+  const signedUrlsByPath = new Map(
+    (rawSignedUrls as SignedPhotoResult[])
+      .filter((signedUrl) => signedUrl.path && signedUrl.signedUrl && !signedUrl.error)
+      .map((signedUrl) => [signedUrl.path as string, signedUrl.signedUrl as string]),
+  );
+
+  return new Map<string, AnimalListItem["primaryPhoto"]>(
+    photos.flatMap((photo) => {
+      const signedUrl = signedUrlsByPath.get(photo.file_path);
+
+      return signedUrl
+        ? [
+            [
+              photo.animal_id,
+              {
+                url: signedUrl,
+                width: photo.width_px,
+                height: photo.height_px,
+              },
+            ],
+          ]
+        : [];
+    }),
+  );
+}
+
 export default async function AnimalsPage({
   searchParams,
 }: {
@@ -264,10 +343,20 @@ export default async function AnimalsPage({
         fatherCallName: animal.father_id
           ? parentsById.get(animal.father_id) ?? null
           : null,
+        primaryPhoto: null,
       } satisfies AnimalListItem;
     });
 
-    animals = applyAnimalFilters(mappedAnimals, filters);
+    const filteredAnimals = applyAnimalFilters(mappedAnimals, filters);
+    const primaryPhotosByAnimalId = await fetchPrimaryPhotosForAnimals(
+      supabase,
+      filteredAnimals.map((animal) => animal.id),
+    );
+
+    animals = filteredAnimals.map((animal) => ({
+      ...animal,
+      primaryPhoto: primaryPhotosByAnimalId.get(animal.id) ?? null,
+    }));
   }
 
   return (

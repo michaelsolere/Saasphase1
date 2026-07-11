@@ -31,4 +31,9 @@ export type AnimalListItem = Pick<
   litterGroupName: string | null;
   motherCallName: string | null;
   fatherCallName: string | null;
+  primaryPhoto: {
+    url: string;
+    width: number | null;
+    height: number | null;
+  } | null;
 };
