@@ -29,6 +29,7 @@ const animalCallNameCleanupPrefixes = [
   "QA edition chiot ",
   "QA edition chiot modifie ",
   "QA garder disponible ",
+  "QA garder reproducteur ",
   "QA promotion repro maison ",
   "QA sante vide ",
   "QA evenement sante ",
@@ -293,10 +294,11 @@ function extractAnimalIdFromUrl(page: Page) {
 test("creates manual animals without confusing them with litter offspring", async ({
   page,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
 
   const supabase = await createAuthenticatedSupabaseClient();
   const suffix = Date.now().toString(36);
+  const sccUrl = `https://www.centrale-canine.fr/chien/${suffix}`;
   const createdAnimalIds: string[] = [];
 
   const cases: ManualAnimalCase[] = [
@@ -316,6 +318,9 @@ test("creates manual animals without confusing them with litter offspring", asyn
         await formPage.locator('input[name="is_breeder"]').check();
         await formPage.getByLabel("Numéro LOF").fill(`LOF QA ${suffix}`);
         await formPage.getByLabel("Robe").fill("Fauve clair QA");
+        await formPage
+          .getByLabel("Lien vers la page SCC de l’animal")
+          .fill(sccUrl);
       },
     },
     {
@@ -420,6 +425,20 @@ test("creates manual animals without confusing them with litter offspring", asyn
       await expect(page.getByLabel("Numéro LOF")).toBeVisible();
       await expect(page.getByLabel("Robe")).toBeVisible();
       await expect(page.getByText("Reproducteur maison", { exact: true })).toBeVisible();
+      await expect(page.getByLabel("Numéro d’identification")).toBeVisible();
+      await expect(
+        page.getByLabel("Lien vers la page SCC de l’animal"),
+      ).toBeVisible();
+      await expect(
+        page.locator('input[name="official_name"]'),
+      ).toHaveCount(1);
+      await expect(page.locator('input[name="call_name"]')).toHaveCount(1);
+      const identityFieldOrder = await page
+        .locator('input[name="official_name"], input[name="call_name"]')
+        .evaluateAll((inputs) =>
+          inputs.map((input) => (input as HTMLInputElement).name),
+        );
+      expect(identityFieldOrder).toEqual(["official_name", "call_name"]);
       await expect(page.getByLabel("Couleur", { exact: true })).toHaveCount(0);
       await expect(
         page.locator('select[name="status"] option[value="breeding"]'),
@@ -450,7 +469,7 @@ test("creates manual animals without confusing them with litter offspring", asyn
         await supabase
           .from("animals")
           .select(
-            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, lof_number, color, coat_color",
+            "call_name, sex, status, ownership_status, is_breeder, is_external, is_retired, litter_id, lof_number, color, coat_color, pedigree_url",
           )
           .eq("call_name", manualCase.label)
           .single(),
@@ -467,23 +486,23 @@ test("creates manual animals without confusing them with litter offspring", asyn
           lof_number: `LOF QA ${suffix}`,
           color: null,
           coat_color: "Fauve clair QA",
+          pedigree_url: sccUrl,
         });
-        await expect(
-          page.locator("section").filter({
-            has: page.getByRole("heading", {
-              name: "Fiche d’identité",
-              exact: true,
-            }),
+        const identitySection = page.locator("section").filter({
+          has: page.getByRole("heading", {
+            name: "Fiche d’identité",
+            exact: true,
           }),
-        ).toContainText(`LOF QA ${suffix}`);
-        await expect(
-          page.locator("section").filter({
-            has: page.getByRole("heading", {
-              name: "Fiche d’identité",
-              exact: true,
-            }),
-          }),
-        ).toContainText("Fauve clair QA");
+        });
+        await expect(identitySection).toContainText(`LOF QA ${suffix}`);
+        await expect(identitySection).toContainText("Fauve clair QA");
+        const sccLink = identitySection.getByRole("link", { name: sccUrl });
+        await expect(identitySection).toContainText(
+          "Lien vers la page SCC de l’animal",
+        );
+        await expect(sccLink).toHaveAttribute("href", sccUrl);
+        await expect(sccLink).toHaveAttribute("target", "_blank");
+        await expect(sccLink).toHaveAttribute("rel", "noreferrer");
       }
     }
 
@@ -582,6 +601,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       ownership_status: "owned",
       birth_date: "2023-01-10",
       identification_number: "OLD-ID",
+      pedigree_url: "https://www.centrale-canine.fr/chien/old-scc",
       lof_number: "OLD-LOF",
       color: "Sable",
       coat_color: "Claire",
@@ -620,11 +640,17 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await page.getByRole("link", { name: "Modifier les informations" }).click();
     await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit`);
     await page.getByLabel("Nom d’usage").fill(`QA edition modifiee ${suffix}`);
-    await expect(page.getByLabel("Identification")).toHaveValue("OLD-ID");
+    await expect(page.getByLabel("Numéro d’identification")).toHaveValue("OLD-ID");
+    await expect(page.getByLabel("Lien vers la page SCC de l’animal")).toHaveValue(
+      "https://www.centrale-canine.fr/chien/old-scc",
+    );
     await expect(page.getByLabel("Numéro LOF")).toHaveValue("OLD-LOF");
     await expect(page.getByLabel("Robe")).toHaveValue("Claire");
     await expect(page.getByLabel("Couleur", { exact: true })).toHaveCount(0);
-    await page.getByLabel("Identification").fill("NEW-ID");
+    await page.getByLabel("Numéro d’identification").fill("NEW-ID");
+    await page
+      .getByLabel("Lien vers la page SCC de l’animal")
+      .fill("https://www.centrale-canine.fr/chien/new-scc");
     await page.getByLabel("Numéro LOF").fill("LOF-NEW-123");
     await page.getByLabel("Robe").fill("Fauve clair");
     await page.getByLabel("Date de naissance").fill("2023-02-11");
@@ -660,7 +686,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       await supabase
         .from("animals")
         .select(
-          "call_name, identification_number, lof_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
+          "call_name, identification_number, pedigree_url, lof_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
         )
         .eq("id", manualAnimalId)
         .single(),
@@ -670,6 +696,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     expect(updatedManualAnimal).toMatchObject({
       call_name: `QA edition modifiee ${suffix}`,
       identification_number: "NEW-ID",
+      pedigree_url: "https://www.centrale-canine.fr/chien/new-scc",
       lof_number: "LOF-NEW-123",
       color: "Sable",
       coat_color: "Fauve clair",
@@ -694,9 +721,47 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
         }),
       }),
     ).toContainText("LOF-NEW-123");
+    const identitySccLink = page
+      .locator("section")
+      .filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      })
+      .getByRole("link", {
+        name: "https://www.centrale-canine.fr/chien/new-scc",
+      });
+    await expect(identitySccLink).toHaveAttribute(
+      "href",
+      "https://www.centrale-canine.fr/chien/new-scc",
+    );
+    await page.goto(`/animals/${manualAnimalId}/edit`);
+    await page
+      .getByLabel("Lien vers la page SCC de l’animal")
+      .evaluate((input) => {
+        (input as HTMLInputElement).value = "javascript:alert(1)";
+      });
+    await page.getByRole("button", { name: "Enregistrer" }).click();
+    await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit?status=error`);
+    const rejectedUrlAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("pedigree_url")
+        .eq("id", manualAnimalId)
+        .single(),
+      "read rejected SCC URL animal",
+    );
+    expect(rejectedUrlAnimal.pedigree_url).toBe(
+      "https://www.centrale-canine.fr/chien/new-scc",
+    );
+
     await page.goto(`/animals/${manualAnimalId}/edit`);
     await expect(page.getByLabel("Numéro LOF")).toHaveValue("LOF-NEW-123");
     await expect(page.getByLabel("Robe")).toHaveValue("Fauve clair");
+    await expect(page.getByLabel("Lien vers la page SCC de l’animal")).toHaveValue(
+      "https://www.centrale-canine.fr/chien/new-scc",
+    );
 
     await page.goto(`/animals/${litterAnimalId}/edit`);
     await expect(page.locator('input[name="birth_date"]')).toHaveCount(0);
@@ -738,9 +803,11 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
 
   const supabase = await createAuthenticatedSupabaseClient();
   const animalId = randomUUID();
+  const breederAnimalId = randomUUID();
   const suffix = animalId.slice(0, 8);
   const animalName = `QA garder disponible ${suffix}`;
-  const createdAnimalIds = [animalId];
+  const breederAnimalName = `QA garder reproducteur ${suffix}`;
+  const createdAnimalIds = [animalId, breederAnimalId];
 
   try {
     const { error: animalInsertError } = await supabase.from("animals").insert({
@@ -761,11 +828,42 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
 
     expect(animalInsertError).toBeNull();
 
+    const { error: breederAnimalInsertError } = await supabase
+      .from("animals")
+      .insert({
+        id: breederAnimalId,
+        organization_id: organizationId,
+        call_name: breederAnimalName,
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "active",
+        ownership_status: "owned",
+        is_breeder: true,
+        is_external: false,
+        is_retired: false,
+        created_by: ownerId,
+        updated_by: ownerId,
+      });
+
+    expect(breederAnimalInsertError).toBeNull();
+
     await page.goto("/login");
     await page.getByLabel("Email").fill("owner@saasphase1.invalid");
     await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
+
+    await page.goto(`/animals/${breederAnimalId}`);
+    await expect(
+      page.getByRole("heading", { name: breederAnimalName }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Garder à l’élevage" }),
+    ).toHaveCount(0);
+    await expect(page.getByText("Je confirme que cet animal doit rester")).toHaveCount(
+      0,
+    );
 
     await page.goto(`/animals/${animalId}`);
     await expect(page.getByRole("heading", { name: animalName })).toBeVisible();
@@ -778,6 +876,39 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
     await expect(
       page.getByRole("button", { name: "Garder à l’élevage" }),
     ).toBeVisible();
+
+    const keepForm = page.locator("form").filter({
+      has: page.getByRole("button", { name: "Garder à l’élevage" }),
+    });
+    const forgedResponse = await keepForm.evaluate(
+      async (form, forgedAnimalId) => {
+        const htmlForm = form as HTMLFormElement;
+        const formData = new FormData(htmlForm);
+        formData.set("animal_id", forgedAnimalId);
+        formData.set("confirm_keep_at_kennel", "yes");
+
+        return fetch(htmlForm.action, {
+          method: htmlForm.method || "POST",
+          body: formData,
+        }).then((response) => response.status);
+      },
+      breederAnimalId,
+    );
+    expect(forgedResponse).toBeGreaterThanOrEqual(200);
+
+    const forgedBreederAnimal = expectSupabaseData(
+      await supabase
+        .from("animals")
+        .select("id, status, is_breeder")
+        .eq("id", breederAnimalId)
+        .single(),
+      "read forged keep breeder animal",
+    );
+    expect(forgedBreederAnimal).toMatchObject({
+      id: breederAnimalId,
+      status: "active",
+      is_breeder: true,
+    });
 
     await page.locator("#confirm-keep-at-kennel").check();
     await page.getByRole("button", { name: "Garder à l’élevage" }).click();

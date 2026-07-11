@@ -47,12 +47,14 @@ function TextField({
   label,
   name,
   defaultValue,
+  type = "text",
   required = false,
 }: {
   id: string;
   label: string;
   name: string;
   defaultValue: string | null;
+  type?: string;
   required?: boolean;
 }) {
   return (
@@ -63,6 +65,7 @@ function TextField({
       <input
         id={id}
         name={name}
+        type={type}
         defaultValue={defaultValue ?? ""}
         required={required}
         className={inputClass}
@@ -110,7 +113,7 @@ export default async function AnimalEditPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, lof_number, color, coat_color, is_breeder, is_external, is_retired",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, pedigree_url, lof_number, color, coat_color, is_breeder, is_external, is_retired",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -282,10 +285,19 @@ export default async function AnimalEditPage({
 
                 <TextField
                   id="animal-edit-identification"
-                  label="Identification"
+                  label="Numéro d’identification"
                   name="identification_number"
                   defaultValue={animal.identification_number}
                 />
+                <div className="sm:col-span-2">
+                  <TextField
+                    id="animal-edit-pedigree-url"
+                    label="Lien vers la page SCC de l’animal"
+                    name="pedigree_url"
+                    type="url"
+                    defaultValue={animal.pedigree_url}
+                  />
+                </div>
                 <TextField
                   id="animal-edit-lof-number"
                   label="Numéro LOF"

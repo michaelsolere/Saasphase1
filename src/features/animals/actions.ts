@@ -155,6 +155,28 @@ function normalizeOptionalDate(value: FormDataEntryValue | null) {
   return trimmed;
 }
 
+function normalizeOptionalHttpUrl(value: FormDataEntryValue | null) {
+  const text = normalizeOptionalText(value, 2048);
+
+  if (!text) {
+    return null;
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(text);
+  } catch {
+    return "invalid";
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    return "invalid";
+  }
+
+  return url.toString();
+}
+
 function parseDateOnly(value: string | null) {
   if (!value) {
     return null;
@@ -291,6 +313,12 @@ export async function createManualAnimal(formData: FormData) {
     redirect(animalCreateUrl("invalid"));
   }
 
+  const pedigreeUrl = normalizeOptionalHttpUrl(formData.get("pedigree_url"));
+
+  if (pedigreeUrl === "invalid") {
+    redirect(animalCreateUrl("invalid"));
+  }
+
   const motherId = parseOptionalUuid(formData.get("mother_id"));
 
   if (motherId === "invalid") {
@@ -397,6 +425,7 @@ export async function createManualAnimal(formData: FormData) {
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
+    pedigree_url: pedigreeUrl,
     lof_number: normalizeOptionalText(formData.get("lof_number")),
     coat_color: normalizeOptionalText(formData.get("coat_color")),
     mother_id: motherId,
@@ -434,6 +463,12 @@ export async function updateAnimalIdentity(formData: FormData) {
     redirect(animalIdentityEditUrl(animalId, "name_required"));
   }
 
+  const pedigreeUrl = normalizeOptionalHttpUrl(formData.get("pedigree_url"));
+
+  if (pedigreeUrl === "invalid") {
+    redirect(animalIdentityEditUrl(animalId, "error"));
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -460,6 +495,7 @@ export async function updateAnimalIdentity(formData: FormData) {
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
+    pedigree_url: pedigreeUrl,
     lof_number: normalizeOptionalText(formData.get("lof_number")),
     coat_color: normalizeOptionalText(formData.get("coat_color")),
     updated_at: new Date().toISOString(),
@@ -698,7 +734,9 @@ export async function keepAnimalAtKennel(formData: FormData) {
 
   const { data: animal, error: readError } = await supabase
     .from("animals")
-    .select("id, organization_id, status, ownership_status, is_external, is_retired")
+    .select(
+      "id, organization_id, status, ownership_status, is_breeder, is_external, is_retired",
+    )
     .eq("id", animalId)
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
@@ -713,6 +751,7 @@ export async function keepAnimalAtKennel(formData: FormData) {
   );
   const canKeep =
     ["born", "active", "available"].includes(animal.status) &&
+    !animal.is_breeder &&
     !animal.is_external &&
     !animal.is_retired &&
     !isAdoptedOut;
@@ -728,6 +767,7 @@ export async function keepAnimalAtKennel(formData: FormData) {
     .eq("organization_id", animal.organization_id)
     .is("deleted_at", null)
     .in("status", ["born", "active", "available"])
+    .eq("is_breeder", false)
     .eq("is_external", false)
     .eq("is_retired", false)
     .not("ownership_status", "in", "(adopted_out,sold)")

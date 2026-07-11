@@ -302,6 +302,7 @@ function canKeepAtKennel(animal: DBAnimal) {
 
   return (
     ["born", "active", "available"].includes(animal.status) &&
+    !animal.is_breeder &&
     !animal.is_external &&
     !animal.is_retired &&
     !isAdoptedOut
@@ -388,6 +389,30 @@ function DetailItem({
       </dt>
       <dd className="mt-1.5 text-sm leading-6">
         {value || "Non renseigné"}
+      </dd>
+    </div>
+  );
+}
+
+function PedigreeLinkItem({ value }: { value: string | null }) {
+  return (
+    <div>
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        Lien vers la page SCC de l’animal
+      </dt>
+      <dd className="mt-1.5 text-sm leading-6">
+        {value ? (
+          <a
+            href={value}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-accent hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          "Non renseigné"
+        )}
       </dd>
     </div>
   );
@@ -1579,6 +1604,7 @@ export default async function AnimalDetailPage({
                     label="Numéro d’identification"
                     value={animal.identification_number}
                   />
+                  <PedigreeLinkItem value={animal.pedigree_url} />
                   <DetailItem
                     label="Numéro LOF"
                     value={animal.lof_number}

@@ -117,17 +117,17 @@ export function AnimalFields({
     <div className="grid gap-5 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <TextField
-          id={`${idPrefix}-call-name`}
-          label="Nom d’usage"
-          name="call_name"
+          id={`${idPrefix}-official-name`}
+          label="Nom complet"
+          name="official_name"
         />
       </div>
 
       <div className="sm:col-span-2">
         <TextField
-          id={`${idPrefix}-official-name`}
-          label="Nom complet"
-          name="official_name"
+          id={`${idPrefix}-call-name`}
+          label="Nom d’usage"
+          name="call_name"
         />
       </div>
 
@@ -248,9 +248,17 @@ export function AnimalFields({
       />
       <TextField
         id={`${idPrefix}-identification`}
-        label="Identification"
+        label="Numéro d’identification"
         name="identification_number"
       />
+      <div className="sm:col-span-2">
+        <TextField
+          id={`${idPrefix}-pedigree-url`}
+          label="Lien vers la page SCC de l’animal"
+          name="pedigree_url"
+          type="url"
+        />
+      </div>
       <TextField
         id={`${idPrefix}-lof-number`}
         label="Numéro LOF"
