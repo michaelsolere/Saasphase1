@@ -527,6 +527,7 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       ownership_status: "owned",
       birth_date: "2023-01-10",
       identification_number: "OLD-ID",
+      lof_number: "OLD-LOF",
       color: "Sable",
       coat_color: "Claire",
       created_by: ownerId,
@@ -564,8 +565,12 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await page.getByRole("link", { name: "Modifier les informations" }).click();
     await expect(page).toHaveURL(`/animals/${manualAnimalId}/edit`);
     await page.getByLabel("Nom d’usage").fill(`QA edition modifiee ${suffix}`);
+    await expect(page.getByLabel("Identification")).toHaveValue("OLD-ID");
+    await expect(page.getByLabel("Numéro LOF")).toHaveValue("OLD-LOF");
+    await expect(page.getByLabel("Robe")).toHaveValue("Claire");
+    await expect(page.getByLabel("Couleur", { exact: true })).toHaveCount(0);
     await page.getByLabel("Identification").fill("NEW-ID");
-    await page.getByLabel("Couleur").fill("Doré");
+    await page.getByLabel("Numéro LOF").fill("LOF-NEW-123");
     await page.getByLabel("Robe").fill("Fauve clair");
     await page.getByLabel("Date de naissance").fill("2023-02-11");
     await page.locator("form").evaluate((form) => {
@@ -592,13 +597,15 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     await expect(page).toHaveURL(
       `/animals/${manualAnimalId}?identity_status=success`,
     );
-    await expect(page.getByText("Les informations de l’animal ont été mises à jour.")).toBeVisible();
+    await expect(
+      page.getByText("Les informations de l’animal ont été mises à jour."),
+    ).toBeVisible();
 
     const updatedManualAnimal = expectSupabaseData(
       await supabase
         .from("animals")
         .select(
-          "call_name, identification_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
+          "call_name, identification_number, lof_number, color, coat_color, birth_date, status, ownership_status, sex, species, breed, litter_id, mother_id, father_id, is_breeder, is_external, is_retired",
         )
         .eq("id", manualAnimalId)
         .single(),
@@ -608,7 +615,8 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
     expect(updatedManualAnimal).toMatchObject({
       call_name: `QA edition modifiee ${suffix}`,
       identification_number: "NEW-ID",
-      color: "Doré",
+      lof_number: "LOF-NEW-123",
+      color: "Sable",
       coat_color: "Fauve clair",
       birth_date: "2023-02-11",
       status: "active",
@@ -623,6 +631,17 @@ test("edits only lightweight animal identity fields", async ({ page }) => {
       is_external: false,
       is_retired: false,
     });
+    await expect(
+      page.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Fiche d’identité",
+          exact: true,
+        }),
+      }),
+    ).toContainText("LOF-NEW-123");
+    await page.goto(`/animals/${manualAnimalId}/edit`);
+    await expect(page.getByLabel("Numéro LOF")).toHaveValue("LOF-NEW-123");
+    await expect(page.getByLabel("Robe")).toHaveValue("Fauve clair");
 
     await page.goto(`/animals/${litterAnimalId}/edit`);
     await expect(page.locator('input[name="birth_date"]')).toHaveCount(0);
@@ -697,7 +716,7 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
     await expect(page.getByRole("heading", { name: animalName })).toBeVisible();
     const statusSection = page.locator("section").filter({
       has: page.getByRole("heading", {
-        name: "Statut et informations générales",
+        name: "Fiche d’identité",
         exact: true,
       }),
     });
@@ -833,7 +852,7 @@ test("promotes an eligible identified adult female to home breeder", async ({
 
     const statusSection = page.locator("section").filter({
       has: page.getByRole("heading", {
-        name: "Statut et informations générales",
+        name: "Fiche d’identité",
         exact: true,
       }),
     });

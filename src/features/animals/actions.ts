@@ -461,7 +461,7 @@ export async function updateAnimalIdentity(formData: FormData) {
     identification_number: normalizeOptionalText(
       formData.get("identification_number"),
     ),
-    color: normalizeOptionalText(formData.get("color")),
+    lof_number: normalizeOptionalText(formData.get("lof_number")),
     coat_color: normalizeOptionalText(formData.get("coat_color")),
     updated_at: new Date().toISOString(),
     updated_by: user.id,

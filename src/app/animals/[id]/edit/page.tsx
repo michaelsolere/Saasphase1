@@ -110,7 +110,7 @@ export default async function AnimalEditPage({
   const { data: rawAnimal, error: readError } = await supabase
     .from("animals")
     .select(
-      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, is_breeder, is_external, is_retired",
+      "id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, litter_id, mother_id, father_id, birth_order, collar_color_current, collar_color_initial, identification_number, lof_number, color, coat_color, is_breeder, is_external, is_retired",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -287,10 +287,10 @@ export default async function AnimalEditPage({
                   defaultValue={animal.identification_number}
                 />
                 <TextField
-                  id="animal-edit-color"
-                  label="Couleur"
-                  name="color"
-                  defaultValue={animal.color}
+                  id="animal-edit-lof-number"
+                  label="Numéro LOF"
+                  name="lof_number"
+                  defaultValue={animal.lof_number}
                 />
                 <TextField
                   id="animal-edit-coat-color"

@@ -1559,7 +1559,7 @@ export default async function AnimalDetailPage({
 
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
-                  Statut et informations générales
+                  Fiche d’identité
                 </h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                   <DetailItem
