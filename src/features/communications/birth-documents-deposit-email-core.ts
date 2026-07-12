@@ -34,6 +34,10 @@ const CAMPAIGN_KEY = "birth_documents_deposit";
 const OPERATION_VERSION = "v1";
 const PAYMENT_NOTE = "Demande 2/2 — complément d’arrhes [birth_documents_deposit:v1]";
 const ACTIVE_STATUSES = ["requested", "pending", "partially_paid"] as const;
+const PAID_DEPOSIT_TYPES = [
+  "arrhes",
+  "pre_reservation_deposit_refundable",
+] as const;
 
 function validEmail(value: string | null) {
   return Boolean(value && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim()));
@@ -117,7 +121,7 @@ export async function sendBirthDocumentsDepositEmailForReservation(
       const litter = litterResult.data;
       if (!contact || !validEmail(contact.email)) return { ok: false, errorCode: "missing_email" };
       if (!litter) return { ok: false, errorCode: "not_eligible" };
-      const { data: payments } = await supabase.from("payments").select("amount_cents, status").eq("organization_id", organizationId).eq("reservation_id", reservation.id).eq("status", "paid").is("deleted_at", null);
+      const { data: payments } = await supabase.from("payments").select("amount_cents, status, payment_type").eq("organization_id", organizationId).eq("reservation_id", reservation.id).eq("status", "paid").in("payment_type", PAID_DEPOSIT_TYPES).is("deleted_at", null);
       const paid = (payments ?? []).reduce((sum, payment) => sum + payment.amount_cents, 0);
       if (paid >= settings.completeDepositCents) return { ok: false, errorCode: "deposit_complete" };
       if (paid < settings.preReservationDepositCents) return { ok: false, errorCode: "pre_reservation_unpaid" };
@@ -143,7 +147,16 @@ export async function sendBirthDocumentsDepositEmailForReservation(
       const settings = await readDepositSettingsForOrganization({ supabase, organizationId });
       const { data: payments, error } = await supabase.from("payments").select("id, amount_cents, payment_type, status, due_date, notes, deleted_at").eq("organization_id", organizationId).eq("reservation_id", input.reservationId);
       if (error || !payments) return { ok: false, errorCode: "payment_read_failed" };
-      const paid = payments.filter(p => p.deleted_at === null && p.status === "paid").reduce((sum, p) => sum + p.amount_cents, 0);
+      const paid = payments
+        .filter(
+          (payment) =>
+            payment.deleted_at === null &&
+            payment.status === "paid" &&
+            PAID_DEPOSIT_TYPES.includes(
+              payment.payment_type as (typeof PAID_DEPOSIT_TYPES)[number],
+            ),
+        )
+        .reduce((sum, payment) => sum + payment.amount_cents, 0);
       if (paid >= settings.completeDepositCents) return { ok: false, errorCode: "deposit_complete" };
       if (paid < settings.preReservationDepositCents) return { ok: false, errorCode: "pre_reservation_unpaid" };
       const amount = settings.completeDepositCents - paid;

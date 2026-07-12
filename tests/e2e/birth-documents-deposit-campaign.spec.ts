@@ -5,7 +5,7 @@ import { getBrevoTransactionalTemplateConfig } from "../../src/features/settings
 import { createAuthenticatedSupabaseClient, E2E_OWNER_EMAIL, E2E_OWNER_PASSWORD, runE2eSqlSync } from "./helpers/supabase";
 
 const org = "20000000-0000-4000-8000-000000000001"; const owner = "10000000-0000-4000-8000-000000000001";
-const ids = { group: "97000000-0000-4000-8000-000000000001", litter: "97000000-0000-4000-8000-000000000002", template: "97000000-0000-4000-8000-000000000003", contact: "97000000-0000-4000-8000-000000000004", app: "97000000-0000-4000-8000-000000000005", reservation: "97000000-0000-4000-8000-000000000006", paid: "97000000-0000-4000-8000-000000000007", active: "97000000-0000-4000-8000-000000000008" };
+const ids = { group: "97000000-0000-4000-8000-000000000001", litter: "97000000-0000-4000-8000-000000000002", template: "97000000-0000-4000-8000-000000000003", contact: "97000000-0000-4000-8000-000000000004", app: "97000000-0000-4000-8000-000000000005", reservation: "97000000-0000-4000-8000-000000000006", paid: "97000000-0000-4000-8000-000000000007", active: "97000000-0000-4000-8000-000000000008", unrelatedPaid: "97000000-0000-4000-8000-000000000009" };
 const q = (v: string) => `'${v.replaceAll("'", "''")}'`;
 const sql = (value: string) => runE2eSqlSync(value);
 
@@ -40,6 +40,28 @@ test("registry, settings and preview expose the existing request values", async 
 test("parallel launches keep one active payment and one Brevo send", async () => { fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport(); const delayedTransport: BirthDocumentsDepositEmailTransport = { ...t.value, sendEmail: async (input) => { await new Promise((resolve) => setTimeout(resolve, 75)); return t.value.sendEmail(input); } }; try { const launch = () => runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: delayedTransport }) }); const results = await Promise.all([launch(), launch()]); expect(results.reduce((total, result) => total + result.paymentsCreatedCount, 0)).toBe(1); expect(results.reduce((total, result) => total + result.paymentsReusedCount, 0)).toBe(0); expect(results.reduce((total, result) => total + result.emailsInProgressCount, 0)).toBe(1); expect(t.sends).toHaveLength(1); expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and payment_type='arrhes' and status in ('requested','pending','partially_paid') and deleted_at is null;`))).toBe(1); expect(Number(sql(`select count(*) from public.email_delivery_attempts where reservation_id=${q(ids.reservation)} and status='sent' and deleted_at is null;`))).toBe(1); } finally { cleanup(); expect(remaining()).toBe(0); } });
 
 test("250 euros paid creates 250 euros complement and sends only once", async () => { fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport(); try { const first = await runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: t.value }) }); expect(first).toMatchObject({ status: "success", paymentsCreatedCount: 1, emailsSentCount: 1 }); const second = await runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: t.value }) }); expect(second).toMatchObject({ emailsAlreadySentCount: 1, paymentsCreatedCount: 0, paymentsReusedCount: 0 }); expect(t.sends).toHaveLength(1); expect(t.sends[0]).toMatchObject({ params: { montant_deja_regle: "250,00 €", montant_complement_arrhes: "250,00 €", arrhes_totales: "500,00 €", date_naissance: "10 juillet 2026", sexe_souhaite: "Femelle préférée, mâle possible", payment_request_id: expect.any(String) } }); expect(Number(sql(`select amount_cents from public.payments where reservation_id=${q(ids.reservation)} and status='requested' and deleted_at is null;`))).toBe(25000); } finally { cleanup(); expect(remaining()).toBe(0); } });
+
+test("paid non-deposit payment is excluded from paid arrhes and complement", async () => {
+  fixture();
+  const supabase = await createAuthenticatedSupabaseClient();
+  const t = transport();
+  try {
+    sql(`insert into public.payments(id,organization_id,contact_id,reservation_id,amount_cents,currency,payment_type,status,paid_at,payment_method,notes,created_by,updated_by) values(${q(ids.unrelatedPaid)},${q(org)},${q(ids.contact)},${q(ids.reservation)},30000,'EUR','balance','paid',now(),'bank_transfer','Paiement de solde sans rapport avec les arrhes',${q(owner)},${q(owner)});`);
+    const result = await runBirthDocumentsDepositCampaign({
+      supabase,
+      litterId: ids.litter,
+      reservationIds: [ids.reservation],
+      userId: owner,
+      sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: t.value }),
+    });
+    expect(result).toMatchObject({ completeCount: 0, paymentsCreatedCount: 1, emailsSentCount: 1 });
+    expect(t.sends[0]).toMatchObject({ params: { montant_deja_regle: "250,00 €", montant_complement_arrhes: "250,00 €" } });
+    expect(Number(sql(`select amount_cents from public.payments where reservation_id=${q(ids.reservation)} and payment_type='arrhes' and status='requested' and deleted_at is null;`))).toBe(25000);
+  } finally {
+    cleanup();
+    expect(remaining()).toBe(0);
+  }
+});
 
 test("existing request is reused; certain failure compensates only a new request; uncertainty retains it", async () => { const supabase = await createAuthenticatedSupabaseClient(); fixture({ active: true }); try { const reused = await runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: transport().value }) }); expect(reused).toMatchObject({ paymentsReusedCount: 1, paymentsCreatedCount: 0 }); cleanup(); fixture(); const failedTransport = transport("failed"); const failed = await runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: failedTransport.value }) }); expect(failed).toMatchObject({ paymentsCreatedCount: 1, paymentsCompensatedCount: 1 }); expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and status='requested' and deleted_at is null;`))).toBe(0); cleanup(); fixture(); const uncertainTransport = transport(); uncertainTransport.value.sendEmail = async () => ({ ok: false, reason: "timeout" }); const uncertain = await runBirthDocumentsDepositCampaign({ supabase, litterId: ids.litter, reservationIds: [ids.reservation], userId: owner, sendEmail: (input) => sendBirthDocumentsDepositEmailForReservation(input, { supabase, transport: uncertainTransport.value }) }); expect(uncertain).toMatchObject({ paymentsCreatedCount: 1, uncertainCount: 1, paymentsCompensatedCount: 0 }); expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and status='requested' and deleted_at is null;`))).toBe(1); } finally { cleanup(); expect(remaining()).toBe(0); } });
 
