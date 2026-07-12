@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { getBrevoTransactionalTemplateConfig } from "@/features/settings/brevo-template-registry";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -393,13 +394,13 @@ export async function testOrganizationBrevoConnection() {
   );
 }
 
-export async function updatePreReservationBrevoTemplateId(formData: FormData) {
+export async function updateBrevoTransactionalTemplateId(formData: FormData) {
   const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
-  const brevoTemplateId = parseOptionalPositiveInteger(
-    formData.get("pre_reservation_brevo_template_id"),
-  );
+  const templateKey = normalizeOptionalText(formData.get("template_key"), 80);
+  const templateConfig = getBrevoTransactionalTemplateConfig(templateKey);
+  const brevoTemplateId = parseOptionalPositiveInteger(formData.get("brevo_template_id"));
 
-  if (!organizationId || !brevoTemplateId.ok) {
+  if (!organizationId || !templateConfig || !brevoTemplateId.ok) {
     redirect(brevoTemplatesStatusUrl("error"));
   }
 
@@ -408,30 +409,25 @@ export async function updatePreReservationBrevoTemplateId(formData: FormData) {
     "brevo_templates_status",
   );
 
-  const { data: template, error: readError } = await supabase
-    .from("email_templates")
-    .select("id")
-    .eq("organization_id", organizationId)
-    .eq("template_key", "pre_reservation")
-    .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (readError || !template) {
-    redirect(brevoTemplatesStatusUrl("error"));
-  }
-
   const { error } = await supabase
     .from("email_templates")
-    .update({
-      brevo_template_id: brevoTemplateId.value,
-      updated_by: userId,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("organization_id", organizationId)
-    .eq("id", template.id)
-    .eq("template_key", "pre_reservation")
-    .is("deleted_at", null);
+    .upsert(
+      {
+        organization_id: organizationId,
+        template_key: templateConfig.templateKey,
+        title: templateConfig.title,
+        category: templateConfig.category,
+        subject: `Registre technique Brevo - ${templateConfig.templateKey}`,
+        body: `Registre technique Brevo - ${templateConfig.templateKey}`,
+        brevo_template_id: brevoTemplateId.value,
+        is_active: true,
+        deleted_at: null,
+        created_by: userId,
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "organization_id,template_key" },
+    );
 
   if (error) {
     redirect(brevoTemplatesStatusUrl("error"));
@@ -439,4 +435,16 @@ export async function updatePreReservationBrevoTemplateId(formData: FormData) {
 
   revalidatePath(settingsPath);
   redirect(brevoTemplatesStatusUrl("success"));
+}
+
+export async function updatePreReservationBrevoTemplateId(formData: FormData) {
+  const normalizedFormData = new FormData();
+  normalizedFormData.set("organization_id", String(formData.get("organization_id") ?? ""));
+  normalizedFormData.set("template_key", "pre_reservation");
+  normalizedFormData.set(
+    "brevo_template_id",
+    String(formData.get("pre_reservation_brevo_template_id") ?? ""),
+  );
+
+  await updateBrevoTransactionalTemplateId(normalizedFormData);
 }

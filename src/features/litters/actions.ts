@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { sendMatingConfirmationEmailForApplication } from "@/features/communications/mating-confirmation-email";
+import {
+  runMatingConfirmationCampaignForApplications,
+  type MatingConfirmationCampaignResult,
+} from "@/features/litters/mating-confirmation-campaign";
 import { isEligibleLitterParent } from "@/features/litters/parent-eligibility";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -122,6 +127,30 @@ function litterEventUrl(
   outcome: "success" | "title_required" | "invalid_date" | "error",
 ) {
   return `/litters/${litterId}?event_status=${outcome}#evenements-lies`;
+}
+
+function matingConfirmationCampaignParams(
+  result: MatingConfirmationCampaignResult,
+) {
+  return new URLSearchParams({
+    mating_confirmation_campaign_status: "success",
+    mating_confirmation_email_sent_count: String(result.emailsSentCount),
+    mating_confirmation_email_already_sent_count: String(
+      result.emailsAlreadySentCount,
+    ),
+    mating_confirmation_email_failed_count: String(result.emailsFailedCount),
+    mating_confirmation_email_missing_count: String(result.emailsMissingCount),
+    mating_confirmation_email_in_progress_count: String(
+      result.emailsInProgressCount,
+    ),
+    mating_confirmation_missing_template_count: String(
+      result.missingTemplateCount,
+    ),
+    mating_confirmation_brevo_not_configured_count: String(
+      result.brevoNotConfiguredCount,
+    ),
+    mating_confirmation_error_count: String(result.errorCount),
+  });
 }
 
 function normalizeOptionalText(
@@ -1149,4 +1178,92 @@ export async function updateLitterGroupDetails(formData: FormData) {
   revalidatePath("/litter-groups");
   revalidatePath(`/litter-groups/${groupId}`);
   redirect(litterGroupDetailEditUrl(groupId, "success"));
+}
+
+export async function launchLitterMatingConfirmationCampaign(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+  const campaignConfirmation = formData.get("campaign_confirmation");
+
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+    redirect("/litters?mating_confirmation_campaign_status=error");
+  }
+
+  const litterId = rawLitterId.trim();
+
+  if (campaignConfirmation !== "confirmed") {
+    redirect(
+      `/litters/${litterId}?mating_confirmation_campaign_status=confirmation_required#campagnes-emails`,
+    );
+  }
+
+  const applicationIds = Array.from(
+    new Set(
+      formData
+        .getAll("application_ids[]")
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(isUuid),
+    ),
+  );
+
+  if (applicationIds.length === 0) {
+    redirect(
+      `/litters/${litterId}?mating_confirmation_campaign_status=no_selection#campagnes-emails`,
+    );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: litter, error: litterError } = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", litterId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (litterError || !litter?.organization_id) {
+    redirect(
+      `/litters/${litterId}?mating_confirmation_campaign_status=error#campagnes-emails`,
+    );
+  }
+
+  const { data: applications, error: applicationsError } = await supabase
+    .from("applications")
+    .select("id, contact_id")
+    .eq("organization_id", litter.organization_id)
+    .eq("desired_litter_id", litterId)
+    .eq("status", "qualified")
+    .is("deleted_at", null)
+    .in("id", applicationIds);
+
+  if (applicationsError) {
+    redirect(
+      `/litters/${litterId}?mating_confirmation_campaign_status=error#campagnes-emails`,
+    );
+  }
+
+  if (!applications || applications.length === 0) {
+    redirect(
+      `/litters/${litterId}?mating_confirmation_campaign_status=no_eligible#campagnes-emails`,
+    );
+  }
+
+  const result = await runMatingConfirmationCampaignForApplications({
+    applications,
+    sendEmail: ({ applicationId }) =>
+      sendMatingConfirmationEmailForApplication({ applicationId, litterId }),
+  });
+
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters");
+
+  const params = matingConfirmationCampaignParams(result);
+  redirect(`/litters/${litterId}?${params.toString()}#campagnes-emails`);
 }

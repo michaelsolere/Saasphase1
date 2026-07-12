@@ -3,11 +3,12 @@ import { redirect } from "next/navigation";
 
 import {
   testOrganizationBrevoConnection,
+  updateBrevoTransactionalTemplateId,
   updateOrganizationDocumentSettings,
   updateOrganizationIdentity,
-  updatePreReservationBrevoTemplateId,
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
+import { brevoTransactionalTemplateConfigs } from "@/features/settings/brevo-template-registry";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -311,14 +312,16 @@ export default async function OrganizationSettingsPage({
     .order("created_at", { ascending: false })
     .limit(10);
 
-  const { data: preReservationEmailTemplate } = await supabase
+  const { data: brevoEmailTemplates } = await supabase
     .from("email_templates")
-    .select("id, brevo_template_id, updated_at")
+    .select("id, template_key, brevo_template_id, updated_at")
     .eq("organization_id", membership.organization_id)
-    .eq("template_key", "pre_reservation")
+    .in(
+      "template_key",
+      brevoTransactionalTemplateConfigs.map((config) => config.templateKey),
+    )
     .eq("is_active", true)
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
 
   if (organizationError || !organization) {
     return (
@@ -355,6 +358,15 @@ export default async function OrganizationSettingsPage({
       ? "Conditions d’arrhes non renseignées"
       : null,
   ].filter(Boolean) as string[];
+  const brevoTemplatesByKey = new Map(
+    (brevoEmailTemplates ?? []).map((template) => [
+      template.template_key,
+      template,
+    ]),
+  );
+  const configuredBrevoTemplateCount = brevoTransactionalTemplateConfigs.filter(
+    (config) => brevoTemplatesByKey.get(config.templateKey)?.brevo_template_id,
+  ).length;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -498,53 +510,81 @@ export default async function OrganizationSettingsPage({
             </div>
             <span
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                preReservationEmailTemplate?.brevo_template_id
+                configuredBrevoTemplateCount === brevoTransactionalTemplateConfigs.length
                   ? "border-emerald-200 bg-emerald-50 text-emerald-950"
                   : "border-amber-200 bg-amber-50 text-amber-950"
               }`}
             >
-              {preReservationEmailTemplate?.brevo_template_id
-                ? "pre_reservation configuré"
-                : "pre_reservation non configuré"}
+              {configuredBrevoTemplateCount} /{" "}
+              {brevoTransactionalTemplateConfigs.length} configurés
             </span>
           </div>
 
-          <form
-            action={updatePreReservationBrevoTemplateId}
-            className="mt-5 rounded-xl border bg-background p-4"
-          >
-            <input
-              type="hidden"
-              name="organization_id"
-              value={organization.id}
-            />
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-              <Field
-                id="pre-reservation-brevo-template-id"
-                name="pre_reservation_brevo_template_id"
-                label="Identifiant numérique Brevo · pre_reservation"
-                type="number"
-                defaultValue={
-                  preReservationEmailTemplate?.brevo_template_id?.toString() ??
-                  ""
-                }
-                disabled={!canEdit}
-              />
-              <button
-                type="submit"
-                disabled={!canEdit}
-                className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Enregistrer
-              </button>
-            </div>
-            <p className="mt-3 text-xs text-muted">
-              Dernière mise à jour :{" "}
-              {preReservationEmailTemplate?.updated_at
-                ? formatDateTime(preReservationEmailTemplate.updated_at)
-                : "Non renseignée"}
-            </p>
-          </form>
+          <div className="mt-5 grid gap-4">
+            {brevoTransactionalTemplateConfigs.map((config) => {
+              const template = brevoTemplatesByKey.get(config.templateKey);
+              const configured = Boolean(template?.brevo_template_id);
+
+              return (
+                <form
+                  key={config.templateKey}
+                  action={updateBrevoTransactionalTemplateId}
+                  className="rounded-xl border bg-background p-4"
+                >
+                  <input
+                    type="hidden"
+                    name="organization_id"
+                    value={organization.id}
+                  />
+                  <input
+                    type="hidden"
+                    name="template_key"
+                    value={config.templateKey}
+                  />
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-semibold">{config.title}</h4>
+                      <p className="mt-1 font-mono text-xs text-muted">
+                        {config.templateKey}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        configured
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+                          : "border-amber-200 bg-amber-50 text-amber-950"
+                      }`}
+                    >
+                      {configured ? "Configuré" : "Non configuré"}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <Field
+                      id={`${config.templateKey}-brevo-template-id`}
+                      name="brevo_template_id"
+                      label="Identifiant numérique Brevo"
+                      type="number"
+                      defaultValue={template?.brevo_template_id?.toString() ?? ""}
+                      disabled={!canEdit}
+                    />
+                    <button
+                      type="submit"
+                      disabled={!canEdit}
+                      className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Enregistrer
+                    </button>
+                  </div>
+                  <p className="mt-3 text-xs text-muted">
+                    Dernière mise à jour :{" "}
+                    {template?.updated_at
+                      ? formatDateTime(template.updated_at)
+                      : "Non renseignée"}
+                  </p>
+                </form>
+              );
+            })}
+          </div>
         </section>
 
         <section className="mt-8 border-t pt-6">

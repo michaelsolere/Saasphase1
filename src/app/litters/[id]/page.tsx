@@ -33,6 +33,7 @@ import {
 } from "@/features/documents/formatters";
 import {
   createLitterEvent,
+  launchLitterMatingConfirmationCampaign,
   updateLitterDetails,
   updateLitterGroupAssignment,
 } from "@/features/litters/actions";
@@ -42,6 +43,9 @@ import {
 } from "@/features/litters/litter-fields";
 import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
+import {
+  MatingConfirmationCampaignConfirmDialog,
+} from "@/features/litters/mating-confirmation-campaign-confirm-dialog";
 import {
   LinkedApplicationsSection,
   type LinkedApplication,
@@ -1437,6 +1441,15 @@ export default async function LitterDetailPage({
     choice_appointments_campaign_missing_choice_count?: string;
     choice_appointments_campaign_missing_adoption_count?: string;
     choice_appointments_campaign_error_count?: string;
+    mating_confirmation_campaign_status?: string;
+    mating_confirmation_email_sent_count?: string;
+    mating_confirmation_email_already_sent_count?: string;
+    mating_confirmation_email_failed_count?: string;
+    mating_confirmation_email_missing_count?: string;
+    mating_confirmation_email_in_progress_count?: string;
+    mating_confirmation_missing_template_count?: string;
+    mating_confirmation_brevo_not_configured_count?: string;
+    mating_confirmation_error_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
     offspring_status?: string;
@@ -1488,6 +1501,15 @@ export default async function LitterDetailPage({
     choice_appointments_campaign_missing_choice_count,
     choice_appointments_campaign_missing_adoption_count,
     choice_appointments_campaign_error_count,
+    mating_confirmation_campaign_status,
+    mating_confirmation_email_sent_count,
+    mating_confirmation_email_already_sent_count,
+    mating_confirmation_email_failed_count,
+    mating_confirmation_email_missing_count,
+    mating_confirmation_email_in_progress_count,
+    mating_confirmation_missing_template_count,
+    mating_confirmation_brevo_not_configured_count,
+    mating_confirmation_error_count,
     group_assignment_status,
     detail_status,
     offspring_status,
@@ -1741,6 +1763,10 @@ export default async function LitterDetailPage({
     campaignEmailTemplates.find(
       (template) =>
         template.templateKey === CHOICE_APPOINTMENT_ADOPTION_BOOKLET_TEMPLATE_KEY,
+    ) ?? null;
+  const matingConfirmationCampaignTemplate =
+    campaignEmailTemplates.find(
+      (template) => template.templateKey === "mating_confirmation",
     ) ?? null;
   const preReservationCampaignTemplate =
     campaignEmailTemplates.find(
@@ -1996,6 +2022,7 @@ export default async function LitterDetailPage({
     });
   }
 
+  let matingConfirmationApplications: QualifiedApplication[] | null = null;
   let qualifiedApplications: QualifiedApplication[] | null = null;
   const applicationIdsWithPreReservationRequest = new Set<string>();
 
@@ -2015,12 +2042,9 @@ export default async function LitterDetailPage({
       }
     });
 
-    const campaignApplications = rawQualifiedApplications.filter(
-      (app) => !applicationIdsWithPreReservationRequest.has(app.id),
-    );
     const contactIds = Array.from(
       new Set(
-        campaignApplications
+        rawQualifiedApplications
           .map((app) => app.contact_id)
           .filter((cid): cid is string => Boolean(cid)),
       ),
@@ -2035,7 +2059,7 @@ export default async function LitterDetailPage({
 
       if (contactsError) {
         console.error("QUALIFIED_APPS_CONTACTS_ERROR:", contactsError);
-        qualifiedApplications = campaignApplications.map((app) => ({
+        matingConfirmationApplications = rawQualifiedApplications.map((app) => ({
           ...app,
           contacts: {
             display_name: "Contact non chargé",
@@ -2063,18 +2087,22 @@ export default async function LitterDetailPage({
           });
         });
 
-        qualifiedApplications = campaignApplications.map((app) => ({
+        matingConfirmationApplications = rawQualifiedApplications.map((app) => ({
           ...app,
           contacts: app.contact_id ? (contactMap.get(app.contact_id) ?? null) : null,
         }));
       }
     } else {
-      qualifiedApplications = campaignApplications.map((app) => ({
+      matingConfirmationApplications = rawQualifiedApplications.map((app) => ({
         ...app,
         contacts: null,
       }));
     }
+    qualifiedApplications = matingConfirmationApplications.filter(
+      (app) => !applicationIdsWithPreReservationRequest.has(app.id),
+    );
   } else if (rawQualifiedApplications) {
+    matingConfirmationApplications = [];
     qualifiedApplications = [];
   }
 
@@ -2302,6 +2330,31 @@ export default async function LitterDetailPage({
       ? `${choice_appointments_campaign_error_count} erreur`
       : null,
   ].filter(Boolean);
+  const matingConfirmationCampaignIssueSummary = [
+    mating_confirmation_email_in_progress_count &&
+    mating_confirmation_email_in_progress_count !== "0"
+      ? `${mating_confirmation_email_in_progress_count} en cours`
+      : null,
+    mating_confirmation_email_missing_count &&
+    mating_confirmation_email_missing_count !== "0"
+      ? `${mating_confirmation_email_missing_count} sans adresse e-mail`
+      : null,
+    mating_confirmation_missing_template_count &&
+    mating_confirmation_missing_template_count !== "0"
+      ? `${mating_confirmation_missing_template_count} modèle Brevo absent`
+      : null,
+    mating_confirmation_brevo_not_configured_count &&
+    mating_confirmation_brevo_not_configured_count !== "0"
+      ? `${mating_confirmation_brevo_not_configured_count} Brevo non configuré`
+      : null,
+    mating_confirmation_email_failed_count &&
+    mating_confirmation_email_failed_count !== "0"
+      ? `${mating_confirmation_email_failed_count} échec`
+      : null,
+    mating_confirmation_error_count && mating_confirmation_error_count !== "0"
+      ? `${mating_confirmation_error_count} erreur technique`
+      : null,
+  ].filter(Boolean);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -2501,6 +2554,59 @@ export default async function LitterDetailPage({
                 proposés. Aucun e-mail réel n’a été envoyé.
               </div>
             )}
+            {mating_confirmation_campaign_status === "success" && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800"
+              >
+                Confirmation de saillie —{" "}
+                {mating_confirmation_email_sent_count ?? "0"} e-mail(s)
+                envoyé(s),{" "}
+                {mating_confirmation_email_already_sent_count ?? "0"} déjà
+                envoyé(s).
+                {matingConfirmationCampaignIssueSummary.length > 0 ? (
+                  <span className="mt-2 block text-emerald-900">
+                    À vérifier :{" "}
+                    {matingConfirmationCampaignIssueSummary.join(" · ")}.
+                  </span>
+                ) : null}
+              </div>
+            )}
+            {mating_confirmation_campaign_status === "no_selection" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucun candidat sélectionné pour la confirmation de saillie.
+              </div>
+            )}
+            {mating_confirmation_campaign_status === "no_eligible" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Aucune candidature qualifiée liée à cette portée parmi les
+                sélections.
+              </div>
+            )}
+            {mating_confirmation_campaign_status === "confirmation_required" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+              >
+                Confirmation explicite requise avant l’envoi de la confirmation
+                de saillie.
+              </div>
+            )}
+            {mating_confirmation_campaign_status === "error" && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
+              >
+                Une erreur est survenue lors de la campagne de confirmation de
+                saillie. Aucune réservation, paiement ou document n’a été créé.
+              </div>
+            )}
 
             <div className="space-y-6 py-8">
               <LitterTopSummary
@@ -2596,12 +2702,91 @@ export default async function LitterDetailPage({
                 sectionId="reservations-liees"
               />
 
-              <CollapsibleSection title="Campagnes d’e-mails">
+              <CollapsibleSection id="campagnes-emails" title="Campagnes d’e-mails">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-accent">
                     Parcours candidat
                   </p>
                   <div className="mt-4">
+                    <p className="text-sm font-medium text-foreground">
+                      Confirmation de saillie
+                    </p>
+                    <p className="mt-2 text-sm text-muted">
+                      L’envoi utilise le modèle transactionnel Brevo configuré
+                      pour mating_confirmation. Le sujet, le corps,
+                      l’expéditeur et le reply-to restent gérés dans Brevo.
+                    </p>
+                    <div className="mt-4 rounded-xl border bg-background p-4 text-sm">
+                      <p className="font-semibold text-foreground">
+                        Modèle Brevo
+                      </p>
+                      <p className="mt-2 text-muted">
+                        {matingConfirmationCampaignTemplate?.brevoTemplateId
+                          ? `${matingConfirmationCampaignTemplate.title} (#${matingConfirmationCampaignTemplate.brevoTemplateId})`
+                          : "mating_confirmation non configuré"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {campaignEmailTemplatesError || qualifiedAppsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger toutes les données de campagne.
+                    </p>
+                  ) : (
+                    <MatingConfirmationCampaignConfirmDialog
+                      action={launchLitterMatingConfirmationCampaign}
+                      litterId={id}
+                      applications={(matingConfirmationApplications ?? []).map((app) => {
+                        const contactName =
+                          formatPreReservationContactFullName({
+                            first_name: app.contacts?.first_name ?? null,
+                            last_name: app.contacts?.last_name ?? null,
+                            display_name: app.contacts?.display_name ?? null,
+                          }) || "Contact inconnu";
+
+                        return {
+                          id: app.id,
+                          contactName,
+                          contactEmail: app.contacts?.email ?? null,
+                          desiredSexPreference: app.desired_sex_preference,
+                          rank: app.active_rank ?? app.initial_rank,
+                          variables: {
+                            prenom: app.contacts?.first_name ?? "",
+                            nom: app.contacts?.last_name ?? "",
+                            nom_complet: contactName,
+                            portee: preReservationLitterName,
+                            groupe_portees: preReservationLitterGroupName,
+                            mere: summary?.mother_display_name ?? "",
+                            pere: summary?.father_display_name ?? "",
+                            date_saillie: formatPreReservationParisDate(
+                              litter.mating_date,
+                            ),
+                            date_saillie_2: formatPreReservationParisDate(
+                              litter.mating_date_2,
+                            ),
+                            nom_elevage: organizationCampaignName,
+                          },
+                        };
+                      })}
+                      template={
+                        matingConfirmationCampaignTemplate
+                          ? {
+                              title: matingConfirmationCampaignTemplate.title,
+                              brevoTemplateId:
+                                matingConfirmationCampaignTemplate.brevoTemplateId,
+                            }
+                          : null
+                      }
+                      scopeLabel={getLitterDisplayName(litter.name, litter.id)}
+                      brevoConfiguration={{
+                        senderEmail: brevoConfiguration.senderEmail,
+                        senderName: brevoConfiguration.senderName,
+                        replyToEmail: brevoConfiguration.replyToEmail,
+                      }}
+                    />
+                  )}
+
+                  <div className="mt-8 border-t pt-8">
                     <p className="text-sm font-medium text-foreground">
                       Demande de pré-réservation
                     </p>
@@ -2621,62 +2806,62 @@ export default async function LitterDetailPage({
                       </p>
                     </div>
                   </div>
-                </div>
 
-                {campaignEmailTemplatesError || qualifiedAppsError ? (
-                  <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger toutes les données de campagne.
-                  </p>
-                ) : (
-                  <PreReservationCampaignConfirmDialog
-                    action={launchPreReservationCampaign}
-                    hiddenFieldName="litter_id"
-                    hiddenFieldValue={id}
-                    applications={(qualifiedApplications ?? []).map((app) => ({
-                      id: app.id,
-                      contactName:
-                        formatPreReservationContactFullName({
-                          first_name: app.contacts?.first_name ?? null,
-                          last_name: app.contacts?.last_name ?? null,
-                          display_name: app.contacts?.display_name ?? null,
-                        }) || "Contact inconnu",
-                      contactEmail: app.contacts?.email ?? null,
-                      desiredSexPreference: app.desired_sex_preference,
-                      rank: app.active_rank ?? app.initial_rank,
-                      variables: {
-                        prenom: app.contacts?.first_name ?? "",
-                        nom: app.contacts?.last_name ?? "",
-                        nom_complet: formatPreReservationContactFullName({
-                          first_name: app.contacts?.first_name ?? null,
-                          last_name: app.contacts?.last_name ?? null,
-                          display_name: app.contacts?.display_name ?? null,
-                        }),
-                        portee: preReservationLitterName,
-                        groupe_portees: preReservationLitterGroupName,
-                        montant_pre_reservation: preReservationAmountLabel,
-                        echeance_pre_reservation: preReservationDeadlineLabel,
-                        nom_elevage: organizationCampaignName,
-                      },
-                    }))}
-                    template={
-                      preReservationCampaignTemplate
-                        ? {
-                            title: preReservationCampaignTemplate.title,
-                            brevoTemplateId:
-                              preReservationCampaignTemplate.brevoTemplateId,
-                          }
-                        : null
-                    }
-                    scopeLabel={getLitterDisplayName(litter.name, litter.id)}
-                    amountLabel={preReservationAmountLabel}
-                    deadlineLabel={preReservationDeadlineLabel}
-                    brevoConfiguration={{
-                      senderEmail: brevoConfiguration.senderEmail,
-                      senderName: brevoConfiguration.senderName,
-                      replyToEmail: brevoConfiguration.replyToEmail,
-                    }}
-                  />
-                )}
+                  {campaignEmailTemplatesError || qualifiedAppsError ? (
+                    <p role="alert" className="mt-5 text-sm text-amber-800">
+                      Impossible de charger toutes les données de campagne.
+                    </p>
+                  ) : (
+                    <PreReservationCampaignConfirmDialog
+                      action={launchPreReservationCampaign}
+                      hiddenFieldName="litter_id"
+                      hiddenFieldValue={id}
+                      applications={(qualifiedApplications ?? []).map((app) => ({
+                        id: app.id,
+                        contactName:
+                          formatPreReservationContactFullName({
+                            first_name: app.contacts?.first_name ?? null,
+                            last_name: app.contacts?.last_name ?? null,
+                            display_name: app.contacts?.display_name ?? null,
+                          }) || "Contact inconnu",
+                        contactEmail: app.contacts?.email ?? null,
+                        desiredSexPreference: app.desired_sex_preference,
+                        rank: app.active_rank ?? app.initial_rank,
+                        variables: {
+                          prenom: app.contacts?.first_name ?? "",
+                          nom: app.contacts?.last_name ?? "",
+                          nom_complet: formatPreReservationContactFullName({
+                            first_name: app.contacts?.first_name ?? null,
+                            last_name: app.contacts?.last_name ?? null,
+                            display_name: app.contacts?.display_name ?? null,
+                          }),
+                          portee: preReservationLitterName,
+                          groupe_portees: preReservationLitterGroupName,
+                          montant_pre_reservation: preReservationAmountLabel,
+                          echeance_pre_reservation: preReservationDeadlineLabel,
+                          nom_elevage: organizationCampaignName,
+                        },
+                      }))}
+                      template={
+                        preReservationCampaignTemplate
+                          ? {
+                              title: preReservationCampaignTemplate.title,
+                              brevoTemplateId:
+                                preReservationCampaignTemplate.brevoTemplateId,
+                            }
+                          : null
+                      }
+                      scopeLabel={getLitterDisplayName(litter.name, litter.id)}
+                      amountLabel={preReservationAmountLabel}
+                      deadlineLabel={preReservationDeadlineLabel}
+                      brevoConfiguration={{
+                        senderEmail: brevoConfiguration.senderEmail,
+                        senderName: brevoConfiguration.senderName,
+                        replyToEmail: brevoConfiguration.replyToEmail,
+                      }}
+                    />
+                  )}
+                </div>
 
                 <div className="mt-8 border-t pt-8">
                   <p className="text-xs font-semibold uppercase tracking-wide text-accent">

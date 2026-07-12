@@ -14,6 +14,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PawPrint,
+  Settings,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -103,6 +104,11 @@ const sections: SidebarSection[] = [
       { label: "Chiots / chatons à l’élevage", href: "/animals?filter=born" },
       { label: "Animaux adoptés", href: "/animals?filter=adopted" },
     ],
+  },
+  {
+    label: "Paramètres",
+    href: "/settings/organization",
+    icon: Settings,
   },
 ];
 
