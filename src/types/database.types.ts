@@ -918,22 +918,27 @@ export type Database = {
           expires_at: string | null
           file_name: string | null
           file_path: string | null
+          file_sha256: string | null
           file_size_bytes: number | null
           generated_at: string | null
           generated_from_template: boolean
           generation_data: Json
           id: string
+          litter_group_id: string | null
           litter_id: string | null
           mime_type: string | null
           notes: string | null
           organization_id: string
           payment_id: string | null
           received_at: string | null
+          replaces_document_id: string | null
           reservation_id: string | null
           sent_at: string | null
           signature_required: boolean
           signed_at: string | null
+          source_template_version: number | null
           status: string
+          superseded_at: string | null
           template_id: string | null
           title: string
           updated_at: string
@@ -951,22 +956,27 @@ export type Database = {
           expires_at?: string | null
           file_name?: string | null
           file_path?: string | null
+          file_sha256?: string | null
           file_size_bytes?: number | null
           generated_at?: string | null
           generated_from_template?: boolean
           generation_data?: Json
           id?: string
+          litter_group_id?: string | null
           litter_id?: string | null
           mime_type?: string | null
           notes?: string | null
           organization_id: string
           payment_id?: string | null
           received_at?: string | null
+          replaces_document_id?: string | null
           reservation_id?: string | null
           sent_at?: string | null
           signature_required?: boolean
           signed_at?: string | null
+          source_template_version?: number | null
           status?: string
+          superseded_at?: string | null
           template_id?: string | null
           title: string
           updated_at?: string
@@ -984,22 +994,27 @@ export type Database = {
           expires_at?: string | null
           file_name?: string | null
           file_path?: string | null
+          file_sha256?: string | null
           file_size_bytes?: number | null
           generated_at?: string | null
           generated_from_template?: boolean
           generation_data?: Json
           id?: string
+          litter_group_id?: string | null
           litter_id?: string | null
           mime_type?: string | null
           notes?: string | null
           organization_id?: string
           payment_id?: string | null
           received_at?: string | null
+          replaces_document_id?: string | null
           reservation_id?: string | null
           sent_at?: string | null
           signature_required?: boolean
           signed_at?: string | null
+          source_template_version?: number | null
           status?: string
+          superseded_at?: string | null
           template_id?: string | null
           title?: string
           updated_at?: string
@@ -1049,6 +1064,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "documents_litter_group_organization_fk"
+            columns: ["organization_id", "litter_group_id"]
+            isOneToOne: false
+            referencedRelation: "litter_groups"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
             foreignKeyName: "documents_litter_organization_fk"
             columns: ["organization_id", "litter_id"]
             isOneToOne: false
@@ -1074,6 +1096,13 @@ export type Database = {
             columns: ["organization_id", "payment_id"]
             isOneToOne: false
             referencedRelation: "payments"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "documents_replaces_document_organization_fk"
+            columns: ["organization_id", "replaces_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["organization_id", "id"]
           },
           {
