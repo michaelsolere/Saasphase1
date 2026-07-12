@@ -22,7 +22,7 @@ import {
   readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
-import { sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
+import { sendPreReservationEmailForApplication, sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
 import { resolveDefaultPuppyPriceCents } from "@/features/reservations/pricing";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -1453,8 +1453,9 @@ function preReservationCampaignParams({
     pre_reservation_email_failed_count: String(result.emailsFailedCount),
     pre_reservation_email_missing_count: String(result.emailsMissingCount),
     pre_reservation_email_in_progress_count: String(
-      result.emailsInProgressCount,
+      result.emailsInProgressCount + result.uncertainCount,
     ),
+    pre_reservation_email_uncertain_count: String(result.uncertainCount),
     pre_reservation_missing_template_count: String(result.missingTemplateCount),
     pre_reservation_brevo_not_configured_count: String(
       result.brevoNotConfiguredCount,
@@ -2151,7 +2152,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
-    sendEmail: sendPreReservationEmailForReservation,
+    sendEmail: sendPreReservationEmailForApplication,
     applications: applications.map((app) => ({
       id: app.id,
       species: app.species ?? litter.species ?? "dog",
@@ -2392,7 +2393,7 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
-    sendEmail: sendPreReservationEmailForReservation,
+    sendEmail: sendPreReservationEmailForApplication,
     applications: eligibleApplications.map((app) => {
       const targetLitterId =
         app.desired_litter_id && groupLitterIds.has(app.desired_litter_id)

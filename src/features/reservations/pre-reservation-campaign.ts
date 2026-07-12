@@ -23,6 +23,7 @@ export type PreReservationCampaignResult = {
   emailsFailedCount: number;
   emailsMissingCount: number;
   emailsInProgressCount: number;
+  uncertainCount: number;
   missingTemplateCount: number;
   brevoNotConfiguredCount: number;
   ignoredDraftConflictCount: number;
@@ -44,6 +45,11 @@ export type PreReservationCampaignSendResult = {
   deliveryState: PreReservationEmailDeliveryState;
   attemptId?: string;
   errorCode?: string;
+  rpcOutcome?: string | null;
+  rpcReason?: string | null;
+  reservationPrepared?: boolean;
+  paymentCreated?: boolean;
+  compensated?: boolean;
 };
 
 type PreReservationCampaignRpcResult = {
@@ -55,10 +61,6 @@ type PreReservationCampaignRpcResult = {
   payment_created: boolean | null;
   reason: string | null;
 };
-
-type SendPreReservationCampaignEmail = (input: {
-  reservationId: string;
-}) => Promise<PreReservationCampaignSendResult>;
 
 async function restorePaymentAfterReservationCompensationFailure({
   supabase,
@@ -117,7 +119,7 @@ async function restorePaymentAfterReservationCompensationFailure({
   return { ok: restored };
 }
 
-async function compensateUnsentPreReservationCreation({
+export async function compensateUnsentPreReservationCreation({
   supabase,
   result,
   userId,
@@ -127,7 +129,7 @@ async function compensateUnsentPreReservationCreation({
   userId: string;
 }) {
   if (!result.application_id || !result.reservation_id || !result.payment_id) {
-    return { ok: false as const };
+    return { ok: false as const, errorCode: "invalid_compensation_input" };
   }
 
   const paymentDeletedAt = new Date().toISOString();
@@ -153,7 +155,7 @@ async function compensateUnsentPreReservationCreation({
       paymentId: result.payment_id,
       error: paymentError,
     });
-    return { ok: false as const };
+    return { ok: false as const, errorCode: "payment_compensation_failed" };
   }
 
   const { data: updatedReservation, error: reservationError } = await supabase
@@ -190,7 +192,7 @@ async function compensateUnsentPreReservationCreation({
       error: reservationError,
       paymentRestored: restoration.ok,
     });
-    return { ok: false as const };
+    return { ok: false as const, errorCode: "reservation_compensation_failed" };
   }
 
   const { count: activePaymentsCount, error: activePaymentsError } =
@@ -224,172 +226,70 @@ async function compensateUnsentPreReservationCreation({
       activePaymentsError,
       activeReservationsError,
     });
-    return { ok: false as const };
+    return { ok: false as const, errorCode: "compensation_verification_failed" };
   }
 
   return { ok: true as const };
 }
 
 export async function runPreReservationCampaignForApplications({
-  supabase,
   applications,
   sendEmail,
 }: {
   supabase: Supabase;
   applications: PreReservationCampaignApplication[];
-  sendEmail: SendPreReservationCampaignEmail;
+  sendEmail: (input: {
+    applicationId: string;
+    targetLitterId: string | null;
+    targetLitterGroupId: string | null;
+  }) => Promise<PreReservationCampaignSendResult>;
 }): Promise<PreReservationCampaignResult> {
-  let reservationsPreparedCount = 0;
-  let paymentsCreatedCount = 0;
-  let compensatedNotSentCreationCount = 0;
-  let emailsSentCount = 0;
-  let emailsAlreadySentCount = 0;
-  let emailsFailedCount = 0;
-  let emailsMissingCount = 0;
-  let emailsInProgressCount = 0;
-  let missingTemplateCount = 0;
-  let brevoNotConfiguredCount = 0;
-  let ignoredDraftConflictCount = 0;
-  let conflictCount = 0;
-  let errorCount = 0;
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const result: PreReservationCampaignResult = {
+    reservationsPreparedCount: 0,
+    paymentsCreatedCount: 0,
+    compensatedNotSentCreationCount: 0,
+    emailsSentCount: 0,
+    emailsAlreadySentCount: 0,
+    emailsFailedCount: 0,
+    emailsMissingCount: 0,
+    emailsInProgressCount: 0,
+    uncertainCount: 0,
+    missingTemplateCount: 0,
+    brevoNotConfiguredCount: 0,
+    ignoredDraftConflictCount: 0,
+    conflictCount: 0,
+    errorCount: 0,
+  };
 
   for (const app of applications) {
-    const { data, error } = await supabase.rpc(
-      "create_pre_reservation_request_for_application",
-      {
-        p_application_id: app.id,
-        p_target_litter_id: app.target_litter_id ?? undefined,
-        p_target_litter_group_id: app.target_litter_group_id ?? undefined,
-      },
-    );
+    const sent = await sendEmail({
+      applicationId: app.id,
+      targetLitterId: app.target_litter_id,
+      targetLitterGroupId: app.target_litter_group_id,
+    });
 
-    if (error) {
-      console.error("create_pre_reservation_request_for_application failed:", {
-        applicationId: app.id,
-        error,
-      });
-      errorCount++;
-      continue;
+    if (sent.reservationPrepared && !sent.compensated) {
+      result.reservationsPreparedCount++;
+    }
+    if (sent.paymentCreated && !sent.compensated) {
+      result.paymentsCreatedCount++;
+    }
+    if (sent.compensated) {
+      result.compensatedNotSentCreationCount++;
     }
 
-    const result = data?.[0] as PreReservationCampaignRpcResult | undefined;
-
-    if (!result || !result.reservation_id || !result.payment_id) {
-      errorCount++;
-      continue;
-    }
-
-    if (result.outcome === "created" || result.outcome === "already_exists") {
-      const { data: storedReservation, error: reservationReadError } =
-        await supabase
-          .from("reservations")
-          .select("id, status, application_id")
-          .eq("id", result.reservation_id)
-          .eq("application_id", app.id)
-          .is("deleted_at", null)
-          .maybeSingle();
-
-      const { data: storedPayment, error: paymentReadError } = await supabase
-        .from("payments")
-        .select("id, reservation_id")
-        .eq("id", result.payment_id)
-        .eq("reservation_id", result.reservation_id)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if (
-        reservationReadError ||
-        paymentReadError ||
-        !storedReservation ||
-        !storedPayment ||
-        storedReservation.status !== "pre_reservation_requested"
-      ) {
-        errorCount++;
-        continue;
-      }
-
-      const sendResult = await sendEmail({ reservationId: storedReservation.id });
-
-      if (sendResult.status === "success") {
-        emailsSentCount++;
-      } else if (sendResult.status === "already_sent") {
-        emailsAlreadySentCount++;
-      } else if (sendResult.status === "in_progress") {
-        emailsInProgressCount++;
-      } else if (sendResult.status === "missing_email") {
-        emailsMissingCount++;
-      } else if (sendResult.status === "missing_template") {
-        missingTemplateCount++;
-      } else if (sendResult.status === "brevo_not_configured") {
-        brevoNotConfiguredCount++;
-      } else {
-        emailsFailedCount++;
-      }
-
-      if (
-        result.outcome === "created" &&
-        result.reservation_created &&
-        result.payment_created &&
-        sendResult.deliveryState === "not_sent"
-      ) {
-        if (!user) {
-          console.error("pre-reservation campaign compensation missing user:", {
-            applicationId: app.id,
-            reservationId: result.reservation_id,
-            paymentId: result.payment_id,
-          });
-          errorCount++;
-          continue;
-        }
-
-        const compensation = await compensateUnsentPreReservationCreation({
-          supabase,
-          result,
-          userId: user.id,
-        });
-
-        if (!compensation.ok) {
-          errorCount++;
-        } else {
-          compensatedNotSentCreationCount++;
-        }
-
-        continue;
-      }
-
-      reservationsPreparedCount++;
-      if (result.payment_created) {
-        paymentsCreatedCount++;
-      }
-    } else if (result.outcome === "conflict") {
-      if (result.reason === "draft_reservation_exists") {
-        ignoredDraftConflictCount++;
-      } else {
-        conflictCount++;
-      }
-    } else if (result.outcome === "ineligible") {
-      continue;
-    } else {
-      errorCount++;
-    }
+    if (sent.status === "success") result.emailsSentCount++;
+    else if (sent.status === "already_sent") result.emailsAlreadySentCount++;
+    else if (sent.status === "in_progress") result.emailsInProgressCount++;
+    else if (sent.status === "missing_email") result.emailsMissingCount++;
+    else if (sent.status === "missing_template") result.missingTemplateCount++;
+    else if (sent.status === "brevo_not_configured") result.brevoNotConfiguredCount++;
+    else if (sent.rpcOutcome === "conflict" && sent.rpcReason === "draft_reservation_exists") result.ignoredDraftConflictCount++;
+    else if (sent.rpcOutcome === "conflict") result.conflictCount++;
+    else if (sent.rpcOutcome === "ineligible") continue;
+    else if (sent.deliveryState === "uncertain") result.uncertainCount++;
+    else result.emailsFailedCount++;
   }
 
-  return {
-    reservationsPreparedCount,
-    paymentsCreatedCount,
-    compensatedNotSentCreationCount,
-    emailsSentCount,
-    emailsAlreadySentCount,
-    emailsFailedCount,
-    emailsMissingCount,
-    emailsInProgressCount,
-    missingTemplateCount,
-    brevoNotConfiguredCount,
-    ignoredDraftConflictCount,
-    conflictCount,
-    errorCount,
-  };
+  return result;
 }
