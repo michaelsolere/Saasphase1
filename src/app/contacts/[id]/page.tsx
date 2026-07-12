@@ -161,7 +161,11 @@ export default async function ContactDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ note_status?: string; role_status?: string }>;
+  searchParams: Promise<{
+    contact_status?: string;
+    note_status?: string;
+    role_status?: string;
+  }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
@@ -178,10 +182,22 @@ export default async function ContactDetailPage({
   const { data: contact, error: contactError } = await supabase
     .from("contacts")
     .select(
-      "id, organization_id, display_name, first_name, last_name, email, phone, secondary_phone, address_line1, address_line2, postal_code, city, country, created_at",
+      "id, organization_id, contact_type, display_name, first_name, last_name, family_or_structure_name, email, phone, secondary_phone, address_line1, address_line2, postal_code, city, country, created_at, updated_at",
     )
     .eq("id", id)
+    .is("deleted_at", null)
     .maybeSingle();
+
+  const { data: membership } = contact
+    ? await supabase
+        .from("memberships")
+        .select("role")
+        .eq("profile_id", user.id)
+        .eq("organization_id", contact.organization_id)
+        .eq("status", "active")
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null };
 
   // Fetch active roles
   const { data: contactRoles } = contact
@@ -273,6 +289,10 @@ export default async function ContactDetailPage({
   const activeComplementaryRoles = activeRoleValues.filter(
     isContactComplementaryRole,
   );
+  const canEditContact =
+    membership?.role === "owner" ||
+    membership?.role === "admin" ||
+    membership?.role === "member";
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -292,6 +312,15 @@ export default async function ContactDetailPage({
           <NotFoundOrUnauthorized />
         ) : (
           <>
+            {query.contact_status === "updated" ? (
+              <p
+                role="status"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
+              >
+                Le contact a bien été mis à jour.
+              </p>
+            ) : null}
+
             {query.note_status === "success" ? (
               <p
                 role="status"
@@ -348,14 +377,31 @@ export default async function ContactDetailPage({
                 </h1>
                 <p className="mt-3 text-sm text-muted">
                   Créé le {formatApplicationDate(contact.created_at)}
+                  {contact.updated_at ? (
+                    <>
+                      {" "}
+                      · Dernière modification le{" "}
+                      {formatApplicationDate(contact.updated_at)}
+                    </>
+                  ) : null}
                 </p>
               </div>
-              <Link
-                href={`/contacts/${contact.id}/applications/new`}
-                className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-              >
-                Créer une candidature
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                {canEditContact ? (
+                  <Link
+                    href={`/contacts/${contact.id}/edit`}
+                    className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Modifier le contact
+                  </Link>
+                ) : null}
+                <Link
+                  href={`/contacts/${contact.id}/applications/new`}
+                  className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                >
+                  Créer une candidature
+                </Link>
+              </div>
             </header>
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -367,6 +413,10 @@ export default async function ContactDetailPage({
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
                     <DetailItem label="Prénom" value={contact.first_name} />
                     <DetailItem label="Nom" value={contact.last_name} />
+                    <DetailItem
+                      label="Nom de la famille ou de la structure"
+                      value={contact.family_or_structure_name}
+                    />
                     <DetailItem label="Email" value={contact.email} />
                     <DetailItem
                       label="Téléphone principal"

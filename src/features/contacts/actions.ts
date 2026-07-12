@@ -2,6 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  normalizePhoneForComparison,
+  normalizeOptionalText,
+  readContactEditableValues,
+  type ContactEditableValues,
+} from "@/features/contacts/contact-form-core";
 import { createClient } from "@/lib/supabase/server";
 import {
   addActiveContactRoleIfAbsent,
@@ -11,86 +17,11 @@ import {
 
 const contactCreateErrorUrl = "/contacts/new?status=error";
 
-function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255) {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return null;
-  }
-
-  return trimmedValue.slice(0, maxLength);
-}
-
-function buildDisplayName({
-  requestedDisplayName,
-  firstName,
-  lastName,
-  email,
-  phone,
-  secondaryPhone,
-  addressLine1,
-  postalCode,
-  city,
-}: {
-  requestedDisplayName: string | null;
-  firstName: string | null;
-  lastName: string | null;
-  email: string | null;
-  phone: string | null;
-  secondaryPhone: string | null;
-  addressLine1: string | null;
-  postalCode: string | null;
-  city: string | null;
-}) {
-  const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
-  const addressLabel = [addressLine1, postalCode, city]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-
-  return (
-    requestedDisplayName ||
-    fullName ||
-    email ||
-    phone ||
-    secondaryPhone ||
-    addressLabel ||
-    "Contact manuel"
-  );
-}
-
 export async function createContact(formData: FormData) {
-  const firstName = normalizeOptionalText(formData.get("first_name"));
-  const lastName = normalizeOptionalText(formData.get("last_name"));
-  const requestedDisplayName = normalizeOptionalText(
-    formData.get("display_name"),
-  );
-  const email = normalizeOptionalText(formData.get("email"))?.toLowerCase() ?? null;
-  const phone = normalizeOptionalText(formData.get("phone"));
-  const secondaryPhone = normalizeOptionalText(formData.get("secondary_phone"));
-  const addressLine1 = normalizeOptionalText(formData.get("address_line1"));
-  const addressLine2 = normalizeOptionalText(formData.get("address_line2"));
-  const postalCode = normalizeOptionalText(formData.get("postal_code"));
-  const city = normalizeOptionalText(formData.get("city"));
-  const country = normalizeOptionalText(formData.get("country"), 2) ?? "FR";
+  const validatedContact = readContactEditableValues(formData);
   const initialRole = normalizeOptionalText(formData.get("initial_role"));
-  const hasUsefulContactInformation = Boolean(
-    requestedDisplayName ||
-      firstName ||
-      lastName ||
-      email ||
-      phone ||
-      secondaryPhone ||
-      addressLine1 ||
-      postalCode ||
-      city,
-  );
 
-  if (!hasUsefulContactInformation) {
+  if (!validatedContact.ok) {
     redirect(contactCreateErrorUrl);
   }
 
@@ -98,17 +29,7 @@ export async function createContact(formData: FormData) {
     redirect(contactCreateErrorUrl);
   }
 
-  const displayName = buildDisplayName({
-    requestedDisplayName,
-    firstName,
-    lastName,
-    email,
-    phone,
-    secondaryPhone,
-    addressLine1,
-    postalCode,
-    city,
-  });
+  const { values, displayName } = validatedContact;
 
   const supabase = await createClient();
   const {
@@ -137,17 +58,19 @@ export async function createContact(formData: FormData) {
     .from("contacts")
     .insert({
       organization_id: membership.organization_id,
+      contact_type: values.contactType,
       display_name: displayName,
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone,
-      secondary_phone: secondaryPhone,
-      address_line1: addressLine1,
-      address_line2: addressLine2,
-      postal_code: postalCode,
-      city,
-      country,
+      first_name: values.firstName,
+      last_name: values.lastName,
+      family_or_structure_name: values.familyOrStructureName,
+      email: values.email,
+      phone: values.phone,
+      secondary_phone: values.secondaryPhone,
+      address_line1: values.addressLine1,
+      address_line2: values.addressLine2,
+      postal_code: values.postalCode,
+      city: values.city,
+      country: values.country,
       origin_channel: "manual",
       created_by: user.id,
       updated_by: user.id,
@@ -262,6 +185,7 @@ export async function createContactNote(formData: FormData) {
     .from("contacts")
     .select("id, organization_id")
     .eq("id", contactId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (readError || !contact || !contact.organization_id) {
@@ -309,48 +233,19 @@ const quickContactErrorUrl = "/reservations/new?quick_contact_status=error";
  *   - aucun contact existant n'est modifié ; aucune fusion.
  */
 export async function createContactQuickForReservation(formData: FormData) {
-  const firstName = normalizeOptionalText(formData.get("first_name"));
-  const lastName = normalizeOptionalText(formData.get("last_name"));
-  const requestedDisplayName = normalizeOptionalText(
-    formData.get("display_name"),
-  );
-  const email =
-    normalizeOptionalText(formData.get("email"))?.toLowerCase() ?? null;
-  const phone = normalizeOptionalText(formData.get("phone"));
-  const secondaryPhone = normalizeOptionalText(formData.get("secondary_phone"));
-  const addressLine1 = normalizeOptionalText(formData.get("address_line1"));
-  const addressLine2 = normalizeOptionalText(formData.get("address_line2"));
-  const postalCode = normalizeOptionalText(formData.get("postal_code"));
-  const city = normalizeOptionalText(formData.get("city"));
-  const country = normalizeOptionalText(formData.get("country"), 2) ?? "FR";
+  const normalizedFormData = new FormData();
+  for (const [key, value] of formData.entries()) {
+    normalizedFormData.append(key, value);
+  }
+  normalizedFormData.set("contact_type", "person");
 
-  const hasUsefulContactInformation = Boolean(
-    requestedDisplayName ||
-      firstName ||
-      lastName ||
-      email ||
-      phone ||
-      secondaryPhone ||
-      addressLine1 ||
-      postalCode ||
-      city,
-  );
+  const validatedContact = readContactEditableValues(normalizedFormData);
 
-  if (!hasUsefulContactInformation) {
+  if (!validatedContact.ok) {
     redirect(quickContactErrorUrl);
   }
 
-  const displayName = buildDisplayName({
-    requestedDisplayName,
-    firstName,
-    lastName,
-    email,
-    phone,
-    secondaryPhone,
-    addressLine1,
-    postalCode,
-    city,
-  });
+  const { values, displayName } = validatedContact;
 
   const supabase = await createClient();
   const {
@@ -379,17 +274,19 @@ export async function createContactQuickForReservation(formData: FormData) {
     .from("contacts")
     .insert({
       organization_id: membership.organization_id,
+      contact_type: values.contactType,
       display_name: displayName,
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      phone,
-      secondary_phone: secondaryPhone,
-      address_line1: addressLine1,
-      address_line2: addressLine2,
-      postal_code: postalCode,
-      city,
-      country,
+      first_name: values.firstName,
+      last_name: values.lastName,
+      family_or_structure_name: values.familyOrStructureName,
+      email: values.email,
+      phone: values.phone,
+      secondary_phone: values.secondaryPhone,
+      address_line1: values.addressLine1,
+      address_line2: values.addressLine2,
+      postal_code: values.postalCode,
+      city: values.city,
+      country: values.country,
       origin_channel: "manual",
       created_by: user.id,
       updated_by: user.id,
@@ -404,4 +301,211 @@ export async function createContactQuickForReservation(formData: FormData) {
   revalidatePath("/contacts");
   revalidatePath("/reservations/new");
   redirect(`/reservations/new?contact_id=${contact.id}&contact_created=1`);
+}
+
+type DuplicateContactWarning = {
+  id: string;
+  displayName: string;
+  email: string | null;
+  phone: string | null;
+  secondaryPhone: string | null;
+  reasons: ("email" | "phone")[];
+};
+
+export type ContactEditActionState = {
+  status: "idle" | "error" | "duplicate_warning";
+  message?: string;
+  fields?: Record<string, string>;
+  duplicateContacts?: DuplicateContactWarning[];
+};
+
+const writableMembershipRoles = ["owner", "admin", "member"];
+
+function contactEditFieldsFromValues(values: ContactEditableValues) {
+  return {
+    contact_type: values.contactType,
+    first_name: values.firstName ?? "",
+    last_name: values.lastName ?? "",
+    family_or_structure_name: values.familyOrStructureName ?? "",
+    display_name: values.requestedDisplayName ?? "",
+    email: values.email ?? "",
+    phone: values.phone ?? "",
+    secondary_phone: values.secondaryPhone ?? "",
+    address_line1: values.addressLine1 ?? "",
+    address_line2: values.addressLine2 ?? "",
+    postal_code: values.postalCode ?? "",
+    city: values.city ?? "",
+    country: values.country,
+  };
+}
+
+function contactEditError(
+  message: string,
+  fields?: Record<string, string>,
+): ContactEditActionState {
+  return { status: "error", message, fields };
+}
+
+export async function updateContact(
+  _previousState: ContactEditActionState,
+  formData: FormData,
+): Promise<ContactEditActionState> {
+  const contactId = normalizeOptionalText(formData.get("contact_id"));
+  const validatedContact = readContactEditableValues(formData);
+
+  if (!contactId || !validatedContact.ok) {
+    const fields = validatedContact.ok
+      ? contactEditFieldsFromValues(validatedContact.values)
+      : undefined;
+    const message =
+      !validatedContact.ok && validatedContact.code === "invalid_email"
+        ? "L’adresse e-mail est invalide."
+        : !validatedContact.ok && validatedContact.code === "invalid_phone"
+          ? "Un numéro de téléphone est manifestement invalide."
+          : !validatedContact.ok && validatedContact.code === "empty_contact"
+            ? "Le contact doit conserver au moins une information utile."
+            : "Impossible d’enregistrer le contact. Vérifiez les informations saisies.";
+
+    return contactEditError(message, fields);
+  }
+
+  const { values, displayName } = validatedContact;
+  const fields = contactEditFieldsFromValues(values);
+  const duplicateOverride = formData.get("confirm_duplicates") === "1";
+  const emailChangeConfirmed = formData.get("confirm_email_change") === "1";
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id, role")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .in("role", writableMembershipRoles)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (membershipError || !membership?.organization_id) {
+    return contactEditError("Vous n’êtes pas autorisé à modifier ce contact.", fields);
+  }
+
+  const { data: contact, error: contactError } = await supabase
+    .from("contacts")
+    .select("id, organization_id, email")
+    .eq("id", contactId)
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (contactError || !contact) {
+    return contactEditError("Contact introuvable ou inaccessible.", fields);
+  }
+
+  if ((contact.email ?? null) !== values.email && !emailChangeConfirmed) {
+    return contactEditError(
+      "Le changement ou retrait d’e-mail doit être confirmé explicitement.",
+      fields,
+    );
+  }
+
+  if (!duplicateOverride) {
+    const requestedPhones = [
+      normalizePhoneForComparison(values.phone),
+      normalizePhoneForComparison(values.secondaryPhone),
+    ].filter(Boolean);
+    const { data: possibleDuplicates, error: duplicateError } = await supabase
+      .from("contacts")
+      .select("id, display_name, email, phone, secondary_phone")
+      .eq("organization_id", contact.organization_id)
+      .neq("id", contact.id)
+      .is("deleted_at", null);
+
+    if (duplicateError) {
+      return contactEditError(
+        "Impossible de vérifier les doublons pour le moment.",
+        fields,
+      );
+    }
+
+    const duplicates = (possibleDuplicates ?? [])
+      .map((candidate) => {
+        const candidatePhones = [
+          normalizePhoneForComparison(candidate.phone),
+          normalizePhoneForComparison(candidate.secondary_phone),
+        ].filter(Boolean);
+        const reasons: ("email" | "phone")[] = [];
+
+        if (values.email && candidate.email?.toLowerCase() === values.email) {
+          reasons.push("email");
+        }
+
+        if (
+          requestedPhones.length > 0 &&
+          candidatePhones.some((phone) => requestedPhones.includes(phone))
+        ) {
+          reasons.push("phone");
+        }
+
+        return reasons.length
+          ? {
+              id: candidate.id,
+              displayName: candidate.display_name,
+              email: candidate.email,
+              phone: candidate.phone,
+              secondaryPhone: candidate.secondary_phone,
+              reasons,
+            }
+          : null;
+      })
+      .filter(Boolean) as DuplicateContactWarning[];
+
+    if (duplicates.length > 0) {
+      return {
+        status: "duplicate_warning",
+        message:
+          "Un ou plusieurs contacts semblent déjà utiliser cet e-mail ou ce téléphone.",
+        fields,
+        duplicateContacts: duplicates,
+      };
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from("contacts")
+    .update({
+      contact_type: values.contactType,
+      first_name: values.firstName,
+      last_name: values.lastName,
+      family_or_structure_name: values.familyOrStructureName,
+      display_name: displayName,
+      email: values.email,
+      phone: values.phone,
+      secondary_phone: values.secondaryPhone,
+      address_line1: values.addressLine1,
+      address_line2: values.addressLine2,
+      postal_code: values.postalCode,
+      city: values.city,
+      country: values.country,
+      updated_by: user.id,
+    })
+    .eq("id", contact.id)
+    .eq("organization_id", contact.organization_id)
+    .is("deleted_at", null);
+
+  if (updateError) {
+    return contactEditError("Impossible d’enregistrer le contact pour le moment.", fields);
+  }
+
+  revalidatePath("/contacts");
+  revalidatePath(`/contacts/${contact.id}`);
+  redirect(`/contacts/${contact.id}?contact_status=updated`);
 }

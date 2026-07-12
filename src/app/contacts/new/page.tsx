@@ -110,6 +110,7 @@ export default async function NewContactPage({
         action={createContact}
         className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
       >
+        <input type="hidden" name="contact_type" value="person" />
         <div className="grid gap-5 sm:grid-cols-2">
           <Field
             id="contact-first-name"
@@ -122,6 +123,12 @@ export default async function NewContactPage({
             label="Nom"
             name="last_name"
             autoComplete="family-name"
+          />
+          <Field
+            id="contact-family-or-structure-name"
+            label="Nom de la famille ou de la structure"
+            name="family_or_structure_name"
+            autoComplete="organization"
           />
           <Field
             id="contact-display-name"
