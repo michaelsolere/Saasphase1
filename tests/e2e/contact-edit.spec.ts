@@ -27,6 +27,8 @@ const qaIds = {
   deleted: "72000000-0000-4000-8000-000000000007",
   otherOrganization: "72000000-0000-4000-8000-000000000008",
   role: "73000000-0000-4000-8000-000000000001",
+  finalizedApplication: "74000000-0000-4000-8000-000000000001",
+  openApplication: "74000000-0000-4000-8000-000000000002",
 };
 
 const contactIds = [
@@ -81,6 +83,12 @@ async function login(
 
 function cleanup() {
   runSql(`
+    delete from public.applications
+    where id in (
+      ${sqlQuote(qaIds.finalizedApplication)}::uuid,
+      ${sqlQuote(qaIds.openApplication)}::uuid
+    );
+
     delete from public.contact_roles
     where id = ${sqlQuote(qaIds.role)}::uuid;
 
@@ -113,6 +121,13 @@ function expectCleanupDone() {
           select count(*) from public.contact_roles
           where id = ${sqlQuote(qaIds.role)}::uuid
         ),
+        'applications', (
+          select count(*) from public.applications
+          where id in (
+            ${sqlQuote(qaIds.finalizedApplication)}::uuid,
+            ${sqlQuote(qaIds.openApplication)}::uuid
+          )
+        ),
         'memberships', (
           select count(*) from public.memberships
           where id = ${sqlQuote(viewerMembershipId)}::uuid
@@ -139,6 +154,7 @@ function expectCleanupDone() {
 
   expect(report.contacts).toBe(0);
   expect(report.contact_roles).toBe(0);
+  expect(report.applications).toBe(0);
   expect(report.memberships).toBe(0);
   expect(report.profiles).toBe(0);
   expect(report.auth_identities).toBe(0);
@@ -428,6 +444,49 @@ function seedContacts() {
   `);
 }
 
+function seedApplication({
+  id,
+  contactId,
+  status,
+}: {
+  id: string;
+  contactId: string;
+  status: "archived" | "to_review";
+}) {
+  runSql(`
+    insert into public.applications (
+      id,
+      organization_id,
+      contact_id,
+      species,
+      breed,
+      desired_period,
+      desired_sex_preference,
+      desired_quantity,
+      project_description,
+      status,
+      submitted_at,
+      created_by,
+      updated_by
+    )
+    values (
+      ${sqlQuote(id)}::uuid,
+      ${sqlQuote(organizationId)}::uuid,
+      ${sqlQuote(contactId)}::uuid,
+      'dog',
+      'Golden Retriever',
+      'QA fiche contact',
+      'unknown',
+      1,
+      'Fixture QA pour l’action candidature depuis la fiche contact.',
+      ${sqlQuote(status)},
+      '2026-07-12 10:00:00+00',
+      ${sqlQuote(ownerId)}::uuid,
+      ${sqlQuote(ownerId)}::uuid
+    );
+  `);
+}
+
 async function readContact(supabase: SupabaseTestClient, id: string) {
   return expectSupabaseData(
     await supabase
@@ -439,6 +498,22 @@ async function readContact(supabase: SupabaseTestClient, id: string) {
       .single(),
     "read contact",
   );
+}
+
+async function countApplicationsForContact(
+  supabase: SupabaseTestClient,
+  contactId: string,
+) {
+  const { count, error } = await supabase
+    .from("applications")
+    .select("id", { count: "exact", head: true })
+    .eq("contact_id", contactId);
+
+  if (error) {
+    throw new Error(`count applications: ${error.message}`);
+  }
+
+  return count ?? 0;
 }
 
 async function submitForm(page: Page) {
@@ -759,6 +834,99 @@ test("refuses deleted and unknown contacts", async ({ page }) => {
   }
 });
 
+test("moves application creation to linked applications with duplicate confirmation", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  seedContacts();
+  seedApplication({
+    id: qaIds.finalizedApplication,
+    contactId: qaIds.structure,
+    status: "archived",
+  });
+  seedApplication({
+    id: qaIds.openApplication,
+    contactId: qaIds.duplicatePhone,
+    status: "to_review",
+  });
+
+  try {
+    await login(page);
+
+    await page.goto(`/contacts/${qaIds.person}`);
+    const noApplicationHeader = page.locator("header");
+    await expect(
+      noApplicationHeader.getByRole("link", { name: "Créer une candidature" }),
+    ).toHaveCount(0);
+    await expect(
+      noApplicationHeader.getByRole("link", { name: "Modifier le contact" }),
+    ).toHaveAttribute("href", `/contacts/${qaIds.person}/edit`);
+    await expect(
+      page.getByRole("link", { name: "Créer une candidature" }),
+    ).toHaveAttribute("href", `/contacts/${qaIds.person}/applications/new`);
+
+    await page.goto(`/contacts/${qaIds.structure}`);
+    await expect(
+      page.locator("header").getByRole("link", { name: "Créer une candidature" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "+ Nouvelle candidature" }),
+    ).toHaveAttribute("href", `/contacts/${qaIds.structure}/applications/new`);
+    await expect(
+      page.getByText("Créer un nouveau projet d’adoption pour ce contact."),
+    ).toBeVisible();
+    await page.getByRole("link", { name: "+ Nouvelle candidature" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/contacts/${qaIds.structure}/applications/new$`),
+    );
+
+    await page.goto(`/contacts/${qaIds.duplicatePhone}`);
+    const beforeCancel = await countApplicationsForContact(
+      supabase,
+      qaIds.duplicatePhone,
+    );
+    await page.getByRole("button", { name: "+ Nouvelle candidature" }).click();
+    await expect(
+      page.getByRole("alertdialog", {
+        name: "Créer une nouvelle candidature ?",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Ce contact possède déjà une candidature en cours. Créer une nouvelle candidature distincte ?",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Annuler" }).click();
+    await expect(page).toHaveURL(new RegExp(`/contacts/${qaIds.duplicatePhone}$`));
+    await expect(
+      page.getByRole("alertdialog", {
+        name: "Créer une nouvelle candidature ?",
+      }),
+    ).toBeHidden();
+    const afterCancel = await countApplicationsForContact(
+      supabase,
+      qaIds.duplicatePhone,
+    );
+    expect(afterCancel).toBe(beforeCancel);
+
+    await page.getByRole("button", { name: "+ Nouvelle candidature" }).click();
+    await page
+      .getByRole("link", { name: "Créer une candidature distincte" })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/contacts/${qaIds.duplicatePhone}/applications/new$`),
+    );
+    const afterConfirm = await countApplicationsForContact(
+      supabase,
+      qaIds.duplicatePhone,
+    );
+    expect(afterConfirm).toBe(beforeCancel);
+  } finally {
+    cleanup();
+    expectCleanupDone();
+  }
+});
+
 test("keeps active viewers read-only for contact editing", async ({ page }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   seedContacts();
@@ -770,6 +938,9 @@ test("keeps active viewers read-only for contact editing", async ({ page }) => {
     await page.goto(`/contacts/${qaIds.person}`);
     await expect(
       page.getByRole("link", { name: "Modifier le contact" }),
+    ).toHaveCount(0);
+    await expect(
+      page.locator("header").getByRole("link", { name: "Créer une candidature" }),
     ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Créer une candidature" }),

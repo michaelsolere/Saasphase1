@@ -7,6 +7,7 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
+import { ContactApplicationAction } from "@/features/contacts/contact-application-action";
 import { NoteForm } from "@/features/contacts/note-form";
 import {
   getDocumentStatusLabel,
@@ -31,6 +32,7 @@ import {
 export const dynamic = "force-dynamic";
 
 const contactRoleOptions = CONTACT_COMPLEMENTARY_ROLES;
+const finalizedApplicationStatuses = ["rejected", "withdrawn", "archived"];
 
 type RelatedPayment = {
   id: string;
@@ -293,6 +295,14 @@ export default async function ContactDetailPage({
     membership?.role === "owner" ||
     membership?.role === "admin" ||
     membership?.role === "member";
+  const hasContactApplications =
+    Boolean(contactApplications && contactApplications.length > 0);
+  const hasOpenContactApplication = Boolean(
+    contactApplications?.some(
+      (application) =>
+        !finalizedApplicationStatuses.includes(application.status ?? ""),
+    ),
+  );
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -395,12 +405,6 @@ export default async function ContactDetailPage({
                     Modifier le contact
                   </Link>
                 ) : null}
-                <Link
-                  href={`/contacts/${contact.id}/applications/new`}
-                  className="inline-flex w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                >
-                  Créer une candidature
-                </Link>
               </div>
             </header>
 
@@ -452,9 +456,23 @@ export default async function ContactDetailPage({
                 </section>
 
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Candidatures liées
-                  </h2>
+                  <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h2 className="text-xl font-semibold">
+                        Candidatures liées
+                      </h2>
+                      {hasContactApplications ? (
+                        <p className="mt-2 text-sm text-muted">
+                          Créer un nouveau projet d’adoption pour ce contact.
+                        </p>
+                      ) : null}
+                    </div>
+                    <ContactApplicationAction
+                      href={`/contacts/${contact.id}/applications/new`}
+                      hasApplications={hasContactApplications}
+                      hasOpenApplication={hasOpenContactApplication}
+                    />
+                  </div>
 
                   {applicationsError ? (
                     <p role="alert" className="text-sm text-amber-800">
