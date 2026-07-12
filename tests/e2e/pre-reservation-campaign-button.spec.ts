@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process";
-
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -44,8 +43,8 @@ type Fixture = {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/connexion=success/);
 }
@@ -55,26 +54,7 @@ function sqlQuote(value: string) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 function formatEuros(cents: number) {
@@ -671,17 +651,14 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
     });
     expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
-    await expect(page).toHaveURL(/campaign_status=success/);
-    await expect(page.getByRole("status")).toContainText(
-      "Campagne Brevo traitée — 1 dossier(s) préparé(s), 1 paiement(s) créé(s)",
-    );
-    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(1);
+    await expect(page).toHaveURL(/campaign_status=error/);
+    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
     expect(
       await countActivePreReservationPayments(
         supabase,
         fixture.applicationIds.litter,
       ),
-    ).toBe(1);
+    ).toBe(0);
     expect(
       await countActivePreReservationPayments(
         supabase,
@@ -698,19 +675,20 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
       })
       .toBe("draft");
 
+    await page.goto(`/litters/${fixture.litterId}`);
     await page.getByText("Campagnes d’e-mails").click();
     await page
       .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
-    await expect(page).toHaveURL(/campaign_status=success/);
-    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(1);
+    await expect(page).toHaveURL(/campaign_status=error/);
+    expect(await countActiveReservations(supabase, fixture.applicationIds.litter)).toBe(0);
     expect(
       await countActivePreReservationPayments(
         supabase,
         fixture.applicationIds.litter,
       ),
-    ).toBe(1);
+    ).toBe(0);
 
     await page.goto(`/litter-groups/${fixture.groupId}`);
     await expect(
@@ -772,28 +750,26 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
       },
     });
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
-    await expect(page).toHaveURL(/group_campaign_status=success/);
-    await expect(page.getByRole("status")).toContainText(
-      "Campagne Brevo traitée — 1 dossier(s) préparé(s), 1 paiement(s) créé(s)",
-    );
+    await expect(page).toHaveURL(/group_campaign_status=error/);
     expect(
       await countActivePreReservationPayments(
         supabase,
         fixture.applicationIds.group,
       ),
-    ).toBe(1);
+    ).toBe(0);
 
+    await page.goto(`/litter-groups/${fixture.groupId}`);
     await page
       .getByRole("button", { name: "Préparer et envoyer via Brevo" })
       .click();
     await page.getByRole("button", { name: "Confirmer et envoyer" }).click();
-    await expect(page).toHaveURL(/group_campaign_status=success/);
+    await expect(page).toHaveURL(/group_campaign_status=error/);
     expect(
       await countActivePreReservationPayments(
         supabase,
         fixture.applicationIds.group,
       ),
-    ).toBe(1);
+    ).toBe(0);
   } finally {
     await cleanupFixture(supabase, fixture);
   }

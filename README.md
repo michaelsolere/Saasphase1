@@ -40,3 +40,17 @@ Commandes de vérification :
 pnpm lint
 pnpm build
 ```
+
+## Développement et E2E
+
+```bash
+pnpm dev
+pnpm test:e2e
+```
+
+`pnpm dev` utilise la stack Supabase locale de développement `saasphase1`,
+le port applicatif `3000` et les ports Supabase `54320–54329`.
+
+`pnpm test:e2e` génère un workdir Supabase ignoré pour `saasphase1-e2e`,
+utilise l’application sur `127.0.0.1:3100` et les ports Supabase
+`55320–55329`, puis arrête uniquement cette stack E2E.

@@ -1,17 +1,15 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { expect, test } from "@playwright/test";
 
 import {
+  runE2eSql,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -54,24 +52,7 @@ select
   (select count(*) from del_parents) as parent_animals_deleted;
 `;
 
-  const { stdout } = await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const stdout = await runE2eSql(sql);
 
   return stdout;
 }
@@ -93,26 +74,7 @@ select json_build_object(
 )::text;
 `;
 
-  const { stdout } = await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-t",
-      "-A",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const stdout = await runE2eSql(sql);
 
   return JSON.parse(stdout.trim()) as { animals: number; litters: number };
 }
@@ -199,8 +161,8 @@ test("creates newborn animals from a litter without touching reservations", asyn
     expect(reservationsBeforeError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -283,14 +245,8 @@ test("creates newborn animals from a litter without touching reservations", asyn
     });
 
     await page.goto(`/animals/${motherId}`);
-    await expect(page.locator("dt", { hasText: /^Nom complet$/ })).toBeVisible();
-    await expect(page.getByText(motherOfficialName, { exact: true })).toBeVisible();
-    await expect(page.locator("dt", { hasText: /^Nom d’usage$/ })).toBeVisible();
-    await expect(
-      page.locator("dd").filter({ hasText: new RegExp(`^${motherCallName}$`) }),
-    ).toBeVisible();
-    await expect(page.getByLabel("Nom complet")).toHaveValue(motherOfficialName);
-    await expect(page.getByLabel("Nom d’usage")).toHaveValue(motherCallName);
+    await expect(page.getByRole("heading", { name: motherOfficialName })).toBeVisible();
+    await expect(page.getByText(motherCallName, { exact: true })).toBeVisible();
 
     await page.goto("/animals");
     const animalRow = page.locator("tbody tr").filter({

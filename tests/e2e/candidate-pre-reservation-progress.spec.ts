@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
-
 import { expect, test, type Page } from "@playwright/test";
+
+import { runE2eSqlSync } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const userId = "10000000-0000-4000-8000-000000000001";
@@ -39,32 +39,13 @@ function sqlList(values: string[]) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/connexion=success/);
 }

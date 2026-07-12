@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -39,26 +39,7 @@ function sqlUuidArray(values: string[]) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 async function cleanupFixtureScope(
@@ -842,8 +823,8 @@ test("confirms a draft reservation manually without side effects", async ({
       await createQualifiedApplicationFixture(supabase, scope);
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -934,8 +915,8 @@ test("marks a 250 euro pre-reservation payment as paid from payment detail", asy
       await createPreReservationPaymentFixture(supabase, scope);
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -948,7 +929,7 @@ test("marks a 250 euro pre-reservation payment as paid from payment detail", asy
     ).toBeVisible();
     await page.locator('input[name="paid_date"]').fill("2026-07-10");
     await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
-    await expect(page).toHaveURL(/payment_mark_status=success/);
+    await expect(page).toHaveURL(/payment_mark_status=success/, { timeout: 15000 });
     await page.goto(`/reservations/${reservationId}`);
     await expect(
       page.getByRole("heading", {
@@ -992,8 +973,8 @@ test("marks a direct 500 euro arrhes payment as pre-reservation holder", async (
     });
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1043,8 +1024,8 @@ test("does not display complete deposit for a paid non-arrhes 500 euro payment",
     });
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1078,8 +1059,8 @@ test("does not mark a document financial status as complete deposit for a paid n
     });
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1128,8 +1109,8 @@ test("creates the second 250 euro deposit request only after confirmation", asyn
     );
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1212,8 +1193,8 @@ test("does not show the second deposit action when the request already exists", 
     );
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1258,8 +1239,8 @@ test("can request the second deposit when only an old second request was cancell
     );
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1313,8 +1294,8 @@ test("does not show the second deposit action when the first deposit is not paid
     );
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 

@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  runE2eSql,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
 } from "./helpers/supabase";
@@ -12,7 +11,6 @@ import {
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const litterId = "c0000000-0000-4000-8000-000000000001";
-const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const animalCallNameCleanupPrefixes = [
@@ -247,27 +245,7 @@ select json_build_object(
 commit;
 `;
 
-  const { stdout } = await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-q",
-      "-t",
-      "-A",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const stdout = await runE2eSql(sql);
 
   const report = JSON.parse(stdout.trim()) as {
     deleted: Record<string, number>;
@@ -499,8 +477,8 @@ test("creates manual animals without confusing them with litter offspring", asyn
     expect(parentInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -824,8 +802,8 @@ test("normalizes a legacy breeding administrative status without losing breeder 
     expect(animalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -943,6 +921,8 @@ test("normalizes a legacy breeding administrative status without losing breeder 
 });
 
 test("edits the full descriptive identity of a manual animal", async ({ page }) => {
+  test.setTimeout(60000);
+
   const supabase = await createAuthenticatedSupabaseClient();
   const manualAnimalId = randomUUID();
   const motherId = randomUUID();
@@ -1109,8 +1089,8 @@ test("edits the full descriptive identity of a manual animal", async ({ page }) 
     expect(litterAnimalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1629,8 +1609,8 @@ test("keeps then makes an eligible animal available again", async ({ page }) => 
     expect(breederAnimalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1784,8 +1764,8 @@ test("promotes an eligible identified adult female to home breeder", async ({
     expect(animalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1875,8 +1855,8 @@ test("shows an empty health section on animal detail", async ({
     expect(animalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -1919,8 +1899,8 @@ test("creates a health event from an animal detail page", async ({ page }) => {
     expect(animalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 

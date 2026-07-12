@@ -6,7 +6,7 @@ function validPublicApplication(overrides = {}) {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   return {
-    p_organization_slug: "elevage-demo",
+    p_organization_slug: "elevage-e2e",
     p_form_slug: "golden-retriever-2026",
     p_first_name: "Alice",
     p_last_name: "Martin",

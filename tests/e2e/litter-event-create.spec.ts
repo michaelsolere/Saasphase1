@@ -1,34 +1,17 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
-import { createAuthenticatedSupabaseClient } from "./helpers/supabase";
+import {
+  createAuthenticatedSupabaseClient,
+  runE2eSqlSync,
+} from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 function cleanupLitterEventFixture(litterId: string) {
@@ -74,8 +57,8 @@ test("creates a manual event from a litter detail page", async ({ page }) => {
     expect(litterError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 

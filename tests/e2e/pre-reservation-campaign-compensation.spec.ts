@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
-
 import { expect, test } from "@playwright/test";
 
 import { runPreReservationCampaignForApplications } from "../../src/features/reservations/pre-reservation-campaign";
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -42,26 +41,7 @@ function sqlList(values: string[]) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 function cleanupFixture() {

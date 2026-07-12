@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  runE2eSql,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -12,7 +11,6 @@ import {
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const traceTitle = "Créneaux proposés et livret d’adoption envoyés";
-const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -35,8 +33,8 @@ type Fixture = {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/connexion=success/);
 }
@@ -118,24 +116,7 @@ select
   (select count(*) from del_litters) as litters_deleted;
 `;
 
-  await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  await runE2eSql(sql);
 }
 
 async function expectNoRows(
@@ -582,7 +563,7 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
     await page.goto(`/litters/${fixture.litterId}`);
     await page.getByText("Campagnes d’e-mails").click();
 
-    await expect(page.getByText("Pré-réservation", { exact: true })).toBeVisible();
+    await expect(page.getByText("Demande de pré-réservation", { exact: true })).toBeVisible();
     await expect(page.getByText("Contrat + certificat", { exact: true })).toBeVisible();
     await expect(page.getByText("Créneaux de choix + livret d’adoption", { exact: true })).toBeVisible();
     await expect(page.getByText("Solde avant départ", { exact: true })).toBeVisible();
