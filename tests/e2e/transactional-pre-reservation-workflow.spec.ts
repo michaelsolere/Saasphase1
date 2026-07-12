@@ -11,6 +11,7 @@ import {
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
+const nicolasContactId = "70000000-0000-4000-8000-000000000004";
 const nicolasApplicationId = "80000000-0000-4000-8000-000000000004";
 const nicolasPaymentId = "a0000000-0000-4000-8000-000000000001";
 const nicolasReservationId = "90000000-0000-4000-8000-000000000002";
@@ -26,6 +27,20 @@ type RpcFixture = {
   };
   insufficientReservationId: string;
   insufficientPaymentId: string;
+};
+
+type IsolatedJourneyFixture = {
+  contactIds: string[];
+  contactRoleIds: string[];
+  applicationIds: string[];
+  reservationIds: string[];
+  paymentIds: string[];
+  targetContactId: string;
+  targetApplicationId: string;
+  targetReservationId: string;
+  targetPaymentId: string;
+  hostReservationId: string;
+  displayName: string;
 };
 
 async function login(page: Page) {
@@ -475,6 +490,403 @@ async function createRpcFixture(
   };
 }
 
+async function createIsolatedJourneyFixture(
+  supabase: SupabaseTestClient,
+): Promise<IsolatedJourneyFixture> {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
+
+  const targetContactId = randomUUID();
+  const hostContactId = randomUUID();
+  const targetRoleId = randomUUID();
+  const targetApplicationId = randomUUID();
+  const hostApplicationId = randomUUID();
+  const targetReservationId = randomUUID();
+  const hostReservationId = randomUUID();
+  const targetPaymentId = randomUUID();
+  const suffix = targetReservationId.slice(0, 8);
+  const displayName = `E2E Parcours Nicolas ${suffix}`;
+
+  const { error: contactsError } = await supabase.from("contacts").insert([
+    {
+      id: targetContactId,
+      organization_id: organizationId,
+      contact_type: "person",
+      first_name: "E2E Parcours",
+      last_name: `Nicolas ${suffix}`,
+      display_name: displayName,
+      email: `nicolas-journey-${suffix}@example.invalid`,
+      origin_channel: "manual",
+      primary_status: "active",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+    {
+      id: hostContactId,
+      organization_id: organizationId,
+      contact_type: "person",
+      first_name: "E2E Hote",
+      last_name: `Paiement ${suffix}`,
+      display_name: `E2E Hote Paiement ${suffix}`,
+      email: `payment-host-${suffix}@example.invalid`,
+      origin_channel: "manual",
+      primary_status: "active",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+  ]);
+
+  if (contactsError) {
+    throw new Error(`create isolated journey contacts: ${contactsError.message}`);
+  }
+
+  const { error: roleError } = await supabase.from("contact_roles").insert({
+    id: targetRoleId,
+    organization_id: organizationId,
+    contact_id: targetContactId,
+    role: "candidate",
+    started_at: "2026-07-10",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (roleError) {
+    throw new Error(`create isolated journey role: ${roleError.message}`);
+  }
+
+  const { error: applicationsError } = await supabase.from("applications").insert([
+    {
+      id: targetApplicationId,
+      organization_id: organizationId,
+      contact_id: targetContactId,
+      species: "dog",
+      breed: "Golden Retriever",
+      desired_period: "Fixture parcours adoptant",
+      desired_sex_preference: "no_preference",
+      desired_quantity: 1,
+      project_description: "Fixture e2e isolée pour le passage candidat adoptant.",
+      status: "qualified",
+      submitted_at: "2026-06-01T10:00:00+00:00",
+      reviewed_at: "2026-06-02T10:00:00+00:00",
+      reviewed_by: user.id,
+      created_by: user.id,
+      updated_by: user.id,
+    },
+    {
+      id: hostApplicationId,
+      organization_id: organizationId,
+      contact_id: hostContactId,
+      species: "dog",
+      breed: "Golden Retriever",
+      desired_period: "Fixture hôte paiement",
+      desired_sex_preference: "no_preference",
+      desired_quantity: 1,
+      project_description:
+        "Fixture e2e isolée pour afficher un formulaire de paiement.",
+      status: "qualified",
+      submitted_at: "2026-06-01T10:00:00+00:00",
+      reviewed_at: "2026-06-02T10:00:00+00:00",
+      reviewed_by: user.id,
+      created_by: user.id,
+      updated_by: user.id,
+    },
+  ]);
+
+  if (applicationsError) {
+    throw new Error(
+      `create isolated journey applications: ${applicationsError.message}`,
+    );
+  }
+
+  const { error: reservationsError } = await supabase.from("reservations").insert([
+    {
+      id: targetReservationId,
+      organization_id: organizationId,
+      contact_id: targetContactId,
+      application_id: targetApplicationId,
+      species: "dog",
+      breed: "Golden Retriever",
+      reserved_sex_preference: "no_preference",
+      status: "pre_reservation_requested",
+      pre_reservation_deadline: "2026-06-21",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+    {
+      id: hostReservationId,
+      organization_id: organizationId,
+      contact_id: hostContactId,
+      application_id: hostApplicationId,
+      species: "dog",
+      breed: "Golden Retriever",
+      reserved_sex_preference: "no_preference",
+      status: "active",
+      reservation_confirmed_at: "2026-06-03T10:00:00+00:00",
+      created_by: user.id,
+      updated_by: user.id,
+    },
+  ]);
+
+  if (reservationsError) {
+    throw new Error(
+      `create isolated journey reservations: ${reservationsError.message}`,
+    );
+  }
+
+  const { error: paymentError } = await supabase.from("payments").insert({
+    id: targetPaymentId,
+    organization_id: organizationId,
+    contact_id: targetContactId,
+    reservation_id: targetReservationId,
+    amount_cents: 25000,
+    currency: "EUR",
+    payment_type: "arrhes",
+    status: "requested",
+    payment_method: "bank_transfer",
+    requested_at: "2026-06-06T10:00:00+00:00",
+    due_date: "2026-06-21",
+    created_by: user.id,
+    updated_by: user.id,
+  });
+
+  if (paymentError) {
+    throw new Error(`create isolated journey payment: ${paymentError.message}`);
+  }
+
+  return {
+    contactIds: [targetContactId, hostContactId],
+    contactRoleIds: [targetRoleId],
+    applicationIds: [targetApplicationId, hostApplicationId],
+    reservationIds: [targetReservationId, hostReservationId],
+    paymentIds: [targetPaymentId],
+    targetContactId,
+    targetApplicationId,
+    targetReservationId,
+    targetPaymentId,
+    hostReservationId,
+    displayName,
+  };
+}
+
+function cleanupIsolatedJourneyFixture(fixture: IsolatedJourneyFixture | null) {
+  if (!fixture) {
+    return;
+  }
+
+  runSql(`
+    with scope as (
+      select
+        ${sqlUuidArray(fixture.contactIds)} as contact_ids,
+        ${sqlUuidArray(fixture.applicationIds)} as application_ids,
+        ${sqlUuidArray(fixture.reservationIds)} as reservation_ids,
+        ${sqlUuidArray(fixture.paymentIds)} as payment_ids,
+        ${sqlUuidArray(fixture.contactRoleIds)} as role_ids
+    ),
+    target_contacts as (
+      select unnest(contact_ids) as id from scope
+    ),
+    target_applications as (
+      select unnest(application_ids) as id from scope
+      union
+      select id from public.applications
+      where contact_id in (select id from target_contacts)
+    ),
+    target_reservations as (
+      select unnest(reservation_ids) as id from scope
+      union
+      select id from public.reservations
+      where application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    target_documents as (
+      select id from public.documents
+      where reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    del_email as (
+      delete from public.email_delivery_attempts
+      where reservation_id in (select id from target_reservations)
+      returning id
+    ),
+    del_events as (
+      delete from public.events
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_notes as (
+      delete from public.notes
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_documents as (
+      delete from public.documents
+      where id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_payments as (
+      delete from public.payments
+      where id in (select unnest(payment_ids) from scope)
+         or document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_reservations as (
+      delete from public.reservations
+      where id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_roles as (
+      delete from public.contact_roles
+      where id in (select unnest(role_ids) from scope)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_applications as (
+      delete from public.applications
+      where id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_contacts as (
+      delete from public.contacts
+      where id in (select id from target_contacts)
+      returning id
+    )
+    select 1;
+  `);
+
+  const remaining = Number(
+    runSql(`
+      with scope as (
+        select
+          ${sqlUuidArray(fixture.contactIds)} as contact_ids,
+          ${sqlUuidArray(fixture.applicationIds)} as application_ids,
+          ${sqlUuidArray(fixture.reservationIds)} as reservation_ids,
+          ${sqlUuidArray(fixture.paymentIds)} as payment_ids,
+          ${sqlUuidArray(fixture.contactRoleIds)} as role_ids
+      ),
+      target_contacts as (
+        select unnest(contact_ids) as id from scope
+      ),
+      target_applications as (
+        select unnest(application_ids) as id from scope
+      ),
+      target_reservations as (
+        select unnest(reservation_ids) as id from scope
+      )
+      select count(*)
+      from (
+        select id::text from public.email_delivery_attempts
+        where reservation_id in (select id from target_reservations)
+        union all
+        select id::text from public.events
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.notes
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.documents
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.payments
+        where id in (select unnest(payment_ids) from scope)
+           or reservation_id in (select id from target_reservations)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.reservations
+        where id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contact_roles
+        where id in (select unnest(role_ids) from scope)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.applications
+        where id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contacts
+        where id in (select id from target_contacts)
+      ) remaining;
+    `),
+  );
+
+  if (remaining !== 0) {
+    throw new Error(`cleanup isolated journey fixtures: ${remaining} row(s) remain`);
+  }
+}
+
+async function expectNicolasSeedUnchanged(supabase: SupabaseTestClient) {
+  const payment = expectSupabaseData(
+    await supabase
+      .from("payments")
+      .select("status, paid_at")
+      .eq("id", nicolasPaymentId)
+      .maybeSingle(),
+    "read Nicolas seed payment",
+  );
+  expect(payment?.status).toBe("requested");
+  expect(payment?.paid_at).toBeNull();
+
+  const reservation = expectSupabaseData(
+    await supabase
+      .from("reservations")
+      .select("status")
+      .eq("id", nicolasReservationId)
+      .maybeSingle(),
+    "read Nicolas seed reservation",
+  );
+  expect(reservation?.status).toBe("pre_reservation_requested");
+
+  const application = expectSupabaseData(
+    await supabase
+      .from("applications")
+      .select("status")
+      .eq("id", nicolasApplicationId)
+      .maybeSingle(),
+    "read Nicolas seed application",
+  );
+  expect(application?.status).toBe("qualified");
+
+  const activeRoles = expectSupabaseData(
+    await supabase
+      .from("contact_roles")
+      .select("role")
+      .eq("contact_id", nicolasContactId)
+      .eq("is_active", true)
+      .is("deleted_at", null),
+    "read Nicolas seed roles",
+  ).map((role) => role.role);
+  expect(activeRoles).toEqual(["candidate"]);
+  expect(activeRoles).not.toContain("pre_reservation_holder");
+}
+
 test("transactional RPCs serialize campaign creation and payment transition", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   let fixture: RpcFixture | null = null;
@@ -607,138 +1019,156 @@ test("RPC guards reject anon, invalid payment methods and insufficient amounts",
   }
 });
 
-test("Nicolas remains candidate until payment, then enters the adopter journey", async ({
+test("isolated candidate remains candidate until payment, then enters the adopter journey", async ({
   page,
 }) => {
   test.setTimeout(90_000);
 
   const supabase = await createAuthenticatedSupabaseClient();
+  let fixture: IsolatedJourneyFixture | null = null;
 
-  await login(page);
+  try {
+    fixture = await createIsolatedJourneyFixture(supabase);
 
-  await page.goto("/candidatures?filtre=validees");
-  await expect(
-    page.getByRole("link", { name: "Nicolas Bernard", exact: true }),
-  ).toBeVisible();
+    await login(page);
 
-  await page.goto(`/candidatures/${nicolasApplicationId}`);
-  await expect(
-    page.getByText("Pré-réservation en attente de règlement"),
-  ).toBeVisible();
-  await expect(page.getByText("250,00 €", { exact: false }).first()).toBeVisible();
-  await expect(page.getByText("21 juin 2026", { exact: false }).first()).toBeVisible();
-  await expect(
-    page.getByRole("button", {
-      name: /Marquer la pré-réservation de 250,00 € comme payée/,
-    }),
-  ).toBeVisible();
+    await page.goto("/candidatures?filtre=validees");
+    await expect(
+      page.getByRole("link", { name: fixture.displayName, exact: true }),
+    ).toBeVisible();
 
-  await page.goto(`/reservations/${nicolasReservationId}`);
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${nicolasApplicationId}`));
-  await expect(
-    page.getByRole("heading", { name: "Parcours adoptant de Nicolas Bernard" }),
-  ).toHaveCount(0);
+    await page.goto(`/candidatures/${fixture.targetApplicationId}`);
+    await expect(
+      page.getByText("Pré-réservation en attente de règlement"),
+    ).toBeVisible();
+    await expect(page.getByText("250,00 €", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("21 juin 2026", { exact: false }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: /Marquer la pré-réservation de 250,00 € comme payée/,
+      }),
+    ).toBeVisible();
 
-  const paymentsBeforeDirectPost = expectSupabaseData(
-    await supabase
-      .from("payments")
-      .select("id, status")
-      .eq("reservation_id", nicolasReservationId)
-      .is("deleted_at", null),
-    "read Nicolas payments before guarded direct post",
-  );
-  expect(paymentsBeforeDirectPost).toHaveLength(1);
-  expect(paymentsBeforeDirectPost[0].id).toBe(nicolasPaymentId);
-  expect(paymentsBeforeDirectPost[0].status).toBe("requested");
+    await page.goto(`/reservations/${fixture.targetReservationId}`);
+    await expect(
+      page.getByRole("heading", { name: "Progression de la demande" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: `Parcours adoptant de ${fixture.displayName}`,
+      }),
+    ).toHaveCount(0);
 
-  await page.goto("/reservations/90000000-0000-4000-8000-000000000005");
-  await page.getByRole("button", { name: "+ Enregistrer un encaissement" }).click();
-  await page.locator('input[name="amount"]').fill("250");
-  await page.locator('select[name="payment_type"]').selectOption("arrhes");
-  await page.locator('select[name="status"]').selectOption("requested");
-  await page.locator('select[name="payment_method"]').selectOption("bank_transfer");
-  await page.locator('input[name="payment_date"]').fill("2026-07-10");
-  const paymentForm = page.locator('form:has(input[name="amount"])');
-  await paymentForm.locator('input[name="reservation_id"]').evaluate((input, value) => {
-    (input as HTMLInputElement).value = value;
-  }, nicolasReservationId);
-  await paymentForm.evaluate((form) => {
-    (form as HTMLFormElement).requestSubmit();
-  });
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${nicolasApplicationId}`));
+    const paymentsBeforeDirectPost = expectSupabaseData(
+      await supabase
+        .from("payments")
+        .select("id, status")
+        .eq("reservation_id", fixture.targetReservationId)
+        .is("deleted_at", null),
+      "read isolated journey payments before guarded direct post",
+    );
+    expect(paymentsBeforeDirectPost).toHaveLength(1);
+    expect(paymentsBeforeDirectPost[0].id).toBe(fixture.targetPaymentId);
+    expect(paymentsBeforeDirectPost[0].status).toBe("requested");
 
-  const paymentsAfterDirectPost = expectSupabaseData(
-    await supabase
-      .from("payments")
-      .select("id, status")
-      .eq("reservation_id", nicolasReservationId)
-      .is("deleted_at", null),
-    "read Nicolas payments after guarded direct post",
-  );
-  expect(paymentsAfterDirectPost).toHaveLength(1);
-  expect(paymentsAfterDirectPost[0].id).toBe(nicolasPaymentId);
-  expect(paymentsAfterDirectPost[0].status).toBe("requested");
+    await page.goto(`/reservations/${fixture.hostReservationId}`);
+    await page.getByRole("button", { name: "+ Enregistrer un encaissement" }).click();
+    await page.locator('input[name="amount"]').fill("250");
+    await page.locator('select[name="payment_type"]').selectOption("arrhes");
+    await page.locator('select[name="status"]').selectOption("requested");
+    await page.locator('select[name="payment_method"]').selectOption("bank_transfer");
+    await page.locator('input[name="payment_date"]').fill("2026-07-10");
+    const paymentForm = page.locator('form:has(input[name="amount"])');
+    await paymentForm
+      .locator('input[name="reservation_id"]')
+      .evaluate((input, value) => {
+        (input as HTMLInputElement).value = value;
+      }, fixture.targetReservationId);
+    await paymentForm.evaluate((form) => {
+      (form as HTMLFormElement).requestSubmit();
+    });
+    await expect(page).toHaveURL(/payment_create_status=technical_pre_reservation/);
 
-  await page.goto(`/payments/${nicolasPaymentId}`);
-  await expect(
-    page.getByRole("link", { name: "Consulter la fiche du candidat" }),
-  ).toHaveAttribute("href", `/candidatures/${nicolasApplicationId}`);
-  await expect(
-    page.getByRole("link", { name: "Consulter le parcours de l’adoptant" }),
-  ).toHaveCount(0);
+    const paymentsAfterDirectPost = expectSupabaseData(
+      await supabase
+        .from("payments")
+        .select("id, status")
+        .eq("reservation_id", fixture.targetReservationId)
+        .is("deleted_at", null),
+      "read isolated journey payments after guarded direct post",
+    );
+    expect(paymentsAfterDirectPost).toHaveLength(1);
+    expect(paymentsAfterDirectPost[0].id).toBe(fixture.targetPaymentId);
+    expect(paymentsAfterDirectPost[0].status).toBe("requested");
 
-  await page.goto(`/candidatures/${nicolasApplicationId}`);
-  await page
-    .getByRole("button", {
-      name: /Marquer la pré-réservation de 250,00 € comme payée/,
-    })
-    .click();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
-  await expect(page.getByLabel("Montant")).toHaveCount(0);
-  await page.getByRole("button", { name: "Confirmer le règlement" }).click();
-  await expect(page).toHaveURL(new RegExp(`/reservations/${nicolasReservationId}`));
-  await expect(
-    page.getByRole("heading", { name: "Parcours adoptant de Nicolas Bernard" }),
-  ).toBeVisible();
+    await page.goto(`/payments/${fixture.targetPaymentId}`);
+    await expect(
+      page.getByRole("link", { name: "Consulter la fiche du candidat" }),
+    ).toHaveAttribute("href", `/candidatures/${fixture.targetApplicationId}`);
+    await expect(
+      page.getByRole("link", { name: "Consulter le parcours de l’adoptant" }),
+    ).toHaveCount(0);
 
-  const overviewAfterPayment = expectSupabaseData(
-    await supabase
-      .from("application_overview")
-      .select("has_started_adopter_journey")
-      .eq("id", nicolasApplicationId)
-      .maybeSingle(),
-    "read Nicolas application overview after payment",
-  );
-  expect(overviewAfterPayment?.has_started_adopter_journey).toBe(true);
+    await page.goto(`/candidatures/${fixture.targetApplicationId}`);
+    await page
+      .getByRole("button", {
+        name: /Marquer la pré-réservation de 250,00 € comme payée/,
+      })
+      .click();
+    await expect(page.getByRole("alertdialog")).toBeVisible();
+    await expect(page.getByLabel("Montant")).toHaveCount(0);
+    await page.getByRole("button", { name: "Confirmer le règlement" }).click();
+    await expect(page).toHaveURL(
+      new RegExp(`/reservations/${fixture.targetReservationId}`),
+    );
+    await expect(
+      page.getByRole("heading", {
+        name: `Parcours adoptant de ${fixture.displayName}`,
+      }),
+    ).toBeVisible();
 
-  const activeRoles = expectSupabaseData(
-    await supabase
-      .from("contact_roles")
-      .select("role")
-      .eq("contact_id", "70000000-0000-4000-8000-000000000004")
-      .eq("is_active", true)
-      .is("deleted_at", null),
-    "read Nicolas active roles after payment",
-  ).map((role) => role.role);
-  expect(activeRoles).toEqual(["pre_reservation_holder"]);
+    const overviewAfterPayment = expectSupabaseData(
+      await supabase
+        .from("application_overview")
+        .select("has_started_adopter_journey")
+        .eq("id", fixture.targetApplicationId)
+        .maybeSingle(),
+      "read isolated journey application overview after payment",
+    );
+    expect(overviewAfterPayment?.has_started_adopter_journey).toBe(true);
 
-  await page.goto("/candidatures?filtre=validees");
-  await expect(
-    page.getByRole("link", { name: "Nicolas Bernard", exact: true }),
-  ).toHaveCount(0);
+    const activeRoles = expectSupabaseData(
+      await supabase
+        .from("contact_roles")
+        .select("role")
+        .eq("contact_id", fixture.targetContactId)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+      "read isolated journey active roles after payment",
+    ).map((role) => role.role);
+    expect(activeRoles).toEqual(["pre_reservation_holder"]);
 
-  await page.goto("/candidatures?filtre=toutes");
-  await expect(
-    page.getByRole("link", { name: "Nicolas Bernard", exact: true }),
-  ).toBeVisible();
+    await page.goto("/candidatures?filtre=validees");
+    await expect(
+      page.getByRole("link", { name: fixture.displayName, exact: true }),
+    ).toHaveCount(0);
 
-  await page.goto("/reservations");
-  await expect(
-    page.getByRole("link", { name: "Nicolas Bernard", exact: true }),
-  ).toBeVisible();
+    await page.goto("/candidatures?filtre=toutes");
+    await expect(
+      page.getByRole("link", { name: fixture.displayName, exact: true }),
+    ).toBeVisible();
 
-  await page.goto(`/payments/${nicolasPaymentId}`);
-  await expect(
-    page.getByRole("link", { name: "Consulter le parcours de l’adoptant" }),
-  ).toHaveAttribute("href", `/reservations/${nicolasReservationId}`);
+    await page.goto("/reservations");
+    await expect(
+      page.getByRole("link", { name: fixture.displayName, exact: true }),
+    ).toBeVisible();
+
+    await page.goto(`/payments/${fixture.targetPaymentId}`);
+    await expect(
+      page.getByRole("link", { name: "Consulter le parcours de l’adoptant" }),
+    ).toHaveAttribute("href", `/reservations/${fixture.targetReservationId}`);
+  } finally {
+    cleanupIsolatedJourneyFixture(fixture);
+    await expectNicolasSeedUnchanged(supabase);
+  }
 });

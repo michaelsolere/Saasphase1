@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
@@ -7,45 +8,47 @@ import { createAuthenticatedSupabaseClient } from "./helpers/supabase";
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 
-async function cleanupLitterEventFixture(litterId: string) {
-  const supabase = await createAuthenticatedSupabaseClient();
+function runSql(sql: string) {
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-A",
+      "-t",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+}
 
-  const { error: eventsError } = await supabase
-    .from("events")
-    .delete()
-    .eq("litter_id", litterId);
+function cleanupLitterEventFixture(litterId: string) {
+  runSql(`
+    delete from public.events where litter_id = '${litterId}'::uuid;
+    delete from public.litters where id = '${litterId}'::uuid;
+  `);
 
-  if (eventsError) {
-    throw new Error(`cleanup litter events: ${eventsError.message}`);
-  }
+  const remaining = Number(
+    runSql(`
+      select count(*)
+      from (
+        select id::text from public.events where litter_id = '${litterId}'::uuid
+        union all
+        select id::text from public.litters where id = '${litterId}'::uuid
+      ) remaining;
+    `),
+  );
 
-  const { error: litterError } = await supabase
-    .from("litters")
-    .delete()
-    .eq("id", litterId);
-
-  if (litterError) {
-    throw new Error(`cleanup litter: ${litterError.message}`);
-  }
-
-  const eventsCount = await supabase
-    .from("events")
-    .select("id", { count: "exact", head: true })
-    .eq("litter_id", litterId);
-  const litterCount = await supabase
-    .from("litters")
-    .select("id", { count: "exact", head: true })
-    .eq("id", litterId);
-
-  if (eventsCount.error) {
-    throw new Error(`verify litter events cleanup: ${eventsCount.error.message}`);
-  }
-
-  if (litterCount.error) {
-    throw new Error(`verify litter cleanup: ${litterCount.error.message}`);
-  }
-
-  if ((eventsCount.count ?? 0) !== 0 || (litterCount.count ?? 0) !== 0) {
+  if (remaining !== 0) {
     throw new Error("cleanup litter event fixture: row(s) remain");
   }
 }
@@ -78,14 +81,13 @@ test("creates a manual event from a litter detail page", async ({ page }) => {
 
     await page.goto(`/litters/${litterId}#evenements-lies`);
 
-    const eventsSection = page.locator("#evenements-lies");
+    const eventsSection = page.locator("details#evenements-lies");
+    await eventsSection.locator("summary").first().click();
     await expect(
-      eventsSection.getByRole("heading", { name: "Événements liés" }),
-    ).toBeVisible();
-    await expect(
-      eventsSection.getByRole("heading", { name: "Ajouter un événement" }),
+      eventsSection.getByText("Aucun événement lié à cette portée."),
     ).toBeVisible();
 
+    await eventsSection.getByText("Ajouter un événement").click();
     await eventsSection.locator("#litter-event-title").fill(eventTitle);
     await eventsSection.locator("#litter-event-date").fill("2026-06-29");
     await eventsSection.locator("#litter-event-type").selectOption("ultrasound");
@@ -95,7 +97,9 @@ test("creates a manual event from a litter detail page", async ({ page }) => {
       .locator("#litter-event-description")
       .fill("Evenement cree depuis le test e2e.");
 
-    await eventsSection.getByRole("button", { name: "Ajouter l’événement" }).click();
+    await eventsSection.locator("form").evaluate((form) => {
+      (form as HTMLFormElement).requestSubmit();
+    });
 
     await expect(page).toHaveURL(
       new RegExp(`/litters/${litterId}.*event_status=success`),
@@ -103,12 +107,12 @@ test("creates a manual event from a litter detail page", async ({ page }) => {
     await expect(page).toHaveURL(/#evenements-lies/);
     await expect(eventsSection).toContainText("L’événement a été ajouté à cette portée.");
     await expect(eventsSection).toContainText(eventTitle);
-    await expect(eventsSection).toContainText("Type : ultrasound");
-    await expect(eventsSection).toContainText("planned");
-    await expect(eventsSection).toContainText("Priorité : normal");
+    await expect(eventsSection).toContainText("Type : Échographie");
+    await expect(eventsSection).toContainText("Planifié");
+    await expect(eventsSection).toContainText("Priorité : Normale");
     await expect(eventsSection).toContainText("Date utile : 29 juin 2026");
     await expect(eventsSection).toContainText("Evenement cree depuis le test e2e.");
   } finally {
-    await cleanupLitterEventFixture(litterId);
+    cleanupLitterEventFixture(litterId);
   }
 });

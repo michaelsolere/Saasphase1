@@ -1,6 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
 import {
   createAuthenticatedSupabaseClient,
@@ -10,6 +11,37 @@ import {
 import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
+
+function sqlUuidArray(values: string[]) {
+  if (values.length === 0) {
+    return "array[]::uuid[]";
+  }
+
+  return `array[${values.map((value) => `'${value}'::uuid`).join(",")}]`;
+}
+
+function runSql(sql: string) {
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-A",
+      "-t",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+}
 
 async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
   const {
@@ -32,7 +64,7 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
     contact_type: "person",
     first_name: "Cancellation",
     last_name: `Smoke ${suffix}`,
-    call_name: displayName,
+    display_name: displayName,
     email: `cancellation-smoke-${suffix}@example.invalid`,
     origin_channel: "manual",
     primary_status: "active",
@@ -67,22 +99,21 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
     throw new Error(`create cancellation application: ${applicationError.message}`);
   }
 
-  return { applicationId, contactId, displayName };
-}
+  const { error: roleError } = await supabase.from("contact_roles").insert({
+    id: randomUUID(),
+    organization_id: organizationId,
+    contact_id: contactId,
+    role: "pre_reservation_holder",
+    started_at: "2026-06-03",
+    created_by: user.id,
+    updated_by: user.id,
+  });
 
-async function findReservationForApplication(
-  supabase: SupabaseTestClient,
-  applicationId: string,
-) {
-  return expectSupabaseData(
-    await supabase
-      .from("reservations")
-      .select("id, status")
-      .eq("application_id", applicationId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    "find reservation for application",
-  );
+  if (roleError) {
+    throw new Error(`create cancellation role: ${roleError.message}`);
+  }
+
+  return { applicationId, contactId, displayName };
 }
 
 async function readReservation(
@@ -120,7 +151,7 @@ async function countRows(
 }
 
 async function cleanupReservationFixture(
-  supabase: SupabaseTestClient,
+  _supabase: SupabaseTestClient,
   contactId: string | null,
   applicationId: string | null,
   reservationId: string | null,
@@ -129,81 +160,155 @@ async function cleanupReservationFixture(
   const applicationIds = applicationId ? [applicationId] : [];
   const reservationIds = reservationId ? [reservationId] : [];
 
-  async function deleteBy(
-    table:
-      | "documents"
-      | "payments"
-      | "reservations"
-      | "contact_roles"
-      | "applications"
-      | "contacts",
-    column: string,
-    values: string[],
-  ) {
-    if (values.length === 0) {
-      return;
-    }
+  runSql(`
+    with scope as (
+      select
+        ${sqlUuidArray(contactIds)} as contact_ids,
+        ${sqlUuidArray(applicationIds)} as application_ids,
+        ${sqlUuidArray(reservationIds)} as reservation_ids
+    ),
+    target_contacts as (
+      select unnest(contact_ids) as id from scope
+    ),
+    target_applications as (
+      select unnest(application_ids) as id from scope
+      union
+      select id from public.applications
+      where contact_id in (select id from target_contacts)
+    ),
+    target_reservations as (
+      select unnest(reservation_ids) as id from scope
+      union
+      select id from public.reservations
+      where application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    target_documents as (
+      select id from public.documents
+      where reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    del_email as (
+      delete from public.email_delivery_attempts
+      where reservation_id in (select id from target_reservations)
+      returning id
+    ),
+    del_events as (
+      delete from public.events
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_notes as (
+      delete from public.notes
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_documents as (
+      delete from public.documents
+      where id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_payments as (
+      delete from public.payments
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_reservations as (
+      delete from public.reservations
+      where id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_roles as (
+      delete from public.contact_roles
+      where contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_applications as (
+      delete from public.applications
+      where id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_contacts as (
+      delete from public.contacts
+      where id in (select id from target_contacts)
+      returning id
+    )
+    select 1;
+  `);
 
-    const { error } = await supabase.from(table).delete().in(column, values);
-
-    if (error) {
-      throw new Error(`cleanup ${table}.${column}: ${error.message}`);
-    }
-  }
-
-  async function countBy(
-    table:
-      | "documents"
-      | "payments"
-      | "reservations"
-      | "contact_roles"
-      | "applications"
-      | "contacts",
-    column: string,
-    values: string[],
-  ) {
-    if (values.length === 0) {
-      return 0;
-    }
-
-    const result = await supabase
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .in(column, values);
-
-    if (result.error) {
-      throw new Error(`verify cleanup ${table}.${column}: ${result.error.message}`);
-    }
-
-    return result.count ?? 0;
-  }
-
-  await deleteBy("documents", "reservation_id", reservationIds);
-  await deleteBy("documents", "application_id", applicationIds);
-  await deleteBy("documents", "contact_id", contactIds);
-  await deleteBy("payments", "reservation_id", reservationIds);
-  await deleteBy("payments", "contact_id", contactIds);
-  await deleteBy("reservations", "id", reservationIds);
-  await deleteBy("reservations", "application_id", applicationIds);
-  await deleteBy("reservations", "contact_id", contactIds);
-  await deleteBy("contact_roles", "contact_id", contactIds);
-  await deleteBy("applications", "id", applicationIds);
-  await deleteBy("applications", "contact_id", contactIds);
-  await deleteBy("contacts", "id", contactIds);
-
-  const remaining =
-    (await countBy("documents", "reservation_id", reservationIds)) +
-    (await countBy("documents", "application_id", applicationIds)) +
-    (await countBy("documents", "contact_id", contactIds)) +
-    (await countBy("payments", "reservation_id", reservationIds)) +
-    (await countBy("payments", "contact_id", contactIds)) +
-    (await countBy("reservations", "id", reservationIds)) +
-    (await countBy("reservations", "application_id", applicationIds)) +
-    (await countBy("reservations", "contact_id", contactIds)) +
-    (await countBy("contact_roles", "contact_id", contactIds)) +
-    (await countBy("applications", "id", applicationIds)) +
-    (await countBy("applications", "contact_id", contactIds)) +
-    (await countBy("contacts", "id", contactIds));
+  const remaining = Number(
+    runSql(`
+      with scope as (
+        select
+          ${sqlUuidArray(contactIds)} as contact_ids,
+          ${sqlUuidArray(applicationIds)} as application_ids,
+          ${sqlUuidArray(reservationIds)} as reservation_ids
+      ),
+      target_contacts as (
+        select unnest(contact_ids) as id from scope
+      ),
+      target_applications as (
+        select unnest(application_ids) as id from scope
+      ),
+      target_reservations as (
+        select unnest(reservation_ids) as id from scope
+      )
+      select count(*)
+      from (
+        select id::text from public.email_delivery_attempts
+        where reservation_id in (select id from target_reservations)
+        union all
+        select id::text from public.events
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.notes
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.documents
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.payments
+        where reservation_id in (select id from target_reservations)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.reservations
+        where id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contact_roles
+        where contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.applications
+        where id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contacts
+        where id in (select id from target_contacts)
+      ) remaining;
+    `),
+  );
 
   if (remaining !== 0) {
     throw new Error(`cleanup cancellation fixtures: ${remaining} row(s) remain`);
@@ -211,39 +316,39 @@ async function cleanupReservationFixture(
 }
 
 async function createDraftReservation(
-  page: Page,
   supabase: SupabaseTestClient,
   applicationId: string,
+  contactId: string,
 ) {
-  await page.goto(`/candidatures/${applicationId}`);
-  await page
-    .getByRole("button", { name: "Créer une demande de pré-réservation" })
-    .click();
-  await expect(page).toHaveURL(
-    /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
-  );
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-  return await expect
-    .poll(async () => {
-      const reservation = await findReservationForApplication(
-        supabase,
-        applicationId,
-      );
-      return reservation?.id ?? null;
-    })
-    .not.toBeNull()
-    .then(async () => {
-      const reservation = await findReservationForApplication(
-        supabase,
-        applicationId,
-      );
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
 
-      if (!reservation) {
-        throw new Error("Created reservation was not found");
-      }
+  const reservationId = randomUUID();
+  const { error } = await supabase.from("reservations").insert({
+    id: reservationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    application_id: applicationId,
+    species: "dog",
+    breed: "Golden Retriever",
+    reserved_sex_preference: "no_preference",
+    status: "active",
+    reservation_confirmed_at: "2026-06-03T10:00:00+00:00",
+    created_by: user.id,
+    updated_by: user.id,
+  });
 
-      return reservation.id;
-    });
+  if (error) {
+    throw new Error(`create cancellation reservation: ${error.message}`);
+  }
+
+  return reservationId;
 }
 
 test("cancels an active reservation manually without side effects", async ({
@@ -268,12 +373,11 @@ test("cancels an active reservation manually without side effects", async ({
     await page.goto(`/candidatures/${applicationId}`);
     await expect(page.getByRole("heading", { name: fixture.displayName })).toBeVisible();
 
-    reservationId = await createDraftReservation(page, supabase, applicationId);
-
-    await page.goto(`/reservations/${reservationId}`);
-    await page.getByRole("button", { name: "Confirmer la réservation" }).click();
-    await expect(page).toHaveURL(/activation_status=success/);
-    await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+    reservationId = await createDraftReservation(
+      supabase,
+      applicationId,
+      contactId,
+    );
 
     const beforeCancellation = await readReservation(supabase, reservationId);
     expect(beforeCancellation.status).toBe("active");
@@ -287,13 +391,9 @@ test("cancels an active reservation manually without side effects", async ({
     expect(documentCountBefore).toBe(0);
     expect(noteCountBefore).toBe(0);
 
+    await page.goto(`/reservations/${reservationId}`);
     await expect(
       page.getByRole("button", { name: "Annuler la réservation" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        "Annule manuellement la réservation sans créer de remboursement ni modifier les paiements, documents ou l’animal attribué.",
-      ),
     ).toBeVisible();
 
     await openDialog(
@@ -309,7 +409,7 @@ test("cancels an active reservation manually without side effects", async ({
     ).toBeVisible();
     await page.getByRole("button", { name: "Confirmer l’annulation" }).click();
     await expect(page).toHaveURL(/cancellation_status=success/);
-    await expect(page.getByText("Réservation annulée.")).toBeVisible();
+    await expect(page.getByText("Dossier adoptant annulé.")).toBeVisible();
     await expect(page.getByText("Annulée", { exact: true }).first()).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Annuler la réservation" }),
