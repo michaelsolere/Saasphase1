@@ -930,6 +930,11 @@ test("moves application creation to linked applications with duplicate confirmat
 test("keeps active viewers read-only for contact editing", async ({ page }) => {
   const supabase = await createAuthenticatedSupabaseClient();
   seedContacts();
+  seedApplication({
+    id: qaIds.openApplication,
+    contactId: qaIds.person,
+    status: "to_review",
+  });
 
   try {
     const before = await readContact(supabase, qaIds.person);
@@ -944,7 +949,13 @@ test("keeps active viewers read-only for contact editing", async ({ page }) => {
     ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "Créer une candidature" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "+ Nouvelle candidature" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "+ Nouvelle candidature" }),
+    ).toHaveCount(0);
 
     await page.goto(`/contacts/${qaIds.person}/edit`);
     await expect(

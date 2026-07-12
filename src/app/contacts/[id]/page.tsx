@@ -303,6 +303,7 @@ export default async function ContactDetailPage({
         !finalizedApplicationStatuses.includes(application.status ?? ""),
     ),
   );
+  const canCreateApplication = canEditContact && !applicationsError;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -461,17 +462,19 @@ export default async function ContactDetailPage({
                       <h2 className="text-xl font-semibold">
                         Candidatures liées
                       </h2>
-                      {hasContactApplications ? (
+                      {canCreateApplication && hasContactApplications ? (
                         <p className="mt-2 text-sm text-muted">
                           Créer un nouveau projet d’adoption pour ce contact.
                         </p>
                       ) : null}
                     </div>
-                    <ContactApplicationAction
-                      href={`/contacts/${contact.id}/applications/new`}
-                      hasApplications={hasContactApplications}
-                      hasOpenApplication={hasOpenContactApplication}
-                    />
+                    {canCreateApplication ? (
+                      <ContactApplicationAction
+                        href={`/contacts/${contact.id}/applications/new`}
+                        hasApplications={hasContactApplications}
+                        hasOpenApplication={hasOpenContactApplication}
+                      />
+                    ) : null}
                   </div>
 
                   {applicationsError ? (
