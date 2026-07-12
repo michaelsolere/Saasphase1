@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ApplicationList } from "@/features/applications/application-list";
+import { getPreReservationProgress } from "@/features/applications/pre-reservation-progress";
 import { APPLICATION_TO_VALIDATE_STATUSES } from "@/features/applications/statuses";
 import type { ApplicationFilter } from "@/features/applications/types";
 import { createClient } from "@/lib/supabase/server";
@@ -172,6 +173,48 @@ export default async function ApplicationsPage({
           ...application,
           decision_note_preview: application.id
             ? decisionPreviewByApplication.get(application.id) ?? null
+            : null,
+        }));
+      }
+
+      const { data: reservations, error: reservationsError } = await supabase
+        .from("reservation_overview")
+        .select("id, application_id, status, created_at")
+        .in("application_id", applicationIds);
+
+      hasLoadingError = hasLoadingError || Boolean(reservationsError);
+
+      if (reservations) {
+        const reservationsByApplication = new Map<
+          string,
+          Array<{
+            id: string | null;
+            status: string | null;
+            created_at: string | null;
+          }>
+        >();
+
+        reservations.forEach((reservation) => {
+          if (!reservation.application_id) {
+            return;
+          }
+
+          const existing =
+            reservationsByApplication.get(reservation.application_id) ?? [];
+          existing.push({
+            id: reservation.id,
+            status: reservation.status,
+            created_at: reservation.created_at,
+          });
+          reservationsByApplication.set(reservation.application_id, existing);
+        });
+
+        applications = applications.map((application) => ({
+          ...application,
+          pre_reservation_progress_label: application.id
+            ? getPreReservationProgress({
+                reservations: reservationsByApplication.get(application.id) ?? [],
+              }).listLabel
             : null,
         }));
       }

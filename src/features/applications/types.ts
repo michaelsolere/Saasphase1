@@ -20,6 +20,7 @@ export type ApplicationOverview = Pick<
   | "created_at"
 > & {
   decision_note_preview?: string | null;
+  pre_reservation_progress_label?: string | null;
 };
 
 export type ApplicationDetail = Pick<

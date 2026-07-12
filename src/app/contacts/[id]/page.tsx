@@ -241,7 +241,6 @@ export default async function ContactDetailPage({
         .from("reservation_overview")
         .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, adoption_completed_at, created_at")
         .eq("contact_id", contactId)
-        .neq("status", "pre_reservation_requested")
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 

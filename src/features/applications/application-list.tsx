@@ -137,6 +137,11 @@ export function ApplicationList({
                       >
                         {getApplicationStatusLabel(application.status)}
                       </span>
+                      {application.pre_reservation_progress_label ? (
+                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                          {application.pre_reservation_progress_label}
+                        </span>
+                      ) : null}
                       {isToValidate && application.id ? (
                         <ApplicationStatusActionDialog
                           applicationId={application.id}

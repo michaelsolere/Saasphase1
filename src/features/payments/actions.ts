@@ -112,9 +112,11 @@ async function isPreReservationTransitionPayment({
 }
 
 async function revalidatePaymentTransitionPaths({
+  supabase,
   paymentId,
   reservationId,
 }: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
   paymentId: string;
   reservationId: string | null;
 }) {
@@ -126,6 +128,30 @@ async function revalidatePaymentTransitionPaths({
 
   if (reservationId) {
     revalidatePath(`/reservations/${reservationId}`);
+
+    const { data: reservation } = await supabase
+      .from("reservations")
+      .select("application_id, contact_id, litter_id, litter_group_id")
+      .eq("id", reservationId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (reservation?.application_id) {
+      revalidatePath(`/candidatures/${reservation.application_id}`);
+    }
+
+    if (reservation?.contact_id) {
+      revalidatePath("/contacts");
+      revalidatePath(`/contacts/${reservation.contact_id}`);
+    }
+
+    if (reservation?.litter_id) {
+      revalidatePath(`/litters/${reservation.litter_id}`);
+    }
+
+    if (reservation?.litter_group_id) {
+      revalidatePath(`/litter-groups/${reservation.litter_group_id}`);
+    }
   }
 }
 
@@ -159,6 +185,7 @@ export async function markPreReservationPaymentAsPaidFromApplication(
   });
 
   await revalidatePaymentTransitionPaths({
+    supabase,
     paymentId,
     reservationId: result?.reservationId ?? null,
   });
@@ -444,6 +471,7 @@ export async function markPaymentAsPaid(formData: FormData) {
     });
 
     await revalidatePaymentTransitionPaths({
+      supabase,
       paymentId,
       reservationId: transitionResult?.reservationId ?? payment.reservation_id,
     });
@@ -554,6 +582,7 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
     });
 
     await revalidatePaymentTransitionPaths({
+      supabase,
       paymentId,
       reservationId: transitionResult?.reservationId ?? reservationId,
     });

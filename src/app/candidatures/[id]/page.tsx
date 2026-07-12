@@ -17,6 +17,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { getPreReservationProgress } from "@/features/applications/pre-reservation-progress";
 import {
   ApplicationLitterScopeForm,
   type ApplicationLitter,
@@ -86,6 +87,15 @@ type ActivePreReservationPayment = {
   status: string;
   due_date: string | null;
   requested_at: string | null;
+};
+
+type ApplicationReservationProgressRow = ReservationOverview & {
+  pre_reservation_deadline?: string | null;
+};
+
+type ApplicationPaymentProgressRow = ActivePreReservationPayment & {
+  created_at: string | null;
+  paid_at: string | null;
 };
 
 function getUsefulDocumentDate(document: RelatedDocument) {
@@ -212,10 +222,22 @@ function getApplicationStatusHint(status: string | null) {
   return "Statut actuel de la candidature.";
 }
 
-function getCandidateJourneySteps(application: ApplicationDetail): JourneyStep[] {
+function getCandidateJourneySteps({
+  application,
+  reservations,
+  payments,
+}: {
+  application: ApplicationDetail;
+  reservations: ApplicationReservationProgressRow[];
+  payments: ApplicationPaymentProgressRow[];
+}): JourneyStep[] {
   const hasLinkedContact = Boolean(application.contact_id);
   const isQualified =
     application.status === "qualified" || application.status === "waiting_litter";
+  const preReservationProgress = getPreReservationProgress({
+    reservations,
+    payments,
+  });
 
   return [
     {
@@ -243,6 +265,16 @@ function getCandidateJourneySteps(application: ApplicationDetail): JourneyStep[]
       state: "upcoming",
       stateLabel: "À suivre",
       detail: "Jalon affiché sans automatisation ni trace d'envoi.",
+    },
+    {
+      label: "Demande de pré-réservation",
+      state: preReservationProgress.requestDone ? "done" : "upcoming",
+      detail: preReservationProgress.requestDetail,
+    },
+    {
+      label: "Pré-réservation réglée",
+      state: preReservationProgress.paidDone ? "done" : "upcoming",
+      detail: preReservationProgress.paidDetail,
     },
   ];
 }
@@ -305,10 +337,54 @@ export default async function ApplicationDetailPage({
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
-  const applicationReservations = rawReservations as ReservationOverview[] | null;
+  const applicationReservations =
+    rawReservations as ApplicationReservationProgressRow[] | null;
+  const reservationIdsForDeadlines =
+    applicationReservations
+      ?.map((reservation) => reservation.id)
+      .filter((reservationId): reservationId is string => Boolean(reservationId)) ??
+    [];
+
+  const { data: reservationDeadlines } = reservationIdsForDeadlines.length > 0
+    ? await supabase
+        .from("reservations")
+        .select("id, pre_reservation_deadline")
+        .in("id", reservationIdsForDeadlines)
+        .is("deleted_at", null)
+    : { data: null };
+  const preReservationDeadlineByReservationId = new Map(
+    (reservationDeadlines ?? []).map((reservation) => [
+      reservation.id,
+      reservation.pre_reservation_deadline,
+    ]),
+  );
+
+  const reservationsWithDeadlines =
+    applicationReservations?.map((reservation) => ({
+      ...reservation,
+      pre_reservation_deadline: reservation.id
+        ? preReservationDeadlineByReservationId.get(reservation.id) ?? null
+        : null,
+    })) ?? [];
   const activePreReservation = applicationReservations?.find(
     (reservation) => reservation.status === "pre_reservation_requested",
   ) ?? null;
+
+  const reservationIds =
+    reservationIdsForDeadlines;
+
+  const { data: rawPreReservationPayments } = reservationIds.length > 0
+    ? await supabase
+        .from("payments")
+        .select("id, reservation_id, amount_cents, currency, payment_type, status, due_date, requested_at, created_at, paid_at")
+        .in("reservation_id", reservationIds)
+        .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+    : { data: null };
+
+  const preReservationPayments =
+    (rawPreReservationPayments ?? []) as ApplicationPaymentProgressRow[];
 
   const { data: rawActivePreReservationPayments } = activePreReservation?.id
     ? await supabase
@@ -394,7 +470,11 @@ export default async function ApplicationDetailPage({
   const desiredScopeGroups = (availableGroups ??
     []) as ApplicationLitterGroup[];
   const candidateJourneySteps = application
-    ? getCandidateJourneySteps(application)
+    ? getCandidateJourneySteps({
+        application,
+        reservations: reservationsWithDeadlines,
+        payments: preReservationPayments,
+      })
     : [];
 
   return (

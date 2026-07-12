@@ -1439,6 +1439,23 @@ const CHOICE_APPOINTMENTS_CAMPAIGN_ELIGIBLE_STATUSES = new Set([
   "adoption_ready",
 ]);
 
+function revalidatePreReservationCampaignProgress(
+  applications: Array<{ id: string; contact_id: string | null }>,
+) {
+  revalidatePath("/candidatures");
+  revalidatePath("/contacts");
+  revalidatePath("/payments");
+  revalidatePath("/reservations");
+
+  applications.forEach((application) => {
+    revalidatePath(`/candidatures/${application.id}`);
+
+    if (application.contact_id) {
+      revalidatePath(`/contacts/${application.contact_id}`);
+    }
+  });
+}
+
 export async function runPreReservationCampaignForApplications({
   supabase,
   applications,
@@ -2301,10 +2318,8 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   revalidatePath(`/litters/${litterId}`);
   revalidatePath("/");
-  revalidatePath("/candidatures");
   revalidatePath("/litters");
-  revalidatePath("/reservations");
-  revalidatePath("/payments");
+  revalidatePreReservationCampaignProgress(applications);
 
   if (
     campaignResult.reservationsPreparedCount === 0 &&
@@ -2549,10 +2564,8 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
 
   revalidatePath(`/litter-groups/${groupId}`);
   revalidatePath("/");
-  revalidatePath("/candidatures");
   revalidatePath("/litter-groups");
-  revalidatePath("/reservations");
-  revalidatePath("/payments");
+  revalidatePreReservationCampaignProgress(eligibleApplications);
 
   if (
     campaignResult.reservationsPreparedCount === 0 &&
