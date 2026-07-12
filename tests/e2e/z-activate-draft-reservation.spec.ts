@@ -11,6 +11,26 @@ import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 
+async function expectTechnicalPreReservationPage(
+  page: Page,
+  reservationId: string,
+) {
+  await expect(page).toHaveURL(new RegExp(`/reservations/${reservationId}`));
+  await expect(
+    page.getByRole("heading", {
+      name: "Demande de pré-réservation",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: "Progression de la demande",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+}
+
 async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
   const {
     data: { user },
@@ -32,7 +52,7 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
     contact_type: "person",
     first_name: "Activation",
     last_name: `Smoke ${suffix}`,
-    call_name: displayName,
+    display_name: displayName,
     email: `activation-smoke-${suffix}@example.invalid`,
     origin_channel: "manual",
     primary_status: "active",
@@ -233,7 +253,7 @@ async function createPreReservationPaymentFixture(
     contact_type: "person",
     first_name: "Pre Reservation",
     last_name: `Payment ${suffix}`,
-    call_name: displayName,
+    display_name: displayName,
     email: `pre-reservation-payment-${suffix}@example.invalid`,
     origin_channel: "manual",
     primary_status: "active",
@@ -392,7 +412,7 @@ async function createPreReservationBalanceFixture(
     contact_type: "person",
     first_name: "Balance",
     last_name: `Request ${suffix}`,
-    call_name: displayName,
+    display_name: displayName,
     email: `balance-request-${suffix}@example.invalid`,
     origin_channel: "manual",
     primary_status: "active",
@@ -608,7 +628,7 @@ test("marks a 250 euro pre-reservation payment as paid from payment detail", asy
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, paymentId, reservationId } =
+  const { paymentId, reservationId } =
     await createPreReservationPaymentFixture(supabase);
 
   await page.goto("/login");
@@ -618,8 +638,7 @@ test("marks a 250 euro pre-reservation payment as paid from payment detail", asy
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
-  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+  await expectTechnicalPreReservationPage(page, reservationId);
 
   await page.goto(`/payments/${paymentId}`);
   await expect(
@@ -658,7 +677,7 @@ test("marks a direct 500 euro arrhes payment as pre-reservation holder", async (
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, paymentId, reservationId } =
+  const { paymentId, reservationId } =
     await createPreReservationPaymentFixture(supabase, {
       amountCents: 50000,
       paymentType: "arrhes",
@@ -671,8 +690,7 @@ test("marks a direct 500 euro arrhes payment as pre-reservation holder", async (
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
-  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+  await expectTechnicalPreReservationPage(page, reservationId);
 
   await page.goto(`/payments/${paymentId}`);
   await expect(
@@ -704,7 +722,7 @@ test("does not display complete deposit for a paid non-arrhes 500 euro payment",
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, paymentId, reservationId } =
+  const { paymentId, reservationId } =
     await createPreReservationPaymentFixture(supabase, {
       amountCents: 50000,
       paymentType: "balance",
@@ -717,8 +735,7 @@ test("does not display complete deposit for a paid non-arrhes 500 euro payment",
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
-  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+  await expectTechnicalPreReservationPage(page, reservationId);
 
   await page.goto(`/payments/${paymentId}`);
   await expect(
@@ -734,7 +751,7 @@ test("does not mark a document financial status as complete deposit for a paid n
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, contactId, paymentId, reservationId } =
+  const { contactId, paymentId, reservationId } =
     await createPreReservationPaymentFixture(supabase, {
       amountCents: 50000,
       paymentType: "balance",
@@ -747,8 +764,7 @@ test("does not mark a document financial status as complete deposit for a paid n
   await expect(page).toHaveURL(/\/candidatures/);
 
   await page.goto(`/reservations/${reservationId}`);
-  await expect(page).toHaveURL(new RegExp(`/candidatures/${applicationId}`));
-  await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+  await expectTechnicalPreReservationPage(page, reservationId);
 
   await page.goto(`/payments/${paymentId}`);
   await expect(

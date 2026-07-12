@@ -495,6 +495,7 @@ function TechnicalPreReservationPage({
   contact,
   emailAttempt,
   emailTemplate,
+  journeySteps,
   litterLabel,
   litterGroupLabel,
   payments,
@@ -505,6 +506,7 @@ function TechnicalPreReservationPage({
   contact: RelatedPreReservationContact | null;
   emailAttempt: RelatedPreReservationEmailAttempt | null;
   emailTemplate: RelatedPreReservationEmailTemplate | null;
+  journeySteps: JourneyStep[];
   litterLabel: string | null;
   litterGroupLabel: string | null;
   payments: RelatedPayment[];
@@ -717,6 +719,12 @@ function TechnicalPreReservationPage({
           )}
         </div>
       </section>
+      <JourneyTimeline
+        description="Demande technique en attente de règlement. Le parcours adoptant commencera après paiement de la pré-réservation."
+        steps={journeySteps}
+        title="Progression de la demande"
+        titleId="technical-pre-reservation-progress-title"
+      />
     </>
   );
 }
@@ -1420,13 +1428,13 @@ function getAdopterJourneySteps({
         preReservationDepositState === "paid"
           ? "done"
           : preReservationDepositState === "requested"
-            ? "in_progress"
+            ? "upcoming"
             : "unknown",
       detail:
         preReservationDepositState === "paid"
-          ? "Premier versement visible comme payé."
+          ? "Point de départ du parcours adoptant."
           : preReservationDepositState === "requested"
-            ? "Demande visible, règlement à confirmer."
+            ? "Parcours adoptant non encore ouvert, règlement à confirmer."
             : "Aucun règlement fiable visible.",
     },
     {
@@ -1779,6 +1787,41 @@ export default async function ReservationDetailPage({
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ]);
+    const missingChoiceAppointment: ReservationAppointmentSummary = {
+      kind: "puppy_choice",
+      eventId: null,
+      label: "Choix du chiot",
+      plannedAt: null,
+      actualAt: null,
+      status: "missing",
+      description: null,
+    };
+    const missingAdoptionAppointment: ReservationAppointmentSummary = {
+      kind: "adoption",
+      eventId: null,
+      label: "Adoption / départ",
+      plannedAt: null,
+      actualAt: null,
+      status: "missing",
+      description: null,
+    };
+    const technicalJourneySteps = getAdopterJourneySteps({
+      preReservationDepositState: "requested",
+      reservationStatus: reservation.status,
+      documentsError: null,
+      reservationDocuments: [],
+      commitmentDocument: undefined,
+      reservationContractDocument: undefined,
+      hasCompleteDeposit: false,
+      isPaidInFull: false,
+      remainingBalanceCents: null,
+      reservationEventsError: null,
+      choiceAppointment: missingChoiceAppointment,
+      adoptionAppointment: missingAdoptionAppointment,
+      hasChoiceAppointmentsCampaignTrace: false,
+      hasObsoleteChoiceAppointmentsCampaignTrace: false,
+      adoptionCompletedAt: null,
+    });
 
     return (
       <main className="mx-auto min-h-screen w-full min-w-0 max-w-3xl px-6 py-10 sm:px-10 lg:px-12">
@@ -1796,6 +1839,7 @@ export default async function ReservationDetailPage({
             (technicalTemplateResult.data as RelatedPreReservationEmailTemplate | null) ??
             null
           }
+          journeySteps={technicalJourneySteps}
           litterLabel={technicalLitterResult.data?.name ?? reservation.litter_name ?? null}
           litterGroupLabel={
             technicalLitterGroupResult.data?.name ??
@@ -2044,12 +2088,12 @@ export default async function ReservationDetailPage({
       arrhesPayments.some(
         (p) => p.status === "requested" || p.status === "pending",
       ));
+  const preReservationDepositStateFromStatus =
+    getPreReservationDepositStateFromStatus(reservation?.status ?? null);
   const preReservationDepositState: PreReservationDepositState =
-    hasFirstPaid || reservation?.status === "pre_reservation_paid"
+    hasFirstPaid || preReservationDepositStateFromStatus === "paid"
       ? "paid"
-      : hasRequestedFirstDeposit ||
-          getPreReservationDepositStateFromStatus(reservation?.status ?? null) ===
-            "requested"
+      : hasRequestedFirstDeposit || preReservationDepositStateFromStatus === "requested"
         ? "requested"
         : "absent";
 

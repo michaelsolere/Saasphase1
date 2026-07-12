@@ -69,6 +69,12 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/connexion=success/);
 }
 
+function journeyStep(page: Page, label: string) {
+  return page.locator("li").filter({
+    has: page.getByRole("heading", { name: label, exact: true }),
+  });
+}
+
 function cleanupFixture() {
   runSql(`
     delete from public.email_delivery_attempts
@@ -214,17 +220,39 @@ test("candidate pre-reservation progress appears on list, timeline, contact and 
 
     await page.goto(`/candidatures/${fixture.applicationIds[0]}`);
     await expect(
-      page.getByRole("heading", { name: "Demande de pré-réservation" }),
-    ).toBeVisible();
-    await expect(page.getByText("Aucune demande active")).toBeVisible();
+      page.getByRole("heading", {
+        name: "Email confirmation de gestation envoyé",
+        exact: true,
+      }),
+    ).toHaveCount(0);
     await expect(
-      page.getByRole("heading", { name: "Pré-réservation réglée" }),
-    ).toBeVisible();
+      page.getByRole("heading", {
+        name: "Demande de pré-réservation",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    const noRequestCombinedStep = journeyStep(
+      page,
+      "Confirmation de gestation et demande de pré-réservation",
+    );
+    await expect(noRequestCombinedStep).toBeVisible();
+    await expect(noRequestCombinedStep).toContainText("À venir");
+    await expect(page.getByText("Aucune demande active")).toBeVisible();
+    const noRequestPaidStep = journeyStep(page, "Pré-réservation réglée");
+    await expect(noRequestPaidStep).toBeVisible();
+    await expect(noRequestPaidStep).toContainText("À venir");
     await expect(
       page.getByText("Le règlement de pré-réservation n'est pas encore enregistré."),
     ).toBeVisible();
 
     await page.goto(`/candidatures/${fixture.applicationIds[1]}`);
+    const requestedCombinedStep = journeyStep(
+      page,
+      "Confirmation de gestation et demande de pré-réservation",
+    );
+    await expect(requestedCombinedStep).toContainText("Fait");
+    const requestedPaidStep = journeyStep(page, "Pré-réservation réglée");
+    await expect(requestedPaidStep).toContainText("À venir");
     await expect(page.getByText("Paiement de 250,00").first()).toBeVisible();
     await expect(page.getByText("25 juillet 2026").first()).toBeVisible();
     await expect(
@@ -232,15 +260,65 @@ test("candidate pre-reservation progress appears on list, timeline, contact and 
     ).toBeVisible();
 
     await page.goto(`/candidatures/${fixture.applicationIds[2]}`);
+    const paidCombinedStep = journeyStep(
+      page,
+      "Confirmation de gestation et demande de pré-réservation",
+    );
+    await expect(paidCombinedStep).toContainText("Fait");
+    const paidCandidateStep = journeyStep(page, "Pré-réservation réglée");
+    await expect(paidCandidateStep).toContainText("Fait");
+    await expect(
+      page.getByText("Pré-réservation réglée — passage au parcours adoptant."),
+    ).toBeVisible();
     await expect(page.getByText("Paiement de 250,00").first()).toBeVisible();
-    await expect(page.getByText(/réglé le 11 juillet 2026/)).toBeVisible();
     await expect(page.getByText(/en attente de règlement/i)).toHaveCount(0);
+
+    await page.goto(`/reservations/${fixture.reservationIds[0]}`);
+    const requestedAdopterSteps = page
+      .locator("section", { hasText: "Progression de la demande" })
+      .locator("li");
+    await expect(requestedAdopterSteps.first()).toContainText(
+      "Pré-réservation réglée",
+    );
+    await expect(requestedAdopterSteps.first()).toContainText("À venir");
+    await expect(requestedAdopterSteps.first()).toContainText(
+      "Parcours adoptant non encore ouvert, règlement à confirmer.",
+    );
+    await expect(
+      page.getByText("Progression du parcours adoptant"),
+    ).toHaveCount(0);
+
+    await page.goto(`/reservations/${fixture.reservationIds[1]}`);
+    const paidAdopterSteps = page
+      .locator("section", { hasText: "Progression du parcours adoptant" })
+      .locator("li");
+    await expect(paidAdopterSteps.first()).toContainText(
+      "Pré-réservation réglée",
+    );
+    await expect(paidAdopterSteps.first()).toContainText("Fait");
+    await expect(paidAdopterSteps.first()).toContainText(
+      "Point de départ du parcours adoptant.",
+    );
+
+    await page.goto(`/reservations/${fixture.reservationIds[2]}`);
+    const activeAdopterSteps = page
+      .locator("section", { hasText: "Progression du parcours adoptant" })
+      .locator("li");
+    await expect(activeAdopterSteps.first()).toContainText(
+      "Pré-réservation réglée",
+    );
+    await expect(activeAdopterSteps.first()).toContainText("Fait");
+    await expect(activeAdopterSteps.first()).toContainText(
+      "Point de départ du parcours adoptant.",
+    );
 
     await page.goto(`/candidatures/${fixture.applicationIds[3]}`);
     await expect(
       page.getByRole("heading", { name: "Pré-réservation réglée" }),
     ).toBeVisible();
-    await expect(page.getByText(/réglé le 11 juillet 2026/)).toBeVisible();
+    await expect(
+      page.getByText("Pré-réservation réglée — passage au parcours adoptant."),
+    ).toBeVisible();
     await expect(
       page.getByText("Le règlement de pré-réservation n'est pas encore enregistré."),
     ).toHaveCount(0);

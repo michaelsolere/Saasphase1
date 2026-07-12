@@ -261,20 +261,16 @@ function getCandidateJourneySteps({
       detail: "Jalon affiché sans automatisation ni trace d'envoi.",
     },
     {
-      label: "Email confirmation de gestation envoyé",
-      state: "upcoming",
-      stateLabel: "À suivre",
-      detail: "Jalon affiché sans automatisation ni trace d'envoi.",
-    },
-    {
-      label: "Demande de pré-réservation",
+      label: "Confirmation de gestation et demande de pré-réservation",
       state: preReservationProgress.requestDone ? "done" : "upcoming",
       detail: preReservationProgress.requestDetail,
     },
     {
       label: "Pré-réservation réglée",
       state: preReservationProgress.paidDone ? "done" : "upcoming",
-      detail: preReservationProgress.paidDetail,
+      detail: preReservationProgress.paidDone
+        ? "Pré-réservation réglée — passage au parcours adoptant."
+        : preReservationProgress.paidDetail,
     },
   ];
 }

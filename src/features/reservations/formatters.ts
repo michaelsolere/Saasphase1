@@ -1,3 +1,5 @@
+import { hasVisiblePaidPreReservation } from "@/features/reservations/statuses";
+
 const statusLabels: Record<string, string> = {
   draft: "Demande de pré-réservation",
   pending_positioning: "Positionnement en cours",
@@ -29,7 +31,7 @@ export type PreReservationDepositState = "absent" | "requested" | "paid";
 export function getPreReservationDepositStateFromStatus(
   reservationStatus: string | null,
 ): PreReservationDepositState {
-  if (reservationStatus === "pre_reservation_paid") {
+  if (hasVisiblePaidPreReservation(reservationStatus)) {
     return "paid";
   }
 
