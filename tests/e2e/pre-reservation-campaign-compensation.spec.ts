@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   sendPreReservationEmailForApplication,
+  sendPreReservationEmailForReservation,
   type PreReservationEmailTransport,
 } from "../../src/features/communications/pre-reservation-email-core";
 import {
@@ -19,6 +20,8 @@ const ids = {
   contact: "98000000-0000-4000-8000-000000000004",
   application: "98000000-0000-4000-8000-000000000005",
   draftReservation: "98000000-0000-4000-8000-000000000006",
+  historicalSentAttempt: "98000000-0000-4000-8000-000000000007",
+  historicalSendingAttempt: "98000000-0000-4000-8000-000000000008",
 };
 const marker = "2099-01-01 00:00:00+00";
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -187,5 +190,71 @@ test("draft reservation conflict remains ignored by campaign aggregation", async
     });
     expect(result).toMatchObject({ ignoredDraftConflictCount: 1, reservationsPreparedCount: 0, paymentsCreatedCount: 0 });
     expect(Number(sql(`select count(*) from public.reservations where id=${q(ids.draftReservation)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("campaign success then individual send share one application operation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(campaign.status).toBe("success");
+    const reservationId = sql(`select id from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`);
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(individual.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(1);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("individual send then campaign reuse the same application operation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data, error } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    expect(error).toBeNull();
+    const reservationId = data?.[0]?.reservation_id;
+    expect(reservationId).toBeTruthy();
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(individual.status).toBe("success");
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(campaign.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("historical sent reservation attempt blocks campaign and individual send", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    const reservationId = data?.[0]?.reservation_id;
+    if (!reservationId) throw new Error("historical sent reservation missing");
+    sql(`insert into public.email_delivery_attempts(id,organization_id,contact_id,reservation_id,litter_id,litter_group_id,message_type,recipient_email,variables_snapshot,idempotency_key,status,attempt_count,sent_at,created_by,updated_by) values(${q(ids.historicalSentAttempt)},${q(org)},${q(ids.contact)},${q(reservationId)},${q(ids.litter)},${q(ids.group)},'pre_reservation','alice.transaction@example.invalid','{}','pre_reservation:historical-reservation-sent','sent',1,now(),${q(owner)},${q(owner)});`);
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(campaign.status).toBe("already_sent");
+    expect(individual.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(0);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("historical sending reservation attempt blocks business creation and send", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    const reservationId = data?.[0]?.reservation_id;
+    if (!reservationId) throw new Error("historical sending reservation missing");
+    sql(`insert into public.email_delivery_attempts(id,organization_id,contact_id,reservation_id,litter_id,litter_group_id,message_type,recipient_email,variables_snapshot,idempotency_key,status,attempt_count,last_attempt_at,created_by,updated_by) values(${q(ids.historicalSendingAttempt)},${q(org)},${q(ids.contact)},${q(reservationId)},${q(ids.litter)},${q(ids.group)},'pre_reservation','alice.transaction@example.invalid','{}','pre_reservation:historical-reservation-sending','sending',1,now(),${q(owner)},${q(owner)});`);
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(campaign.status).toBe("in_progress");
+    expect(individual.status).toBe("in_progress");
+    expect(t.sends).toHaveLength(0);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });
