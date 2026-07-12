@@ -7,6 +7,15 @@ import {
   type MatingConfirmationEmailTransport,
 } from "../../src/features/communications/mating-confirmation-email-core";
 import {
+  runMatingConfirmationCampaignForApplications,
+} from "../../src/features/litters/mating-confirmation-campaign";
+import {
+  canConfirmMatingConfirmationCampaign,
+} from "../../src/features/litters/mating-confirmation-campaign-confirm-dialog";
+import {
+  getBrevoTransactionalTemplateConfig,
+} from "../../src/features/settings/brevo-template-registry";
+import {
   createAuthenticatedSupabaseClient,
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
@@ -368,6 +377,78 @@ test("litter campaign UI shows mating confirmation immediately before pre-reserv
     expect(preReservationAppearsAfterMating).toBe(true);
     await expect(
       campaignSection.getByText("Exclu · e-mail manquant ou invalide"),
+    ).toBeVisible();
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("campaign reports success, partial, and error honestly", async () => {
+  const success = await runMatingConfirmationCampaignForApplications({
+    applications: [{ id: "success", contact_id: "contact-success" }],
+    sendEmail: async () => ({ status: "success", deliveryState: "sent" }),
+  });
+  expect(success.status).toBe("success");
+
+  const partial = await runMatingConfirmationCampaignForApplications({
+    applications: [
+      { id: "sent", contact_id: "contact-sent" },
+      { id: "missing", contact_id: "contact-missing" },
+    ],
+    sendEmail: async ({ applicationId }) =>
+      applicationId === "sent"
+        ? { status: "already_sent", deliveryState: "sent" }
+        : { status: "missing_email", deliveryState: "not_sent" },
+  });
+  expect(partial.status).toBe("partial");
+  expect(partial.emailsAlreadySentCount).toBe(1);
+  expect(partial.emailsMissingCount).toBe(1);
+
+  const error = await runMatingConfirmationCampaignForApplications({
+    applications: [{ id: "failed", contact_id: "contact-failed" }],
+    sendEmail: async () => ({
+      status: "missing_template",
+      deliveryState: "not_sent",
+    }),
+  });
+  expect(error.status).toBe("error");
+});
+
+test("confirmation guards and Brevo registry use the candidate journey", () => {
+  expect(
+    canConfirmMatingConfirmationCampaign({
+      hasSelectedValidCandidate: true,
+      brevoTemplateId,
+      isBrevoConfigured: false,
+    }),
+  ).toBe(false);
+  expect(
+    getBrevoTransactionalTemplateConfig("pre_reservation")?.category,
+  ).toBe("candidate_journey");
+});
+
+test("confirmation button is disabled without a mating Brevo template id", async ({
+  page,
+}) => {
+  createFixture({ includeTemplate: false });
+
+  try {
+    await login(page);
+    await page.goto(`/litters/${fixture.litterId}`);
+    await page.getByText("Campagnes d’e-mails").click();
+    await page
+      .getByRole("button", { name: "Envoyer via Brevo", exact: true })
+      .click();
+
+    const dialog = page.getByRole("dialog", {
+      name: "Confirmer l’envoi Brevo de confirmation de saillie",
+    });
+    await expect(
+      dialog.getByRole("button", { name: "Confirmer et envoyer" }),
+    ).toBeDisabled();
+    await expect(
+      dialog.getByText(/Ouvrez les paramètres Brevo/),
     ).toBeVisible();
   } finally {
     cleanupFixture();

@@ -7,7 +7,7 @@ export const brevoTransactionalTemplateConfigs = [
   {
     templateKey: "pre_reservation",
     title: "Demande de pré-réservation",
-    category: "adopter_journey",
+    category: "candidate_journey",
   },
 ] as const;
 
