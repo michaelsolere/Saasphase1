@@ -10,6 +10,24 @@ begin
   if exists (
     select 1
     from public.documents
+    where signed_at is not null and status <> 'signed'
+  ) then
+    raise exception using
+      message = 'documents audit failed: signed_at requires signed document status';
+  end if;
+
+  if exists (
+    select 1
+    from public.documents
+    where status = 'signed' and sent_at is null
+  ) then
+    raise exception using
+      message = 'documents audit failed: signed document status requires sent_at proof';
+  end if;
+
+  if exists (
+    select 1
+    from public.documents
     where generated_from_template
       and (template_id is null or generated_at is null)
   ) then
@@ -117,6 +135,10 @@ alter table public.documents
     check (source_template_version is null or source_template_version > 0),
   add constraint documents_file_sha256_check
     check (file_sha256 is null or file_sha256 ~ '^[0-9a-f]{64}$'),
+  add constraint documents_signed_at_status_check
+    check (signed_at is null or status = 'signed'),
+  add constraint documents_signed_status_sent_at_check
+    check (status <> 'signed' or sent_at is not null),
   add constraint documents_welcome_booklet_scope_check
     check (
       document_type <> 'welcome_booklet'

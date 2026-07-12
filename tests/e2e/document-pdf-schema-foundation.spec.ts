@@ -274,6 +274,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
       ", 'sent', 'historical-sent.pdf'",
       "other",
     ));
+    expect(sql(`select sent_at is null from public.documents where id = '${documentPrefix}60';`)).toBe("t");
     expectSqlFailure(
       `update public.documents set status = 'to_generate' where id = '${documentPrefix}60';`,
       /sent document status/,
@@ -291,6 +292,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
       ", 'signed', now(), 'historical-signed.pdf'",
       "other",
     ));
+    expect(sql(`select signed_at is null from public.documents where id = '${documentPrefix}61';`)).toBe("t");
     expectSqlFailure(
       `update public.documents set status = 'sent' where id = '${documentPrefix}61';`,
       /signed document status/,
@@ -313,6 +315,25 @@ test("validates document PDF schema and authenticated Storage policies", async (
     expectSqlFailure(
       `update public.documents set status = 'signed' where id = '${documentPrefix}63';`,
       /signed document status requires sent_at proof/,
+    );
+
+    expectSqlFailure(
+      insertDocument(
+        `${documentPrefix}64`,
+        ", status, sent_at, signed_at",
+        ", 'sent', now(), now()",
+        "other",
+      ),
+      /documents_signed_at_status_check/,
+    );
+    expectSqlFailure(
+      insertDocument(
+        `${documentPrefix}65`,
+        ", status",
+        ", 'signed'",
+        "other",
+      ),
+      /documents_signed_status_sent_at_check/,
     );
 
     const bucket = JSON.parse(sql(`
