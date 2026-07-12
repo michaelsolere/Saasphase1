@@ -1,8 +1,10 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  CONTACT_EDIT_NO_EMAIL_VALUE,
   normalizePhoneForComparison,
   normalizeOptionalText,
   readContactEditableValues,
@@ -317,6 +319,8 @@ export type ContactEditActionState = {
   message?: string;
   fields?: Record<string, string>;
   duplicateContacts?: DuplicateContactWarning[];
+  duplicateFingerprint?: string;
+  duplicateWarningToken?: string;
 };
 
 const writableMembershipRoles = ["owner", "admin", "member"];
@@ -346,6 +350,16 @@ function contactEditError(
   return { status: "error", message, fields };
 }
 
+function buildDuplicateFingerprint(values: ContactEditableValues) {
+  const payload = {
+    email: values.email,
+    phone: normalizePhoneForComparison(values.phone),
+    secondaryPhone: normalizePhoneForComparison(values.secondaryPhone),
+  };
+
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+}
+
 export async function updateContact(
   _previousState: ContactEditActionState,
   formData: FormData,
@@ -372,7 +386,15 @@ export async function updateContact(
   const { values, displayName } = validatedContact;
   const fields = contactEditFieldsFromValues(values);
   const duplicateOverride = formData.get("confirm_duplicates") === "1";
-  const emailChangeConfirmed = formData.get("confirm_email_change") === "1";
+  const submittedDuplicateFingerprint =
+    typeof formData.get("duplicate_fingerprint") === "string"
+      ? String(formData.get("duplicate_fingerprint"))
+      : "";
+  const duplicateFingerprint = buildDuplicateFingerprint(values);
+  const confirmedEmailValue =
+    typeof formData.get("confirmed_email_value") === "string"
+      ? String(formData.get("confirmed_email_value"))
+      : "";
 
   const supabase = await createClient();
   const {
@@ -410,14 +432,20 @@ export async function updateContact(
     return contactEditError("Contact introuvable ou inaccessible.", fields);
   }
 
-  if ((contact.email ?? null) !== values.email && !emailChangeConfirmed) {
+  if (
+    (contact.email ?? null) !== values.email &&
+    confirmedEmailValue !== (values.email ?? CONTACT_EDIT_NO_EMAIL_VALUE)
+  ) {
     return contactEditError(
       "Le changement ou retrait d’e-mail doit être confirmé explicitement.",
       fields,
     );
   }
 
-  if (!duplicateOverride) {
+  const canSkipDuplicateWarning =
+    duplicateOverride && submittedDuplicateFingerprint === duplicateFingerprint;
+
+  if (!canSkipDuplicateWarning) {
     const requestedPhones = [
       normalizePhoneForComparison(values.phone),
       normalizePhoneForComparison(values.secondaryPhone),
@@ -475,6 +503,8 @@ export async function updateContact(
           "Un ou plusieurs contacts semblent déjà utiliser cet e-mail ou ce téléphone.",
         fields,
         duplicateContacts: duplicates,
+        duplicateFingerprint,
+        duplicateWarningToken: `${duplicateFingerprint}:${Date.now()}`,
       };
     }
   }

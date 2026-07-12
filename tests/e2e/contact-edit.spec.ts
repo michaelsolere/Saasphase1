@@ -5,11 +5,17 @@ import { expect, type Page, test } from "@playwright/test";
 import {
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
+  type SupabaseTestClient,
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const otherOrganizationId = "22000000-0000-4000-8000-000000000001";
+const viewerId = "12000000-0000-4000-8000-000000000001";
+const viewerIdentityId = "12000000-0000-4000-8000-000000000002";
+const viewerMembershipId = "32000000-0000-4000-8000-000000000001";
+const viewerEmail = "viewer-contact-edit@saasphase1.invalid";
+const viewerPassword = "LocalDevViewer-2026!";
 
 const qaIds = {
   person: "72000000-0000-4000-8000-000000000001",
@@ -61,10 +67,14 @@ function runSql(sql: string) {
   ).trim();
 }
 
-async function login(page: Page) {
+async function login(
+  page: Page,
+  email = "owner@saasphase1.invalid",
+  password = "LocalDevOwner-2026!",
+) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Mot de passe").fill(password);
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).not.toHaveURL(/\/login$/);
 }
@@ -74,11 +84,20 @@ function cleanup() {
     delete from public.contact_roles
     where id = ${sqlQuote(qaIds.role)}::uuid;
 
+    delete from public.memberships
+    where id = ${sqlQuote(viewerMembershipId)}::uuid;
+
     delete from public.contacts
     where id in (${contactIds.map((id) => `${sqlQuote(id)}::uuid`).join(", ")});
 
     delete from public.organizations
     where id = ${sqlQuote(otherOrganizationId)}::uuid;
+
+    delete from auth.identities
+    where id = ${sqlQuote(viewerIdentityId)}::uuid;
+
+    delete from auth.users
+    where id = ${sqlQuote(viewerId)}::uuid;
   `);
 }
 
@@ -94,6 +113,22 @@ function expectCleanupDone() {
           select count(*) from public.contact_roles
           where id = ${sqlQuote(qaIds.role)}::uuid
         ),
+        'memberships', (
+          select count(*) from public.memberships
+          where id = ${sqlQuote(viewerMembershipId)}::uuid
+        ),
+        'profiles', (
+          select count(*) from public.profiles
+          where id = ${sqlQuote(viewerId)}::uuid
+        ),
+        'auth_identities', (
+          select count(*) from auth.identities
+          where id = ${sqlQuote(viewerIdentityId)}::uuid
+        ),
+        'auth_users', (
+          select count(*) from auth.users
+          where id = ${sqlQuote(viewerId)}::uuid
+        ),
         'organizations', (
           select count(*) from public.organizations
           where id = ${sqlQuote(otherOrganizationId)}::uuid
@@ -104,6 +139,10 @@ function expectCleanupDone() {
 
   expect(report.contacts).toBe(0);
   expect(report.contact_roles).toBe(0);
+  expect(report.memberships).toBe(0);
+  expect(report.profiles).toBe(0);
+  expect(report.auth_identities).toBe(0);
+  expect(report.auth_users).toBe(0);
   expect(report.organizations).toBe(0);
 }
 
@@ -111,6 +150,86 @@ function seedContacts() {
   cleanup();
 
   runSql(`
+    insert into auth.users (
+      id,
+      instance_id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      confirmation_token,
+      recovery_token,
+      email_change_token_new,
+      email_change,
+      phone_change,
+      phone_change_token,
+      email_change_token_current,
+      reauthentication_token,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at
+    )
+    values (
+      ${sqlQuote(viewerId)}::uuid,
+      '00000000-0000-0000-0000-000000000000'::uuid,
+      'authenticated',
+      'authenticated',
+      ${sqlQuote(viewerEmail)},
+      extensions.crypt(${sqlQuote(viewerPassword)}, extensions.gen_salt('bf')),
+      now(),
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '{"provider":"email","providers":["email"]}'::jsonb,
+      '{"display_name":"Viewer contact edit"}'::jsonb,
+      now(),
+      now()
+    );
+
+    insert into auth.identities (
+      id,
+      provider_id,
+      user_id,
+      identity_data,
+      provider,
+      created_at,
+      updated_at
+    )
+    values (
+      ${sqlQuote(viewerIdentityId)}::uuid,
+      ${sqlQuote(viewerId)},
+      ${sqlQuote(viewerId)}::uuid,
+      jsonb_build_object(
+        'sub', ${sqlQuote(viewerId)},
+        'email', ${sqlQuote(viewerEmail)},
+        'email_verified', true,
+        'phone_verified', false
+      ),
+      'email',
+      now(),
+      now()
+    );
+
+    insert into public.memberships (
+      id, organization_id, profile_id, role, status, created_by, updated_by
+    )
+    values (
+      ${sqlQuote(viewerMembershipId)}::uuid,
+      ${sqlQuote(organizationId)}::uuid,
+      ${sqlQuote(viewerId)}::uuid,
+      'viewer',
+      'active',
+      ${sqlQuote(ownerId)}::uuid,
+      ${sqlQuote(ownerId)}::uuid
+    );
+
     insert into public.organizations (id, name, slug)
     values (
       ${sqlQuote(otherOrganizationId)}::uuid,
@@ -529,6 +648,86 @@ test("validates e-mail and handles duplicate warnings without blocking explicit 
   }
 });
 
+test("requires a new e-mail confirmation when the confirmed value changes before saving", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  seedContacts();
+
+  try {
+    await login(page);
+    await page.goto(`/contacts/${qaIds.person}/edit`);
+    await page.getByLabel("Email").fill("doublon@example.invalid");
+    await submitForm(page);
+    await page
+      .getByRole("button", { name: "Confirmer le changement d’e-mail" })
+      .click();
+    await expect(
+      page.getByText("Un doublon potentiel a été détecté"),
+    ).toBeVisible();
+
+    await page.getByLabel("Email").fill("phone-decoy@example.invalid");
+    await expect(page.getByText("Un doublon potentiel")).toHaveCount(0);
+    await submitForm(page);
+
+    await expect(
+      page.getByRole("alertdialog", {
+        name: "Confirmer le changement d’e-mail",
+      }),
+    ).toBeVisible();
+    expect((await readContact(supabase, qaIds.person)).email).toBe(
+      "aline.before@example.invalid",
+    );
+  } finally {
+    cleanup();
+    expectCleanupDone();
+  }
+});
+
+test("invalidates duplicate confirmation when relevant fields change", async ({
+  page,
+}) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  seedContacts();
+
+  try {
+    await login(page);
+    await page.goto(`/contacts/${qaIds.structure}/edit`);
+    await page.getByLabel("Téléphone principal").fill("+33 6 91 91 91 91");
+    await submitForm(page);
+    await expect(
+      page.getByText("Un doublon potentiel a été détecté"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Enregistrer malgré l’avertissement",
+        exact: true,
+      }),
+    ).toBeVisible();
+
+    await page.getByLabel("Téléphone principal").fill("+33 6 90 90 90 90");
+    await expect(page.getByText("Un doublon potentiel")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Enregistrer", exact: true }),
+    ).toBeVisible();
+
+    await submitForm(page);
+    await expect(
+      page.getByText("Un doublon potentiel a été détecté"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Enregistrer malgré l’avertissement",
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect((await readContact(supabase, qaIds.structure)).phone).toBeNull();
+  } finally {
+    cleanup();
+    expectCleanupDone();
+  }
+});
+
 test("refuses deleted and unknown contacts", async ({ page }) => {
   seedContacts();
 
@@ -554,6 +753,39 @@ test("refuses deleted and unknown contacts", async ({ page }) => {
         name: "Contact introuvable ou inaccessible",
       }),
     ).toBeVisible();
+  } finally {
+    cleanup();
+    expectCleanupDone();
+  }
+});
+
+test("keeps active viewers read-only for contact editing", async ({ page }) => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  seedContacts();
+
+  try {
+    const before = await readContact(supabase, qaIds.person);
+
+    await login(page, viewerEmail, viewerPassword);
+    await page.goto(`/contacts/${qaIds.person}`);
+    await expect(
+      page.getByRole("link", { name: "Modifier le contact" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Créer une candidature" }),
+    ).toBeVisible();
+
+    await page.goto(`/contacts/${qaIds.person}/edit`);
+    await expect(
+      page.getByRole("heading", {
+        name: "Contact introuvable ou inaccessible",
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Enregistrer", exact: true }),
+    ).toHaveCount(0);
+
+    expect(await readContact(supabase, qaIds.person)).toMatchObject(before);
   } finally {
     cleanup();
     expectCleanupDone();

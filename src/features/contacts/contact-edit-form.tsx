@@ -9,7 +9,10 @@ import {
   updateContact,
   type ContactEditActionState,
 } from "@/features/contacts/actions";
-import { CONTACT_TYPES } from "@/features/contacts/contact-form-core";
+import {
+  CONTACT_EDIT_NO_EMAIL_VALUE,
+  CONTACT_TYPES,
+} from "@/features/contacts/contact-form-core";
 
 type EditableContact = {
   id: string;
@@ -111,10 +114,18 @@ export function ContactEditForm({ contact }: { contact: EditableContact }) {
   const initialState: ContactEditActionState = { status: "idle" };
   const [state, formAction] = useActionState(updateContact, initialState);
   const [showEmailConfirmation, setShowEmailConfirmation] = useState(false);
-  const [emailConfirmed, setEmailConfirmed] = useState(false);
+  const [confirmedEmailValue, setConfirmedEmailValue] = useState<string | null>(
+    null,
+  );
+  const [
+    invalidatedDuplicateWarningToken,
+    setInvalidatedDuplicateWarningToken,
+  ] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
-  const duplicateWarning = state.status === "duplicate_warning";
+  const duplicateWarning =
+    state.status === "duplicate_warning" &&
+    state.duplicateWarningToken !== invalidatedDuplicateWarningToken;
   const fields = useMemo(
     () => ({
       contact_type: state.fields?.contact_type ?? contact.contact_type,
@@ -144,17 +155,41 @@ export function ContactEditForm({ contact }: { contact: EditableContact }) {
     );
     const originalEmail = normalizeEmailForComparison(contact.email);
     const emailChanged = nextEmail !== originalEmail;
+    const expectedConfirmedEmail = nextEmail ?? CONTACT_EDIT_NO_EMAIL_VALUE;
 
-    if (emailChanged && hasValidEmailSyntax(nextEmail) && !emailConfirmed) {
+    if (
+      emailChanged &&
+      hasValidEmailSyntax(nextEmail) &&
+      confirmedEmailValue !== expectedConfirmedEmail
+    ) {
       event.preventDefault();
       setShowEmailConfirmation(true);
     }
   }
 
   function confirmEmailChange() {
-    setEmailConfirmed(true);
+    const nextEmail = normalizeEmailForComparison(
+      emailInputRef.current?.value ?? "",
+    );
+
+    setConfirmedEmailValue(nextEmail ?? CONTACT_EDIT_NO_EMAIL_VALUE);
     setShowEmailConfirmation(false);
     window.setTimeout(() => formRef.current?.requestSubmit(), 0);
+  }
+
+  function handleFormChange(event: React.FormEvent<HTMLFormElement>) {
+    const target = event.target;
+
+    if (
+      !(target instanceof HTMLInputElement) &&
+      !(target instanceof HTMLSelectElement)
+    ) {
+      return;
+    }
+
+    if (state.status === "duplicate_warning") {
+      setInvalidatedDuplicateWarningToken(state.duplicateWarningToken ?? null);
+    }
   }
 
   return (
@@ -162,19 +197,25 @@ export function ContactEditForm({ contact }: { contact: EditableContact }) {
       ref={formRef}
       action={formAction}
       onSubmit={handleSubmit}
+      onChange={handleFormChange}
       noValidate
       className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
     >
       <input type="hidden" name="contact_id" value={contact.id} />
       <input
         type="hidden"
-        name="confirm_email_change"
-        value={emailConfirmed ? "1" : "0"}
+        name="confirmed_email_value"
+        value={confirmedEmailValue ?? ""}
       />
       <input
         type="hidden"
         name="confirm_duplicates"
         value={duplicateWarning ? "1" : "0"}
+      />
+      <input
+        type="hidden"
+        name="duplicate_fingerprint"
+        value={duplicateWarning ? (state.duplicateFingerprint ?? "") : ""}
       />
 
       {state.status === "error" ? (

@@ -6,6 +6,8 @@ export const CONTACT_TYPES = [
   "other",
 ] as const;
 
+export const CONTACT_EDIT_NO_EMAIL_VALUE = "__contact_edit_no_email__";
+
 export type ContactType = (typeof CONTACT_TYPES)[number];
 
 export type ContactEditableValues = {
