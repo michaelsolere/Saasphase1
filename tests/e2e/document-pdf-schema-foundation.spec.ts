@@ -212,7 +212,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
     ));
     expectSqlFailure(
       `update public.documents set status = 'to_generate' where id = '${documentPrefix}50';`,
-      /sent document proof/,
+      /sent document status/,
     );
     expectSqlFailure(
       `update public.documents set sent_at = null where id = '${documentPrefix}50';`,
@@ -243,7 +243,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
     expect(sql(`select signed_at is not null from public.documents where id = '${documentPrefix}50';`)).toBe("t");
     expectSqlFailure(
       `update public.documents set status = 'sent' where id = '${documentPrefix}50';`,
-      /signed document proof/,
+      /signed document status/,
     );
     expectSqlFailure(
       `update public.documents set signed_at = null where id = '${documentPrefix}50';`,
@@ -266,6 +266,53 @@ test("validates document PDF schema and authenticated Storage policies", async (
     expectSqlFailure(
       `update public.documents set superseded_at = superseded_at + interval '1 second' where id = '${documentPrefix}50';`,
       /replacement proof/,
+    );
+
+    sql(insertDocument(
+      `${documentPrefix}60`,
+      ", status, file_name",
+      ", 'sent', 'historical-sent.pdf'",
+      "other",
+    ));
+    expectSqlFailure(
+      `update public.documents set status = 'to_generate' where id = '${documentPrefix}60';`,
+      /sent document status/,
+    );
+    expectSqlFailure(
+      `update public.documents set file_name = 'historical-sent-changed.pdf' where id = '${documentPrefix}60';`,
+      /immutable/,
+    );
+    sql(`update public.documents set sent_at = now() where id = '${documentPrefix}60';`);
+    expect(sql(`select sent_at is not null from public.documents where id = '${documentPrefix}60';`)).toBe("t");
+
+    sql(insertDocument(
+      `${documentPrefix}61`,
+      ", status, sent_at, file_name",
+      ", 'signed', now(), 'historical-signed.pdf'",
+      "other",
+    ));
+    expectSqlFailure(
+      `update public.documents set status = 'sent' where id = '${documentPrefix}61';`,
+      /signed document status/,
+    );
+    sql(`update public.documents set signed_at = now() where id = '${documentPrefix}61';`);
+    expect(sql(`select signed_at is not null from public.documents where id = '${documentPrefix}61';`)).toBe("t");
+
+    sql(insertDocument(
+      `${documentPrefix}62`,
+      ", status, sent_at",
+      ", 'sent', now()",
+      "other",
+    ));
+    expectSqlFailure(
+      `update public.documents set signed_at = now() where id = '${documentPrefix}62';`,
+      /signed_at requires signed document status/,
+    );
+
+    sql(insertDocument(`${documentPrefix}63`, "", "", "other"));
+    expectSqlFailure(
+      `update public.documents set status = 'signed' where id = '${documentPrefix}63';`,
+      /signed document status requires sent_at proof/,
     );
 
     const bucket = JSON.parse(sql(`

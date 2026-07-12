@@ -217,22 +217,38 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  if (old.status = 'sent' or old.sent_at is not null)
+    and new.status not in ('sent', 'signed')
+  then
+    raise exception using message = 'sent document status cannot be downgraded';
+  end if;
+
   if old.sent_at is not null
-    and (
-      new.sent_at is distinct from old.sent_at
-      or new.status not in ('sent', 'signed')
-    )
+    and new.sent_at is distinct from old.sent_at
   then
     raise exception using message = 'sent document proof cannot be removed or changed';
   end if;
 
-  if (old.signed_at is not null or old.status = 'signed')
-    and (
-      new.signed_at is distinct from old.signed_at
-      or new.status <> 'signed'
-    )
+  if (old.status = 'signed' or old.signed_at is not null)
+    and new.status <> 'signed'
+  then
+    raise exception using message = 'signed document status cannot be downgraded';
+  end if;
+
+  if old.signed_at is not null
+    and new.signed_at is distinct from old.signed_at
   then
     raise exception using message = 'signed document proof cannot be removed or changed';
+  end if;
+
+  if new.signed_at is not null and new.status <> 'signed'
+  then
+    raise exception using message = 'signed_at requires signed document status';
+  end if;
+
+  if new.status = 'signed' and new.sent_at is null
+  then
+    raise exception using message = 'signed document status requires sent_at proof';
   end if;
 
   if old.superseded_at is not null
