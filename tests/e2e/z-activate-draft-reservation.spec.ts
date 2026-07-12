@@ -90,21 +90,6 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
   return { applicationId, contactId, displayName };
 }
 
-async function findReservationForApplication(
-  supabase: SupabaseTestClient,
-  applicationId: string,
-) {
-  return expectSupabaseData(
-    await supabase
-      .from("reservations")
-      .select("id, status")
-      .eq("application_id", applicationId)
-      .is("deleted_at", null)
-      .maybeSingle(),
-    "find reservation for application",
-  );
-}
-
 async function readReservation(
   supabase: SupabaseTestClient,
   reservationId: string,
@@ -187,38 +172,39 @@ async function countRows(
   return result.count ?? 0;
 }
 
-async function getOrCreateDraftReservation(
-  page: Page,
+async function createDraftReservationForApplication(
   supabase: SupabaseTestClient,
   applicationId: string,
+  contactId: string,
 ) {
-  await page.goto(`/candidatures/${applicationId}`);
-  await page
-    .getByRole("button", { name: "Créer une demande de pré-réservation" })
-    .click();
-  await expect(page).toHaveURL(/\/reservations\/[0-9a-f-]+/);
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-  return await expect
-    .poll(async () => {
-      const reservation = await findReservationForApplication(
-        supabase,
-        applicationId,
-      );
-      return reservation?.id ?? null;
-    })
-    .not.toBeNull()
-    .then(async () => {
-      const reservation = await findReservationForApplication(
-        supabase,
-        applicationId,
-      );
+  if (userError || !user) {
+    throw new Error("Unable to read authenticated test user");
+  }
 
-      if (!reservation) {
-        throw new Error("Created reservation was not found");
-      }
+  const reservationId = randomUUID();
+  const { error: reservationError } = await supabase.from("reservations").insert({
+    id: reservationId,
+    organization_id: organizationId,
+    contact_id: contactId,
+    application_id: applicationId,
+    species: "dog",
+    breed: "Golden Retriever",
+    reserved_sex_preference: "no_preference",
+    status: "draft",
+    created_by: user.id,
+    updated_by: user.id,
+  });
 
-      return reservation.id;
-    });
+  if (reservationError) {
+    throw new Error(`create draft reservation: ${reservationError.message}`);
+  }
+
+  return reservationId;
 }
 
 async function createPreReservationPaymentFixture(
@@ -562,10 +548,10 @@ test("confirms a draft reservation manually without side effects", async ({
     }),
   ).toBeVisible();
 
-  const reservationId = await getOrCreateDraftReservation(
-    page,
+  const reservationId = await createDraftReservationForApplication(
     supabase,
     applicationId,
+    contactId,
   );
 
   const beforeActivation = await readReservation(supabase, reservationId);
@@ -586,21 +572,21 @@ test("confirms a draft reservation manually without side effects", async ({
     .not.toContain("pre_reservation_holder");
 
   await page.goto(`/reservations/${reservationId}`);
-  await expect(page.getByRole("button", { name: "Confirmer la réservation" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Confirmer le dossier" })).toBeVisible();
   await expect(
     page.getByText(
-      "Cette action confirme manuellement la réservation. Elle ne crée ni paiement, ni document, ni attribution d’animal.",
+      "Cette action confirme manuellement le dossier adoptant. Elle ne crée ni paiement, ni document, ni attribution d’animal.",
     ),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Confirmer la réservation" }).click();
+  await page.getByRole("button", { name: "Confirmer le dossier" }).click();
   await expect(page).toHaveURL(/activation_status=success/);
-  await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+  await expect(page.getByText("Le dossier adoptant a été confirmé.")).toBeVisible();
   await expect(
     page.locator("#reservation-details").getByText("Active", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Confirmer la réservation" }),
+    page.getByRole("button", { name: "Confirmer le dossier" }),
   ).toHaveCount(0);
 
   const afterActivation = await readReservation(supabase, reservationId);

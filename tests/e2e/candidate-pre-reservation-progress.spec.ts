@@ -267,9 +267,9 @@ test("candidate pre-reservation progress appears on list, timeline, contact and 
     await expect(paidCombinedStep).toContainText("Fait");
     const paidCandidateStep = journeyStep(page, "Pré-réservation réglée");
     await expect(paidCandidateStep).toContainText("Fait");
-    await expect(
-      page.getByText("Pré-réservation réglée — passage au parcours adoptant."),
-    ).toBeVisible();
+    await expect(paidCandidateStep).toContainText("Paiement de 250,00");
+    await expect(paidCandidateStep).toContainText("réglé le 11 juillet 2026");
+    await expect(paidCandidateStep).toContainText("passage au parcours adoptant");
     await expect(page.getByText("Paiement de 250,00").first()).toBeVisible();
     await expect(page.getByText(/en attente de règlement/i)).toHaveCount(0);
 
@@ -317,7 +317,7 @@ test("candidate pre-reservation progress appears on list, timeline, contact and 
       page.getByRole("heading", { name: "Pré-réservation réglée" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Pré-réservation réglée — passage au parcours adoptant."),
+      page.getByText(/Paiement de 250,00.*passage au parcours adoptant/),
     ).toBeVisible();
     await expect(
       page.getByText("Le règlement de pré-réservation n'est pas encore enregistré."),

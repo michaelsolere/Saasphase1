@@ -269,7 +269,7 @@ function getCandidateJourneySteps({
       label: "Pré-réservation réglée",
       state: preReservationProgress.paidDone ? "done" : "upcoming",
       detail: preReservationProgress.paidDone
-        ? "Pré-réservation réglée — passage au parcours adoptant."
+        ? `${preReservationProgress.paidDetail.replace(/\.$/, "")} — passage au parcours adoptant.`
         : preReservationProgress.paidDetail,
     },
   ];
