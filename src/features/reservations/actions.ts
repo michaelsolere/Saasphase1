@@ -2081,7 +2081,8 @@ function choiceAppointmentsCampaignParams(
  *
  * Décisions Phase 1 :
  *   - Pas de changement automatique du statut de candidature.
- *   - Pas d'e-mail réel envoyé.
+ *   - E-mail Brevo transactionnel envoyé après création de la demande.
+ *   - Demande nouvellement créée compensée si l'e-mail n'est pas envoyé.
  *   - Pas de paiement automatique.
  *   - Libellé : "avance sur arrhes" (ne jamais écrire "acompte").
  */

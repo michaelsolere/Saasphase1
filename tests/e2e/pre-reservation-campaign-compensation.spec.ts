@@ -22,6 +22,7 @@ const fixture = {
     "95000000-0000-4000-8000-000000000014",
     "95000000-0000-4000-8000-000000000015",
     "95000000-0000-4000-8000-000000000016",
+    "95000000-0000-4000-8000-000000000017",
   ],
   applicationIds: {
     success: "95000000-0000-4000-8000-000000000021",
@@ -30,6 +31,7 @@ const fixture = {
     alreadyExists: "95000000-0000-4000-8000-000000000024",
     uncertain: "95000000-0000-4000-8000-000000000025",
     retry: "95000000-0000-4000-8000-000000000026",
+    partialFailure: "95000000-0000-4000-8000-000000000027",
   },
   existingReservationId: "95000000-0000-4000-8000-000000000031",
   existingPaymentId: "95000000-0000-4000-8000-000000000032",
@@ -185,7 +187,8 @@ function createFixture() {
       ('${fixture.contactIds[2]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Rejected', 'E2E Campaign Rejected', 'campaign-rejected@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
       ('${fixture.contactIds[3]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Existing', 'E2E Campaign Existing', 'campaign-existing@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
       ('${fixture.contactIds[4]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Uncertain', 'E2E Campaign Uncertain', 'campaign-uncertain@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[5]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Retry', 'E2E Campaign Retry', 'campaign-retry@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid);
+      ('${fixture.contactIds[5]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Retry', 'E2E Campaign Retry', 'campaign-retry@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
+      ('${fixture.contactIds[6]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Partial', 'E2E Campaign Partial', 'campaign-partial@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid);
 
     insert into public.contact_roles (
       organization_id, contact_id, role, started_at, created_by, updated_by
@@ -213,7 +216,8 @@ function createFixture() {
         ('${applicationIds[2]}'::uuid, '${fixture.contactIds[2]}'::uuid),
         ('${applicationIds[3]}'::uuid, '${fixture.contactIds[3]}'::uuid),
         ('${applicationIds[4]}'::uuid, '${fixture.contactIds[4]}'::uuid),
-        ('${applicationIds[5]}'::uuid, '${fixture.contactIds[5]}'::uuid)
+        ('${applicationIds[5]}'::uuid, '${fixture.contactIds[5]}'::uuid),
+        ('${applicationIds[6]}'::uuid, '${fixture.contactIds[6]}'::uuid)
     ) as source(app_id, contact_id);
 
     insert into public.reservations (
@@ -446,6 +450,63 @@ test("pre-reservation campaign compensates newly created requests only when emai
     expect(reservations).toHaveLength(1);
     payments = await activePaymentRows(supabase, reservations[0].id);
     expect(payments).toHaveLength(1);
+  } finally {
+    cleanupFixture();
+  }
+});
+
+test("pre-reservation campaign restores payment when reservation compensation fails after concurrent status change", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+
+  try {
+    const result = await runPreReservationCampaignForApplications({
+      supabase,
+      applications: [
+        {
+          id: fixture.applicationIds.partialFailure,
+          species: "dog",
+          breed: "Golden Retriever",
+          desired_sex_preference: "no_preference",
+          target_litter_id: fixture.litterId,
+          target_litter_group_id: fixture.groupId,
+        },
+      ],
+      sendEmail: async ({ reservationId }) => {
+        const { error } = await supabase
+          .from("reservations")
+          .update({
+            status: "active",
+            updated_at: new Date().toISOString(),
+            updated_by: userId,
+          })
+          .eq("id", reservationId)
+          .eq("status", "pre_reservation_requested")
+          .is("deleted_at", null);
+
+        if (error) {
+          throw new Error(`simulate concurrent reservation update: ${error.message}`);
+        }
+
+        return { status: "missing_email", deliveryState: "not_sent" };
+      },
+    });
+
+    expect(result.reservationsPreparedCount).toBe(0);
+    expect(result.paymentsCreatedCount).toBe(0);
+    expect(result.compensatedNotSentCreationCount).toBe(0);
+    expect(result.errorCount).toBe(1);
+
+    const reservations = await activeReservationRows(
+      supabase,
+      fixture.applicationIds.partialFailure,
+    );
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0].status).toBe("active");
+
+    const payments = await activePaymentRows(supabase, reservations[0].id);
+    expect(payments).toHaveLength(1);
+    expect(payments[0].status).toBe("requested");
   } finally {
     cleanupFixture();
   }

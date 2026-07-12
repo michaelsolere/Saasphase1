@@ -60,6 +60,63 @@ type SendPreReservationCampaignEmail = (input: {
   reservationId: string;
 }) => Promise<PreReservationCampaignSendResult>;
 
+async function restorePaymentAfterReservationCompensationFailure({
+  supabase,
+  result,
+  paymentDeletedAt,
+  userId,
+}: {
+  supabase: Supabase;
+  result: PreReservationCampaignRpcResult & {
+    application_id: string;
+    reservation_id: string;
+    payment_id: string;
+  };
+  paymentDeletedAt: string;
+  userId: string;
+}) {
+  const { data: restoredPayment, error: restoreError } = await supabase
+    .from("payments")
+    .update({
+      deleted_at: null,
+      updated_at: new Date().toISOString(),
+      updated_by: userId,
+    })
+    .eq("id", result.payment_id)
+    .eq("reservation_id", result.reservation_id)
+    .eq("deleted_at", paymentDeletedAt)
+    .select("id")
+    .maybeSingle();
+
+  const { count: activePaymentsCount, error: activePaymentReadError } =
+    await supabase
+      .from("payments")
+      .select("id", { count: "exact", head: true })
+      .eq("id", result.payment_id)
+      .eq("reservation_id", result.reservation_id)
+      .is("deleted_at", null);
+
+  const restored = Boolean(
+    restoredPayment &&
+      !restoreError &&
+      !activePaymentReadError &&
+      activePaymentsCount === 1,
+  );
+
+  console.error("pre-reservation campaign payment compensation restored:", {
+    applicationId: result.application_id,
+    reservationId: result.reservation_id,
+    paymentId: result.payment_id,
+    paymentDeletedAt,
+    restored,
+    restoreError,
+    activePaymentReadError,
+    activePaymentsCount,
+  });
+
+  return { ok: restored };
+}
+
 async function compensateUnsentPreReservationCreation({
   supabase,
   result,
@@ -73,13 +130,13 @@ async function compensateUnsentPreReservationCreation({
     return { ok: false as const };
   }
 
-  const now = new Date().toISOString();
+  const paymentDeletedAt = new Date().toISOString();
 
   const { data: updatedPayment, error: paymentError } = await supabase
     .from("payments")
     .update({
-      deleted_at: now,
-      updated_at: now,
+      deleted_at: paymentDeletedAt,
+      updated_at: paymentDeletedAt,
       updated_by: userId,
     })
     .eq("id", result.payment_id)
@@ -102,8 +159,8 @@ async function compensateUnsentPreReservationCreation({
   const { data: updatedReservation, error: reservationError } = await supabase
     .from("reservations")
     .update({
-      deleted_at: now,
-      updated_at: now,
+      deleted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       updated_by: userId,
     })
     .eq("id", result.reservation_id)
@@ -114,11 +171,24 @@ async function compensateUnsentPreReservationCreation({
     .maybeSingle();
 
   if (reservationError || !updatedReservation) {
+    const restoration = await restorePaymentAfterReservationCompensationFailure({
+      supabase,
+      result: {
+        ...result,
+        application_id: result.application_id,
+        reservation_id: result.reservation_id,
+        payment_id: result.payment_id,
+      },
+      paymentDeletedAt,
+      userId,
+    });
+
     console.error("pre-reservation campaign reservation compensation failed:", {
       applicationId: result.application_id,
       reservationId: result.reservation_id,
       paymentId: result.payment_id,
       error: reservationError,
+      paymentRestored: restoration.ok,
     });
     return { ok: false as const };
   }

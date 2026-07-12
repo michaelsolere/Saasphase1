@@ -63,6 +63,66 @@ function runSql(sql: string) {
   ).trim();
 }
 
+type BrevoTemplateIdSnapshot = Array<{
+  id: string;
+  brevoTemplateId: string | null;
+}>;
+
+function readSeedPreReservationBrevoTemplateIds(): BrevoTemplateIdSnapshot {
+  const output = runSql(`
+    select id::text || '|' || coalesce(brevo_template_id::text, '')
+    from public.email_templates
+    where organization_id = ${sqlQuote(organizationId)}::uuid
+      and template_key = 'pre_reservation'
+      and id <> ${sqlQuote(templateId)}::uuid
+    order by id;
+  `);
+
+  if (!output) {
+    return [];
+  }
+
+  return output.split(/\r?\n/).map((line) => {
+    const [id, rawBrevoTemplateId = ""] = line.split("|");
+
+    return {
+      id,
+      brevoTemplateId: rawBrevoTemplateId || null,
+    };
+  });
+}
+
+function restoreSeedPreReservationBrevoTemplateIds(
+  snapshot: BrevoTemplateIdSnapshot,
+) {
+  snapshot.forEach((template) => {
+    runSql(`
+      update public.email_templates
+      set
+        brevo_template_id = ${
+          template.brevoTemplateId === null
+            ? "null"
+            : Number(template.brevoTemplateId)
+        },
+        updated_by = ${sqlQuote(ownerId)}::uuid
+      where id = ${sqlQuote(template.id)}::uuid
+        and organization_id = ${sqlQuote(organizationId)}::uuid;
+    `);
+  });
+}
+
+function clearSeedPreReservationBrevoTemplateIds() {
+  runSql(`
+    update public.email_templates
+    set
+      brevo_template_id = null,
+      updated_by = ${sqlQuote(ownerId)}::uuid
+    where organization_id = ${sqlQuote(organizationId)}::uuid
+      and template_key = 'pre_reservation'
+      and id <> ${sqlQuote(templateId)}::uuid;
+  `);
+}
+
 function buildIdempotencyKey({
   keyOrganizationId = organizationId,
   keyContactId = contactId,
@@ -558,7 +618,9 @@ test("reservation page does not call Brevo when the template id is absent", asyn
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
+  const brevoTemplateIdSnapshot = readSeedPreReservationBrevoTemplateIds();
   cleanupQaFixtures();
+  clearSeedPreReservationBrevoTemplateIds();
 
   try {
     await login(page);
@@ -583,6 +645,7 @@ test("reservation page does not call Brevo when the template id is absent", asyn
     ).toHaveLength(0);
   } finally {
     cleanupQaFixtures();
+    restoreSeedPreReservationBrevoTemplateIds(brevoTemplateIdSnapshot);
     expect(countRemainingFixtures()).toBe(0);
   }
 });
