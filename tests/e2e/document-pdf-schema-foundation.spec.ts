@@ -211,15 +211,62 @@ test("validates document PDF schema and authenticated Storage policies", async (
       "reservation_contract",
     ));
     expectSqlFailure(
-      `update public.documents set file_name = 'changed.pdf' where id = '${documentPrefix}50';`,
+      `update public.documents set status = 'to_generate' where id = '${documentPrefix}50';`,
+      /sent document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set sent_at = null where id = '${documentPrefix}50';`,
+      /sent document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set sent_at = sent_at + interval '1 second' where id = '${documentPrefix}50';`,
+      /sent document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set file_name = 'changed-after-downgrade.pdf' where id = '${documentPrefix}50';`,
       /immutable/,
     );
+    expectSqlFailure(
+      `update public.documents set deleted_at = now() where id = '${documentPrefix}50';`,
+      /cannot be soft-deleted/,
+    );
+    const originalSentAt = sql(`
+      select sent_at::text from public.documents where id = '${documentPrefix}50';
+    `);
     sql(`
       update public.documents
       set status = 'signed', signed_at = now()
       where id = '${documentPrefix}50';
     `);
     expect(sql(`select status from public.documents where id = '${documentPrefix}50';`)).toBe("signed");
+    expect(sql(`select sent_at::text from public.documents where id = '${documentPrefix}50';`)).toBe(originalSentAt);
+    expect(sql(`select signed_at is not null from public.documents where id = '${documentPrefix}50';`)).toBe("t");
+    expectSqlFailure(
+      `update public.documents set status = 'sent' where id = '${documentPrefix}50';`,
+      /signed document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set signed_at = null where id = '${documentPrefix}50';`,
+      /signed document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set signed_at = signed_at + interval '1 second' where id = '${documentPrefix}50';`,
+      /signed document proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set deleted_at = now() where id = '${documentPrefix}50';`,
+      /cannot be soft-deleted/,
+    );
+    sql(`update public.documents set superseded_at = now() where id = '${documentPrefix}50';`);
+    expect(sql(`select superseded_at is not null from public.documents where id = '${documentPrefix}50';`)).toBe("t");
+    expectSqlFailure(
+      `update public.documents set superseded_at = null where id = '${documentPrefix}50';`,
+      /replacement proof/,
+    );
+    expectSqlFailure(
+      `update public.documents set superseded_at = superseded_at + interval '1 second' where id = '${documentPrefix}50';`,
+      /replacement proof/,
+    );
 
     const bucket = JSON.parse(sql(`
       select json_build_object('public', public) from storage.buckets where id = 'documents';

@@ -217,6 +217,36 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  if old.sent_at is not null
+    and (
+      new.sent_at is distinct from old.sent_at
+      or new.status not in ('sent', 'signed')
+    )
+  then
+    raise exception using message = 'sent document proof cannot be removed or changed';
+  end if;
+
+  if (old.signed_at is not null or old.status = 'signed')
+    and (
+      new.signed_at is distinct from old.signed_at
+      or new.status <> 'signed'
+    )
+  then
+    raise exception using message = 'signed document proof cannot be removed or changed';
+  end if;
+
+  if old.superseded_at is not null
+    and new.superseded_at is distinct from old.superseded_at
+  then
+    raise exception using message = 'document replacement proof cannot be removed or changed';
+  end if;
+
+  if (old.status in ('sent', 'signed') or old.sent_at is not null or old.signed_at is not null)
+    and new.deleted_at is distinct from old.deleted_at
+  then
+    raise exception using message = 'sent or signed document cannot be soft-deleted';
+  end if;
+
   if (old.status in ('sent', 'signed') or old.sent_at is not null or old.signed_at is not null)
     and (
       new.file_path is distinct from old.file_path
