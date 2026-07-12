@@ -119,6 +119,97 @@ async function countRows(
   return result.count ?? 0;
 }
 
+async function cleanupReservationFixture(
+  supabase: SupabaseTestClient,
+  contactId: string | null,
+  applicationId: string | null,
+  reservationId: string | null,
+) {
+  const contactIds = contactId ? [contactId] : [];
+  const applicationIds = applicationId ? [applicationId] : [];
+  const reservationIds = reservationId ? [reservationId] : [];
+
+  async function deleteBy(
+    table:
+      | "documents"
+      | "payments"
+      | "reservations"
+      | "contact_roles"
+      | "applications"
+      | "contacts",
+    column: string,
+    values: string[],
+  ) {
+    if (values.length === 0) {
+      return;
+    }
+
+    const { error } = await supabase.from(table).delete().in(column, values);
+
+    if (error) {
+      throw new Error(`cleanup ${table}.${column}: ${error.message}`);
+    }
+  }
+
+  async function countBy(
+    table:
+      | "documents"
+      | "payments"
+      | "reservations"
+      | "contact_roles"
+      | "applications"
+      | "contacts",
+    column: string,
+    values: string[],
+  ) {
+    if (values.length === 0) {
+      return 0;
+    }
+
+    const result = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .in(column, values);
+
+    if (result.error) {
+      throw new Error(`verify cleanup ${table}.${column}: ${result.error.message}`);
+    }
+
+    return result.count ?? 0;
+  }
+
+  await deleteBy("documents", "reservation_id", reservationIds);
+  await deleteBy("documents", "application_id", applicationIds);
+  await deleteBy("documents", "contact_id", contactIds);
+  await deleteBy("payments", "reservation_id", reservationIds);
+  await deleteBy("payments", "contact_id", contactIds);
+  await deleteBy("reservations", "id", reservationIds);
+  await deleteBy("reservations", "application_id", applicationIds);
+  await deleteBy("reservations", "contact_id", contactIds);
+  await deleteBy("contact_roles", "contact_id", contactIds);
+  await deleteBy("applications", "id", applicationIds);
+  await deleteBy("applications", "contact_id", contactIds);
+  await deleteBy("contacts", "id", contactIds);
+
+  const remaining =
+    (await countBy("documents", "reservation_id", reservationIds)) +
+    (await countBy("documents", "application_id", applicationIds)) +
+    (await countBy("documents", "contact_id", contactIds)) +
+    (await countBy("payments", "reservation_id", reservationIds)) +
+    (await countBy("payments", "contact_id", contactIds)) +
+    (await countBy("reservations", "id", reservationIds)) +
+    (await countBy("reservations", "application_id", applicationIds)) +
+    (await countBy("reservations", "contact_id", contactIds)) +
+    (await countBy("contact_roles", "contact_id", contactIds)) +
+    (await countBy("applications", "id", applicationIds)) +
+    (await countBy("applications", "contact_id", contactIds)) +
+    (await countBy("contacts", "id", contactIds));
+
+  if (remaining !== 0) {
+    throw new Error(`cleanup withdrawal fixtures: ${remaining} row(s) remain`);
+  }
+}
+
 async function createDraftReservation(
   page: Page,
   supabase: SupabaseTestClient,
@@ -159,93 +250,103 @@ test("withdraws an active reservation manually without side effects", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, contactId, displayName } =
-    await createQualifiedApplicationFixture(supabase);
+  let contactId: string | null = null;
+  let applicationId: string | null = null;
+  let reservationId: string | null = null;
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const fixture = await createQualifiedApplicationFixture(supabase);
+    applicationId = fixture.applicationId;
+    contactId = fixture.contactId;
 
-  await page.goto(`/candidatures/${applicationId}`);
-  await expect(page.getByRole("heading", { name: displayName })).toBeVisible();
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const reservationId = await createDraftReservation(
-    page,
-    supabase,
-    applicationId,
-  );
+    await page.goto(`/candidatures/${applicationId}`);
+    await expect(page.getByRole("heading", { name: fixture.displayName })).toBeVisible();
 
-  await page.goto(`/reservations/${reservationId}`);
-  await page.getByRole("button", { name: "Confirmer la réservation" }).click();
-  await expect(page).toHaveURL(/activation_status=success/);
-  await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+    reservationId = await createDraftReservation(page, supabase, applicationId);
 
-  const beforeWithdrawal = await readReservation(supabase, reservationId);
-  expect(beforeWithdrawal.status).toBe("active");
-  expect(beforeWithdrawal.adoption_completed_at).toBeNull();
-  expect(beforeWithdrawal.application_id).toBe(applicationId);
-  expect(beforeWithdrawal.contact_id).toBe(contactId);
-  const paymentCountBefore = await countRows(supabase, "payments", reservationId);
-  const documentCountBefore = await countRows(supabase, "documents", reservationId);
-  const noteCountBefore = await countRows(supabase, "notes", reservationId);
-  expect(paymentCountBefore).toBe(0);
-  expect(documentCountBefore).toBe(0);
-  expect(noteCountBefore).toBe(0);
+    await page.goto(`/reservations/${reservationId}`);
+    await page.getByRole("button", { name: "Confirmer la réservation" }).click();
+    await expect(page).toHaveURL(/activation_status=success/);
+    await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
 
-  await expect(
-    page.getByRole("button", { name: "Marquer comme désistée" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Enregistre le désistement sans créer de remboursement ni modifier les paiements, documents ou l’animal attribué.",
-    ),
-  ).toBeVisible();
+    const beforeWithdrawal = await readReservation(supabase, reservationId);
+    expect(beforeWithdrawal.status).toBe("active");
+    expect(beforeWithdrawal.adoption_completed_at).toBeNull();
+    expect(beforeWithdrawal.application_id).toBe(applicationId);
+    expect(beforeWithdrawal.contact_id).toBe(contactId);
+    const paymentCountBefore = await countRows(supabase, "payments", reservationId);
+    const documentCountBefore = await countRows(supabase, "documents", reservationId);
+    const noteCountBefore = await countRows(supabase, "notes", reservationId);
+    expect(paymentCountBefore).toBe(0);
+    expect(documentCountBefore).toBe(0);
+    expect(noteCountBefore).toBe(0);
 
-  await openDialog(
-    page.getByRole("button", { name: "Marquer comme désistée" }),
-    page.getByRole("heading", { name: "Confirmer le désistement ?" }),
-  );
-  await expect(
-    page.getByText(
-      "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
-    ),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Confirmer le désistement" }).click();
-  await expect(page).toHaveURL(/withdrawal_status=success/);
-  await expect(page.getByText("Réservation marquée comme désistée.")).toBeVisible();
-  await expect(page.getByText("Désistement", { exact: true }).first()).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Marquer comme désistée" }),
-  ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Marquer comme désistée" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Enregistre le désistement sans créer de remboursement ni modifier les paiements, documents ou l’animal attribué.",
+      ),
+    ).toBeVisible();
 
-  const afterWithdrawal = await readReservation(supabase, reservationId);
-  expect(afterWithdrawal.status).toBe("withdrawn");
-  expect(afterWithdrawal.updated_by).not.toBeNull();
-  expect(afterWithdrawal.updated_at).not.toBe(beforeWithdrawal.updated_at);
-  expect(afterWithdrawal.reservation_confirmed_at).toBe(
-    beforeWithdrawal.reservation_confirmed_at,
-  );
-  expect(afterWithdrawal.adoption_completed_at).toBeNull();
-  expect(afterWithdrawal.animal_id).toBe(beforeWithdrawal.animal_id);
-  expect(afterWithdrawal.animal_assigned_at).toBe(
-    beforeWithdrawal.animal_assigned_at,
-  );
-  expect(afterWithdrawal.price_cents).toBe(beforeWithdrawal.price_cents);
-  expect(afterWithdrawal.internal_comment).toBe(
-    beforeWithdrawal.internal_comment,
-  );
-  expect(afterWithdrawal.pre_reservation_deadline).toBe(
-    beforeWithdrawal.pre_reservation_deadline,
-  );
-  expect(await countRows(supabase, "payments", reservationId)).toBe(
-    paymentCountBefore,
-  );
-  expect(await countRows(supabase, "documents", reservationId)).toBe(
-    documentCountBefore,
-  );
-  expect(await countRows(supabase, "notes", reservationId)).toBe(
-    noteCountBefore,
-  );
+    await openDialog(
+      page.getByRole("button", { name: "Marquer comme désistée" }),
+      page.getByRole("heading", { name: "Confirmer le désistement ?" }),
+    );
+    await expect(
+      page.getByText(
+        "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Confirmer le désistement" }).click();
+    await expect(page).toHaveURL(/withdrawal_status=success/);
+    await expect(page.getByText("Réservation marquée comme désistée.")).toBeVisible();
+    await expect(page.getByText("Désistement", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Marquer comme désistée" }),
+    ).toHaveCount(0);
+
+    const afterWithdrawal = await readReservation(supabase, reservationId);
+    expect(afterWithdrawal.status).toBe("withdrawn");
+    expect(afterWithdrawal.updated_by).not.toBeNull();
+    expect(afterWithdrawal.updated_at).not.toBe(beforeWithdrawal.updated_at);
+    expect(afterWithdrawal.reservation_confirmed_at).toBe(
+      beforeWithdrawal.reservation_confirmed_at,
+    );
+    expect(afterWithdrawal.adoption_completed_at).toBeNull();
+    expect(afterWithdrawal.animal_id).toBe(beforeWithdrawal.animal_id);
+    expect(afterWithdrawal.animal_assigned_at).toBe(
+      beforeWithdrawal.animal_assigned_at,
+    );
+    expect(afterWithdrawal.price_cents).toBe(beforeWithdrawal.price_cents);
+    expect(afterWithdrawal.internal_comment).toBe(
+      beforeWithdrawal.internal_comment,
+    );
+    expect(afterWithdrawal.pre_reservation_deadline).toBe(
+      beforeWithdrawal.pre_reservation_deadline,
+    );
+    expect(await countRows(supabase, "payments", reservationId)).toBe(
+      paymentCountBefore,
+    );
+    expect(await countRows(supabase, "documents", reservationId)).toBe(
+      documentCountBefore,
+    );
+    expect(await countRows(supabase, "notes", reservationId)).toBe(
+      noteCountBefore,
+    );
+  } finally {
+    await cleanupReservationFixture(
+      supabase,
+      contactId,
+      applicationId,
+      reservationId,
+    );
+  }
 });

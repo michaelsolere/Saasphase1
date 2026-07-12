@@ -119,6 +119,97 @@ async function countRows(
   return result.count ?? 0;
 }
 
+async function cleanupReservationFixture(
+  supabase: SupabaseTestClient,
+  contactId: string | null,
+  applicationId: string | null,
+  reservationId: string | null,
+) {
+  const contactIds = contactId ? [contactId] : [];
+  const applicationIds = applicationId ? [applicationId] : [];
+  const reservationIds = reservationId ? [reservationId] : [];
+
+  async function deleteBy(
+    table:
+      | "documents"
+      | "payments"
+      | "reservations"
+      | "contact_roles"
+      | "applications"
+      | "contacts",
+    column: string,
+    values: string[],
+  ) {
+    if (values.length === 0) {
+      return;
+    }
+
+    const { error } = await supabase.from(table).delete().in(column, values);
+
+    if (error) {
+      throw new Error(`cleanup ${table}.${column}: ${error.message}`);
+    }
+  }
+
+  async function countBy(
+    table:
+      | "documents"
+      | "payments"
+      | "reservations"
+      | "contact_roles"
+      | "applications"
+      | "contacts",
+    column: string,
+    values: string[],
+  ) {
+    if (values.length === 0) {
+      return 0;
+    }
+
+    const result = await supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .in(column, values);
+
+    if (result.error) {
+      throw new Error(`verify cleanup ${table}.${column}: ${result.error.message}`);
+    }
+
+    return result.count ?? 0;
+  }
+
+  await deleteBy("documents", "reservation_id", reservationIds);
+  await deleteBy("documents", "application_id", applicationIds);
+  await deleteBy("documents", "contact_id", contactIds);
+  await deleteBy("payments", "reservation_id", reservationIds);
+  await deleteBy("payments", "contact_id", contactIds);
+  await deleteBy("reservations", "id", reservationIds);
+  await deleteBy("reservations", "application_id", applicationIds);
+  await deleteBy("reservations", "contact_id", contactIds);
+  await deleteBy("contact_roles", "contact_id", contactIds);
+  await deleteBy("applications", "id", applicationIds);
+  await deleteBy("applications", "contact_id", contactIds);
+  await deleteBy("contacts", "id", contactIds);
+
+  const remaining =
+    (await countBy("documents", "reservation_id", reservationIds)) +
+    (await countBy("documents", "application_id", applicationIds)) +
+    (await countBy("documents", "contact_id", contactIds)) +
+    (await countBy("payments", "reservation_id", reservationIds)) +
+    (await countBy("payments", "contact_id", contactIds)) +
+    (await countBy("reservations", "id", reservationIds)) +
+    (await countBy("reservations", "application_id", applicationIds)) +
+    (await countBy("reservations", "contact_id", contactIds)) +
+    (await countBy("contact_roles", "contact_id", contactIds)) +
+    (await countBy("applications", "id", applicationIds)) +
+    (await countBy("applications", "contact_id", contactIds)) +
+    (await countBy("contacts", "id", contactIds));
+
+  if (remaining !== 0) {
+    throw new Error(`cleanup expiration fixtures: ${remaining} row(s) remain`);
+  }
+}
+
 async function createDraftReservation(
   page: Page,
   supabase: SupabaseTestClient,
@@ -159,95 +250,105 @@ test("expires an active reservation manually without side effects", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, contactId, displayName } =
-    await createQualifiedApplicationFixture(supabase);
+  let contactId: string | null = null;
+  let applicationId: string | null = null;
+  let reservationId: string | null = null;
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const fixture = await createQualifiedApplicationFixture(supabase);
+    applicationId = fixture.applicationId;
+    contactId = fixture.contactId;
 
-  await page.goto(`/candidatures/${applicationId}`);
-  await expect(page.getByRole("heading", { name: displayName })).toBeVisible();
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const reservationId = await createDraftReservation(
-    page,
-    supabase,
-    applicationId,
-  );
+    await page.goto(`/candidatures/${applicationId}`);
+    await expect(page.getByRole("heading", { name: fixture.displayName })).toBeVisible();
 
-  await page.goto(`/reservations/${reservationId}`);
-  await page.getByRole("button", { name: "Confirmer la réservation" }).click();
-  await expect(page).toHaveURL(/activation_status=success/);
-  await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
+    reservationId = await createDraftReservation(page, supabase, applicationId);
 
-  const beforeExpiration = await readReservation(supabase, reservationId);
-  expect(beforeExpiration.status).toBe("active");
-  expect(beforeExpiration.adoption_completed_at).toBeNull();
-  expect(beforeExpiration.application_id).toBe(applicationId);
-  expect(beforeExpiration.contact_id).toBe(contactId);
-  const paymentCountBefore = await countRows(supabase, "payments", reservationId);
-  const documentCountBefore = await countRows(supabase, "documents", reservationId);
-  const noteCountBefore = await countRows(supabase, "notes", reservationId);
-  expect(paymentCountBefore).toBe(0);
-  expect(documentCountBefore).toBe(0);
-  expect(noteCountBefore).toBe(0);
+    await page.goto(`/reservations/${reservationId}`);
+    await page.getByRole("button", { name: "Confirmer la réservation" }).click();
+    await expect(page).toHaveURL(/activation_status=success/);
+    await expect(page.getByText("La réservation a été confirmée.")).toBeVisible();
 
-  await expect(
-    page.getByRole("button", { name: "Marquer comme expirée" }),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Marque la réservation comme expirée sans automatisation liée à l’échéance de pré-réservation.",
-    ),
-  ).toBeVisible();
+    const beforeExpiration = await readReservation(supabase, reservationId);
+    expect(beforeExpiration.status).toBe("active");
+    expect(beforeExpiration.adoption_completed_at).toBeNull();
+    expect(beforeExpiration.application_id).toBe(applicationId);
+    expect(beforeExpiration.contact_id).toBe(contactId);
+    const paymentCountBefore = await countRows(supabase, "payments", reservationId);
+    const documentCountBefore = await countRows(supabase, "documents", reservationId);
+    const noteCountBefore = await countRows(supabase, "notes", reservationId);
+    expect(paymentCountBefore).toBe(0);
+    expect(documentCountBefore).toBe(0);
+    expect(noteCountBefore).toBe(0);
 
-  await openDialog(
-    page.getByRole("button", { name: "Marquer comme expirée" }),
-    page.getByRole("heading", {
-      name: "Confirmer l’expiration de cette réservation ?",
-    }),
-  );
-  await expect(
-    page.getByText(
-      "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
-    ),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Confirmer l’expiration" }).click();
-  await expect(page).toHaveURL(/expiration_status=success/);
-  await expect(page.getByText("Réservation marquée comme expirée.")).toBeVisible();
-  await expect(page.getByText("Expirée", { exact: true }).first()).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Marquer comme expirée" }),
-  ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Marquer comme expirée" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Marque la réservation comme expirée sans automatisation liée à l’échéance de pré-réservation.",
+      ),
+    ).toBeVisible();
 
-  const afterExpiration = await readReservation(supabase, reservationId);
-  expect(afterExpiration.status).toBe("expired");
-  expect(afterExpiration.updated_by).not.toBeNull();
-  expect(afterExpiration.updated_at).not.toBe(beforeExpiration.updated_at);
-  expect(afterExpiration.reservation_confirmed_at).toBe(
-    beforeExpiration.reservation_confirmed_at,
-  );
-  expect(afterExpiration.adoption_completed_at).toBeNull();
-  expect(afterExpiration.animal_id).toBe(beforeExpiration.animal_id);
-  expect(afterExpiration.animal_assigned_at).toBe(
-    beforeExpiration.animal_assigned_at,
-  );
-  expect(afterExpiration.pre_reservation_deadline).toBe(
-    beforeExpiration.pre_reservation_deadline,
-  );
-  expect(afterExpiration.price_cents).toBe(beforeExpiration.price_cents);
-  expect(afterExpiration.internal_comment).toBe(
-    beforeExpiration.internal_comment,
-  );
-  expect(await countRows(supabase, "payments", reservationId)).toBe(
-    paymentCountBefore,
-  );
-  expect(await countRows(supabase, "documents", reservationId)).toBe(
-    documentCountBefore,
-  );
-  expect(await countRows(supabase, "notes", reservationId)).toBe(
-    noteCountBefore,
-  );
+    await openDialog(
+      page.getByRole("button", { name: "Marquer comme expirée" }),
+      page.getByRole("heading", {
+        name: "Confirmer l’expiration de cette réservation ?",
+      }),
+    );
+    await expect(
+      page.getByText(
+        "Cette action modifie le statut du dossier. Aucun paiement, document, email, facture ou remboursement n’est créé automatiquement.",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Confirmer l’expiration" }).click();
+    await expect(page).toHaveURL(/expiration_status=success/);
+    await expect(page.getByText("Réservation marquée comme expirée.")).toBeVisible();
+    await expect(page.getByText("Expirée", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Marquer comme expirée" }),
+    ).toHaveCount(0);
+
+    const afterExpiration = await readReservation(supabase, reservationId);
+    expect(afterExpiration.status).toBe("expired");
+    expect(afterExpiration.updated_by).not.toBeNull();
+    expect(afterExpiration.updated_at).not.toBe(beforeExpiration.updated_at);
+    expect(afterExpiration.reservation_confirmed_at).toBe(
+      beforeExpiration.reservation_confirmed_at,
+    );
+    expect(afterExpiration.adoption_completed_at).toBeNull();
+    expect(afterExpiration.animal_id).toBe(beforeExpiration.animal_id);
+    expect(afterExpiration.animal_assigned_at).toBe(
+      beforeExpiration.animal_assigned_at,
+    );
+    expect(afterExpiration.pre_reservation_deadline).toBe(
+      beforeExpiration.pre_reservation_deadline,
+    );
+    expect(afterExpiration.price_cents).toBe(beforeExpiration.price_cents);
+    expect(afterExpiration.internal_comment).toBe(
+      beforeExpiration.internal_comment,
+    );
+    expect(await countRows(supabase, "payments", reservationId)).toBe(
+      paymentCountBefore,
+    );
+    expect(await countRows(supabase, "documents", reservationId)).toBe(
+      documentCountBefore,
+    );
+    expect(await countRows(supabase, "notes", reservationId)).toBe(
+      noteCountBefore,
+    );
+  } finally {
+    await cleanupReservationFixture(
+      supabase,
+      contactId,
+      applicationId,
+      reservationId,
+    );
+  }
 });

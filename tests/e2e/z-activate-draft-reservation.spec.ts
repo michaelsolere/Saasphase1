@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -10,6 +11,284 @@ import {
 import { openDialog } from "./helpers/dialogs";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
+
+type FixtureScope = {
+  contactIds: string[];
+  applicationIds: string[];
+  reservationIds: string[];
+  paymentIds: string[];
+  documentIds: string[];
+};
+
+function createFixtureScope(): FixtureScope {
+  return {
+    contactIds: [],
+    applicationIds: [],
+    reservationIds: [],
+    paymentIds: [],
+    documentIds: [],
+  };
+}
+
+function sqlUuidArray(values: string[]) {
+  if (values.length === 0) {
+    return "array[]::uuid[]";
+  }
+
+  return `array[${values.map((value) => `'${value}'::uuid`).join(",")}]`;
+}
+
+function runSql(sql: string) {
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-A",
+      "-t",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+}
+
+async function cleanupFixtureScope(
+  _supabase: SupabaseTestClient,
+  scope: FixtureScope,
+) {
+  runSql(`
+    with scope as (
+      select
+        ${sqlUuidArray(scope.contactIds)} as contact_ids,
+        ${sqlUuidArray(scope.applicationIds)} as application_ids,
+        ${sqlUuidArray(scope.reservationIds)} as reservation_ids,
+        ${sqlUuidArray(scope.paymentIds)} as payment_ids,
+        ${sqlUuidArray(scope.documentIds)} as document_ids
+    ),
+    target_contacts as (
+      select unnest(contact_ids) as id from scope
+    ),
+    target_applications as (
+      select unnest(application_ids) as id from scope
+      union
+      select id from public.applications
+      where contact_id in (select id from target_contacts)
+    ),
+    target_reservations as (
+      select unnest(reservation_ids) as id from scope
+      union
+      select id from public.reservations
+      where application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    target_documents as (
+      select unnest(document_ids) as id from scope
+      union
+      select id from public.documents
+      where reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    del_email as (
+      delete from public.email_delivery_attempts
+      where reservation_id in (select id from target_reservations)
+      returning id
+    ),
+    del_events as (
+      delete from public.events
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_notes as (
+      delete from public.notes
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_documents as (
+      delete from public.documents
+      where id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_payments as (
+      delete from public.payments
+      where id in (select unnest(payment_ids) from scope)
+         or document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_reservations as (
+      delete from public.reservations
+      where id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_roles as (
+      delete from public.contact_roles
+      where contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_applications as (
+      delete from public.applications
+      where id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_contacts as (
+      delete from public.contacts
+      where id in (select id from target_contacts)
+      returning id
+    )
+    select count(*)
+    from (
+      select id::text from public.email_delivery_attempts
+      where reservation_id in (select id from target_reservations)
+      union all
+      select id::text from public.events
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.notes
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.documents
+      where id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.payments
+      where id in (select unnest(payment_ids) from scope)
+         or document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.reservations
+      where id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.contact_roles
+      where contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.applications
+      where id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      union all
+      select id::text from public.contacts
+      where id in (select id from target_contacts)
+    ) remaining;
+  `);
+
+  const remaining = Number(
+    runSql(`
+      with scope as (
+        select
+          ${sqlUuidArray(scope.contactIds)} as contact_ids,
+          ${sqlUuidArray(scope.applicationIds)} as application_ids,
+          ${sqlUuidArray(scope.reservationIds)} as reservation_ids,
+          ${sqlUuidArray(scope.paymentIds)} as payment_ids,
+          ${sqlUuidArray(scope.documentIds)} as document_ids
+      ),
+      target_contacts as (
+        select unnest(contact_ids) as id from scope
+      ),
+      target_applications as (
+        select unnest(application_ids) as id from scope
+        union
+        select id from public.applications
+        where contact_id in (select id from target_contacts)
+      ),
+      target_reservations as (
+        select unnest(reservation_ids) as id from scope
+        union
+        select id from public.reservations
+        where application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+      ),
+      target_documents as (
+        select unnest(document_ids) as id from scope
+        union
+        select id from public.documents
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+      )
+      select count(*)
+      from (
+        select id::text from public.email_delivery_attempts
+        where reservation_id in (select id from target_reservations)
+        union all
+        select id::text from public.events
+        where document_id in (select id from target_documents)
+           or reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.notes
+        where document_id in (select id from target_documents)
+           or reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.documents
+        where id in (select id from target_documents)
+           or reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.payments
+        where id in (select unnest(payment_ids) from scope)
+           or document_id in (select id from target_documents)
+           or reservation_id in (select id from target_reservations)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.reservations
+        where id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contact_roles
+        where contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.applications
+        where id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.contacts
+        where id in (select id from target_contacts)
+      ) remaining;
+    `),
+  );
+
+  if (remaining !== 0) {
+    throw new Error(`cleanup z-activate fixtures: ${remaining} row(s) remain`);
+  }
+}
 
 async function expectTechnicalPreReservationPage(
   page: Page,
@@ -31,7 +310,10 @@ async function expectTechnicalPreReservationPage(
   await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
 }
 
-async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
+async function createQualifiedApplicationFixture(
+  supabase: SupabaseTestClient,
+  scope: FixtureScope,
+) {
   const {
     data: { user },
     error: userError,
@@ -43,6 +325,8 @@ async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
 
   const contactId = randomUUID();
   const applicationId = randomUUID();
+  scope.contactIds.push(contactId);
+  scope.applicationIds.push(applicationId);
   const suffix = applicationId.slice(0, 8);
   const displayName = `Activation Smoke ${suffix}`;
 
@@ -174,6 +458,7 @@ async function countRows(
 
 async function createDraftReservationForApplication(
   supabase: SupabaseTestClient,
+  scope: FixtureScope,
   applicationId: string,
   contactId: string,
 ) {
@@ -187,6 +472,7 @@ async function createDraftReservationForApplication(
   }
 
   const reservationId = randomUUID();
+  scope.reservationIds.push(reservationId);
   const { error: reservationError } = await supabase.from("reservations").insert({
     id: reservationId,
     organization_id: organizationId,
@@ -209,6 +495,7 @@ async function createDraftReservationForApplication(
 
 async function createPreReservationPaymentFixture(
   supabase: SupabaseTestClient,
+  scope: FixtureScope,
   {
     amountCents = 25000,
     paymentType = "arrhes",
@@ -230,6 +517,10 @@ async function createPreReservationPaymentFixture(
   const applicationId = randomUUID();
   const reservationId = randomUUID();
   const paymentId = randomUUID();
+  scope.contactIds.push(contactId);
+  scope.applicationIds.push(applicationId);
+  scope.reservationIds.push(reservationId);
+  scope.paymentIds.push(paymentId);
   const suffix = reservationId.slice(0, 8);
   const displayName = `Pre Reservation Payment ${suffix}`;
 
@@ -324,6 +615,7 @@ async function createPreReservationPaymentFixture(
 
 async function createReservationContractDocumentFixture(
   supabase: SupabaseTestClient,
+  scope: FixtureScope,
   reservationId: string,
   contactId: string,
 ) {
@@ -337,6 +629,7 @@ async function createReservationContractDocumentFixture(
   }
 
   const documentId = randomUUID();
+  scope.documentIds.push(documentId);
 
   const { error: documentError } = await supabase.from("documents").insert({
     id: documentId,
@@ -360,6 +653,7 @@ async function createReservationContractDocumentFixture(
 
 async function createPreReservationBalanceFixture(
   supabase: SupabaseTestClient,
+  scope: FixtureScope,
   {
     reservationStatus,
     firstPaymentStatus,
@@ -389,6 +683,16 @@ async function createPreReservationBalanceFixture(
   const cancelledSecondPaymentId = withCancelledSecondRequest
     ? randomUUID()
     : null;
+  scope.contactIds.push(contactId);
+  scope.applicationIds.push(applicationId);
+  scope.reservationIds.push(reservationId);
+  scope.paymentIds.push(firstPaymentId);
+  if (secondPaymentId) {
+    scope.paymentIds.push(secondPaymentId);
+  }
+  if (cancelledSecondPaymentId) {
+    scope.paymentIds.push(cancelledSecondPaymentId);
+  }
   const suffix = reservationId.slice(0, 8);
   const displayName = `Balance Request ${suffix}`;
 
@@ -531,428 +835,502 @@ test("confirms a draft reservation manually without side effects", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { applicationId, contactId, displayName } =
-    await createQualifiedApplicationFixture(supabase);
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { applicationId, contactId, displayName } =
+      await createQualifiedApplicationFixture(supabase, scope);
 
-  await page.goto(`/candidatures/${applicationId}`);
-  await expect(page.getByRole("heading", { name: displayName })).toBeVisible();
-  await expect(
-    page.getByText("Aucune réservation liée à cette candidature.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const reservationId = await createDraftReservationForApplication(
-    supabase,
-    applicationId,
-    contactId,
-  );
+    await page.goto(`/candidatures/${applicationId}`);
+    await expect(page.getByRole("heading", { name: displayName })).toBeVisible();
+    await expect(
+      page.getByText("Aucune réservation liée à cette candidature.", {
+        exact: true,
+      }),
+    ).toBeVisible();
 
-  const beforeActivation = await readReservation(supabase, reservationId);
-  expect(beforeActivation.status).toBe("draft");
-  expect(beforeActivation.reservation_confirmed_at).toBeNull();
-  expect(beforeActivation.application_id).toBe(applicationId);
-  expect(beforeActivation.contact_id).toBe(contactId);
-  expect(beforeActivation.price_cents).toBeNull();
-  expect(beforeActivation.animal_id).toBeNull();
-  const paymentCountBefore = await countRows(supabase, "payments", reservationId);
-  const documentCountBefore = await countRows(supabase, "documents", reservationId);
-  const noteCountBefore = await countRows(supabase, "notes", reservationId);
-  expect(paymentCountBefore).toBe(0);
-  expect(documentCountBefore).toBe(0);
-  expect(noteCountBefore).toBe(0);
-  await expect
-    .poll(async () => readActiveContactRoles(supabase, contactId))
-    .not.toContain("pre_reservation_holder");
+    const reservationId = await createDraftReservationForApplication(
+      supabase,
+      scope,
+      applicationId,
+      contactId,
+    );
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(page.getByRole("button", { name: "Confirmer le dossier" })).toBeVisible();
-  await expect(
-    page.getByText(
-      "Cette action confirme manuellement le dossier adoptant. Elle ne crée ni paiement, ni document, ni attribution d’animal.",
-    ),
-  ).toBeVisible();
+    const beforeActivation = await readReservation(supabase, reservationId);
+    expect(beforeActivation.status).toBe("draft");
+    expect(beforeActivation.reservation_confirmed_at).toBeNull();
+    expect(beforeActivation.application_id).toBe(applicationId);
+    expect(beforeActivation.contact_id).toBe(contactId);
+    expect(beforeActivation.price_cents).toBeNull();
+    expect(beforeActivation.animal_id).toBeNull();
+    const paymentCountBefore = await countRows(supabase, "payments", reservationId);
+    const documentCountBefore = await countRows(supabase, "documents", reservationId);
+    const noteCountBefore = await countRows(supabase, "notes", reservationId);
+    expect(paymentCountBefore).toBe(0);
+    expect(documentCountBefore).toBe(0);
+    expect(noteCountBefore).toBe(0);
+    await expect
+      .poll(async () => readActiveContactRoles(supabase, contactId))
+      .not.toContain("pre_reservation_holder");
 
-  await page.getByRole("button", { name: "Confirmer le dossier" }).click();
-  await expect(page).toHaveURL(/activation_status=success/);
-  await expect(page.getByText("Le dossier adoptant a été confirmé.")).toBeVisible();
-  await expect(
-    page.locator("#reservation-details").getByText("Active", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Confirmer le dossier" }),
-  ).toHaveCount(0);
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(
+      page.getByRole("button", { name: "Confirmer le dossier" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        "Cette action confirme manuellement le dossier adoptant. Elle ne crée ni paiement, ni document, ni attribution d’animal.",
+      ),
+    ).toBeVisible();
 
-  const afterActivation = await readReservation(supabase, reservationId);
-  expect(afterActivation.status).toBe("active");
-  expect(afterActivation.reservation_confirmed_at).not.toBeNull();
-  expect(afterActivation.updated_by).not.toBeNull();
-  expect(afterActivation.updated_at).not.toBe(beforeActivation.updated_at);
-  expect(afterActivation.price_cents).toBe(beforeActivation.price_cents);
-  expect(afterActivation.animal_id).toBe(beforeActivation.animal_id);
-  expect(await countRows(supabase, "payments", reservationId)).toBe(
-    paymentCountBefore,
-  );
-  expect(await countRows(supabase, "documents", reservationId)).toBe(
-    documentCountBefore,
-  );
-  expect(await countRows(supabase, "notes", reservationId)).toBe(
-    noteCountBefore,
-  );
-  await expect
-    .poll(async () => readActiveContactRoles(supabase, contactId))
-    .not.toContain("reservation_holder");
+    await page.getByRole("button", { name: "Confirmer le dossier" }).click();
+    await expect(page).toHaveURL(/activation_status=success/);
+    await expect(page.getByText("Le dossier adoptant a été confirmé.")).toBeVisible();
+    await expect(
+      page.locator("#reservation-details").getByText("Active", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Confirmer le dossier" }),
+    ).toHaveCount(0);
+
+    const afterActivation = await readReservation(supabase, reservationId);
+    expect(afterActivation.status).toBe("active");
+    expect(afterActivation.reservation_confirmed_at).not.toBeNull();
+    expect(afterActivation.updated_by).not.toBeNull();
+    expect(afterActivation.updated_at).not.toBe(beforeActivation.updated_at);
+    expect(afterActivation.price_cents).toBe(beforeActivation.price_cents);
+    expect(afterActivation.animal_id).toBe(beforeActivation.animal_id);
+    expect(await countRows(supabase, "payments", reservationId)).toBe(
+      paymentCountBefore,
+    );
+    expect(await countRows(supabase, "documents", reservationId)).toBe(
+      documentCountBefore,
+    );
+    expect(await countRows(supabase, "notes", reservationId)).toBe(
+      noteCountBefore,
+    );
+    await expect
+      .poll(async () => readActiveContactRoles(supabase, contactId))
+      .not.toContain("reservation_holder");
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("marks a 250 euro pre-reservation payment as paid from payment detail", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { paymentId, reservationId } =
-    await createPreReservationPaymentFixture(supabase);
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { paymentId, reservationId } =
+      await createPreReservationPaymentFixture(supabase, scope);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expectTechnicalPreReservationPage(page, reservationId);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  await page.goto(`/payments/${paymentId}`);
-  await expect(
-    page.getByRole("heading", { name: "Marquer comme payé" }),
-  ).toBeVisible();
-  await page.locator('input[name="paid_date"]').fill("2026-07-10");
-  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
-  await expect(page).toHaveURL(/payment_mark_status=success/);
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(
-    page.getByRole("heading", {
-      name: "Pré-réservation réglée",
-      exact: true,
-    }),
-  ).toBeVisible();
+    await page.goto(`/reservations/${reservationId}`);
+    await expectTechnicalPreReservationPage(page, reservationId);
 
-  const updatedReservation = await readReservation(supabase, reservationId);
-  expect(updatedReservation.status).toBe("pre_reservation_paid");
-  await expect
-    .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
-    .toContain("pre_reservation_holder");
+    await page.goto(`/payments/${paymentId}`);
+    await expect(
+      page.getByRole("heading", { name: "Marquer comme payé" }),
+    ).toBeVisible();
+    await page.locator('input[name="paid_date"]').fill("2026-07-10");
+    await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(
+      page.getByRole("heading", {
+        name: "Pré-réservation réglée",
+        exact: true,
+      }),
+    ).toBeVisible();
 
-  const updatedPayment = expectSupabaseData(
-    await supabase
-      .from("payments")
-      .select("id, status, paid_at")
-      .eq("id", paymentId)
-      .single(),
-    "read updated pre-reservation payment",
-  );
-  expect(updatedPayment.status).toBe("paid");
-  expect(updatedPayment.paid_at).not.toBeNull();
+    const updatedReservation = await readReservation(supabase, reservationId);
+    expect(updatedReservation.status).toBe("pre_reservation_paid");
+    await expect
+      .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
+      .toContain("pre_reservation_holder");
+
+    const updatedPayment = expectSupabaseData(
+      await supabase
+        .from("payments")
+        .select("id, status, paid_at")
+        .eq("id", paymentId)
+        .single(),
+      "read updated pre-reservation payment",
+    );
+    expect(updatedPayment.status).toBe("paid");
+    expect(updatedPayment.paid_at).not.toBeNull();
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("marks a direct 500 euro arrhes payment as pre-reservation holder", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { paymentId, reservationId } =
-    await createPreReservationPaymentFixture(supabase, {
+  const scope = createFixtureScope();
+
+  try {
+    const { paymentId, reservationId } =
+      await createPreReservationPaymentFixture(supabase, scope, {
       amountCents: 50000,
       paymentType: "arrhes",
     });
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expectTechnicalPreReservationPage(page, reservationId);
+    await page.goto(`/reservations/${reservationId}`);
+    await expectTechnicalPreReservationPage(page, reservationId);
 
-  await page.goto(`/payments/${paymentId}`);
-  await expect(
-    page.getByRole("heading", { name: "Marquer comme payé" }),
-  ).toBeVisible();
-  await page.locator('input[name="paid_date"]').fill("2026-07-10");
-  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
-  await expect(page).toHaveURL(/payment_mark_status=success/);
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(page.getByText("Arrhes complètes", { exact: true })).toBeVisible();
+    await page.goto(`/payments/${paymentId}`);
+    await expect(
+      page.getByRole("heading", { name: "Marquer comme payé" }),
+    ).toBeVisible();
+    await page.locator('input[name="paid_date"]').fill("2026-07-10");
+    await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(page.getByText("Arrhes complètes", { exact: true })).toBeVisible();
 
-  const updatedReservation = await readReservation(supabase, reservationId);
-  expect(updatedReservation.status).toBe("pre_reservation_paid");
+    const updatedReservation = await readReservation(supabase, reservationId);
+    expect(updatedReservation.status).toBe("pre_reservation_paid");
 
-  await expect
-    .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
-    .toEqual(["pre_reservation_holder"]);
+    await expect
+      .poll(async () => readActiveContactRoles(supabase, updatedReservation.contact_id))
+      .toEqual(["pre_reservation_holder"]);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(
-    page.getByRole("button", { name: "Initialiser les documents de réservation" }),
-  ).toHaveCount(0);
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(
+      page.getByRole("button", { name: "Initialiser les documents de réservation" }),
+    ).toHaveCount(0);
 
-  const documents = await readReservationDocuments(supabase, reservationId);
-  expect(documents).toHaveLength(0);
+    const documents = await readReservationDocuments(supabase, reservationId);
+    expect(documents).toHaveLength(0);
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("does not display complete deposit for a paid non-arrhes 500 euro payment", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { paymentId, reservationId } =
-    await createPreReservationPaymentFixture(supabase, {
+  const scope = createFixtureScope();
+
+  try {
+    const { paymentId, reservationId } =
+      await createPreReservationPaymentFixture(supabase, scope, {
       amountCents: 50000,
       paymentType: "balance",
     });
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expectTechnicalPreReservationPage(page, reservationId);
+    await page.goto(`/reservations/${reservationId}`);
+    await expectTechnicalPreReservationPage(page, reservationId);
 
-  await page.goto(`/payments/${paymentId}`);
-  await expect(
-    page.getByRole("heading", { name: "Marquer comme payé" }),
-  ).toBeVisible();
-  await page.locator('input[name="paid_date"]').fill("2026-07-10");
-  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
-  await expect(page).toHaveURL(/payment_mark_status=success/);
-  await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
+    await page.goto(`/payments/${paymentId}`);
+    await expect(
+      page.getByRole("heading", { name: "Marquer comme payé" }),
+    ).toBeVisible();
+    await page.locator('input[name="paid_date"]').fill("2026-07-10");
+    await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
+    await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("does not mark a document financial status as complete deposit for a paid non-arrhes 500 euro payment", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { contactId, paymentId, reservationId } =
-    await createPreReservationPaymentFixture(supabase, {
+  const scope = createFixtureScope();
+
+  try {
+    const { contactId, paymentId, reservationId } =
+      await createPreReservationPaymentFixture(supabase, scope, {
       amountCents: 50000,
       paymentType: "balance",
     });
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expectTechnicalPreReservationPage(page, reservationId);
+    await page.goto(`/reservations/${reservationId}`);
+    await expectTechnicalPreReservationPage(page, reservationId);
 
-  await page.goto(`/payments/${paymentId}`);
-  await expect(
-    page.getByRole("heading", { name: "Marquer comme payé" }),
-  ).toBeVisible();
-  await page.locator('input[name="paid_date"]').fill("2026-07-10");
-  await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
-  await expect(page).toHaveURL(/payment_mark_status=success/);
+    await page.goto(`/payments/${paymentId}`);
+    await expect(
+      page.getByRole("heading", { name: "Marquer comme payé" }),
+    ).toBeVisible();
+    await page.locator('input[name="paid_date"]').fill("2026-07-10");
+    await page.getByRole("button", { name: "Marquer le paiement comme payé" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
 
-  const documentId = await createReservationContractDocumentFixture(
-    supabase,
-    reservationId,
-    contactId,
-  );
+    const documentId = await createReservationContractDocumentFixture(
+      supabase,
+      scope,
+      reservationId,
+      contactId,
+    );
 
-  await page.goto(`/documents/${documentId}`);
-  await expect(
-    page.getByText("Paiement hors arrhes", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
+    await page.goto(`/documents/${documentId}`);
+    await expect(
+      page.getByText("Paiement hors arrhes", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(page.getByText(/Arrhes complètes/)).toHaveCount(0);
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("creates the second 250 euro deposit request only after confirmation", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
-    reservationStatus: "pre_reservation_paid",
-    firstPaymentStatus: "paid",
-  });
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { reservationId } = await createPreReservationBalanceFixture(
+      supabase,
+      scope,
+      {
+        reservationStatus: "pre_reservation_paid",
+        firstPaymentStatus: "paid",
+      },
+    );
 
-  const beforeReservation = await readReservation(supabase, reservationId);
-  expect(beforeReservation).toMatchObject({
-    status: "pre_reservation_paid",
-    animal_id: null,
-    animal_assigned_at: null,
-    adoption_completed_at: null,
-  });
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  await page.goto(`/reservations/${reservationId}`);
-  await openDialog(
-    page
-      .locator("#reservation-details")
-      .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
-    page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
-  );
-  await expect(
-    page.getByText(
-      "Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
-    ),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Confirmer la demande" }).click();
-  await expect(page).toHaveURL(/balance_request_status=success/);
-  await expect(
-    page.getByText("Le complément 2/2 — 250 € a bien été créé."),
-  ).toBeVisible();
+    const beforeReservation = await readReservation(supabase, reservationId);
+    expect(beforeReservation).toMatchObject({
+      status: "pre_reservation_paid",
+      animal_id: null,
+      animal_assigned_at: null,
+      adoption_completed_at: null,
+    });
 
-  const payments = await readReservationPayments(supabase, reservationId);
-  expect(payments).toHaveLength(2);
-  expect(
-    payments.filter(
+    await page.goto(`/reservations/${reservationId}`);
+    await openDialog(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+      page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+    );
+    await expect(
+      page.getByText(
+        "Cette action crée uniquement une demande de paiement en statut demandé. Elle ne change pas le statut de réservation, n’attribue aucun animal, ne finalise pas l’adoption et n’envoie aucun email.",
+      ),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Confirmer la demande" }).click();
+    await expect(page).toHaveURL(/balance_request_status=success/);
+    await expect(
+      page.getByText("Le complément 2/2 — 250 € a bien été créé."),
+    ).toBeVisible();
+
+    const payments = await readReservationPayments(supabase, reservationId);
+    expect(payments).toHaveLength(2);
+    expect(
+      payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" &&
+          payment.amount_cents === 25000 &&
+          payment.status === "paid",
+      ),
+    ).toHaveLength(1);
+
+    const secondRequest = payments.find(
       (payment) =>
         payment.payment_type === "arrhes" &&
         payment.amount_cents === 25000 &&
-        payment.status === "paid",
-    ),
-  ).toHaveLength(1);
+        payment.status === "requested",
+    );
+    expect(secondRequest).toBeTruthy();
+    expect(secondRequest?.payment_method).toBe("bank_transfer");
+    expect(secondRequest?.requested_at).not.toBeNull();
+    expect(secondRequest?.due_date).not.toBeNull();
+    expect(secondRequest?.paid_at).toBeNull();
 
-  const secondRequest = payments.find(
-    (payment) =>
-      payment.payment_type === "arrhes" &&
-      payment.amount_cents === 25000 &&
-      payment.status === "requested",
-  );
-  expect(secondRequest).toBeTruthy();
-  expect(secondRequest?.payment_method).toBe("bank_transfer");
-  expect(secondRequest?.requested_at).not.toBeNull();
-  expect(secondRequest?.due_date).not.toBeNull();
-  expect(secondRequest?.paid_at).toBeNull();
-
-  const afterReservation = await readReservation(supabase, reservationId);
-  expect(afterReservation).toMatchObject({
-    status: beforeReservation.status,
-    animal_id: beforeReservation.animal_id,
-    animal_assigned_at: beforeReservation.animal_assigned_at,
-    adoption_completed_at: beforeReservation.adoption_completed_at,
-  });
+    const afterReservation = await readReservation(supabase, reservationId);
+    expect(afterReservation).toMatchObject({
+      status: beforeReservation.status,
+      animal_id: beforeReservation.animal_id,
+      animal_assigned_at: beforeReservation.animal_assigned_at,
+      adoption_completed_at: beforeReservation.adoption_completed_at,
+    });
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("does not show the second deposit action when the request already exists", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
-    reservationStatus: "pre_reservation_paid",
-    firstPaymentStatus: "paid",
-    withSecondRequest: true,
-  });
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { reservationId } = await createPreReservationBalanceFixture(
+      supabase,
+      scope,
+      {
+        reservationStatus: "pre_reservation_paid",
+        firstPaymentStatus: "paid",
+        withSecondRequest: true,
+      },
+    );
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(
-    page.getByRole("button", { name: /Demander le complément/ }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByText("Complément 2/2 — 250 € demandé."),
-  ).toBeVisible();
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const payments = await readReservationPayments(supabase, reservationId);
-  expect(payments).toHaveLength(2);
-  expect(
-    payments.filter(
-      (payment) =>
-        payment.payment_type === "arrhes" &&
-        payment.amount_cents === 25000 &&
-        (payment.status === "requested" || payment.status === "paid"),
-    ),
-  ).toHaveLength(2);
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(
+      page.getByRole("button", { name: /Demander le complément/ }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Complément 2/2 — 250 € demandé."),
+    ).toBeVisible();
+
+    const payments = await readReservationPayments(supabase, reservationId);
+    expect(payments).toHaveLength(2);
+    expect(
+      payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" &&
+          payment.amount_cents === 25000 &&
+          (payment.status === "requested" || payment.status === "paid"),
+      ),
+    ).toHaveLength(2);
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("can request the second deposit when only an old second request was cancelled", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
-    reservationStatus: "pre_reservation_paid",
-    firstPaymentStatus: "paid",
-    withCancelledSecondRequest: true,
-  });
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { reservationId } = await createPreReservationBalanceFixture(
+      supabase,
+      scope,
+      {
+        reservationStatus: "pre_reservation_paid",
+        firstPaymentStatus: "paid",
+        withCancelledSecondRequest: true,
+      },
+    );
 
-  await page.goto(`/reservations/${reservationId}`);
-  await openDialog(
-    page
-      .locator("#reservation-details")
-      .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
-    page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
-  );
-  await page.getByRole("button", { name: "Confirmer la demande" }).click();
-  await expect(page).toHaveURL(/balance_request_status=success/);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const payments = await readReservationPayments(supabase, reservationId);
-  expect(payments).toHaveLength(3);
-  expect(
-    payments.filter(
-      (payment) =>
-        payment.payment_type === "arrhes" &&
-        payment.amount_cents === 25000 &&
-        (payment.status === "requested" || payment.status === "paid"),
-    ),
-  ).toHaveLength(2);
-  expect(
-    payments.filter(
-      (payment) =>
-        payment.payment_type === "arrhes" &&
-        payment.amount_cents === 25000 &&
-        payment.status === "cancelled",
-    ),
-  ).toHaveLength(1);
+    await page.goto(`/reservations/${reservationId}`);
+    await openDialog(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+      page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+    );
+    await page.getByRole("button", { name: "Confirmer la demande" }).click();
+    await expect(page).toHaveURL(/balance_request_status=success/);
+
+    const payments = await readReservationPayments(supabase, reservationId);
+    expect(payments).toHaveLength(3);
+    expect(
+      payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" &&
+          payment.amount_cents === 25000 &&
+          (payment.status === "requested" || payment.status === "paid"),
+      ),
+    ).toHaveLength(2);
+    expect(
+      payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" &&
+          payment.amount_cents === 25000 &&
+          payment.status === "cancelled",
+      ),
+    ).toHaveLength(1);
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });
 
 test("does not show the second deposit action when the first deposit is not paid", async ({
   page,
 }) => {
   const supabase = await createAuthenticatedSupabaseClient();
-  const { reservationId } = await createPreReservationBalanceFixture(supabase, {
-    reservationStatus: "pre_reservation_paid",
-    firstPaymentStatus: "requested",
-  });
+  const scope = createFixtureScope();
 
-  await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
-  await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+  try {
+    const { reservationId } = await createPreReservationBalanceFixture(
+      supabase,
+      scope,
+      {
+        reservationStatus: "pre_reservation_paid",
+        firstPaymentStatus: "requested",
+      },
+    );
 
-  await page.goto(`/reservations/${reservationId}`);
-  await expect(
-    page.getByRole("button", { name: /Demander le complément/ }),
-  ).toHaveCount(0);
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByRole("button", { name: "Se connecter" }).click();
+    await expect(page).toHaveURL(/\/candidatures/);
 
-  const payments = await readReservationPayments(supabase, reservationId);
-  expect(payments).toHaveLength(1);
-  expect(payments[0]).toMatchObject({
-    amount_cents: 25000,
-    payment_type: "arrhes",
-    status: "requested",
-  });
+    await page.goto(`/reservations/${reservationId}`);
+    await expect(
+      page.getByRole("button", { name: /Demander le complément/ }),
+    ).toHaveCount(0);
+
+    const payments = await readReservationPayments(supabase, reservationId);
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({
+      amount_cents: 25000,
+      payment_type: "arrhes",
+      status: "requested",
+    });
+  } finally {
+    await cleanupFixtureScope(supabase, scope);
+  }
 });

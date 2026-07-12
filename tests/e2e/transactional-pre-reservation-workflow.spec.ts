@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test, type Page } from "@playwright/test";
@@ -35,93 +36,250 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/connexion=success/);
 }
 
+function sqlUuidArray(values: string[]) {
+  if (values.length === 0) {
+    return "array[]::uuid[]";
+  }
+
+  return `array[${values.map((value) => `'${value}'::uuid`).join(",")}]`;
+}
+
+function runSql(sql: string) {
+  return execFileSync(
+    "docker",
+    [
+      "exec",
+      "supabase_db_saasphase1",
+      "psql",
+      "-X",
+      "-A",
+      "-t",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-U",
+      "postgres",
+      "-d",
+      "postgres",
+      "-c",
+      sql,
+    ],
+    { encoding: "utf8" },
+  ).trim();
+}
+
 async function cleanupRpcFixture(
-  supabase: SupabaseTestClient,
+  _supabase: SupabaseTestClient,
   fixture: RpcFixture | null,
 ) {
   if (!fixture) {
     return;
   }
 
-  const now = new Date().toISOString();
-  const reservationIds = expectSupabaseData(
-    await supabase
-      .from("reservations")
-      .select("id")
-      .in("application_id", Object.values(fixture.applicationIds)),
-    "read transactional pre-reservation reservations for cleanup",
-  ).map((reservation) => reservation.id);
+  const applicationIds = Object.values(fixture.applicationIds);
+  const cleanupSql = `
+    with scope as (
+      select
+        ${sqlUuidArray(fixture.contactIds)} as contact_ids,
+        ${sqlUuidArray(applicationIds)} as application_ids,
+        ${sqlUuidArray([
+          fixture.insufficientReservationId,
+        ])} as reservation_ids,
+        ${sqlUuidArray([fixture.insufficientPaymentId])} as payment_ids,
+        ${sqlUuidArray([fixture.litterId])} as litter_ids,
+        ${sqlUuidArray([fixture.groupId])} as group_ids
+    ),
+    target_contacts as (
+      select unnest(contact_ids) as id from scope
+    ),
+    target_applications as (
+      select unnest(application_ids) as id from scope
+      union
+      select id from public.applications
+      where contact_id in (select id from target_contacts)
+    ),
+    target_reservations as (
+      select unnest(reservation_ids) as id from scope
+      union
+      select id from public.reservations
+      where application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+         or litter_id in (select unnest(litter_ids) from scope)
+         or litter_group_id in (select unnest(group_ids) from scope)
+    ),
+    target_documents as (
+      select id from public.documents
+      where reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+    ),
+    del_email as (
+      delete from public.email_delivery_attempts
+      where reservation_id in (select id from target_reservations)
+      returning id
+    ),
+    del_events as (
+      delete from public.events
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+         or litter_id in (select unnest(litter_ids) from scope)
+      returning id
+    ),
+    del_notes as (
+      delete from public.notes
+      where document_id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+         or litter_id in (select unnest(litter_ids) from scope)
+      returning id
+    ),
+    del_documents as (
+      delete from public.documents
+      where id in (select id from target_documents)
+         or reservation_id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_payments as (
+      delete from public.payments
+      where id in (select unnest(payment_ids) from scope)
+         or reservation_id in (select id from target_reservations)
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_reservations as (
+      delete from public.reservations
+      where id in (select id from target_reservations)
+         or application_id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+         or litter_id in (select unnest(litter_ids) from scope)
+         or litter_group_id in (select unnest(group_ids) from scope)
+      returning id
+    ),
+    del_roles as (
+      delete from public.contact_roles
+      where id in (select unnest(${sqlUuidArray(fixture.contactRoleIds)}))
+         or contact_id in (select id from target_contacts)
+      returning id
+    ),
+    del_applications as (
+      delete from public.applications
+      where id in (select id from target_applications)
+         or contact_id in (select id from target_contacts)
+         or desired_litter_id in (select unnest(litter_ids) from scope)
+         or desired_litter_group_id in (select unnest(group_ids) from scope)
+      returning id
+    ),
+    del_contacts as (
+      delete from public.contacts
+      where id in (select id from target_contacts)
+      returning id
+    ),
+    del_animals as (
+      delete from public.animals
+      where litter_id in (select unnest(litter_ids) from scope)
+      returning id
+    ),
+    del_litters as (
+      delete from public.litters
+      where id in (select unnest(litter_ids) from scope)
+      returning id
+    ),
+    del_groups as (
+      delete from public.litter_groups
+      where id in (select unnest(group_ids) from scope)
+      returning id
+    )
+    select 1;
+  `;
+  runSql(cleanupSql);
 
-  if (reservationIds.length > 0) {
-    const { error: paymentCleanupError } = await supabase
-      .from("payments")
-      .update({ deleted_at: now, updated_at: now })
-      .in("reservation_id", reservationIds)
-      .is("deleted_at", null);
+  const remaining = Number(
+    runSql(`
+      with scope as (
+        select
+          ${sqlUuidArray(fixture.contactIds)} as contact_ids,
+          ${sqlUuidArray(applicationIds)} as application_ids,
+          ${sqlUuidArray([
+            fixture.insufficientReservationId,
+          ])} as reservation_ids,
+          ${sqlUuidArray([fixture.insufficientPaymentId])} as payment_ids,
+          ${sqlUuidArray([fixture.litterId])} as litter_ids,
+          ${sqlUuidArray([fixture.groupId])} as group_ids
+      ),
+      target_contacts as (
+        select unnest(contact_ids) as id from scope
+      ),
+      target_applications as (
+        select unnest(application_ids) as id from scope
+      ),
+      target_reservations as (
+        select unnest(reservation_ids) as id from scope
+      )
+      select count(*)
+      from (
+        select id::text from public.email_delivery_attempts
+        where reservation_id in (select id from target_reservations)
+        union all
+        select id::text from public.events
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+           or litter_id in (select unnest(litter_ids) from scope)
+        union all
+        select id::text from public.notes
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+           or litter_id in (select unnest(litter_ids) from scope)
+        union all
+        select id::text from public.documents
+        where reservation_id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.payments
+        where id in (select unnest(payment_ids) from scope)
+           or reservation_id in (select id from target_reservations)
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.reservations
+        where id in (select id from target_reservations)
+           or application_id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+           or litter_id in (select unnest(litter_ids) from scope)
+           or litter_group_id in (select unnest(group_ids) from scope)
+        union all
+        select id::text from public.contact_roles
+        where id in (select unnest(${sqlUuidArray(fixture.contactRoleIds)}))
+           or contact_id in (select id from target_contacts)
+        union all
+        select id::text from public.applications
+        where id in (select id from target_applications)
+           or contact_id in (select id from target_contacts)
+           or desired_litter_id in (select unnest(litter_ids) from scope)
+           or desired_litter_group_id in (select unnest(group_ids) from scope)
+        union all
+        select id::text from public.contacts
+        where id in (select id from target_contacts)
+        union all
+        select id::text from public.animals
+        where litter_id in (select unnest(litter_ids) from scope)
+        union all
+        select id::text from public.litters
+        where id in (select unnest(litter_ids) from scope)
+        union all
+        select id::text from public.litter_groups
+        where id in (select unnest(group_ids) from scope)
+      ) remaining;
+    `),
+  );
 
-    if (paymentCleanupError) {
-      throw new Error(`cleanup payments: ${paymentCleanupError.message}`);
-    }
-
-    const { error: reservationCleanupError } = await supabase
-      .from("reservations")
-      .update({ deleted_at: now, updated_at: now })
-      .in("id", reservationIds)
-      .is("deleted_at", null);
-
-    if (reservationCleanupError) {
-      throw new Error(`cleanup reservations: ${reservationCleanupError.message}`);
-    }
-  }
-
-  const { error: rolesCleanupError } = await supabase
-    .from("contact_roles")
-    .update({ deleted_at: now, updated_at: now })
-    .in("id", fixture.contactRoleIds)
-    .is("deleted_at", null);
-
-  if (rolesCleanupError) {
-    throw new Error(`cleanup contact roles: ${rolesCleanupError.message}`);
-  }
-
-  const { error: applicationsCleanupError } = await supabase
-    .from("applications")
-    .update({ deleted_at: now, updated_at: now })
-    .in("id", Object.values(fixture.applicationIds))
-    .is("deleted_at", null);
-
-  if (applicationsCleanupError) {
-    throw new Error(`cleanup applications: ${applicationsCleanupError.message}`);
-  }
-
-  const { error: contactsCleanupError } = await supabase
-    .from("contacts")
-    .update({ deleted_at: now, updated_at: now })
-    .in("id", fixture.contactIds)
-    .is("deleted_at", null);
-
-  if (contactsCleanupError) {
-    throw new Error(`cleanup contacts: ${contactsCleanupError.message}`);
-  }
-
-  const { error: litterCleanupError } = await supabase
-    .from("litters")
-    .update({ deleted_at: now, updated_at: now })
-    .eq("id", fixture.litterId)
-    .is("deleted_at", null);
-
-  if (litterCleanupError) {
-    throw new Error(`cleanup litter: ${litterCleanupError.message}`);
-  }
-
-  const { error: groupCleanupError } = await supabase
-    .from("litter_groups")
-    .update({ deleted_at: now, updated_at: now })
-    .eq("id", fixture.groupId)
-    .is("deleted_at", null);
-
-  if (groupCleanupError) {
-    throw new Error(`cleanup group: ${groupCleanupError.message}`);
+  if (remaining !== 0) {
+    throw new Error(`cleanup transactional RPC fixtures: ${remaining} row(s) remain`);
   }
 }
 
@@ -178,7 +336,9 @@ async function createRpcFixture(
       id: contactIds[0],
       organization_id: organizationId,
       contact_type: "person",
-      call_name: `E2E RPC campagne ${suffix}`,
+      first_name: "E2E RPC",
+      last_name: `Campagne ${suffix}`,
+      display_name: `E2E RPC campagne ${suffix}`,
       email: `rpc-campaign-${suffix}@example.invalid`,
       origin_channel: "manual",
       primary_status: "active",
@@ -189,7 +349,9 @@ async function createRpcFixture(
       id: contactIds[1],
       organization_id: organizationId,
       contact_type: "person",
-      call_name: `E2E RPC insuffisant ${suffix}`,
+      first_name: "E2E RPC",
+      last_name: `Insuffisant ${suffix}`,
+      display_name: `E2E RPC insuffisant ${suffix}`,
       email: `rpc-insufficient-${suffix}@example.invalid`,
       origin_channel: "manual",
       primary_status: "active",
