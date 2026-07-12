@@ -32,6 +32,7 @@ type CampaignTemplate = {
 };
 
 type BrevoCampaignConfiguration = {
+  isConfigured: boolean;
   senderEmail: string | null;
   senderName: string | null;
   replyToEmail: string | null;
@@ -62,6 +63,22 @@ function formatSender(configuration: BrevoCampaignConfiguration) {
   return configuration.senderName
     ? `${configuration.senderName} <${configuration.senderEmail}>`
     : configuration.senderEmail;
+}
+
+export function canConfirmMatingConfirmationCampaign({
+  hasSelectedValidCandidate,
+  brevoTemplateId,
+  isBrevoConfigured,
+}: {
+  hasSelectedValidCandidate: boolean;
+  brevoTemplateId: number | null | undefined;
+  isBrevoConfigured: boolean;
+}) {
+  return (
+    hasSelectedValidCandidate &&
+    Boolean(brevoTemplateId) &&
+    isBrevoConfigured
+  );
 }
 
 export function MatingConfirmationCampaignConfirmDialog({
@@ -97,7 +114,15 @@ export function MatingConfirmationCampaignConfirmDialog({
   const selectedApplications = selectedIds
     .map((id) => applicationsById.get(id))
     .filter((app): app is CampaignApplication => Boolean(app));
-  const canSubmit = selectedIds.length > 0;
+  const hasSelectedValidCandidate = selectedApplications.some((app) =>
+    isValidEmail(app.contactEmail),
+  );
+  const hasTemplate = Boolean(template?.brevoTemplateId);
+  const canSubmit = canConfirmMatingConfirmationCampaign({
+    hasSelectedValidCandidate,
+    brevoTemplateId: template?.brevoTemplateId,
+    isBrevoConfigured: brevoConfiguration.isConfigured,
+  });
 
   return (
     <>
@@ -281,10 +306,16 @@ export function MatingConfirmationCampaignConfirmDialog({
               )}
             </div>
 
-            {!template?.brevoTemplateId ? (
+            {!hasTemplate || !brevoConfiguration.isConfigured ? (
               <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                Configurez l’identifiant numérique Brevo du modèle
-                mating_confirmation avant de lancer cette campagne.
+                Ouvrez les paramètres Brevo pour configurer
+                {!hasTemplate
+                  ? " l’identifiant numérique du modèle mating_confirmation"
+                  : " la connexion Brevo côté serveur"}
+                {!hasTemplate && !brevoConfiguration.isConfigured
+                  ? " ainsi que la connexion Brevo côté serveur"
+                  : ""}
+                , puis relancez cette campagne.
               </p>
             ) : null}
 

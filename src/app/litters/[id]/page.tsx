@@ -2564,9 +2564,21 @@ export default async function LitterDetailPage({
                 envoyé(s),{" "}
                 {mating_confirmation_email_already_sent_count ?? "0"} déjà
                 envoyé(s).
+              </div>
+            )}
+            {mating_confirmation_campaign_status === "partial" && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900"
+              >
+                Confirmation de saillie partiellement envoyée —{" "}
+                {mating_confirmation_email_sent_count ?? "0"} e-mail(s)
+                envoyé(s),{" "}
+                {mating_confirmation_email_already_sent_count ?? "0"} déjà
+                envoyé(s).
                 {matingConfirmationCampaignIssueSummary.length > 0 ? (
-                  <span className="mt-2 block text-emerald-900">
-                    À vérifier :{" "}
+                  <span className="mt-2 block text-amber-950">
+                    Ignorés ou en échec :{" "}
                     {matingConfirmationCampaignIssueSummary.join(" · ")}.
                   </span>
                 ) : null}
@@ -2603,8 +2615,13 @@ export default async function LitterDetailPage({
                 role="alert"
                 className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800"
               >
-                Une erreur est survenue lors de la campagne de confirmation de
-                saillie. Aucune réservation, paiement ou document n’a été créé.
+                Aucun e-mail de confirmation de saillie n’a été envoyé ni
+                identifié comme déjà envoyé.
+                {matingConfirmationCampaignIssueSummary.length > 0 ? (
+                  <span className="mt-2 block text-rose-900">
+                    Détail : {matingConfirmationCampaignIssueSummary.join(" · ")}.
+                  </span>
+                ) : null}
               </div>
             )}
 
@@ -2779,6 +2796,7 @@ export default async function LitterDetailPage({
                       }
                       scopeLabel={getLitterDisplayName(litter.name, litter.id)}
                       brevoConfiguration={{
+                        isConfigured: brevoConfiguration.isConfigured,
                         senderEmail: brevoConfiguration.senderEmail,
                         senderName: brevoConfiguration.senderName,
                         replyToEmail: brevoConfiguration.replyToEmail,

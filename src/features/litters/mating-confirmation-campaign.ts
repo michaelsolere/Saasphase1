@@ -9,6 +9,7 @@ export type MatingConfirmationCampaignApplication = {
 };
 
 export type MatingConfirmationCampaignResult = {
+  status: "success" | "partial" | "error";
   emailsSentCount: number;
   emailsAlreadySentCount: number;
   emailsFailedCount: number;
@@ -73,7 +74,22 @@ export async function runMatingConfirmationCampaignForApplications({
     }
   }
 
+  const successfulCount = emailsSentCount + emailsAlreadySentCount;
+  const issueCount =
+    emailsFailedCount +
+    emailsMissingCount +
+    emailsInProgressCount +
+    missingTemplateCount +
+    brevoNotConfiguredCount +
+    errorCount;
+
   return {
+    status:
+      successfulCount === 0
+        ? "error"
+        : issueCount > 0
+          ? "partial"
+          : "success",
     emailsSentCount,
     emailsAlreadySentCount,
     emailsFailedCount,

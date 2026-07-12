@@ -133,7 +133,7 @@ function matingConfirmationCampaignParams(
   result: MatingConfirmationCampaignResult,
 ) {
   return new URLSearchParams({
-    mating_confirmation_campaign_status: "success",
+    mating_confirmation_campaign_status: result.status,
     mating_confirmation_email_sent_count: String(result.emailsSentCount),
     mating_confirmation_email_already_sent_count: String(
       result.emailsAlreadySentCount,
