@@ -1,9 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 
 import { expect, test, type Page } from "@playwright/test";
 
-const execFileAsync = promisify(execFile);
+import { runE2eSql } from "./helpers/supabase";
+
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -101,27 +100,7 @@ function sqlString(value: string) {
 }
 
 async function runSql<T>(sql: string) {
-  const { stdout } = await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-q",
-      "-t",
-      "-A",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const stdout = await runE2eSql(sql);
 
   return stdout.trim() ? (JSON.parse(stdout.trim()) as T) : null;
 }
@@ -560,8 +539,8 @@ commit;
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 }

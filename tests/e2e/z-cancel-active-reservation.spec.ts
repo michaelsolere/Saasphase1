@@ -1,9 +1,9 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -21,26 +21,7 @@ function sqlUuidArray(values: string[]) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 async function createQualifiedApplicationFixture(supabase: SupabaseTestClient) {
@@ -365,8 +346,8 @@ test("cancels an active reservation manually without side effects", async ({
     contactId = fixture.contactId;
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 

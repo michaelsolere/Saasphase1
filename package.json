@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:e2e": "playwright test"
+    "test:e2e": "node scripts/e2e/run.mjs"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",

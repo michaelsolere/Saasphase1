@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -10,6 +9,7 @@ import sharp from "sharp";
 import { processAnimalPrimaryPhotoFile } from "../../src/features/animals/photo-processor";
 
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -38,26 +38,7 @@ function sqlQuote(value: string) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 function countRows(table: "animals" | "media", ids: string[]) {
@@ -116,8 +97,8 @@ function countStorageObjectsInFolder(folder: string) {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 }

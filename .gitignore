@@ -4,6 +4,7 @@ node_modules
 
 # next
 .next
+.next-e2e
 out
 
 # production
@@ -34,3 +35,4 @@ next-env.d.ts
 # supabase local
 supabase/.branches
 supabase/.temp
+.supabase-e2e

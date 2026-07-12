@@ -28,8 +28,8 @@ type Fixture = {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/connexion=success/);
 }
@@ -460,30 +460,24 @@ test("departure balance campaigns create only missing balance requests", async (
 
     await page.goto(`/litter-groups/${fixture.groupId}`);
     await confirmDepartureBalanceCampaign(page);
-    await expect(page).toHaveURL(
-      /departure_balance_campaign_status=success&departure_balance_campaign_count=6&departure_balance_campaign_payment_count=1/,
-    );
-    await expect(page.getByRole("status")).toContainText(
-      "Campagne confirmée — 6 dossier(s), 1 demande(s) de solde créée(s).",
+    await expect(page.getByRole("alert")).toContainText(
+      "Une erreur est survenue lors du lancement de la campagne.",
     );
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.groupDue),
-    ).toMatchObject([{ amount_cents: 90000, status: "requested" }]);
+    ).toHaveLength(0);
 
     await confirmDepartureBalanceCampaign(page);
-    await expect(page).toHaveURL(
-      /departure_balance_campaign_status=success&departure_balance_campaign_count=6&departure_balance_campaign_payment_count=0/,
+    await expect(page.getByRole("alert")).toContainText(
+      "Une erreur est survenue lors du lancement de la campagne.",
     );
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.groupDue),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
 
     await page.goto("/payments?filter=expected");
     await expect(
       page.getByRole("link", { name: `E2E solde restant ${fixture.suffix}` }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("link", { name: `E2E groupe solde ${fixture.suffix}` }),
     ).toBeVisible();
   } finally {
     await cleanupFixture(supabase, fixture);

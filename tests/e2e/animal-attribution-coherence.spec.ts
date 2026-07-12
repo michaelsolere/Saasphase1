@@ -1,17 +1,15 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
 
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  runE2eSql,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
 } from "./helpers/supabase";
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -305,27 +303,7 @@ select json_build_object(
 commit;
 `;
 
-  const { stdout } = await execFileAsync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-q",
-      "-t",
-      "-A",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { maxBuffer: 1024 * 1024 },
-  );
+  const stdout = await runE2eSql(sql);
 
   const report = JSON.parse(stdout.trim()) as {
     deleted: Record<string, number>;
@@ -368,8 +346,8 @@ commit;
 
 async function loginOwner(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 }
@@ -450,8 +428,8 @@ test("keeps reservation and animal statuses coherent when assigning and unassign
     expect(animalInsertError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 
@@ -914,8 +892,8 @@ test("requires produced offspring to be available before attribution", async ({
     expect(reservationError).toBeNull();
 
     await page.goto("/login");
-    await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
     await page.getByRole("button", { name: "Se connecter" }).click();
     await expect(page).toHaveURL(/\/candidatures/);
 

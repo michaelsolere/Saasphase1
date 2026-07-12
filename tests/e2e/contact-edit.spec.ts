@@ -1,8 +1,7 @@
-import { execFileSync } from "node:child_process";
-
 import { expect, type Page, test } from "@playwright/test";
 
 import {
+  runE2eSqlSync,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
   type SupabaseTestClient,
@@ -47,32 +46,13 @@ function sqlQuote(value: string) {
 }
 
 function runSql(sql: string) {
-  return execFileSync(
-    "docker",
-    [
-      "exec",
-      "supabase_db_saasphase1",
-      "psql",
-      "-X",
-      "-A",
-      "-t",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-U",
-      "postgres",
-      "-d",
-      "postgres",
-      "-c",
-      sql,
-    ],
-    { encoding: "utf8" },
-  ).trim();
+  return runE2eSqlSync(sql);
 }
 
 async function login(
   page: Page,
-  email = "owner@saasphase1.invalid",
-  password = "LocalDevOwner-2026!",
+  email = "e2e-owner@saasphase1.invalid",
+  password = "LocalE2EOwner-2026!",
 ) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(email);

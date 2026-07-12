@@ -21,8 +21,8 @@ type ParentSeed = {
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 }
@@ -259,6 +259,7 @@ test("secures litter parent choices in UI and server actions", async ({
     parents[5].label,
   );
 
+  await page.getByText("Modifier la portée").click();
   await page.locator('select[name="mother_id"]').selectOption(parents[4].id);
   await page.locator('select[name="father_id"]').selectOption(parents[5].id);
   await page.getByRole("button", { name: "Enregistrer la portée" }).click();

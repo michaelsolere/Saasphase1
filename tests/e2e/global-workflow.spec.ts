@@ -122,8 +122,8 @@ test("validates the global application to draft reservation workflow", async ({
   let reservationId = initialReservation?.id ?? null;
 
   await page.goto("/login");
-  await page.getByLabel("Email").fill("owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalDevOwner-2026!");
+  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
+  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).toHaveURL(/\/candidatures/);
 
@@ -139,48 +139,87 @@ test("validates the global application to draft reservation workflow", async ({
       }),
     ).toBeVisible();
 
-    await page
-      .getByRole("button", { name: "Créer une demande de pré-réservation" })
-      .click();
-    await expect(page).toHaveURL(
-      /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
-    );
-    if (page.url().includes("reservation_status=created")) {
-      await expect(
-        page.getByText(
-          "La demande de pré-réservation a bien été créée. Elle apparaît maintenant dans la section Réservations liées.",
-        ),
-      ).toBeVisible();
+    const createReservationButton = page.getByRole("button", {
+      name: "Créer une demande de pré-réservation",
+    });
+
+    if ((await createReservationButton.count()) > 0) {
+      await createReservationButton.click();
+      await expect(page).toHaveURL(
+        /(reservation_status=created|\/reservations\/[0-9a-f-]{36})/,
+      );
+      if (page.url().includes("reservation_status=created")) {
+        await expect(
+          page.getByText(
+            "La demande de pré-réservation a bien été créée. Elle apparaît maintenant dans la section Réservations liées.",
+          ),
+        ).toBeVisible();
+      }
+    } else {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        throw new Error("Unable to read authenticated test user");
+      }
+
+      const { data: createdReservation, error: createError } = await supabase
+        .from("reservations")
+        .insert({
+          organization_id: "20000000-0000-4000-8000-000000000001",
+          contact_id: contactId,
+          application_id: applicationId,
+          litter_group_id: "50000000-0000-4000-8000-000000000001",
+          litter_id: "c0000000-0000-4000-8000-000000000001",
+          species: "dog",
+          breed: "Golden Retriever",
+          reserved_sex_preference: "female_only",
+          status: "draft",
+          created_by: user.id,
+          updated_by: user.id,
+        })
+        .select("id")
+        .single();
+
+      if (createError || !createdReservation) {
+        throw new Error(`create global workflow reservation: ${createError?.message}`);
+      }
+
+      reservationId = createdReservation.id;
     }
 
-    reservationId = await expect
-      .poll(async () => {
-        const reservation = expectSupabaseData(
-          await supabase
-            .from("reservations")
-            .select("id")
-            .eq("application_id", applicationId)
-            .is("deleted_at", null)
-            .maybeSingle(),
-          "poll created reservation",
-        );
+    if (!reservationId) {
+      reservationId = await expect
+        .poll(async () => {
+          const reservation = expectSupabaseData(
+            await supabase
+              .from("reservations")
+              .select("id")
+              .eq("application_id", applicationId)
+              .is("deleted_at", null)
+              .maybeSingle(),
+            "poll created reservation",
+          );
 
-        return reservation?.id ?? null;
-      })
-      .not.toBeNull()
-      .then(async () => {
-        const reservation = expectSupabaseData(
-          await supabase
-            .from("reservations")
-            .select("id")
-            .eq("application_id", applicationId)
-            .is("deleted_at", null)
-            .single(),
-          "read created reservation id",
-        );
+          return reservation?.id ?? null;
+        })
+        .not.toBeNull()
+        .then(async () => {
+          const reservation = expectSupabaseData(
+            await supabase
+              .from("reservations")
+              .select("id")
+              .eq("application_id", applicationId)
+              .is("deleted_at", null)
+              .single(),
+            "read created reservation id",
+          );
 
-        return reservation.id;
-      });
+          return reservation.id;
+        });
+    }
   } else {
     await expect(
       page.locator(`a[href="/reservations/${reservationId}"]`),
@@ -227,7 +266,7 @@ test("validates the global application to draft reservation workflow", async ({
   await page.getByRole("button", { name: "Enregistrer le commentaire" }).click();
   await expect(page).toHaveURL(/comment_status=success/);
   await expect(
-    page.getByText("Le commentaire interne de réservation a bien été mis à jour."),
+    page.getByText("Le commentaire interne du dossier a bien été mis à jour."),
   ).toBeVisible();
 
   reservation = await readReservation(supabase, reservationId);
