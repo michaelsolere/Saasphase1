@@ -47,14 +47,11 @@ function runSql(sql: string) {
 
 function buildIdempotencyKey({
   applicationId = fixture.applicationWithEmailId,
-  contactId = fixture.contactWithEmailId,
 } = {}) {
   const logicalParts = [
     ["organization", organizationId],
-    ["message_type", "mating_confirmation"],
-    ["application", applicationId],
-    ["contact", contactId],
-    ["litter", fixture.litterId],
+    ["campaign", "mating_confirmation"],
+    ["dossier", applicationId],
     ["version", "v1"],
   ];
   const fingerprint = createHash("sha256")
@@ -68,7 +65,6 @@ function buildIdempotencyKey({
 const successIdempotencyKey = buildIdempotencyKey();
 const missingEmailIdempotencyKey = buildIdempotencyKey({
   applicationId: fixture.applicationWithoutEmailId,
-  contactId: fixture.contactWithoutEmailId,
 });
 
 function cleanupFixture() {
@@ -147,7 +143,7 @@ function countRemainingFixtures() {
   );
 }
 
-function countFixtureReservationsAndPayments() {
+function countFixtureBusinessMutations() {
   const output = runSql(`
     with fixture_reservations as (
       select id from public.reservations
@@ -160,13 +156,20 @@ function countFixtureReservationsAndPayments() {
     select
       (select count(*) from fixture_reservations)::text || '|' ||
       (select count(*) from public.payments
-       where reservation_id in (select id from fixture_reservations))::text;
+       where reservation_id in (select id from fixture_reservations))::text || '|' ||
+      (select count(*) from public.documents
+       where application_id in (
+         ${sqlQuote(fixture.applicationWithEmailId)}::uuid,
+         ${sqlQuote(fixture.applicationWithoutEmailId)}::uuid
+       ))::text;
   `);
-  const [reservations = "0", payments = "0"] = output.split("|");
+  const [reservations = "0", payments = "0", documents = "0"] =
+    output.split("|");
 
   return {
     reservations: Number(reservations),
     payments: Number(payments),
+    documents: Number(documents),
   };
 }
 
@@ -456,15 +459,16 @@ test("confirmation button is disabled without a mating Brevo template id", async
   }
 });
 
-test("mating confirmation sends once, snapshots variables, and creates no reservations or payments", async () => {
+test("mating confirmation sends once, snapshots variables, and creates no business records", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   createFixture();
   const { transport, getTemplateCalls, sendEmailCalls } = createInjectedTransport();
 
   try {
-    expect(countFixtureReservationsAndPayments()).toEqual({
+    expect(countFixtureBusinessMutations()).toEqual({
       reservations: 0,
       payments: 0,
+      documents: 0,
     });
 
     const firstResult = await sendMatingConfirmationEmailForApplication(
@@ -528,10 +532,218 @@ test("mating confirmation sends once, snapshots variables, and creates no reserv
       prenom: "Alice",
       date_saillie: "1 juillet 2026",
     });
-    expect(countFixtureReservationsAndPayments()).toEqual({
+    expect(countFixtureBusinessMutations()).toEqual({
       reservations: 0,
       payments: 0,
+      documents: 0,
     });
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("two parallel mating confirmation launches have a single send owner", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+  const { transport, sendEmailCalls } = createInjectedTransport();
+  const delayedTransport: MatingConfirmationEmailTransport = {
+    ...transport,
+    sendEmail: async (input) => {
+      await new Promise((resolve) => setTimeout(resolve, 75));
+      return transport.sendEmail(input);
+    },
+  };
+
+  try {
+    const launch = () =>
+      sendMatingConfirmationEmailForApplication(
+        {
+          applicationId: fixture.applicationWithEmailId,
+          litterId: fixture.litterId,
+        },
+        { supabase, transport: delayedTransport },
+      );
+    const results = await Promise.all([launch(), launch()]);
+
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "in_progress",
+      "success",
+    ]);
+    expect(sendEmailCalls).toHaveLength(1);
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("an attempt already sending remains in progress", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+  const { transport, sendEmailCalls } = createInjectedTransport();
+
+  try {
+    runSql(`
+      insert into public.email_delivery_attempts (
+        organization_id, contact_id, litter_id, litter_group_id,
+        email_template_id, message_type, recipient_email, recipient_name,
+        variables_snapshot, idempotency_key, status, attempt_count,
+        last_attempt_at, created_by, updated_by
+      ) values (
+        ${sqlQuote(organizationId)}::uuid,
+        ${sqlQuote(fixture.contactWithEmailId)}::uuid,
+        ${sqlQuote(fixture.litterId)}::uuid,
+        ${sqlQuote(fixture.groupId)}::uuid,
+        ${sqlQuote(fixture.templateId)}::uuid,
+        'mating_confirmation', 'alice.saillie@example.invalid', 'Alice Saillie',
+        '{}'::jsonb, ${sqlQuote(successIdempotencyKey)}, 'sending', 1,
+        now(), ${sqlQuote(ownerId)}::uuid, ${sqlQuote(ownerId)}::uuid
+      );
+    `);
+
+    const result = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      { supabase, transport },
+    );
+
+    expect(result.status).toBe("in_progress");
+    expect(sendEmailCalls).toHaveLength(0);
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("Brevo configuration and certain provider failures are distinguished", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+  const { transport } = createInjectedTransport();
+
+  try {
+    const notConfigured = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      { supabase, transport: { ...transport, isConfigured: () => false } },
+    );
+    expect(notConfigured.status).toBe("brevo_not_configured");
+
+    const certainFailure = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      {
+        supabase,
+        transport: {
+          ...transport,
+          sendEmail: async () => ({ ok: false, reason: "unauthorized" }),
+        },
+      },
+    );
+    expect(certainFailure).toMatchObject({
+      status: "failed",
+      deliveryState: "not_sent",
+      errorCode: "unauthorized",
+    });
+
+    const attemptStatus = runSql(`
+      select status from public.email_delivery_attempts
+      where idempotency_key = ${sqlQuote(successIdempotencyKey)};
+    `);
+    expect(attemptStatus).toBe("failed");
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("ambiguous provider results remain uncertain and cannot be reclaimed", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+  const { transport, sendEmailCalls } = createInjectedTransport();
+  const uncertainTransport: MatingConfirmationEmailTransport = {
+    ...transport,
+    sendEmail: async (input) => {
+      sendEmailCalls.push(input);
+      return { ok: false, reason: "timeout" };
+    },
+  };
+
+  try {
+    const first = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      { supabase, transport: uncertainTransport },
+    );
+    expect(first).toMatchObject({
+      status: "failed",
+      deliveryState: "uncertain",
+      errorCode: "timeout",
+    });
+
+    const second = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      { supabase, transport: uncertainTransport },
+    );
+    expect(second.status).toBe("in_progress");
+    expect(sendEmailCalls).toHaveLength(1);
+    expect(
+      runSql(`
+        select status from public.email_delivery_attempts
+        where idempotency_key = ${sqlQuote(successIdempotencyKey)};
+      `),
+    ).toBe("sending");
+  } finally {
+    cleanupFixture();
+    expect(countRemainingFixtures()).toBe(0);
+  }
+});
+
+test("a persistence failure after a possible send is uncertain", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  createFixture();
+  const { transport, sendEmailCalls } = createInjectedTransport();
+
+  try {
+    const result = await sendMatingConfirmationEmailForApplication(
+      {
+        applicationId: fixture.applicationWithEmailId,
+        litterId: fixture.litterId,
+      },
+      {
+        supabase,
+        transport,
+        transitions: {
+          markSent: async () => ({
+            outcome: "error",
+            error: { code: "database_error", message: "Injected failure." },
+          }),
+        },
+      },
+    );
+
+    expect(result).toMatchObject({
+      status: "failed",
+      deliveryState: "uncertain",
+      errorCode: "database_error",
+    });
+    expect(sendEmailCalls).toHaveLength(1);
+    expect(
+      runSql(`
+        select status from public.email_delivery_attempts
+        where idempotency_key = ${sqlQuote(successIdempotencyKey)};
+      `),
+    ).toBe("sending");
   } finally {
     cleanupFixture();
     expect(countRemainingFixtures()).toBe(0);
@@ -578,9 +790,10 @@ test("mating confirmation skips contacts without email and missing Brevo templat
     );
 
     expect(attempts).toHaveLength(0);
-    expect(countFixtureReservationsAndPayments()).toEqual({
+    expect(countFixtureBusinessMutations()).toEqual({
       reservations: 0,
       payments: 0,
+      documents: 0,
     });
   } finally {
     cleanupFixture();
