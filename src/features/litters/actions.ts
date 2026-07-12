@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { sendMatingConfirmationEmailForApplication } from "@/features/communications/mating-confirmation-email";
+import { sendBirthDocumentsDepositEmailForReservation } from "@/features/communications/birth-documents-deposit-email";
 import {
   runMatingConfirmationCampaignForApplications,
   type MatingConfirmationCampaignResult,
 } from "@/features/litters/mating-confirmation-campaign";
 import { isEligibleLitterParent } from "@/features/litters/parent-eligibility";
+import { runBirthDocumentsDepositCampaign, type BirthDocumentsDepositCampaignResult } from "@/features/reservations/birth-documents-deposit-campaign";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -150,6 +152,25 @@ function matingConfirmationCampaignParams(
       result.brevoNotConfiguredCount,
     ),
     mating_confirmation_error_count: String(result.errorCount),
+  });
+}
+
+function birthDocumentsDepositParams(result: BirthDocumentsDepositCampaignResult) {
+  return new URLSearchParams({
+    birth_documents_deposit_campaign_status: result.status,
+    birth_documents_deposit_email_sent_count: String(result.emailsSentCount),
+    birth_documents_deposit_email_already_sent_count: String(result.emailsAlreadySentCount),
+    birth_documents_deposit_payment_created_count: String(result.paymentsCreatedCount),
+    birth_documents_deposit_payment_reused_count: String(result.paymentsReusedCount),
+    birth_documents_deposit_complete_count: String(result.completeCount),
+    birth_documents_deposit_unpaid_count: String(result.preReservationUnpaidCount),
+    birth_documents_deposit_incompatible_count: String(result.incompatibleRequestCount),
+    birth_documents_deposit_missing_email_count: String(result.emailsMissingCount),
+    birth_documents_deposit_missing_template_count: String(result.missingTemplateCount),
+    birth_documents_deposit_brevo_not_configured_count: String(result.brevoNotConfiguredCount),
+    birth_documents_deposit_uncertain_count: String(result.uncertainCount),
+    birth_documents_deposit_compensated_count: String(result.compensatedCount),
+    birth_documents_deposit_error_count: String(result.errorCount),
   });
 }
 
@@ -1266,4 +1287,21 @@ export async function launchLitterMatingConfirmationCampaign(formData: FormData)
 
   const params = matingConfirmationCampaignParams(result);
   redirect(`/litters/${litterId}?${params.toString()}#campagnes-emails`);
+}
+
+export async function launchBirthDocumentsDepositCampaign(formData: FormData) {
+  const rawLitterId = formData.get("litter_id");
+  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) redirect("/litters?birth_documents_deposit_campaign_status=error");
+  const litterId = rawLitterId.trim();
+  if (formData.get("campaign_confirmation") !== "confirmed") redirect(`/litters/${litterId}?birth_documents_deposit_campaign_status=confirmation_required#campagnes-emails`);
+  const reservationIds = Array.from(new Set(formData.getAll("reservation_ids[]").filter((value): value is string => typeof value === "string").map((value) => value.trim()).filter(isUuid)));
+  if (reservationIds.length === 0) redirect(`/litters/${litterId}?birth_documents_deposit_campaign_status=no_selection#campagnes-emails`);
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+  const { data: litter } = await supabase.from("litters").select("id").eq("id", litterId).is("deleted_at", null).maybeSingle();
+  if (!litter) redirect(`/litters/${litterId}?birth_documents_deposit_campaign_status=error#campagnes-emails`);
+  const result = await runBirthDocumentsDepositCampaign({ supabase, litterId, reservationIds, userId: user.id, sendEmail: sendBirthDocumentsDepositEmailForReservation });
+  revalidatePath(`/litters/${litterId}`); revalidatePath("/reservations"); revalidatePath("/payments");
+  redirect(`/litters/${litterId}?${birthDocumentsDepositParams(result).toString()}#campagnes-emails`);
 }

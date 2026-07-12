@@ -589,7 +589,9 @@ test("pre-reservation campaign action stays visible and avoids duplicates", asyn
       page.getByRole("button", { name: "Préparer et envoyer via Brevo" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Campagne contrat + certificat envoyée" }),
+      page.getByRole("button", {
+        name: "Préparer le complément et envoyer via Brevo",
+      }),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Campagne solde envoyée" }),

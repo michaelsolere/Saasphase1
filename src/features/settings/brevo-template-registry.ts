@@ -9,6 +9,11 @@ export const brevoTransactionalTemplateConfigs = [
     title: "Demande de pré-réservation",
     category: "candidate_journey",
   },
+  {
+    templateKey: "birth_documents_deposit",
+    title: "Contrat + certificat et complément d’arrhes",
+    category: "adopter_journey",
+  },
 ] as const;
 
 export type BrevoTransactionalTemplateKey =
