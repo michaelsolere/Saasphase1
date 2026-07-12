@@ -10,14 +10,12 @@ import {
 } from "@/features/communications/email-delivery-attempts-core";
 import {
   formatPreReservationContactFullName,
-  formatPreReservationEuros,
-  formatPreReservationParisDate,
   type PreReservationEmailProviderErrorReason,
   type PreReservationEmailTemplateResult,
   type SendPreReservationProviderEmailInput,
   type SendPreReservationProviderEmailResult,
 } from "@/features/communications/pre-reservation-email-core";
-import { getSexPreferenceLabel } from "@/features/applications/formatters";
+import { buildBirthDocumentsDepositVariables } from "@/features/reservations/birth-documents-deposit-variables";
 import type { Database } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
@@ -72,18 +70,27 @@ export async function sendBirthDocumentsDepositEmailForReservation(
   if (!transport.isConfigured()) return { status: "brevo_not_configured", deliveryState: "not_sent" };
   const fullName = formatPreReservationContactFullName(contact);
   const variables = {
-    prenom: contact.first_name ?? "", nom: contact.last_name ?? "", nom_complet: fullName,
-    portee: litterResult.data.name ?? "", groupe_portees: overviewResult.data?.litter_group_name ?? "",
-    mere: overviewResult.data?.mother_display_name ?? "", pere: overviewResult.data?.father_display_name ?? "",
-    date_naissance: formatPreReservationParisDate(litterResult.data.actual_birth_date),
-    sexe_souhaite: applicationResult.data?.desired_sex_preference
-      ? getSexPreferenceLabel(applicationResult.data.desired_sex_preference)
-      : "",
-    montant_deja_regle: formatPreReservationEuros(input.paidArrhesCents),
-    montant_complement_arrhes: formatPreReservationEuros(payment.amount_cents),
-    echeance_complement_arrhes: formatPreReservationParisDate(payment.due_date),
-    arrhes_totales: formatPreReservationEuros(input.completeDepositCents),
-    nom_elevage: organizationResult.data?.dog_affix_name ?? organizationResult.data?.affix_name ?? organizationResult.data?.name ?? "",
+    ...buildBirthDocumentsDepositVariables({
+      firstName: contact.first_name,
+      lastName: contact.last_name,
+      fullName,
+      litterName: litterResult.data.name,
+      litterGroupName: overviewResult.data?.litter_group_name ?? null,
+      motherName: overviewResult.data?.mother_display_name ?? null,
+      fatherName: overviewResult.data?.father_display_name ?? null,
+      birthDate: litterResult.data.actual_birth_date,
+      desiredSexPreference:
+        applicationResult.data?.desired_sex_preference ?? null,
+      paidArrhesCents: input.paidArrhesCents,
+      complementAmountCents: payment.amount_cents,
+      complementDueDate: payment.due_date,
+      completeDepositCents: input.completeDepositCents,
+      organizationName:
+        organizationResult.data?.dog_affix_name ??
+        organizationResult.data?.affix_name ??
+        organizationResult.data?.name ??
+        null,
+    }),
     payment_request_id: payment.id,
   };
   const idempotencyKey = buildEmailDeliveryIdempotencyKey({ organizationId: reservation.organization_id, messageType: MESSAGE_TYPE, contactId: reservation.contact_id, reservationId: reservation.id, litterId: input.litterId, litterGroupId: reservation.litter_group_id, operationVersion: OPERATION_VERSION });

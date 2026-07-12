@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BirthDocumentsDepositDeliveryState } from "@/features/communications/birth-documents-deposit-email-core";
 import { addDaysAsIsoDate, readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
@@ -14,6 +16,65 @@ export type BirthDocumentsDepositCampaignResult = {
 
 const FINAL = new Set(["adopted", "withdrawn", "cancelled", "expired", "archived"]);
 const ACTIVE = ["requested", "pending", "partially_paid"] as const;
+const OPERATION_KEY = "birth_documents_deposit";
+const OPERATION_VERSION = "v1";
+const PAYMENT_NOTE =
+  "Demande 2/2 — complément d’arrhes [birth_documents_deposit:v1]";
+
+function isCompatiblePayment(payment: {
+  amount_cents: number;
+  payment_type: string;
+  status: string;
+  notes: string | null;
+}, complementAmountCents: number) {
+  return (
+    payment.payment_type === "arrhes" &&
+    ACTIVE.includes(payment.status as (typeof ACTIVE)[number]) &&
+    payment.amount_cents === complementAmountCents &&
+    ((payment.notes ?? "").includes(`[${OPERATION_KEY}:${OPERATION_VERSION}]`) ||
+      (payment.notes ?? "").includes("Demande 2/2"))
+  );
+}
+
+function isOwnedTechnicalPayment(payment: {
+  amount_cents: number;
+  payment_type: string;
+  status: string;
+  notes: string | null;
+}, complementAmountCents: number) {
+  return (
+    payment.payment_type === "arrhes" &&
+    payment.status === "requested" &&
+    payment.amount_cents === complementAmountCents &&
+    (payment.notes ?? "").includes(
+      `[${OPERATION_KEY}:${OPERATION_VERSION}]`,
+    )
+  );
+}
+
+export function buildBirthDocumentsDepositPaymentId(input: {
+  organizationId: string;
+  reservationId: string;
+  complementAmountCents: number;
+}) {
+  const hex = createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.organizationId,
+        input.reservationId,
+        OPERATION_KEY,
+        input.complementAmountCents,
+        OPERATION_VERSION,
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 32)
+    .split("");
+  hex[12] = "5";
+  hex[16] = ((Number.parseInt(hex[16], 16) & 0x3) | 0x8).toString(16);
+  const value = hex.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+}
 
 async function compensate(supabase: Supabase, organizationId: string, reservationId: string, paymentId: string, userId: string) {
   const deletedAt = new Date().toISOString();
@@ -41,15 +102,120 @@ export async function runBirthDocumentsDepositCampaign({ supabase, litterId, res
     if (reservation.status !== "pre_reservation_paid" || paid < settings.preReservationDepositCents) { result.preReservationUnpaidCount++; continue; }
     const complement = settings.completeDepositCents - paid;
     const active = payments.filter((p) => ACTIVE.includes(p.status as (typeof ACTIVE)[number]) && p.payment_type === "arrhes");
-    const matching = active.find((p) => p.amount_cents === complement && (p.notes ?? "").includes("Demande 2/2"));
+    const matching = active.find((payment) =>
+      isCompatiblePayment(payment, complement),
+    );
     if (active.length > 0 && !matching) { result.incompatibleRequestCount++; continue; }
     let paymentId = matching?.id;
     let created = false;
     if (!paymentId) {
       const dueDate = addDaysAsIsoDate(settings.preReservationResponseDelayDays);
-      const { data: inserted, error } = await supabase.from("payments").insert({ organization_id: reservation.organization_id, contact_id: reservation.contact_id, reservation_id: reservation.id, amount_cents: complement, currency: "EUR", payment_type: "arrhes", status: "requested", payment_method: "bank_transfer", requested_at: new Date().toISOString(), due_date: dueDate, notes: "Demande 2/2 — complément d’arrhes", created_by: userId, updated_by: userId }).select("id").single();
-      if (error || !inserted) { result.errorCount++; continue; }
-      paymentId = inserted.id; created = true; result.paymentsCreatedCount++;
+      const deterministicPaymentId = buildBirthDocumentsDepositPaymentId({
+        organizationId: reservation.organization_id,
+        reservationId: reservation.id,
+        complementAmountCents: complement,
+      });
+      const { data: inserted, error } = await supabase
+        .from("payments")
+        .insert({
+          id: deterministicPaymentId,
+          organization_id: reservation.organization_id,
+          contact_id: reservation.contact_id,
+          reservation_id: reservation.id,
+          amount_cents: complement,
+          currency: "EUR",
+          payment_type: "arrhes",
+          status: "requested",
+          payment_method: "bank_transfer",
+          requested_at: new Date().toISOString(),
+          due_date: dueDate,
+          notes: PAYMENT_NOTE,
+          created_by: userId,
+          updated_by: userId,
+        })
+        .select("id")
+        .single();
+
+      if (inserted && !error) {
+        paymentId = inserted.id;
+        created = true;
+        result.paymentsCreatedCount++;
+      } else if (error?.code === "23505") {
+        const { data: conflictingPayment, error: winnerError } = await supabase
+          .from("payments")
+          .select(
+            "id, organization_id, reservation_id, contact_id, amount_cents, payment_type, status, notes, deleted_at",
+          )
+          .eq("id", deterministicPaymentId)
+          .eq("organization_id", reservation.organization_id)
+          .eq("reservation_id", reservation.id)
+          .eq("contact_id", reservation.contact_id)
+          .maybeSingle();
+
+        if (
+          winnerError ||
+          !conflictingPayment ||
+          (conflictingPayment.deleted_at === null &&
+            !isCompatiblePayment(conflictingPayment, complement)) ||
+          (conflictingPayment.deleted_at !== null &&
+            !isOwnedTechnicalPayment(conflictingPayment, complement))
+        ) {
+          result.incompatibleRequestCount++;
+          continue;
+        }
+
+        if (conflictingPayment.deleted_at === null) {
+          paymentId = conflictingPayment.id;
+          result.paymentsReusedCount++;
+        } else {
+          const { data: reactivated } = await supabase
+            .from("payments")
+            .update({
+              deleted_at: null,
+              requested_at: new Date().toISOString(),
+              due_date: dueDate,
+              updated_at: new Date().toISOString(),
+              updated_by: userId,
+            })
+            .eq("id", conflictingPayment.id)
+            .eq("organization_id", reservation.organization_id)
+            .eq("reservation_id", reservation.id)
+            .eq("contact_id", reservation.contact_id)
+            .eq("status", "requested")
+            .eq("deleted_at", conflictingPayment.deleted_at)
+            .select("id")
+            .maybeSingle();
+
+          if (reactivated) {
+            paymentId = reactivated.id;
+            created = true;
+            result.paymentsCreatedCount++;
+          } else {
+            const { data: reactivationWinner } = await supabase
+              .from("payments")
+              .select("id, amount_cents, payment_type, status, notes")
+              .eq("id", conflictingPayment.id)
+              .eq("organization_id", reservation.organization_id)
+              .eq("reservation_id", reservation.id)
+              .eq("contact_id", reservation.contact_id)
+              .is("deleted_at", null)
+              .maybeSingle();
+
+            if (
+              !reactivationWinner ||
+              !isCompatiblePayment(reactivationWinner, complement)
+            ) {
+              result.incompatibleRequestCount++;
+              continue;
+            }
+            paymentId = reactivationWinner.id;
+            result.paymentsReusedCount++;
+          }
+        }
+      } else {
+        result.errorCount++;
+        continue;
+      }
     } else result.paymentsReusedCount++;
     const sent = await sendEmail({ reservationId: reservation.id, litterId, paymentId, paidArrhesCents: paid, completeDepositCents: settings.completeDepositCents });
     if (sent.status === "success") result.emailsSentCount++;

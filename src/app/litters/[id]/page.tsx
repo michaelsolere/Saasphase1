@@ -78,6 +78,7 @@ import {
   PreReservationCampaignConfirmDialog,
 } from "@/features/reservations/pre-reservation-campaign-confirm-dialog";
 import { BirthDocumentsDepositCampaignConfirmDialog } from "@/features/reservations/birth-documents-deposit-campaign-confirm-dialog";
+import { buildBirthDocumentsDepositVariables } from "@/features/reservations/birth-documents-deposit-variables";
 import {
   confirmChoiceAppointmentsAdoptionBookletCampaign,
   launchLitterDepartureBalanceCampaign,
@@ -213,6 +214,10 @@ type ChoiceCampaignTrace = Pick<
 type ChoiceCampaignContact = Pick<
   Database["public"]["Tables"]["contacts"]["Row"],
   "id" | "first_name" | "last_name" | "display_name" | "email"
+>;
+type BirthDocumentsApplication = Pick<
+  Database["public"]["Tables"]["applications"]["Row"],
+  "id" | "desired_sex_preference"
 >;
 type ChoiceCampaignAnimal = Pick<
   Database["public"]["Tables"]["animals"]["Row"],
@@ -1850,6 +1855,13 @@ export default async function LitterDetailPage({
         .filter((contactId): contactId is string => Boolean(contactId)),
     ),
   );
+  const birthDocumentsApplicationIds = Array.from(
+    new Set(
+      choiceCampaignReservations
+        .map((reservation) => reservation.application_id)
+        .filter((applicationId): applicationId is string => Boolean(applicationId)),
+    ),
+  );
   const choiceCampaignAnimalIds = Array.from(
     new Set(
       choiceCampaignReservations
@@ -1913,6 +1925,16 @@ export default async function LitterDetailPage({
           .is("deleted_at", null)
       : { data: null };
 
+  const { data: rawBirthDocumentsApplications } =
+    birthDocumentsApplicationIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("applications")
+          .select("id, desired_sex_preference")
+          .eq("organization_id", litter.organization_id)
+          .in("id", birthDocumentsApplicationIds)
+          .is("deleted_at", null)
+      : { data: null };
+
   const choiceCampaignPaymentsByReservationId = paymentsByReservationId;
   const choiceCampaignDocuments =
     (rawChoiceCampaignDocuments ?? []) as ChoiceCampaignDocument[];
@@ -1931,6 +1953,11 @@ export default async function LitterDetailPage({
   const choiceCampaignContactsById = new Map(
     ((rawChoiceCampaignContacts ?? []) as ChoiceCampaignContact[]).map(
       (contact) => [contact.id, contact],
+    ),
+  );
+  const birthDocumentsApplicationsById = new Map(
+    ((rawBirthDocumentsApplications ?? []) as BirthDocumentsApplication[]).map(
+      (application) => [application.id, application],
     ),
   );
   const birthDocumentsDepositDeadline = addDaysAsIsoDate(
@@ -1954,7 +1981,7 @@ export default async function LitterDetailPage({
           payment.payment_type === "arrhes" &&
           ["requested", "pending", "partially_paid"].includes(payment.status),
       );
-      const hasMatchingRequest = activeArrhes.some(
+      const matchingRequest = activeArrhes.find(
         (payment) =>
           payment.amount_cents === complementCents &&
           (payment.notes ?? "").includes("Demande 2/2"),
@@ -1965,7 +1992,7 @@ export default async function LitterDetailPage({
       else if (FINAL_RESERVATION_STATUSES.has(reservation.status ?? "")) reason = "statut final";
       else if (paidCents >= depositSettings.completeDepositCents) reason = "arrhes déjà complètes";
       else if (reservation.status !== "pre_reservation_paid" || paidCents < depositSettings.preReservationDepositCents) reason = "première pré-réservation non réglée";
-      else if (activeArrhes.length > 0 && !hasMatchingRequest) reason = "demande active incompatible";
+      else if (activeArrhes.length > 0 && !matchingRequest) reason = "demande active incompatible";
       const contactName = contact
         ? formatPreReservationContactFullName(contact) || "Contact inconnu"
         : "Contact inconnu";
@@ -1975,24 +2002,27 @@ export default async function LitterDetailPage({
         contactEmail: contact?.email ?? null,
         eligible: !reason,
         reason,
-        variables: {
-          prenom: contact?.first_name ?? "",
-          nom: contact?.last_name ?? "",
-          nom_complet: contactName,
-          portee: preReservationLitterName,
-          groupe_portees: preReservationLitterGroupName,
-          mere: summary?.mother_display_name ?? "",
-          pere: summary?.father_display_name ?? "",
-          date_naissance: formatPreReservationParisDate(
-            litter?.actual_birth_date ?? null,
-          ),
-          sexe_souhaite: "",
-          montant_deja_regle: formatPreReservationEuros(paidCents),
-          montant_complement_arrhes: formatPreReservationEuros(complementCents),
-          echeance_complement_arrhes: formatPreReservationParisDate(birthDocumentsDepositDeadline),
-          arrhes_totales: formatPreReservationEuros(depositSettings.completeDepositCents),
-          nom_elevage: organizationCampaignName,
-        },
+        variables: buildBirthDocumentsDepositVariables({
+          firstName: contact?.first_name ?? null,
+          lastName: contact?.last_name ?? null,
+          fullName: contactName,
+          litterName: preReservationLitterName,
+          litterGroupName: preReservationLitterGroupName,
+          motherName: summary?.mother_display_name ?? null,
+          fatherName: summary?.father_display_name ?? null,
+          birthDate: litter?.actual_birth_date ?? null,
+          desiredSexPreference: reservation.application_id
+            ? (birthDocumentsApplicationsById.get(reservation.application_id)
+                ?.desired_sex_preference ?? null)
+            : null,
+          paidArrhesCents: paidCents,
+          complementAmountCents:
+            matchingRequest?.amount_cents ?? complementCents,
+          complementDueDate:
+            matchingRequest?.due_date ?? birthDocumentsDepositDeadline,
+          completeDepositCents: depositSettings.completeDepositCents,
+          organizationName: organizationCampaignName,
+        }),
       };
     },
   );
