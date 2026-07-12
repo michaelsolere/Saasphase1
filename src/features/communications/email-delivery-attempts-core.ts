@@ -655,6 +655,8 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
     brevoTemplateId: number;
     subjectSnapshot: string;
     brevoTemplateModifiedAt?: string | null;
+    reservationId?: string | null;
+    applicationId?: string | null;
     userId: string;
   },
   supabaseClient: Supabase,
@@ -669,6 +671,8 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
   const brevoTemplateId = normalizePositiveInteger(input.brevoTemplateId);
   const subjectSnapshot = normalizeOptionalText(input.subjectSnapshot, 500);
   const userId = normalizeRequiredText(input.userId, 64);
+  const reservationId = normalizeOptionalId(input.reservationId);
+  const applicationId = normalizeOptionalId(input.applicationId);
 
   if (
     !organizationId ||
@@ -683,6 +687,48 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
     return snapshotErrorResult("invalid_input", "Invalid template snapshot input.");
   }
 
+  if (reservationId) {
+    const attempt = await readAttemptForTransition(
+      supabase,
+      organizationId,
+      attemptId,
+    );
+    if (!attempt || attempt.status !== "sending") {
+      return snapshotErrorResult(
+        "not_found",
+        "Sending attempt not found for late reservation attachment.",
+      );
+    }
+
+    const isLateAttachment = attempt.reservation_id !== reservationId;
+    if (isLateAttachment && !applicationId) {
+      return snapshotErrorResult(
+        "invalid_input",
+        "Application is required for late reservation attachment.",
+      );
+    }
+
+    let reservationQuery = supabase
+      .from("reservations")
+      .select("id, organization_id, contact_id, application_id")
+      .eq("id", reservationId)
+      .eq("organization_id", organizationId)
+      .eq("contact_id", attempt.contact_id)
+      .is("deleted_at", null);
+    if (applicationId) {
+      reservationQuery = reservationQuery.eq("application_id", applicationId);
+    }
+    const { data: reservation, error: reservationError } =
+      await reservationQuery.maybeSingle();
+
+    if (reservationError || !reservation) {
+      return snapshotErrorResult(
+        "linked_record_mismatch",
+        "Reservation does not match the sending attempt operation.",
+      );
+    }
+  }
+
   const { data, error } = await supabase
     .from("email_delivery_attempts")
     .update({
@@ -693,6 +739,7 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
       brevo_template_id: brevoTemplateId,
       brevo_template_modified_at: input.brevoTemplateModifiedAt ?? null,
       subject_snapshot: subjectSnapshot,
+      ...(reservationId ? { reservation_id: reservationId } : {}),
       updated_by: userId,
     })
     .eq("organization_id", organizationId)

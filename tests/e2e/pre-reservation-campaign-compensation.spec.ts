@@ -1,493 +1,260 @@
 import { expect, test } from "@playwright/test";
 
-import { runPreReservationCampaignForApplications } from "../../src/features/reservations/pre-reservation-campaign";
 import {
-  runE2eSqlSync,
+  sendPreReservationEmailForApplication,
+  sendPreReservationEmailForReservation,
+  type PreReservationEmailTransport,
+} from "../../src/features/communications/pre-reservation-email-core";
+import {
   createAuthenticatedSupabaseClient,
-  expectSupabaseData,
-  type SupabaseTestClient,
+  runE2eSqlSync,
 } from "./helpers/supabase";
+import { runPreReservationCampaignForApplications } from "../../src/features/reservations/pre-reservation-campaign";
 
-const organizationId = "20000000-0000-4000-8000-000000000001";
-const userId = "10000000-0000-4000-8000-000000000001";
-
-const fixture = {
-  groupId: "95000000-0000-4000-8000-000000000001",
-  litterId: "95000000-0000-4000-8000-000000000002",
-  contactIds: [
-    "95000000-0000-4000-8000-000000000011",
-    "95000000-0000-4000-8000-000000000012",
-    "95000000-0000-4000-8000-000000000013",
-    "95000000-0000-4000-8000-000000000014",
-    "95000000-0000-4000-8000-000000000015",
-    "95000000-0000-4000-8000-000000000016",
-    "95000000-0000-4000-8000-000000000017",
-  ],
-  applicationIds: {
-    success: "95000000-0000-4000-8000-000000000021",
-    missing: "95000000-0000-4000-8000-000000000022",
-    rejected: "95000000-0000-4000-8000-000000000023",
-    alreadyExists: "95000000-0000-4000-8000-000000000024",
-    uncertain: "95000000-0000-4000-8000-000000000025",
-    retry: "95000000-0000-4000-8000-000000000026",
-    partialFailure: "95000000-0000-4000-8000-000000000027",
-  },
-  existingReservationId: "95000000-0000-4000-8000-000000000031",
-  existingPaymentId: "95000000-0000-4000-8000-000000000032",
+const org = "20000000-0000-4000-8000-000000000001";
+const owner = "10000000-0000-4000-8000-000000000001";
+const ids = {
+  group: "98000000-0000-4000-8000-000000000001",
+  litter: "98000000-0000-4000-8000-000000000002",
+  template: "98000000-0000-4000-8000-000000000003",
+  contact: "98000000-0000-4000-8000-000000000004",
+  application: "98000000-0000-4000-8000-000000000005",
+  draftReservation: "98000000-0000-4000-8000-000000000006",
+  historicalSentAttempt: "98000000-0000-4000-8000-000000000007",
+  historicalSendingAttempt: "98000000-0000-4000-8000-000000000008",
 };
+const marker = "2099-01-01 00:00:00+00";
+const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
+const sql = (value: string) => runE2eSqlSync(value);
 
-function sqlList(values: string[]) {
-  return values.map((value) => `'${value}'::uuid`).join(", ");
-}
-
-function runSql(sql: string) {
-  return runE2eSqlSync(sql);
-}
-
-function cleanupFixture() {
-  const applicationIds = Object.values(fixture.applicationIds);
-
-  runSql(`
-    with target_reservations as (
-      select id from public.reservations
-      where application_id in (${sqlList(applicationIds)})
-         or id = '${fixture.existingReservationId}'::uuid
-    )
-    delete from public.email_delivery_attempts
-    where reservation_id in (select id from target_reservations);
-
-    with target_reservations as (
-      select id from public.reservations
-      where application_id in (${sqlList(applicationIds)})
-         or id = '${fixture.existingReservationId}'::uuid
-    )
-    delete from public.payments
-    where reservation_id in (select id from target_reservations)
-       or id = '${fixture.existingPaymentId}'::uuid;
-
-    delete from public.reservations
-    where application_id in (${sqlList(applicationIds)})
-       or id = '${fixture.existingReservationId}'::uuid;
-
-    delete from public.contact_roles
-    where contact_id in (${sqlList(fixture.contactIds)});
-
-    delete from public.applications
-    where id in (${sqlList(applicationIds)});
-
-    delete from public.contacts
-    where id in (${sqlList(fixture.contactIds)});
-
-    delete from public.litters
-    where id = '${fixture.litterId}'::uuid;
-
-    delete from public.litter_groups
-    where id = '${fixture.groupId}'::uuid;
-  `);
-
-  const remaining = Number(
-    runSql(`
-      select count(*)
-      from (
-        select id::text from public.email_delivery_attempts
-        where reservation_id in (
-          select id from public.reservations
-          where application_id in (${sqlList(applicationIds)})
-             or id = '${fixture.existingReservationId}'::uuid
-        )
-        union all
-        select id::text from public.payments
-        where id = '${fixture.existingPaymentId}'::uuid
-           or reservation_id in (
-             select id from public.reservations
-             where application_id in (${sqlList(applicationIds)})
-                or id = '${fixture.existingReservationId}'::uuid
-           )
-        union all
-        select id::text from public.reservations
-        where application_id in (${sqlList(applicationIds)})
-           or id = '${fixture.existingReservationId}'::uuid
-        union all
-        select id::text from public.contact_roles
-        where contact_id in (${sqlList(fixture.contactIds)})
-        union all
-        select id::text from public.applications
-        where id in (${sqlList(applicationIds)})
-        union all
-        select id::text from public.contacts
-        where id in (${sqlList(fixture.contactIds)})
-        union all
-        select id::text from public.litters
-        where id = '${fixture.litterId}'::uuid
-        union all
-        select id::text from public.litter_groups
-        where id = '${fixture.groupId}'::uuid
-      ) remaining;
-    `),
-  );
-
-  if (remaining !== 0) {
-    throw new Error(`cleanup campaign compensation: ${remaining} row(s) remain`);
-  }
-}
-
-function createFixture() {
-  cleanupFixture();
-
-  const applicationIds = Object.values(fixture.applicationIds);
-
-  runSql(`
-    insert into public.litter_groups (
-      id, organization_id, name, species, status, created_by, updated_by
-    )
-    values (
-      '${fixture.groupId}'::uuid, '${organizationId}'::uuid,
-      'E2E compensation groupe', 'dog', 'open_for_applications',
-      '${userId}'::uuid, '${userId}'::uuid
-    );
-
-    insert into public.litters (
-      id, organization_id, litter_group_id, name, species, breed, status,
-      created_by, updated_by
-    )
-    values (
-      '${fixture.litterId}'::uuid, '${organizationId}'::uuid,
-      '${fixture.groupId}'::uuid, 'E2E compensation portée', 'dog',
-      'Golden Retriever', 'pregnancy_confirmed',
-      '${userId}'::uuid, '${userId}'::uuid
-    );
-
-    insert into public.contacts (
-      id, organization_id, contact_type, first_name, last_name, display_name,
-      email, origin_channel, primary_status, created_by, updated_by
-    )
-    values
-      ('${fixture.contactIds[0]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Success', 'E2E Campaign Success', 'campaign-success@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[1]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Missing', 'E2E Campaign Missing', 'campaign-missing@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[2]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Rejected', 'E2E Campaign Rejected', 'campaign-rejected@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[3]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Existing', 'E2E Campaign Existing', 'campaign-existing@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[4]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Uncertain', 'E2E Campaign Uncertain', 'campaign-uncertain@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[5]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Retry', 'E2E Campaign Retry', 'campaign-retry@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid),
-      ('${fixture.contactIds[6]}'::uuid, '${organizationId}'::uuid, 'person', 'E2E', 'Partial', 'E2E Campaign Partial', 'campaign-partial@example.invalid', 'manual', 'active', '${userId}'::uuid, '${userId}'::uuid);
-
-    insert into public.contact_roles (
-      organization_id, contact_id, role, started_at, created_by, updated_by
-    )
-    select '${organizationId}'::uuid, id, 'candidate', '2026-07-12',
-      '${userId}'::uuid, '${userId}'::uuid
-    from public.contacts
-    where id in (${sqlList(fixture.contactIds)});
-
-    insert into public.applications (
-      id, organization_id, contact_id, species, breed, desired_litter_id,
-      desired_litter_group_id, desired_sex_preference, desired_quantity,
-      project_description, status, reviewed_at, reviewed_by, created_by,
-      updated_by
-    )
-    select app_id, '${organizationId}'::uuid, contact_id, 'dog',
-      'Golden Retriever', '${fixture.litterId}'::uuid, '${fixture.groupId}'::uuid,
-      'no_preference', 1, 'Fixture campagne compensation.', 'qualified',
-      '2026-07-12 08:00:00+00', '${userId}'::uuid, '${userId}'::uuid,
-      '${userId}'::uuid
-    from (
-      values
-        ('${applicationIds[0]}'::uuid, '${fixture.contactIds[0]}'::uuid),
-        ('${applicationIds[1]}'::uuid, '${fixture.contactIds[1]}'::uuid),
-        ('${applicationIds[2]}'::uuid, '${fixture.contactIds[2]}'::uuid),
-        ('${applicationIds[3]}'::uuid, '${fixture.contactIds[3]}'::uuid),
-        ('${applicationIds[4]}'::uuid, '${fixture.contactIds[4]}'::uuid),
-        ('${applicationIds[5]}'::uuid, '${fixture.contactIds[5]}'::uuid),
-        ('${applicationIds[6]}'::uuid, '${fixture.contactIds[6]}'::uuid)
-    ) as source(app_id, contact_id);
-
-    insert into public.reservations (
-      id, organization_id, contact_id, application_id, litter_group_id,
-      litter_id, species, breed, reserved_sex_preference, status,
-      pre_reservation_deadline, currency, created_by, updated_by
-    )
-    values (
-      '${fixture.existingReservationId}'::uuid, '${organizationId}'::uuid,
-      '${fixture.contactIds[3]}'::uuid, '${fixture.applicationIds.alreadyExists}'::uuid,
-      '${fixture.groupId}'::uuid, '${fixture.litterId}'::uuid, 'dog',
-      'Golden Retriever', 'no_preference', 'pre_reservation_requested',
-      '2026-07-27 12:00:00+00', 'EUR', '${userId}'::uuid, '${userId}'::uuid
-    );
-
-    insert into public.payments (
-      id, organization_id, contact_id, reservation_id, amount_cents, currency,
-      payment_type, status, requested_at, due_date, payment_method,
-      created_by, updated_by
-    )
-    values (
-      '${fixture.existingPaymentId}'::uuid, '${organizationId}'::uuid,
-      '${fixture.contactIds[3]}'::uuid, '${fixture.existingReservationId}'::uuid,
-      25000, 'EUR', 'arrhes', 'requested', '2026-07-12 08:00:00+00',
-      '2026-07-27', 'bank_transfer', '${userId}'::uuid, '${userId}'::uuid
-    );
+function cleanup() {
+  sql(`
+    delete from public.email_delivery_attempts where contact_id=${q(ids.contact)}::uuid or litter_id=${q(ids.litter)}::uuid;
+    delete from public.payments where reservation_id in (select id from public.reservations where application_id=${q(ids.application)}::uuid) or contact_id=${q(ids.contact)}::uuid;
+    delete from public.reservations where application_id=${q(ids.application)}::uuid or contact_id=${q(ids.contact)}::uuid;
+    delete from public.contact_roles where contact_id=${q(ids.contact)}::uuid;
+    delete from public.applications where id=${q(ids.application)}::uuid;
+    delete from public.contacts where id=${q(ids.contact)}::uuid;
+    delete from public.email_templates where id=${q(ids.template)}::uuid;
+    delete from public.litters where id=${q(ids.litter)}::uuid;
+    delete from public.litter_groups where id=${q(ids.group)}::uuid;
+    update public.email_templates set deleted_at=null where organization_id=${q(org)}::uuid and template_key='pre_reservation' and deleted_at=${q(marker)}::timestamptz;
   `);
 }
 
-async function runCampaignFor(
-  supabase: SupabaseTestClient,
-  applicationId: string,
-  status:
-    | "success"
-    | "missing_email"
-    | "failed"
-    | "already_sent"
-    | "in_progress",
-  deliveryState: "sent" | "not_sent" | "in_progress" | "uncertain",
-) {
-  return runPreReservationCampaignForApplications({
-    supabase,
-    applications: [
-      {
-        id: applicationId,
-        species: "dog",
-        breed: "Golden Retriever",
-        desired_sex_preference: "no_preference",
-        target_litter_id: fixture.litterId,
-        target_litter_group_id: fixture.groupId,
-      },
-    ],
-    sendEmail: async ({ reservationId }) => {
-      if (status === "failed") {
-        const reservation = expectSupabaseData(
-          await supabase
-            .from("reservations")
-            .select("organization_id, contact_id, litter_id, litter_group_id")
-            .eq("id", reservationId)
-            .maybeSingle(),
-          "read reservation for failed attempt fixture",
-        );
+function remaining() {
+  return Number(sql(`select count(*) from (
+    select id from public.email_delivery_attempts where contact_id=${q(ids.contact)}::uuid or litter_id=${q(ids.litter)}::uuid
+    union all select id from public.payments where contact_id=${q(ids.contact)}::uuid
+    union all select id from public.reservations where application_id=${q(ids.application)}::uuid or contact_id=${q(ids.contact)}::uuid
+    union all select id from public.contact_roles where contact_id=${q(ids.contact)}::uuid
+    union all select id from public.applications where id=${q(ids.application)}::uuid
+    union all select id from public.contacts where id=${q(ids.contact)}::uuid
+    union all select id from public.email_templates where id=${q(ids.template)}::uuid
+    union all select id from public.litters where id=${q(ids.litter)}::uuid
+    union all select id from public.litter_groups where id=${q(ids.group)}::uuid
+  ) rows;`));
+}
 
-        const { error: attemptError } = await supabase
-          .from("email_delivery_attempts")
-          .insert({
-            organization_id: reservation.organization_id,
-            contact_id: reservation.contact_id,
-            reservation_id: reservationId,
-            litter_id: reservation.litter_id,
-            litter_group_id: reservation.litter_group_id,
-            message_type: "pre_reservation",
-            recipient_email: "campaign-rejected@example.invalid",
-            recipient_name: "E2E Campaign Rejected",
-            subject_snapshot: "Pré-réservation",
-            variables_snapshot: {},
-            idempotency_key: `e2e-provider-rejected-${reservationId}`,
-            status: "failed",
-            attempt_count: 1,
-            failed_at: new Date().toISOString(),
-            last_error_code: "api_error",
-            created_by: userId,
-            updated_by: userId,
-          });
+function fixture() {
+  cleanup();
+  sql(`
+    update public.email_templates set deleted_at=${q(marker)}::timestamptz where organization_id=${q(org)}::uuid and template_key='pre_reservation' and deleted_at is null;
+    insert into public.litter_groups(id,organization_id,name,species,status,created_by,updated_by) values(${q(ids.group)},${q(org)},'E2E transaction pré-réservation groupe','dog','open_for_applications',${q(owner)},${q(owner)});
+    insert into public.litters(id,organization_id,litter_group_id,name,species,breed,status,created_by,updated_by) values(${q(ids.litter)},${q(org)},${q(ids.group)},'E2E transaction pré-réservation portée','dog','Golden Retriever','pregnancy_confirmed',${q(owner)},${q(owner)});
+    insert into public.contacts(id,organization_id,contact_type,first_name,last_name,display_name,email,origin_channel,primary_status,created_by,updated_by) values(${q(ids.contact)},${q(org)},'person','Alice','Transaction','Alice Transaction','alice.transaction@example.invalid','manual','active',${q(owner)},${q(owner)});
+    insert into public.contact_roles(organization_id,contact_id,role,started_at,created_by,updated_by) values(${q(org)},${q(ids.contact)},'candidate','2026-07-12',${q(owner)},${q(owner)});
+    insert into public.applications(id,organization_id,contact_id,species,breed,desired_litter_id,desired_litter_group_id,desired_sex_preference,desired_quantity,status,created_by,updated_by) values(${q(ids.application)},${q(org)},${q(ids.contact)},'dog','Golden Retriever',${q(ids.litter)},${q(ids.group)},'no_preference',1,'qualified',${q(owner)},${q(owner)});
+    insert into public.email_templates(id,organization_id,template_key,title,category,subject,body,is_active,brevo_template_id,created_by,updated_by) values(${q(ids.template)},${q(org)},'pre_reservation','E2E pré-réservation transactionnelle','candidate_journey','Pré-réservation E2E','Brevo',true,765434,${q(owner)},${q(owner)});
+  `);
+}
 
-        if (attemptError) {
-          throw new Error(`insert failed attempt: ${attemptError.message}`);
-        }
-      }
-
-      return {
-        status,
-        deliveryState,
-        ...(status === "failed" ? { errorCode: "api_error" } : {}),
-      };
+function transport(mode: "success" | "certain" | "timeout" = "success") {
+  const sends: Array<{ params: Record<string, string> }> = [];
+  const value: PreReservationEmailTransport = {
+    isConfigured: () => true,
+    getTemplate: async (id) => ({ ok: true, template: { id, name: "E2E", subject: "Pré-réservation E2E", isActive: true, modifiedAt: "2026-07-12T10:00:00Z", sender: null, replyTo: null } }),
+    sendEmail: async (input) => {
+      sends.push({ params: input.params });
+      if (mode === "certain") return { ok: false, reason: "invalid_request" };
+      if (mode === "timeout") return { ok: false, reason: "timeout" };
+      return { ok: true, messageId: "e2e-pre-reservation" };
     },
-  });
+  };
+  return { value, sends };
 }
 
-async function activeReservationRows(
-  supabase: SupabaseTestClient,
-  applicationId: string,
-) {
-  return expectSupabaseData(
-    await supabase
-      .from("reservations")
-      .select("id, status")
-      .eq("application_id", applicationId)
-      .is("deleted_at", null),
-    "read active reservations",
-  );
-}
+const input = { applicationId: ids.application, targetLitterId: ids.litter, targetLitterGroupId: ids.group };
 
-async function activePaymentRows(
-  supabase: SupabaseTestClient,
-  reservationId: string,
-) {
-  return expectSupabaseData(
-    await supabase
-      .from("payments")
-      .select("id, status")
-      .eq("reservation_id", reservationId)
-      .is("deleted_at", null),
-    "read active payments",
-  );
-}
-
-test("pre-reservation campaign compensates newly created requests only when email was not sent", async () => {
-  const supabase = await createAuthenticatedSupabaseClient();
-  createFixture();
-
+test("success creates one request, uses real values, and attaches the attempt late", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
   try {
-    const success = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.success,
-      "success",
-      "sent",
-    );
-    expect(success.reservationsPreparedCount).toBe(1);
-    expect(success.paymentsCreatedCount).toBe(1);
-    let reservations = await activeReservationRows(
-      supabase,
-      fixture.applicationIds.success,
-    );
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0].status).toBe("pre_reservation_requested");
-    let payments = await activePaymentRows(supabase, reservations[0].id);
-    expect(payments).toHaveLength(1);
-    expect(payments[0].status).toBe("requested");
-
-    const missing = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.missing,
-      "missing_email",
-      "not_sent",
-    );
-    expect(missing.reservationsPreparedCount).toBe(0);
-    expect(missing.paymentsCreatedCount).toBe(0);
-    expect(missing.compensatedNotSentCreationCount).toBe(1);
-    reservations = await activeReservationRows(supabase, fixture.applicationIds.missing);
-    expect(reservations).toHaveLength(0);
-
-    const rejected = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.rejected,
-      "failed",
-      "not_sent",
-    );
-    expect(rejected.compensatedNotSentCreationCount).toBe(1);
-    reservations = await activeReservationRows(supabase, fixture.applicationIds.rejected);
-    expect(reservations).toHaveLength(0);
-    const failedAttempts = expectSupabaseData(
-      await supabase
-        .from("email_delivery_attempts")
-        .select("id, status")
-        .eq("message_type", "pre_reservation")
-        .eq("status", "failed")
-        .like("idempotency_key", "e2e-provider-rejected-%"),
-      "read failed attempts after compensation",
-    );
-    expect(failedAttempts).toHaveLength(1);
-
-    const existing = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.alreadyExists,
-      "missing_email",
-      "not_sent",
-    );
-    expect(existing.reservationsPreparedCount).toBe(1);
-    expect(existing.paymentsCreatedCount).toBe(0);
-    reservations = await activeReservationRows(
-      supabase,
-      fixture.applicationIds.alreadyExists,
-    );
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0].id).toBe(fixture.existingReservationId);
-
-    const uncertain = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.uncertain,
-      "failed",
-      "uncertain",
-    );
-    expect(uncertain.reservationsPreparedCount).toBe(1);
-    reservations = await activeReservationRows(
-      supabase,
-      fixture.applicationIds.uncertain,
-    );
-    expect(reservations).toHaveLength(1);
-
-    const firstRetry = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.retry,
-      "missing_email",
-      "not_sent",
-    );
-    expect(firstRetry.compensatedNotSentCreationCount).toBe(1);
-    reservations = await activeReservationRows(supabase, fixture.applicationIds.retry);
-    expect(reservations).toHaveLength(0);
-
-    const secondRetry = await runCampaignFor(
-      supabase,
-      fixture.applicationIds.retry,
-      "success",
-      "sent",
-    );
-    expect(secondRetry.reservationsPreparedCount).toBe(1);
-    expect(secondRetry.paymentsCreatedCount).toBe(1);
-    reservations = await activeReservationRows(supabase, fixture.applicationIds.retry);
-    expect(reservations).toHaveLength(1);
-    payments = await activePaymentRows(supabase, reservations[0].id);
-    expect(payments).toHaveLength(1);
-  } finally {
-    cleanupFixture();
-  }
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(result).toMatchObject({ status: "success", rpcOutcome: "created", reservationPrepared: true, paymentCreated: true });
+    const row = sql(`select r.id::text||'|'||p.amount_cents||'|'||p.due_date::text||'|'||a.reservation_id::text from public.reservations r join public.payments p on p.reservation_id=r.id and p.deleted_at is null join public.email_delivery_attempts a on a.reservation_id=r.id where r.application_id=${q(ids.application)} and r.deleted_at is null;`);
+    const [reservationId, amount, dueDate, attachedReservationId] = row.split("|");
+    expect(attachedReservationId).toBe(reservationId);
+    expect(t.sends[0].params.montant_pre_reservation).toBe("250,00 €");
+    expect(t.sends[0].params.echeance_pre_reservation).toContain(new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(new Date(dueDate)));
+    expect(amount).toBe("25000");
+  } finally { cleanup(); expect(remaining()).toBe(0); }
 });
 
-test("pre-reservation campaign restores payment when reservation compensation fails after concurrent status change", async () => {
-  const supabase = await createAuthenticatedSupabaseClient();
-  createFixture();
-
+test("success retry and parallel launches have one owner, request, and send", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
   try {
+    const delayed = { ...t.value, sendEmail: async (value: Parameters<PreReservationEmailTransport["sendEmail"]>[0]) => { await new Promise(resolve => setTimeout(resolve, 80)); return t.value.sendEmail(value); } };
+    const launch = () => sendPreReservationEmailForApplication(input, { supabase, transport: delayed });
+    const parallel = await Promise.all([launch(), launch()]);
+    expect(parallel.filter(result => result.status === "success")).toHaveLength(1);
+    expect(parallel.filter(result => result.status === "in_progress")).toHaveLength(1);
+    const retry = await launch();
+    expect(retry.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("certain failure compensates created resources, fails attempt, and can retry", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient();
+  try {
+    const failed = await sendPreReservationEmailForApplication(input, { supabase, transport: transport("certain").value });
+    expect(failed).toMatchObject({ deliveryState: "not_sent", compensated: true });
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("failed");
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(0);
+    const retried = await sendPreReservationEmailForApplication(input, { supabase, transport: transport().value });
+    expect(retried.status).toBe("success");
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("reused resources are never compensated on certain failure", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient();
+  try {
+    const { data, error } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    expect(error).toBeNull(); expect(data?.[0]?.outcome).toBe("created");
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: transport("certain").value });
+    expect(result).toMatchObject({ rpcOutcome: "already_exists", compensated: false });
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("timeout and markSent failure keep resources and attempt sending", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient();
+  try {
+    const timeout = await sendPreReservationEmailForApplication(input, { supabase, transport: transport("timeout").value });
+    expect(timeout.deliveryState).toBe("uncertain");
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("sending");
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    cleanup(); fixture();
+    const markSent = await sendPreReservationEmailForApplication(input, { supabase, transport: transport().value, transitions: { markSent: async () => ({ outcome: "error", error: { code: "database_error", message: "E2E" } }) } });
+    expect(markSent.deliveryState).toBe("uncertain");
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("sending");
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("compensation failure restores payment and leaves attempt sending", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport("certain");
+  try {
+    t.value.sendEmail = async () => {
+      sql(`update public.reservations set status='active' where application_id=${q(ids.application)} and deleted_at is null;`);
+      return { ok: false, reason: "invalid_request" };
+    };
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(result).toMatchObject({ deliveryState: "uncertain", errorCode: "reservation_compensation_failed" });
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("sending");
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("ineligible application creates neither attempt nor business resource", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient();
+  try {
+    sql(`update public.applications set status='rejected' where id=${q(ids.application)};`);
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: transport().value });
+    expect(result.status).toBe("not_eligible");
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(0);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)};`))).toBe(0);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("draft reservation conflict remains ignored by campaign aggregation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient();
+  try {
+    sql(`insert into public.reservations(id,organization_id,application_id,contact_id,litter_id,litter_group_id,species,breed,reserved_sex_preference,status,currency,created_by,updated_by) values(${q(ids.draftReservation)},${q(org)},${q(ids.application)},${q(ids.contact)},${q(ids.litter)},${q(ids.group)},'dog','Golden Retriever','no_preference','draft','EUR',${q(owner)},${q(owner)});`);
     const result = await runPreReservationCampaignForApplications({
       supabase,
-      applications: [
-        {
-          id: fixture.applicationIds.partialFailure,
-          species: "dog",
-          breed: "Golden Retriever",
-          desired_sex_preference: "no_preference",
-          target_litter_id: fixture.litterId,
-          target_litter_group_id: fixture.groupId,
-        },
-      ],
-      sendEmail: async ({ reservationId }) => {
-        const { error } = await supabase
-          .from("reservations")
-          .update({
-            status: "active",
-            updated_at: new Date().toISOString(),
-            updated_by: userId,
-          })
-          .eq("id", reservationId)
-          .eq("status", "pre_reservation_requested")
-          .is("deleted_at", null);
-
-        if (error) {
-          throw new Error(`simulate concurrent reservation update: ${error.message}`);
-        }
-
-        return { status: "missing_email", deliveryState: "not_sent" };
-      },
+      applications: [{ id: ids.application, species: "dog", breed: "Golden Retriever", desired_sex_preference: "no_preference", target_litter_id: ids.litter, target_litter_group_id: ids.group }],
+      sendEmail: (campaignInput) => sendPreReservationEmailForApplication({ applicationId: campaignInput.applicationId, targetLitterId: campaignInput.targetLitterId, targetLitterGroupId: campaignInput.targetLitterGroupId }, { supabase, transport: transport().value }),
     });
+    expect(result).toMatchObject({ ignoredDraftConflictCount: 1, reservationsPreparedCount: 0, paymentsCreatedCount: 0 });
+    expect(Number(sql(`select count(*) from public.reservations where id=${q(ids.draftReservation)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
 
-    expect(result.reservationsPreparedCount).toBe(0);
-    expect(result.paymentsCreatedCount).toBe(0);
-    expect(result.compensatedNotSentCreationCount).toBe(0);
-    expect(result.errorCount).toBe(1);
+test("campaign success then individual send share one application operation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(campaign.status).toBe("success");
+    const reservationId = sql(`select id from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`);
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(individual.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(1);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
 
-    const reservations = await activeReservationRows(
-      supabase,
-      fixture.applicationIds.partialFailure,
-    );
-    expect(reservations).toHaveLength(1);
-    expect(reservations[0].status).toBe("active");
+test("individual send then campaign reuse the same application operation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data, error } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    expect(error).toBeNull();
+    const reservationId = data?.[0]?.reservation_id;
+    expect(reservationId).toBeTruthy();
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(individual.status).toBe("success");
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(campaign.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
 
-    const payments = await activePaymentRows(supabase, reservations[0].id);
-    expect(payments).toHaveLength(1);
-    expect(payments[0].status).toBe("requested");
-  } finally {
-    cleanupFixture();
-  }
+test("historical sent reservation attempt blocks campaign and individual send", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    const reservationId = data?.[0]?.reservation_id;
+    if (!reservationId) throw new Error("historical sent reservation missing");
+    sql(`insert into public.email_delivery_attempts(id,organization_id,contact_id,reservation_id,litter_id,litter_group_id,message_type,recipient_email,variables_snapshot,idempotency_key,status,attempt_count,sent_at,created_by,updated_by) values(${q(ids.historicalSentAttempt)},${q(org)},${q(ids.contact)},${q(reservationId)},${q(ids.litter)},${q(ids.group)},'pre_reservation','alice.transaction@example.invalid','{}','pre_reservation:historical-reservation-sent','sent',1,now(),${q(owner)},${q(owner)});`);
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(campaign.status).toBe("already_sent");
+    expect(individual.status).toBe("already_sent");
+    expect(t.sends).toHaveLength(0);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("historical sending reservation attempt blocks business creation and send", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    const { data } = await supabase.rpc("create_pre_reservation_request_for_application", { p_application_id: ids.application, p_target_litter_id: ids.litter, p_target_litter_group_id: ids.group });
+    const reservationId = data?.[0]?.reservation_id;
+    if (!reservationId) throw new Error("historical sending reservation missing");
+    sql(`insert into public.email_delivery_attempts(id,organization_id,contact_id,reservation_id,litter_id,litter_group_id,message_type,recipient_email,variables_snapshot,idempotency_key,status,attempt_count,last_attempt_at,created_by,updated_by) values(${q(ids.historicalSendingAttempt)},${q(org)},${q(ids.contact)},${q(reservationId)},${q(ids.litter)},${q(ids.group)},'pre_reservation','alice.transaction@example.invalid','{}','pre_reservation:historical-reservation-sending','sending',1,now(),${q(owner)},${q(owner)});`);
+    const campaign = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    const individual = await sendPreReservationEmailForReservation({ reservationId }, { supabase, transport: t.value });
+    expect(campaign.status).toBe("in_progress");
+    expect(individual.status).toBe("in_progress");
+    expect(t.sends).toHaveLength(0);
+    expect(Number(sql(`select count(*) from public.email_delivery_attempts where contact_id=${q(ids.contact)};`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(1);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)} and deleted_at is null;`))).toBe(1);
+  } finally { cleanup(); expect(remaining()).toBe(0); }
 });

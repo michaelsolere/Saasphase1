@@ -59,6 +59,7 @@ export type TransactionalEmailTransport = {
 type PreparedOperation = {
   dossierId: string;
   contactId: string;
+  applicationId?: string | null;
   reservationId?: string | null;
   recipientEmail: string;
   recipientName?: string | null;
@@ -71,6 +72,8 @@ type PreparedOperation = {
 type ClaimedOperation = {
   operation?: PreparedOperation;
   resourceAction?: "created" | "reactivated" | "reused";
+  metadata?: Record<string, boolean | string | number | null>;
+  preSendErrorCode?: string;
   compensate?: () => Promise<{ ok: true } | { ok: false; errorCode: string }>;
 };
 
@@ -80,6 +83,7 @@ export type TransactionalCampaignResult = {
   errorCode?: string;
   resourceAction?: ClaimedOperation["resourceAction"];
   compensated?: boolean;
+  metadata?: ClaimedOperation["metadata"];
 };
 
 type TransitionDependencies = {
@@ -352,6 +356,7 @@ export async function runTransactionalCampaignDelivery(
           attemptId: claim.attempt.id,
           errorCode: "compensation_exception",
           resourceAction: claimedResource.resourceAction,
+          metadata: claimedResource.metadata,
         };
       }
       if (!compensation.ok) {
@@ -360,6 +365,7 @@ export async function runTransactionalCampaignDelivery(
           attemptId: claim.attempt.id,
           errorCode: compensation.errorCode,
           resourceAction: claimedResource.resourceAction,
+          metadata: claimedResource.metadata,
         };
       }
       compensated = true;
@@ -371,9 +377,13 @@ export async function runTransactionalCampaignDelivery(
       errorCode,
     });
     return transition.outcome === "updated"
-      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode, resourceAction: claimedResource.resourceAction, compensated }
-      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code, resourceAction: claimedResource.resourceAction, compensated };
+      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode, resourceAction: claimedResource.resourceAction, compensated, metadata: claimedResource.metadata }
+      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code, resourceAction: claimedResource.resourceAction, compensated, metadata: claimedResource.metadata };
   };
+
+  if (claimedResource.preSendErrorCode) {
+    return failCertainly(claimedResource.preSendErrorCode);
+  }
 
   const finalVariablesSnapshot =
     finalOperation.variablesSnapshot ?? finalOperation.variables;
@@ -389,6 +399,8 @@ export async function runTransactionalCampaignDelivery(
       brevoTemplateId: providerTemplate.id,
       brevoTemplateModifiedAt: normalizeBrevoModifiedAt(providerTemplate.modifiedAt),
       subjectSnapshot: providerTemplate.subject,
+      reservationId: finalOperation.reservationId,
+      applicationId: finalOperation.applicationId,
       userId: context.userId,
     },
     options.supabase,
@@ -410,12 +422,12 @@ export async function runTransactionalCampaignDelivery(
       tags: ["saas_elevage", input.campaignKey],
     });
   } catch {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: "provider_exception", resourceAction: claimedResource.resourceAction };
+    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: "provider_exception", resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
   }
 
   if (!sendResult.ok) {
     if (isUncertainProviderReason(sendResult.reason)) {
-      return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sendResult.reason, resourceAction: claimedResource.resourceAction };
+      return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sendResult.reason, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
     }
     return failCertainly(sendResult.reason);
   }
@@ -431,7 +443,7 @@ export async function runTransactionalCampaignDelivery(
     options.supabase,
   );
   if (sent.outcome === "error") {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code, resourceAction: claimedResource.resourceAction };
+    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
   }
-  return { outcome: "success", attemptId: sent.attempt.id, resourceAction: claimedResource.resourceAction };
+  return { outcome: "success", attemptId: sent.attempt.id, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
 }
