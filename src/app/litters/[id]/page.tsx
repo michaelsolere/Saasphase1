@@ -33,6 +33,7 @@ import {
 } from "@/features/documents/formatters";
 import {
   createLitterEvent,
+  launchBirthDocumentsDepositCampaign,
   launchLitterMatingConfirmationCampaign,
   updateLitterDetails,
   updateLitterGroupAssignment,
@@ -76,10 +77,11 @@ import {
 import {
   PreReservationCampaignConfirmDialog,
 } from "@/features/reservations/pre-reservation-campaign-confirm-dialog";
+import { BirthDocumentsDepositCampaignConfirmDialog } from "@/features/reservations/birth-documents-deposit-campaign-confirm-dialog";
+import { buildBirthDocumentsDepositVariables } from "@/features/reservations/birth-documents-deposit-variables";
 import {
   confirmChoiceAppointmentsAdoptionBookletCampaign,
   launchLitterDepartureBalanceCampaign,
-  launchLitterPreReservationBalanceCampaign,
   launchPreReservationCampaign,
 } from "@/features/reservations/actions";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
@@ -146,11 +148,11 @@ type RelatedReservation = Pick<
 >;
 type LitterCampaignReservation = Pick<
   Database["public"]["Tables"]["reservations"]["Row"],
-  "id" | "contact_id" | "status" | "animal_id" | "created_at"
+  "id" | "contact_id" | "application_id" | "status" | "animal_id" | "created_at"
 >;
 type RelatedReservationPayment = Pick<
   Database["public"]["Tables"]["payments"]["Row"],
-  "reservation_id" | "amount_cents" | "payment_type" | "status"
+  "id" | "reservation_id" | "amount_cents" | "payment_type" | "status" | "due_date" | "notes"
 >;
 type ReservationFinancialBadge = {
   label: string;
@@ -211,7 +213,11 @@ type ChoiceCampaignTrace = Pick<
 >;
 type ChoiceCampaignContact = Pick<
   Database["public"]["Tables"]["contacts"]["Row"],
-  "id" | "first_name" | "display_name"
+  "id" | "first_name" | "last_name" | "display_name" | "email"
+>;
+type BirthDocumentsApplication = Pick<
+  Database["public"]["Tables"]["applications"]["Row"],
+  "id" | "desired_sex_preference"
 >;
 type ChoiceCampaignAnimal = Pick<
   Database["public"]["Tables"]["animals"]["Row"],
@@ -1450,6 +1456,20 @@ export default async function LitterDetailPage({
     mating_confirmation_missing_template_count?: string;
     mating_confirmation_brevo_not_configured_count?: string;
     mating_confirmation_error_count?: string;
+    birth_documents_deposit_campaign_status?: string;
+    birth_documents_deposit_email_sent_count?: string;
+    birth_documents_deposit_email_already_sent_count?: string;
+    birth_documents_deposit_payment_created_count?: string;
+    birth_documents_deposit_payment_reused_count?: string;
+    birth_documents_deposit_complete_count?: string;
+    birth_documents_deposit_unpaid_count?: string;
+    birth_documents_deposit_incompatible_count?: string;
+    birth_documents_deposit_missing_email_count?: string;
+    birth_documents_deposit_missing_template_count?: string;
+    birth_documents_deposit_brevo_not_configured_count?: string;
+    birth_documents_deposit_uncertain_count?: string;
+    birth_documents_deposit_compensated_count?: string;
+    birth_documents_deposit_error_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
     offspring_status?: string;
@@ -1510,6 +1530,20 @@ export default async function LitterDetailPage({
     mating_confirmation_missing_template_count,
     mating_confirmation_brevo_not_configured_count,
     mating_confirmation_error_count,
+    birth_documents_deposit_campaign_status,
+    birth_documents_deposit_email_sent_count,
+    birth_documents_deposit_email_already_sent_count,
+    birth_documents_deposit_payment_created_count,
+    birth_documents_deposit_payment_reused_count,
+    birth_documents_deposit_complete_count,
+    birth_documents_deposit_unpaid_count,
+    birth_documents_deposit_incompatible_count,
+    birth_documents_deposit_missing_email_count,
+    birth_documents_deposit_missing_template_count,
+    birth_documents_deposit_brevo_not_configured_count,
+    birth_documents_deposit_uncertain_count,
+    birth_documents_deposit_compensated_count,
+    birth_documents_deposit_error_count,
     group_assignment_status,
     detail_status,
     offspring_status,
@@ -1672,7 +1706,7 @@ export default async function LitterDetailPage({
     reservationIds.length > 0
       ? await supabase
           .from("payments")
-          .select("reservation_id, amount_cents, payment_type, status")
+          .select("id, reservation_id, amount_cents, payment_type, status, due_date, notes")
           .in("reservation_id", reservationIds)
           .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
           .in("status", ["requested", "pending", "partially_paid", "paid"])
@@ -1772,6 +1806,10 @@ export default async function LitterDetailPage({
     campaignEmailTemplates.find(
       (template) => template.templateKey === "pre_reservation",
     ) ?? null;
+  const birthDocumentsDepositCampaignTemplate =
+    campaignEmailTemplates.find(
+      (template) => template.templateKey === "birth_documents_deposit",
+    ) ?? null;
   const brevoConfiguration = getBrevoConfigurationStatus();
   const preReservationDeadlineDate = addDaysAsIsoDate(
     depositSettings.preReservationResponseDelayDays,
@@ -1798,7 +1836,7 @@ export default async function LitterDetailPage({
     litter && litter.organization_id
       ? await supabase
           .from("reservations")
-          .select("id, contact_id, status, animal_id, created_at")
+          .select("id, contact_id, application_id, status, animal_id, created_at")
           .eq("organization_id", litter.organization_id)
           .eq("litter_id", id)
           .is("deleted_at", null)
@@ -1815,6 +1853,13 @@ export default async function LitterDetailPage({
       choiceCampaignReservations
         .map((reservation) => reservation.contact_id)
         .filter((contactId): contactId is string => Boolean(contactId)),
+    ),
+  );
+  const birthDocumentsApplicationIds = Array.from(
+    new Set(
+      choiceCampaignReservations
+        .map((reservation) => reservation.application_id)
+        .filter((applicationId): applicationId is string => Boolean(applicationId)),
     ),
   );
   const choiceCampaignAnimalIds = Array.from(
@@ -1864,7 +1909,7 @@ export default async function LitterDetailPage({
     choiceCampaignContactIds.length > 0 && litter?.organization_id
       ? await supabase
           .from("contacts")
-          .select("id, first_name, display_name")
+          .select("id, first_name, last_name, display_name, email")
           .eq("organization_id", litter.organization_id)
           .in("id", choiceCampaignContactIds)
           .is("deleted_at", null)
@@ -1877,6 +1922,16 @@ export default async function LitterDetailPage({
           .select("id, call_name, official_name, species, litter_id, birth_order, collar_color_current, collar_color_initial")
           .eq("organization_id", litter.organization_id)
           .in("id", choiceCampaignAnimalIds)
+          .is("deleted_at", null)
+      : { data: null };
+
+  const { data: rawBirthDocumentsApplications } =
+    birthDocumentsApplicationIds.length > 0 && litter?.organization_id
+      ? await supabase
+          .from("applications")
+          .select("id, desired_sex_preference")
+          .eq("organization_id", litter.organization_id)
+          .in("id", birthDocumentsApplicationIds)
           .is("deleted_at", null)
       : { data: null };
 
@@ -1899,6 +1954,77 @@ export default async function LitterDetailPage({
     ((rawChoiceCampaignContacts ?? []) as ChoiceCampaignContact[]).map(
       (contact) => [contact.id, contact],
     ),
+  );
+  const birthDocumentsApplicationsById = new Map(
+    ((rawBirthDocumentsApplications ?? []) as BirthDocumentsApplication[]).map(
+      (application) => [application.id, application],
+    ),
+  );
+  const birthDocumentsDepositDeadline = addDaysAsIsoDate(
+    depositSettings.preReservationResponseDelayDays,
+  );
+  const birthDocumentsDepositCandidates = choiceCampaignReservations.map(
+    (reservation) => {
+      const contact = reservation.contact_id
+        ? choiceCampaignContactsById.get(reservation.contact_id)
+        : null;
+      const payments = paymentsByReservationId.get(reservation.id) ?? [];
+      const paidCents = payments
+        .filter((payment) => payment.status === "paid")
+        .reduce((total, payment) => total + payment.amount_cents, 0);
+      const complementCents = Math.max(
+        0,
+        depositSettings.completeDepositCents - paidCents,
+      );
+      const activeArrhes = payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" &&
+          ["requested", "pending", "partially_paid"].includes(payment.status),
+      );
+      const matchingRequest = activeArrhes.find(
+        (payment) =>
+          payment.amount_cents === complementCents &&
+          (payment.notes ?? "").includes("Demande 2/2"),
+      );
+      let reason: string | null = null;
+      if (!reservation.contact_id || !contact) reason = "contact introuvable";
+      else if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) reason = "e-mail manquant ou invalide";
+      else if (FINAL_RESERVATION_STATUSES.has(reservation.status ?? "")) reason = "statut final";
+      else if (paidCents >= depositSettings.completeDepositCents) reason = "arrhes déjà complètes";
+      else if (reservation.status !== "pre_reservation_paid" || paidCents < depositSettings.preReservationDepositCents) reason = "première pré-réservation non réglée";
+      else if (activeArrhes.length > 0 && !matchingRequest) reason = "demande active incompatible";
+      const contactName = contact
+        ? formatPreReservationContactFullName(contact) || "Contact inconnu"
+        : "Contact inconnu";
+      return {
+        id: reservation.id,
+        contactName,
+        contactEmail: contact?.email ?? null,
+        eligible: !reason,
+        reason,
+        variables: buildBirthDocumentsDepositVariables({
+          firstName: contact?.first_name ?? null,
+          lastName: contact?.last_name ?? null,
+          fullName: contactName,
+          litterName: preReservationLitterName,
+          litterGroupName: preReservationLitterGroupName,
+          motherName: summary?.mother_display_name ?? null,
+          fatherName: summary?.father_display_name ?? null,
+          birthDate: litter?.actual_birth_date ?? null,
+          desiredSexPreference: reservation.application_id
+            ? (birthDocumentsApplicationsById.get(reservation.application_id)
+                ?.desired_sex_preference ?? null)
+            : null,
+          paidArrhesCents: paidCents,
+          complementAmountCents:
+            matchingRequest?.amount_cents ?? complementCents,
+          complementDueDate:
+            matchingRequest?.due_date ?? birthDocumentsDepositDeadline,
+          completeDepositCents: depositSettings.completeDepositCents,
+          organizationName: organizationCampaignName,
+        }),
+      };
+    },
   );
   const choiceCampaignAnimalsById = new Map(
     ((rawChoiceCampaignAnimals ?? []) as ChoiceCampaignAnimal[]).map(
@@ -2472,6 +2598,17 @@ export default async function LitterDetailPage({
                 ) : null}
               </div>
             )}
+            {birth_documents_deposit_campaign_status && (
+              <div
+                role={birth_documents_deposit_campaign_status === "success" ? "status" : "alert"}
+                className={`mt-4 rounded-xl border px-5 py-4 text-sm ${birth_documents_deposit_campaign_status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : birth_documents_deposit_campaign_status === "partial" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-rose-200 bg-rose-50 text-rose-800"}`}
+              >
+                Contrat + certificat — {birth_documents_deposit_email_sent_count ?? "0"} envoyé(s), {birth_documents_deposit_email_already_sent_count ?? "0"} déjà envoyé(s), {birth_documents_deposit_payment_created_count ?? "0"} demande(s) créée(s), {birth_documents_deposit_payment_reused_count ?? "0"} réutilisée(s).
+                <span className="mt-2 block">
+                  Arrhes complètes : {birth_documents_deposit_complete_count ?? "0"} · pré-réservation non réglée : {birth_documents_deposit_unpaid_count ?? "0"} · demande incompatible : {birth_documents_deposit_incompatible_count ?? "0"} · e-mail manquant : {birth_documents_deposit_missing_email_count ?? "0"} · modèle absent : {birth_documents_deposit_missing_template_count ?? "0"} · Brevo non configuré : {birth_documents_deposit_brevo_not_configured_count ?? "0"} · en cours/incertain : {birth_documents_deposit_uncertain_count ?? "0"} · compensations : {birth_documents_deposit_compensated_count ?? "0"} · erreurs : {birth_documents_deposit_error_count ?? "0"}.
+                </span>
+              </div>
+            )}
             {balance_campaign_status === "no_eligible" && (
               <div
                 role="alert"
@@ -2889,43 +3026,25 @@ export default async function LitterDetailPage({
                     Contrat + certificat
                   </p>
                   <p className="mt-2 text-sm text-muted">
-                    À utiliser après l’envoi manuel du message. Cette action
-                    crée les demandes de complément d’arrhes pour les dossiers
-                    éligibles. Aucun e-mail réel n’est envoyé.
+                    L’envoi utilise le modèle transactionnel Brevo configuré
+                    pour birth_documents_deposit. Le sujet, le corps,
+                    l’expéditeur et le reply-to restent gérés dans Brevo.
                   </p>
-                  {campaignEmailTemplatesError ? (
-                    <p role="alert" className="mt-5 text-sm text-amber-800">
-                      Impossible de charger les modèles d’e-mails pour cette
-                      campagne.
+                  <div className="mt-4 rounded-xl border bg-background p-4 text-sm">
+                    <p className="font-semibold text-foreground">Modèle Brevo</p>
+                    <p className="mt-2 text-muted">
+                      {birthDocumentsDepositCampaignTemplate?.brevoTemplateId
+                        ? `${birthDocumentsDepositCampaignTemplate.title} (#${birthDocumentsDepositCampaignTemplate.brevoTemplateId})`
+                        : "birth_documents_deposit non configuré"}
                     </p>
-                  ) : (
-                    <CampaignEmailTemplatePicker
-                      templates={campaignEmailTemplates}
-                      preferredTemplateKey="birth_documents_deposit"
-                      exactTemplateKey="birth_documents_deposit"
-                      instanceId="litter-birth-documents-deposit-template"
-                    />
-                  )}
-
-                  <form
-                    action={launchLitterPreReservationBalanceCampaign}
-                    className="mt-6"
-                  >
-                    <input type="hidden" name="litter_id" value={id} />
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <button
-                        type="submit"
-                        className="inline-flex rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                      >
-                        Campagne contrat + certificat envoyée
-                      </button>
-                      <p className="text-xs text-muted">
-                        Crée uniquement les demandes de complément d’arrhes
-                        manquantes. Aucun document, animal ou statut de dossier
-                        n’est modifié automatiquement.
-                      </p>
-                    </div>
-                  </form>
+                  </div>
+                  <BirthDocumentsDepositCampaignConfirmDialog
+                    action={launchBirthDocumentsDepositCampaign}
+                    litterId={id}
+                    candidates={birthDocumentsDepositCandidates}
+                    template={birthDocumentsDepositCampaignTemplate ? { title: birthDocumentsDepositCampaignTemplate.title, brevoTemplateId: birthDocumentsDepositCampaignTemplate.brevoTemplateId } : null}
+                    brevoConfigured={brevoConfiguration.isConfigured}
+                  />
                 </div>
 
                 <div className="mt-8 border-t pt-8">

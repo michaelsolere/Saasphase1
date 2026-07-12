@@ -59,6 +59,7 @@ export type TransactionalEmailTransport = {
 type PreparedOperation = {
   dossierId: string;
   contactId: string;
+  reservationId?: string | null;
   recipientEmail: string;
   recipientName?: string | null;
   litterId?: string | null;
@@ -67,10 +68,18 @@ type PreparedOperation = {
   variablesSnapshot?: Record<string, unknown>;
 };
 
+type ClaimedOperation = {
+  operation?: PreparedOperation;
+  resourceAction?: "created" | "reactivated" | "reused";
+  compensate?: () => Promise<{ ok: true } | { ok: false; errorCode: string }>;
+};
+
 export type TransactionalCampaignResult = {
   outcome: "success" | "already_sent" | "in_progress" | "uncertain" | "failed";
   attemptId?: string;
   errorCode?: string;
+  resourceAction?: ClaimedOperation["resourceAction"];
+  compensated?: boolean;
 };
 
 type TransitionDependencies = {
@@ -180,6 +189,16 @@ export async function runTransactionalCampaignDelivery(
       | { ok: true; operation: PreparedOperation }
       | { ok: false; errorCode: string }
     >;
+    prepareClaimedOperation?: (context: {
+      supabase: Supabase;
+      organizationId: string;
+      userId: string;
+      attemptId: string;
+      operation: PreparedOperation;
+    }) => Promise<
+      | { ok: true; claimed: ClaimedOperation }
+      | { ok: false; errorCode: string }
+    >;
   },
   options: {
     supabase: Supabase;
@@ -219,6 +238,7 @@ export async function runTransactionalCampaignDelivery(
     {
       organizationId: context.organizationId,
       contactId: operation.contactId,
+      reservationId: operation.reservationId,
       litterId: operation.litterId,
       litterGroupId: operation.litterGroupId,
       emailTemplateId: template.id,
@@ -264,9 +284,6 @@ export async function runTransactionalCampaignDelivery(
   try {
     const result = await input.transport.getTemplate(template.brevoTemplateId);
     if (!result.ok) {
-      if (isUncertainProviderReason(result.reason)) {
-        return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: result.reason };
-      }
       const transition = await recordCertainFailure({
         supabase: options.supabase,
         ...context,
@@ -279,17 +296,96 @@ export async function runTransactionalCampaignDelivery(
     }
     providerTemplate = result.template;
   } catch {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: "provider_exception" };
+    const transition = await recordCertainFailure({
+      supabase: options.supabase,
+      ...context,
+      attemptId: claim.attempt.id,
+      errorCode: "provider_exception",
+    });
+    return transition.outcome === "updated"
+      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode: "provider_exception" }
+      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code };
   }
+
+  let finalOperation = operation;
+  let claimedResource: ClaimedOperation = {};
+  if (input.prepareClaimedOperation) {
+    let claimedPreparation;
+    try {
+      claimedPreparation = await input.prepareClaimedOperation({
+        supabase: options.supabase,
+        ...context,
+        attemptId: claim.attempt.id,
+        operation,
+      });
+    } catch {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: "claimed_operation_exception",
+      };
+    }
+    if (!claimedPreparation.ok) {
+      const transition = await recordCertainFailure({
+        supabase: options.supabase,
+        ...context,
+        attemptId: claim.attempt.id,
+        errorCode: claimedPreparation.errorCode,
+      });
+      return transition.outcome === "updated"
+        ? { outcome: "failed", attemptId: claim.attempt.id, errorCode: claimedPreparation.errorCode }
+        : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code };
+    }
+    claimedResource = claimedPreparation.claimed;
+    finalOperation = claimedResource.operation ?? operation;
+  }
+
+  const failCertainly = async (errorCode: string): Promise<TransactionalCampaignResult> => {
+    let compensated = false;
+    if (claimedResource.compensate) {
+      let compensation;
+      try {
+        compensation = await claimedResource.compensate();
+      } catch {
+        return {
+          outcome: "uncertain",
+          attemptId: claim.attempt.id,
+          errorCode: "compensation_exception",
+          resourceAction: claimedResource.resourceAction,
+        };
+      }
+      if (!compensation.ok) {
+        return {
+          outcome: "uncertain",
+          attemptId: claim.attempt.id,
+          errorCode: compensation.errorCode,
+          resourceAction: claimedResource.resourceAction,
+        };
+      }
+      compensated = true;
+    }
+    const transition = await recordCertainFailure({
+      supabase: options.supabase,
+      ...context,
+      attemptId: claim.attempt.id,
+      errorCode,
+    });
+    return transition.outcome === "updated"
+      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode, resourceAction: claimedResource.resourceAction, compensated }
+      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code, resourceAction: claimedResource.resourceAction, compensated };
+  };
+
+  const finalVariablesSnapshot =
+    finalOperation.variablesSnapshot ?? finalOperation.variables;
 
   const snapshot = await snapshotEmailDeliveryAttemptBrevoTemplate(
     {
       organizationId: context.organizationId,
       attemptId: claim.attempt.id,
       emailTemplateId: template.id,
-      recipientEmail: operation.recipientEmail,
-      recipientName: operation.recipientName,
-      variablesSnapshot,
+      recipientEmail: finalOperation.recipientEmail,
+      recipientName: finalOperation.recipientName,
+      variablesSnapshot: finalVariablesSnapshot,
       brevoTemplateId: providerTemplate.id,
       brevoTemplateModifiedAt: normalizeBrevoModifiedAt(providerTemplate.modifiedAt),
       subjectSnapshot: providerTemplate.subject,
@@ -298,15 +394,7 @@ export async function runTransactionalCampaignDelivery(
     options.supabase,
   );
   if (snapshot.outcome === "error") {
-    const transition = await recordCertainFailure({
-      supabase: options.supabase,
-      ...context,
-      attemptId: claim.attempt.id,
-      errorCode: snapshot.error.code,
-    });
-    return transition.outcome === "updated"
-      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode: snapshot.error.code }
-      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code };
+    return failCertainly(snapshot.error.code);
   }
 
   let sendResult;
@@ -314,30 +402,22 @@ export async function runTransactionalCampaignDelivery(
     sendResult = await input.transport.sendEmail({
       templateId: providerTemplate.id,
       to: {
-        email: operation.recipientEmail,
-        ...(operation.recipientName ? { name: operation.recipientName } : {}),
+        email: finalOperation.recipientEmail,
+        ...(finalOperation.recipientName ? { name: finalOperation.recipientName } : {}),
       },
-      params: operation.variables,
+      params: finalOperation.variables,
       idempotencyKey,
       tags: ["saas_elevage", input.campaignKey],
     });
   } catch {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: "provider_exception" };
+    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: "provider_exception", resourceAction: claimedResource.resourceAction };
   }
 
   if (!sendResult.ok) {
     if (isUncertainProviderReason(sendResult.reason)) {
-      return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sendResult.reason };
+      return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sendResult.reason, resourceAction: claimedResource.resourceAction };
     }
-    const transition = await recordCertainFailure({
-      supabase: options.supabase,
-      ...context,
-      attemptId: claim.attempt.id,
-      errorCode: sendResult.reason,
-    });
-    return transition.outcome === "updated"
-      ? { outcome: "failed", attemptId: claim.attempt.id, errorCode: sendResult.reason }
-      : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code };
+    return failCertainly(sendResult.reason);
   }
 
   const markSent = options.transitions?.markSent ?? markEmailDeliveryAttemptSent;
@@ -351,7 +431,7 @@ export async function runTransactionalCampaignDelivery(
     options.supabase,
   );
   if (sent.outcome === "error") {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code };
+    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code, resourceAction: claimedResource.resourceAction };
   }
-  return { outcome: "success", attemptId: sent.attempt.id };
+  return { outcome: "success", attemptId: sent.attempt.id, resourceAction: claimedResource.resourceAction };
 }
