@@ -84,13 +84,17 @@ function getPaymentForReservation(
 function buildRequestDetail(
   reservation: ProgressReservation | null,
   payment: ProgressPayment | null,
+  paidDone: boolean,
 ) {
   if (!reservation) {
     return "Aucune demande active n'a encore été créée.";
   }
 
-  const amount = formatPrice(payment?.amount_cents ?? null, payment?.currency ?? null);
-  const parts = [`Paiement de ${amount} demandé`];
+  const amount =
+    payment?.amount_cents !== null && payment?.amount_cents !== undefined
+      ? formatPrice(payment.amount_cents, payment.currency)
+      : null;
+  const parts = [amount ? `Paiement de ${amount} demandé` : "Paiement demandé"];
 
   if (payment?.requested_at ?? payment?.created_at) {
     parts.push(`demandé le ${formatApplicationDate(payment.requested_at ?? payment.created_at ?? null)}`);
@@ -100,20 +104,31 @@ function buildRequestDetail(
     parts.push(`échéance ${formatApplicationDate(payment?.due_date ?? reservation.pre_reservation_deadline ?? null)}`);
   }
 
-  return `${parts.join(" — ")} — en attente de règlement.`;
+  return paidDone
+    ? `${parts.join(" — ")} — règlement ensuite enregistré.`
+    : `${parts.join(" — ")} — En attente de règlement.`;
 }
 
-function buildPaidDetail(payment: ProgressPayment | null) {
-  if (!payment || payment.status !== "paid") {
+function buildPaidDetail(payment: ProgressPayment | null, paidDone: boolean) {
+  if (!paidDone) {
     return "Le règlement de pré-réservation n'est pas encore enregistré.";
   }
 
-  const amount = formatPrice(payment.amount_cents, payment.currency);
+  if (!payment || payment.status !== "paid") {
+    return "Pré-réservation considérée comme réglée d'après l'état du dossier.";
+  }
+
+  const amount =
+    payment.amount_cents !== null && payment.amount_cents !== undefined
+      ? formatPrice(payment.amount_cents, payment.currency)
+      : null;
   const paidDate = payment.paid_at
     ? ` le ${formatApplicationDate(payment.paid_at)}`
     : "";
 
-  return `Paiement de ${amount} réglé${paidDate}.`;
+  return amount
+    ? `Paiement de ${amount} réglé${paidDate}.`
+    : `Paiement réglé${paidDate}.`;
 }
 
 export function getPreReservationProgress({
@@ -139,10 +154,8 @@ export function getPreReservationProgress({
         ? "Demande de pré-réservation"
         : null,
     requestDetail: requestDone
-      ? buildRequestDetail(reservation, payment)
+      ? buildRequestDetail(reservation, payment, paidDone)
       : "Aucune demande active n'a encore été créée.",
-    paidDetail: paidDone
-      ? buildPaidDetail(payment)
-      : "Le règlement de pré-réservation n'est pas encore enregistré.",
+    paidDetail: buildPaidDetail(payment, paidDone),
   };
 }

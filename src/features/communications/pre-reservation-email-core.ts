@@ -23,6 +23,12 @@ type ReservationEmailStatus =
   | "missing_template"
   | "brevo_not_configured";
 
+export type PreReservationEmailDeliveryState =
+  | "sent"
+  | "not_sent"
+  | "in_progress"
+  | "uncertain";
+
 type RelatedReservation = {
   id: string;
   organization_id: string;
@@ -130,6 +136,7 @@ export type PreReservationEmailTransport = {
 
 export type SendPreReservationEmailResult = {
   status: ReservationEmailStatus;
+  deliveryState: PreReservationEmailDeliveryState;
   attemptId?: string;
   errorCode?: string;
 };
@@ -401,7 +408,7 @@ export async function sendPreReservationEmailForReservation(
   const transport = options.transport;
 
   if (!transport) {
-    return { status: "brevo_not_configured" };
+    return { status: "brevo_not_configured", deliveryState: "not_sent" };
   }
 
   const {
@@ -409,12 +416,12 @@ export async function sendPreReservationEmailForReservation(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   const membership = await readWritableMembership(supabase, user.id);
   if (!membership) {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   const reservation = await readReservation(
@@ -423,15 +430,15 @@ export async function sendPreReservationEmailForReservation(
     input.reservationId,
   );
   if (!reservation || reservation.status !== "pre_reservation_requested") {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   if (!reservation.pre_reservation_deadline) {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   if (!reservation.litter_id && !reservation.litter_group_id) {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   const [contact, payment, template, organization, scope] = await Promise.all([
@@ -443,24 +450,24 @@ export async function sendPreReservationEmailForReservation(
   ]);
 
   if (!contact || !isValidEmail(contact.email)) {
-    return { status: "missing_email" };
+    return { status: "missing_email", deliveryState: "not_sent" };
   }
   const recipientEmail = contact.email?.trim().toLowerCase() ?? "";
 
   if (!payment) {
-    return { status: "missing_payment" };
+    return { status: "missing_payment", deliveryState: "not_sent" };
   }
 
   if (!template?.brevo_template_id) {
-    return { status: "missing_template" };
+    return { status: "missing_template", deliveryState: "not_sent" };
   }
 
   if (!scope) {
-    return { status: "not_eligible" };
+    return { status: "not_eligible", deliveryState: "not_sent" };
   }
 
   if (!transport.isConfigured()) {
-    return { status: "brevo_not_configured" };
+    return { status: "brevo_not_configured", deliveryState: "not_sent" };
   }
 
   const variables = buildVariables({
@@ -481,7 +488,11 @@ export async function sendPreReservationEmailForReservation(
   });
 
   if (!idempotencyKey) {
-    return { status: "failed", errorCode: "invalid_idempotency_key" };
+    return {
+      status: "failed",
+      deliveryState: "not_sent",
+      errorCode: "invalid_idempotency_key",
+    };
   }
 
   const recipientName = variables.nom_complet || contact.display_name || null;
@@ -505,11 +516,19 @@ export async function sendPreReservationEmailForReservation(
   );
 
   if (preparedAttempt.outcome === "error") {
-    return { status: "failed", errorCode: preparedAttempt.error.code };
+    return {
+      status: "failed",
+      deliveryState: "not_sent",
+      errorCode: preparedAttempt.error.code,
+    };
   }
 
   if (preparedAttempt.attempt.status === "sent") {
-    return { status: "already_sent", attemptId: preparedAttempt.attempt.id };
+    return {
+      status: "already_sent",
+      deliveryState: "sent",
+      attemptId: preparedAttempt.attempt.id,
+    };
   }
 
   const claim = await claimEmailDeliveryAttemptForSend(
@@ -522,16 +541,25 @@ export async function sendPreReservationEmailForReservation(
   );
 
   if (claim.outcome === "already_sent") {
-    return { status: "already_sent", attemptId: claim.attempt?.id };
+    return {
+      status: "already_sent",
+      deliveryState: "sent",
+      attemptId: claim.attempt?.id,
+    };
   }
 
   if (claim.outcome === "in_progress") {
-    return { status: "in_progress", attemptId: claim.attempt?.id };
+    return {
+      status: "in_progress",
+      deliveryState: "in_progress",
+      attemptId: claim.attempt?.id,
+    };
   }
 
   if (claim.outcome !== "claimed") {
     return {
       status: "failed",
+      deliveryState: "not_sent",
       attemptId: preparedAttempt.attempt.id,
       errorCode: claim.outcome === "error" ? claim.error.code : claim.outcome,
     };
@@ -552,6 +580,7 @@ export async function sendPreReservationEmailForReservation(
 
     return {
       status: toFailedStatus(templateResult.reason),
+      deliveryState: "not_sent",
       attemptId: claim.attempt.id,
       errorCode: templateResult.reason,
     };
@@ -588,6 +617,7 @@ export async function sendPreReservationEmailForReservation(
 
     return {
       status: "failed",
+      deliveryState: "not_sent",
       attemptId: claim.attempt.id,
       errorCode: snapshot.error.code,
     };
@@ -617,6 +647,7 @@ export async function sendPreReservationEmailForReservation(
 
     return {
       status: toFailedStatus(sendResult.reason),
+      deliveryState: "not_sent",
       attemptId: claim.attempt.id,
       errorCode: sendResult.reason,
     };
@@ -635,10 +666,15 @@ export async function sendPreReservationEmailForReservation(
   if (sentResult.outcome === "error") {
     return {
       status: "failed",
+      deliveryState: "uncertain",
       attemptId: claim.attempt.id,
       errorCode: sentResult.error.code,
     };
   }
 
-  return { status: "success", attemptId: sentResult.attempt.id };
+  return {
+    status: "success",
+    deliveryState: "sent",
+    attemptId: sentResult.attempt.id,
+  };
 }

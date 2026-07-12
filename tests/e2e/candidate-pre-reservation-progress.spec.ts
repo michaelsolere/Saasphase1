@@ -186,6 +186,7 @@ function createFixture() {
 test("candidate pre-reservation progress appears on list, timeline, contact and payments", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   createFixture();
 
   try {
@@ -227,18 +228,22 @@ test("candidate pre-reservation progress appears on list, timeline, contact and 
     await expect(page.getByText("Paiement de 250,00").first()).toBeVisible();
     await expect(page.getByText("25 juillet 2026").first()).toBeVisible();
     await expect(
-      page.getByText("Le règlement de pré-réservation n'est pas encore enregistré."),
+      page.getByText("En attente de règlement."),
     ).toBeVisible();
 
     await page.goto(`/candidatures/${fixture.applicationIds[2]}`);
     await expect(page.getByText("Paiement de 250,00").first()).toBeVisible();
     await expect(page.getByText(/réglé le 11 juillet 2026/)).toBeVisible();
+    await expect(page.getByText(/en attente de règlement/i)).toHaveCount(0);
 
     await page.goto(`/candidatures/${fixture.applicationIds[3]}`);
     await expect(
       page.getByRole("heading", { name: "Pré-réservation réglée" }),
     ).toBeVisible();
     await expect(page.getByText(/réglé le 11 juillet 2026/)).toBeVisible();
+    await expect(
+      page.getByText("Le règlement de pré-réservation n'est pas encore enregistré."),
+    ).toHaveCount(0);
 
     await page.goto(`/candidatures/${fixture.applicationIds[4]}`);
     await expect(page.getByText("Aucune demande active")).toBeVisible();

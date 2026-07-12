@@ -9,6 +9,10 @@ import {
   FINAL_RESERVATION_STATUSES,
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
+import {
+  runPreReservationCampaignForApplications,
+  type PreReservationCampaignResult,
+} from "@/features/reservations/pre-reservation-campaign";
 import { isAssignableReservationAnimal } from "@/features/reservations/assignable-animals";
 import {
   promoteContactJourneyRole,
@@ -1296,38 +1300,6 @@ export async function attachReservationToPreciseLitter(formData: FormData) {
 // Campagne de pré-réservation
 // ---------------------------------------------------------------------------
 
-type PreReservationCampaignApplication = {
-  id: string;
-  species: string | null;
-  breed: string | null;
-  desired_sex_preference: string | null;
-  target_litter_id: string | null;
-  target_litter_group_id: string | null;
-};
-
-type PreReservationCampaignResult = {
-  reservationsPreparedCount: number;
-  paymentsCreatedCount: number;
-  emailsSentCount: number;
-  emailsAlreadySentCount: number;
-  emailsFailedCount: number;
-  emailsMissingCount: number;
-  emailsInProgressCount: number;
-  missingTemplateCount: number;
-  brevoNotConfiguredCount: number;
-  ignoredDraftConflictCount: number;
-  conflictCount: number;
-  errorCount: number;
-};
-
-type PreReservationCampaignSendResult = Awaited<
-  ReturnType<typeof sendPreReservationEmailForReservation>
->;
-
-type SendPreReservationCampaignEmail = (input: {
-  reservationId: string;
-}) => Promise<PreReservationCampaignSendResult>;
-
 type PreReservationBalanceCampaignReservation = {
   id: string;
   organization_id: string;
@@ -1454,134 +1426,6 @@ function revalidatePreReservationCampaignProgress(
       revalidatePath(`/contacts/${application.contact_id}`);
     }
   });
-}
-
-export async function runPreReservationCampaignForApplications({
-  supabase,
-  applications,
-  sendEmail = sendPreReservationEmailForReservation,
-}: {
-  supabase: Awaited<ReturnType<typeof createClient>>;
-  applications: PreReservationCampaignApplication[];
-  sendEmail?: SendPreReservationCampaignEmail;
-}): Promise<PreReservationCampaignResult> {
-  let reservationsPreparedCount = 0;
-  let paymentsCreatedCount = 0;
-  let emailsSentCount = 0;
-  let emailsAlreadySentCount = 0;
-  let emailsFailedCount = 0;
-  let emailsMissingCount = 0;
-  let emailsInProgressCount = 0;
-  let missingTemplateCount = 0;
-  let brevoNotConfiguredCount = 0;
-  let ignoredDraftConflictCount = 0;
-  let conflictCount = 0;
-  let errorCount = 0;
-
-  for (const app of applications) {
-    const { data, error } = await supabase.rpc(
-      "create_pre_reservation_request_for_application",
-      {
-        p_application_id: app.id,
-        p_target_litter_id: app.target_litter_id ?? undefined,
-        p_target_litter_group_id: app.target_litter_group_id ?? undefined,
-      },
-    );
-
-    if (error) {
-      console.error("create_pre_reservation_request_for_application failed:", {
-        applicationId: app.id,
-        error,
-      });
-      errorCount++;
-      continue;
-    }
-
-    const result = data?.[0];
-
-    if (!result || !result.reservation_id || !result.payment_id) {
-      errorCount++;
-      continue;
-    }
-
-    if (result.outcome === "created" || result.outcome === "already_exists") {
-      const { data: storedReservation, error: reservationReadError } =
-        await supabase
-          .from("reservations")
-          .select("id, status, application_id")
-          .eq("id", result.reservation_id)
-          .eq("application_id", app.id)
-          .is("deleted_at", null)
-          .maybeSingle();
-
-      const { data: storedPayment, error: paymentReadError } = await supabase
-        .from("payments")
-        .select("id, reservation_id")
-        .eq("id", result.payment_id)
-        .eq("reservation_id", result.reservation_id)
-        .is("deleted_at", null)
-        .maybeSingle();
-
-      if (
-        reservationReadError ||
-        paymentReadError ||
-        !storedReservation ||
-        !storedPayment ||
-        storedReservation.status !== "pre_reservation_requested"
-      ) {
-        errorCount++;
-        continue;
-      }
-
-      reservationsPreparedCount++;
-      if (result.payment_created) {
-        paymentsCreatedCount++;
-      }
-
-      const sendResult = await sendEmail({ reservationId: storedReservation.id });
-
-      if (sendResult.status === "success") {
-        emailsSentCount++;
-      } else if (sendResult.status === "already_sent") {
-        emailsAlreadySentCount++;
-      } else if (sendResult.status === "in_progress") {
-        emailsInProgressCount++;
-      } else if (sendResult.status === "missing_email") {
-        emailsMissingCount++;
-      } else if (sendResult.status === "missing_template") {
-        missingTemplateCount++;
-      } else if (sendResult.status === "brevo_not_configured") {
-        brevoNotConfiguredCount++;
-      } else {
-        emailsFailedCount++;
-      }
-    } else if (result.outcome === "conflict") {
-      if (result.reason === "draft_reservation_exists") {
-        ignoredDraftConflictCount++;
-      } else {
-        conflictCount++;
-      }
-    } else if (result.outcome === "ineligible") {
-      continue;
-    } else {
-        errorCount++;
-    }
-  }
-
-  return {
-    reservationsPreparedCount,
-    paymentsCreatedCount,
-    emailsSentCount,
-    emailsAlreadySentCount,
-    emailsFailedCount,
-    emailsMissingCount,
-    emailsInProgressCount,
-    missingTemplateCount,
-    brevoNotConfiguredCount,
-    ignoredDraftConflictCount,
-    conflictCount,
-    errorCount,
-  };
 }
 
 function preReservationCampaignParams({
@@ -2306,6 +2150,7 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
+    sendEmail: sendPreReservationEmailForReservation,
     applications: applications.map((app) => ({
       id: app.id,
       species: app.species ?? litter.species ?? "dog",
@@ -2323,7 +2168,8 @@ export async function launchPreReservationCampaign(formData: FormData) {
 
   if (
     campaignResult.reservationsPreparedCount === 0 &&
-    campaignResult.errorCount > 0
+    (campaignResult.errorCount > 0 ||
+      campaignResult.compensatedNotSentCreationCount > 0)
   ) {
     redirect(`/litters/${litterId}?campaign_status=error`);
   }
@@ -2545,6 +2391,7 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
 
   const campaignResult = await runPreReservationCampaignForApplications({
     supabase,
+    sendEmail: sendPreReservationEmailForReservation,
     applications: eligibleApplications.map((app) => {
       const targetLitterId =
         app.desired_litter_id && groupLitterIds.has(app.desired_litter_id)
@@ -2570,7 +2417,8 @@ export async function launchGroupPreReservationCampaign(formData: FormData) {
   if (
     campaignResult.reservationsPreparedCount === 0 &&
     campaignResult.paymentsCreatedCount === 0 &&
-    campaignResult.errorCount > 0
+    (campaignResult.errorCount > 0 ||
+      campaignResult.compensatedNotSentCreationCount > 0)
   ) {
     redirect(`/litter-groups/${groupId}?group_campaign_status=error`);
   }
