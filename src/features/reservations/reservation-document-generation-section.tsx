@@ -5,6 +5,7 @@ import {
   parseDocumentPdfPath,
 } from "@/features/documents/document-pdf-storage-core";
 import { getDocumentStatusLabel } from "@/features/documents/formatters";
+import { readDocumentVersionHistory } from "@/features/documents/document-version-history";
 import {
   isReservationDocumentTemplateCompatible,
   resolveEffectiveReservationDocumentTaxonomy,
@@ -147,6 +148,13 @@ export async function ReservationDocumentGenerationSection({
   });
   const documents = (documentsResult.data ?? []) as CurrentDocument[];
   const templates = (templatesResult.data ?? []) as DocumentTemplate[];
+  const historyResults = await Promise.all(
+    documents.map(async (document) => [
+      document.id,
+      await readDocumentVersionHistory(document.id, supabase),
+    ] as const),
+  );
+  const historyByDocumentId = new Map(historyResults);
 
   const cards: ReservationDocumentGenerationCard[] = (
     [
@@ -167,6 +175,9 @@ export async function ReservationDocumentGenerationSection({
     );
     const currentTemplate = currentDocument?.template_id
       ? templates.find((template) => template.id === currentDocument.template_id)
+      : null;
+    const historyResult = currentDocument
+      ? historyByDocumentId.get(currentDocument.id)
       : null;
     const compatibleTemplates = taxonomy
       ? templates.filter((template) =>
@@ -201,6 +212,10 @@ export async function ReservationDocumentGenerationSection({
             generatedAtLabel: currentDocument.generated_at
               ? formatGeneratedAt(currentDocument.generated_at)
               : null,
+            history:
+              historyResult?.outcome === "success"
+                ? historyResult.history
+                : null,
           }
         : null,
       templates: compatibleTemplates.map((template) => ({

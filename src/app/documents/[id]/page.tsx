@@ -11,6 +11,7 @@ import {
   getDocumentTypeLabel,
   getSignatureRequiredLabel,
 } from "@/features/documents/formatters";
+import { DocumentVersionHistorySection } from "@/features/documents/document-version-history-section";
 import type { DBDocument } from "@/features/documents/types";
 import {
   getPaymentMethodLabel,
@@ -1755,7 +1756,7 @@ export default async function DocumentDetailPage({
   const { data: rawDocument, error: readError } = await supabase
     .from("documents")
     .select(
-      "id, organization_id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_name, file_path, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, deleted_at",
+      "id, organization_id, title, document_type, status, created_at, updated_at, sent_at, received_at, signed_at, expires_at, archived_at, file_size_bytes, mime_type, signature_required, generated_from_template, generated_at, notes, contact_id, application_id, reservation_id, payment_id, litter_id, animal_id, superseded_at, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -2218,6 +2219,7 @@ export default async function DocumentDetailPage({
         : null;
   const actionReservationId =
     document?.reservation_id &&
+    document.superseded_at === null &&
     relatedReservation &&
     !isFinalReservationStatus(relatedReservation.status) &&
     (document.document_type === "commitment_certificate" ||
@@ -3162,13 +3164,11 @@ export default async function DocumentDetailPage({
                   </dl>
                 </section>
 
+                <DocumentVersionHistorySection documentId={document.id} />
+
                 <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">Fichier</h2>
                   <dl className="mt-6 grid gap-6 sm:grid-cols-2">
-                    <DetailItem
-                      label="Nom du fichier"
-                      value={document.file_name}
-                    />
                     <DetailItem
                       label="Type MIME"
                       value={document.mime_type}
@@ -3177,14 +3177,6 @@ export default async function DocumentDetailPage({
                       label="Taille"
                       value={formatFileSize(document.file_size_bytes)}
                     />
-                    <div className="sm:col-span-2">
-                      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
-                        Chemin fichier
-                      </dt>
-                      <dd className="mt-1.5 break-all text-sm leading-6">
-                        {document.file_path || "Non renseigné"}
-                      </dd>
-                    </div>
                   </dl>
                 </section>
 

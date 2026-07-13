@@ -14,6 +14,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DocumentVersionHistoryList } from "@/features/documents/document-version-history-list";
+import type { DocumentVersionHistory } from "@/features/documents/document-version-history-core";
 import {
   generateReservationDocumentPdf,
   type ReservationDocumentGenerationIntention,
@@ -31,6 +33,7 @@ export type ReservationDocumentGenerationCard = {
     templateLabel: string | null;
     templateVersion: number | null;
     generatedAtLabel: string | null;
+    history: DocumentVersionHistory | null;
   } | null;
   templates: Array<{
     id: string;
@@ -173,6 +176,14 @@ function GenerationCard({ card }: { card: ReservationDocumentGenerationCard }) {
           </dd>
         </div>
       </dl>
+
+      {current?.history ? (
+        <DocumentVersionHistoryList history={current.history} compact />
+      ) : current ? (
+        <p className="mt-4 border-t pt-4 text-xs text-muted">
+          L’historique de cette chaîne n’est pas disponible.
+        </p>
+      ) : null}
 
       <GenerationForm card={card} />
     </article>
