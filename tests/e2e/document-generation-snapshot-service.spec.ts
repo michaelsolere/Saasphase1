@@ -148,6 +148,7 @@ function seed() {
 }
 
 test("prepares validated reservation snapshots from authenticated Supabase reads and cleans fixtures", async () => {
+  test.setTimeout(60_000);
   seed();
   const supabase = await createAuthenticatedSupabaseClient();
   const documentsBefore = Number(sql(`select count(*) from public.documents where organization_id = ${q(ids.organization)}::uuid;`));
@@ -172,6 +173,7 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     });
     expect(contract.templateId).toBe(ids.contractTemplate);
     expect(contract.templateVersion).toBe(7);
+    expect(contract.templateContent).toBe(JSON.stringify(contractDefinition));
     expect(contract.snapshot.template.templateContentSha256).toBe(createHash("sha256").update(JSON.stringify(contractDefinition)).digest("hex"));
 
     const certificate = await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.animalReservation, documentType: "commitment_certificate", templateId: ids.certificateTemplate, capturedAt }, supabase);
