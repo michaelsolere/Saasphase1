@@ -28,13 +28,13 @@ function VersionActions({ entry }: { entry: DocumentVersionHistoryEntry }) {
         rel="noreferrer"
         className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
       >
-        Ouvrir
+        Ouvrir l’original
       </a>
       <a
         href={`/documents/${entry.documentId}/pdf?download=1`}
         className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
       >
-        Télécharger
+        Télécharger l’original
       </a>
     </div>
   );
@@ -48,6 +48,10 @@ function VersionRow({
   selectedDocumentId?: string;
 }) {
   const isSelected = entry.documentId === selectedDocumentId;
+  const requiresSignedFileClarification =
+    entry.businessStatus === "signed" &&
+    entry.artifacts.length === 1 &&
+    entry.artifacts[0]?.kind === "original_pdf";
 
   return (
     <li
@@ -85,6 +89,14 @@ function VersionRow({
       {entry.artifacts.length === 0 ? (
         <p className="mt-2 text-xs text-muted">
           Aucun PDF cohérent n’est disponible pour cette version.
+        </p>
+      ) : null}
+      {requiresSignedFileClarification ? (
+        <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+          Le statut “Reçu signé” correspond actuellement au suivi manuel du
+          dossier. Il ne signifie pas qu’un fichier retourné signé est archivé.
+          Celui-ci sera conservé plus tard comme une pièce distincte liée à la
+          version originale envoyée.
         </p>
       ) : null}
     </li>

@@ -332,6 +332,21 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
     await expect(contractCard).toContainText("Reçu signé");
     await expect(contractCard).toContainText("Envoyé");
     await expect(
+      contractCard.getByRole("link", { name: "Ouvrir l’original" }),
+    ).toHaveCount(2);
+    await expect(
+      contractCard.getByRole("link", { name: "Télécharger l’original" }),
+    ).toHaveCount(2);
+    await expect(contractCard).toContainText(
+      "Il ne signifie pas qu’un fichier retourné signé est archivé.",
+    );
+    await expect(
+      contractCard.getByRole("link", { name: /PDF signé/i }),
+    ).toHaveCount(0);
+    await expect(
+      contractCard.getByText("PDF signé archivé", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
       contractCard.locator(`a[href="/documents/${ids.version1}/pdf"]`),
     ).toHaveCount(1);
     await expect(
@@ -358,6 +373,13 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
     ).toHaveCount(2);
     await expect(page.getByText("Statut métier : Envoyé", { exact: true })).toBeVisible();
     await expect(page.getByText("Statut métier : Reçu signé", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText(
+        "Le statut “Reçu signé” correspond actuellement au suivi manuel du dossier.",
+        { exact: false },
+      ),
+    ).toBeVisible();
+    await expect(page.getByRole("link", { name: /PDF signé/i })).toHaveCount(0);
     html = await page.content();
     for (const secret of [...paths, ...hashes, "/storage/v1/", "token="]) {
       expect(html).not.toContain(secret);
