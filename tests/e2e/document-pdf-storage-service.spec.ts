@@ -7,6 +7,7 @@ import {
   buildDocumentPdfPath,
   createDocumentPdfSignedUrlCore,
   isDocumentPdfMetadataCoherent,
+  isLegacyDocumentWithoutStoredPdf,
   readDocumentPdfCore,
   storeDocumentPdfCore,
   validateAndHashPdf,
@@ -30,12 +31,34 @@ const concurrentDocumentIds = [
 ];
 const identicalReplacementInitialId = "e1000000-0000-4000-8000-000000000005";
 const identicalReplacementSuccessorId = "e1000000-0000-4000-8000-000000000006";
+const legacyContactIds = [
+  "72000000-0000-4000-8000-000000000001",
+  "72000000-0000-4000-8000-000000000002",
+];
+const legacyReservationIds = [
+  "92000000-0000-4000-8000-000000000001",
+  "92000000-0000-4000-8000-000000000002",
+  "92000000-0000-4000-8000-000000000003",
+];
+const legacyDocumentIds = {
+  historical: "e2000000-0000-4000-8000-000000000001",
+  successor: "e2000000-0000-4000-8000-000000000002",
+  concurrentHistorical: "e2000000-0000-4000-8000-000000000003",
+  concurrentSuccessor: "e2000000-0000-4000-8000-000000000004",
+  pathOnly: "e2000000-0000-4000-8000-000000000005",
+  hashOnly: "e2000000-0000-4000-8000-000000000006",
+  sizeOnly: "e2000000-0000-4000-8000-000000000007",
+  typeMismatch: "e2000000-0000-4000-8000-000000000008",
+  scopeMismatch: "e2000000-0000-4000-8000-000000000009",
+  rejectedSuccessor: "e2000000-0000-4000-8000-000000000010",
+} as const;
 const allDocumentIds = [
   firstDocumentId,
   secondDocumentId,
   ...concurrentDocumentIds,
   identicalReplacementInitialId,
   identicalReplacementSuccessorId,
+  ...Object.values(legacyDocumentIds),
 ];
 
 const firstPdf = new TextEncoder().encode("%PDF-1.7\nfirst private document\n%%EOF");
@@ -69,6 +92,17 @@ function countStorageFixtures() {
   );
 }
 
+function countLegacyRelationalFixtures() {
+  return Number(
+    runE2eSqlSync(`
+      select
+        (select count(*) from public.documents where id::text like 'e2000000-%')
+        + (select count(*) from public.reservations where id::text like '92000000-%')
+        + (select count(*) from public.contacts where id::text like '72000000-%');
+    `),
+  );
+}
+
 async function cleanup(
   supabase: Awaited<ReturnType<typeof createAuthenticatedSupabaseClient>>,
 ) {
@@ -95,6 +129,61 @@ async function cleanup(
     delete from public.documents
     where id in (${documentIdSqlList()}) and replaces_document_id is not null;
     delete from public.documents where id in (${documentIdSqlList()});
+    delete from public.reservations where id::text like '92000000-%';
+    delete from public.contacts where id::text like '72000000-%';
+  `);
+}
+
+function insertLegacyFixtures() {
+  const [contactId, otherContactId] = legacyContactIds;
+  const [reservationId, concurrentReservationId, otherReservationId] = legacyReservationIds;
+  const partialHash = "a".repeat(64);
+
+  runE2eSqlSync(`
+    insert into public.contacts (id, organization_id, display_name)
+    values
+      (${sqlQuote(contactId)}::uuid, ${sqlQuote(organizationId)}::uuid, 'QA legacy PDF contact'),
+      (${sqlQuote(otherContactId)}::uuid, ${sqlQuote(organizationId)}::uuid, 'QA legacy PDF other contact');
+
+    insert into public.reservations (id, organization_id, contact_id)
+    values
+      (${sqlQuote(reservationId)}::uuid, ${sqlQuote(organizationId)}::uuid, ${sqlQuote(contactId)}::uuid),
+      (${sqlQuote(concurrentReservationId)}::uuid, ${sqlQuote(organizationId)}::uuid, ${sqlQuote(contactId)}::uuid),
+      (${sqlQuote(otherReservationId)}::uuid, ${sqlQuote(organizationId)}::uuid, ${sqlQuote(otherContactId)}::uuid);
+
+    insert into public.documents (
+      id, organization_id, contact_id, reservation_id, document_type, status,
+      title, file_path, file_name, mime_type, file_size_bytes, file_sha256,
+      sent_at, signed_at, signature_required
+    ) values
+      (
+        ${sqlQuote(legacyDocumentIds.historical)}::uuid, ${sqlQuote(organizationId)}::uuid,
+        ${sqlQuote(contactId)}::uuid, ${sqlQuote(reservationId)}::uuid,
+        'reservation_contract', 'signed', 'QA ancien contrat signé', null,
+        'ancien-contrat-signe.pdf', 'application/pdf', null, null,
+        '2026-07-01 10:00:00+00', '2026-07-02 11:00:00+00', true
+      ),
+      (
+        ${sqlQuote(legacyDocumentIds.concurrentHistorical)}::uuid, ${sqlQuote(organizationId)}::uuid,
+        ${sqlQuote(contactId)}::uuid, ${sqlQuote(concurrentReservationId)}::uuid,
+        'reservation_contract', 'sent', 'QA ancien contrat concurrent', null,
+        'ancien-contrat-concurrent.pdf', 'application/pdf', null, null,
+        '2026-07-03 10:00:00+00', null, true
+      ),
+      (${sqlQuote(legacyDocumentIds.pathOnly)}::uuid, ${sqlQuote(organizationId)}::uuid, null, null,
+        'other', 'uploaded', 'QA chemin seul', 'legacy/path-only.pdf', null, null, null, null, null, null, false),
+      (${sqlQuote(legacyDocumentIds.hashOnly)}::uuid, ${sqlQuote(organizationId)}::uuid, null, null,
+        'other', 'uploaded', 'QA hash seul', null, null, null, null, ${sqlQuote(partialHash)}, null, null, false),
+      (${sqlQuote(legacyDocumentIds.sizeOnly)}::uuid, ${sqlQuote(organizationId)}::uuid, null, null,
+        'other', 'uploaded', 'QA taille seule', null, null, null, 123, null, null, null, false),
+      (${sqlQuote(legacyDocumentIds.typeMismatch)}::uuid, ${sqlQuote(organizationId)}::uuid, null, null,
+        'other', 'uploaded', 'QA type différent', null, 'legacy-other.pdf', 'application/pdf', null, null, null, null, false),
+      (
+        ${sqlQuote(legacyDocumentIds.scopeMismatch)}::uuid, ${sqlQuote(organizationId)}::uuid,
+        ${sqlQuote(contactId)}::uuid, ${sqlQuote(otherReservationId)}::uuid,
+        'reservation_contract', 'uploaded', 'QA périmètre différent', null,
+        'legacy-scope.pdf', 'application/pdf', null, null, null, null, false
+      );
   `);
 }
 
@@ -118,9 +207,42 @@ test("validates PDF bytes, identifiers, versions, paths and checksums", () => {
       id: firstDocumentId,
       file_path: buildDocumentPdfPath(organizationId, firstDocumentId, 1, sha256(firstPdf)),
       file_sha256: sha256(secondPdf),
+      file_size_bytes: firstPdf.byteLength,
       mime_type: "application/pdf",
     }),
   ).toBe(false);
+
+  expect(
+    isLegacyDocumentWithoutStoredPdf(
+      {
+        organization_id: organizationId,
+        document_type: "other",
+        contact_id: null,
+        application_id: null,
+        reservation_id: null,
+        litter_id: null,
+        litter_group_id: null,
+        animal_id: null,
+        payment_id: null,
+        file_path: null,
+        file_sha256: null,
+        file_size_bytes: null,
+        deleted_at: null,
+        superseded_at: null,
+      },
+      {
+        organizationId,
+        documentType: "other",
+        contactId: null,
+        applicationId: null,
+        reservationId: null,
+        litterId: null,
+        litterGroupId: null,
+        animalId: null,
+        paymentId: null,
+      },
+    ),
+  ).toBe(true);
 });
 
 test("stores, replays, versions, arbitrates concurrency, reads and cleans private PDFs", async () => {
@@ -356,6 +478,144 @@ test("returns created and existing for two strictly identical concurrent replace
     await cleanup(supabase);
     expect(countDocumentFixtures()).toBe(0);
     expect(countStorageFixtures()).toBe(0);
+  }
+});
+
+test("replaces strict legacy contracts atomically with a first stored PDF version", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  await cleanup(supabase);
+  insertLegacyFixtures();
+
+  const [contactId] = legacyContactIds;
+  const [reservationId, concurrentReservationId] = legacyReservationIds;
+
+  try {
+    const replacementInput = {
+      organizationId,
+      documentId: legacyDocumentIds.successor,
+      replacesDocumentId: legacyDocumentIds.historical,
+      bytes: firstPdf,
+      documentType: "reservation_contract",
+      title: "QA premier PDF stocké du contrat",
+      contactId,
+      reservationId,
+    } as const;
+    const created = await storeDocumentPdfCore(replacementInput, supabase);
+    expect(created.outcome).toBe("created");
+    if (created.outcome === "error") throw new Error(created.error.message);
+    expect(created.version).toBe(1);
+    expect(created.filePath).toContain(`/${legacyDocumentIds.successor}/v1/`);
+
+    const rows = await supabase
+      .from("documents")
+      .select(
+        "id, status, title, file_name, sent_at, signed_at, file_path, file_sha256, file_size_bytes, replaces_document_id, superseded_at",
+      )
+      .in("id", [legacyDocumentIds.historical, legacyDocumentIds.successor]);
+    expect(rows.error).toBeNull();
+    const historical = rows.data?.find((row) => row.id === legacyDocumentIds.historical);
+    const successor = rows.data?.find((row) => row.id === legacyDocumentIds.successor);
+    expect(historical).toMatchObject({
+      status: "signed",
+      title: "QA ancien contrat signé",
+      file_name: "ancien-contrat-signe.pdf",
+      sent_at: "2026-07-01T10:00:00+00:00",
+      signed_at: "2026-07-02T11:00:00+00:00",
+      file_path: null,
+      file_sha256: null,
+      file_size_bytes: null,
+    });
+    expect(historical?.superseded_at).not.toBeNull();
+    expect(successor?.superseded_at).toBeNull();
+    expect(successor?.replaces_document_id).toBe(legacyDocumentIds.historical);
+    expect(successor?.file_path).toBe(created.filePath);
+
+    const replay = await storeDocumentPdfCore(replacementInput, supabase);
+    expect(replay.outcome).toBe("existing");
+    if (replay.outcome === "error") throw new Error(replay.error.message);
+    expect(replay.version).toBe(1);
+
+    const concurrentInput = {
+      organizationId,
+      documentId: legacyDocumentIds.concurrentSuccessor,
+      replacesDocumentId: legacyDocumentIds.concurrentHistorical,
+      bytes: secondPdf,
+      documentType: "reservation_contract",
+      title: "QA premier PDF concurrent du contrat",
+      contactId,
+      reservationId: concurrentReservationId,
+    } as const;
+    const concurrent = await Promise.all([
+      storeDocumentPdfCore(concurrentInput, supabase),
+      storeDocumentPdfCore(concurrentInput, supabase),
+    ]);
+    expect(concurrent.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(concurrent.filter((result) => result.outcome === "existing")).toHaveLength(1);
+    expect(concurrent.filter((result) => result.outcome === "error")).toHaveLength(0);
+    expect(concurrent.every((result) => "version" in result && result.version === 1)).toBe(true);
+
+    for (const predecessorId of [
+      legacyDocumentIds.pathOnly,
+      legacyDocumentIds.hashOnly,
+      legacyDocumentIds.sizeOnly,
+    ]) {
+      const refused = await storeDocumentPdfCore(
+        {
+          organizationId,
+          documentId: legacyDocumentIds.rejectedSuccessor,
+          replacesDocumentId: predecessorId,
+          bytes: firstPdf,
+          documentType: "other",
+          title: "QA métadonnées techniques partielles refusées",
+        },
+        supabase,
+      );
+      expect(refused).toMatchObject({
+        outcome: "error",
+        error: { code: "incoherent_metadata" },
+      });
+    }
+
+    const typeMismatch = await storeDocumentPdfCore(
+      {
+        organizationId,
+        documentId: legacyDocumentIds.rejectedSuccessor,
+        replacesDocumentId: legacyDocumentIds.typeMismatch,
+        bytes: firstPdf,
+        documentType: "reservation_contract",
+        title: "QA type différent refusé",
+        contactId,
+        reservationId,
+      },
+      supabase,
+    );
+    expect(typeMismatch).toMatchObject({
+      outcome: "error",
+      error: { code: "incoherent_metadata" },
+    });
+
+    const scopeMismatch = await storeDocumentPdfCore(
+      {
+        organizationId,
+        documentId: legacyDocumentIds.rejectedSuccessor,
+        replacesDocumentId: legacyDocumentIds.scopeMismatch,
+        bytes: firstPdf,
+        documentType: "reservation_contract",
+        title: "QA périmètre différent refusé",
+        contactId,
+        reservationId,
+      },
+      supabase,
+    );
+    expect(scopeMismatch).toMatchObject({
+      outcome: "error",
+      error: { code: "incoherent_metadata" },
+    });
+  } finally {
+    await cleanup(supabase);
+    expect(countDocumentFixtures()).toBe(0);
+    expect(countStorageFixtures()).toBe(0);
+    expect(countLegacyRelationalFixtures()).toBe(0);
   }
 });
 

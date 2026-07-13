@@ -161,9 +161,18 @@ export function parseDocumentPdfPath(path: string) {
 }
 
 export function isDocumentPdfMetadataCoherent(
-  document: Pick<DocumentRow, "organization_id" | "id" | "file_path" | "file_sha256" | "mime_type">,
+  document: Pick<
+    DocumentRow,
+    "organization_id" | "id" | "file_path" | "file_sha256" | "file_size_bytes" | "mime_type"
+  >,
 ) {
-  if (!document.file_path || !document.file_sha256 || document.mime_type !== "application/pdf") {
+  if (
+    !document.file_path ||
+    !document.file_sha256 ||
+    !Number.isSafeInteger(document.file_size_bytes) ||
+    document.file_size_bytes! < PDF_SIGNATURE.byteLength ||
+    document.mime_type !== "application/pdf"
+  ) {
     return false;
   }
   const parsed = parseDocumentPdfPath(document.file_path);
@@ -172,6 +181,58 @@ export function isDocumentPdfMetadataCoherent(
       parsed.organizationId === document.organization_id &&
       parsed.documentId === document.id &&
       parsed.fileSha256 === document.file_sha256,
+  );
+}
+
+type LegacyDocumentPdfCandidate = Pick<
+  DocumentRow,
+  | "organization_id"
+  | "document_type"
+  | "contact_id"
+  | "application_id"
+  | "reservation_id"
+  | "litter_id"
+  | "litter_group_id"
+  | "animal_id"
+  | "payment_id"
+  | "file_path"
+  | "file_sha256"
+  | "file_size_bytes"
+  | "deleted_at"
+  | "superseded_at"
+>;
+
+type LegacyDocumentPdfIntent = {
+  organizationId: string;
+  documentType: string;
+  contactId: string | null;
+  applicationId: string | null;
+  reservationId: string | null;
+  litterId: string | null;
+  litterGroupId: string | null;
+  animalId: string | null;
+  paymentId: string | null;
+};
+
+export function isLegacyDocumentWithoutStoredPdf(
+  document: LegacyDocumentPdfCandidate,
+  intent: LegacyDocumentPdfIntent,
+) {
+  return (
+    document.deleted_at === null &&
+    document.superseded_at === null &&
+    document.organization_id === intent.organizationId &&
+    document.document_type === intent.documentType &&
+    document.contact_id === intent.contactId &&
+    document.application_id === intent.applicationId &&
+    document.reservation_id === intent.reservationId &&
+    document.litter_id === intent.litterId &&
+    document.litter_group_id === intent.litterGroupId &&
+    document.animal_id === intent.animalId &&
+    document.payment_id === intent.paymentId &&
+    document.file_path === null &&
+    document.file_sha256 === null &&
+    document.file_size_bytes === null
   );
 }
 
@@ -311,18 +372,45 @@ export async function storeDocumentPdfCore(
 
   let version = 1;
   if (normalized.replacesDocumentId) {
-    const previous = await supabase
+    const existingSuccessor = await supabase
       .from("documents")
-      .select("id, organization_id, file_path, file_sha256, mime_type")
+      .select(
+        "id, organization_id, replaces_document_id, file_path, file_sha256, file_size_bytes, mime_type, deleted_at",
+      )
       .eq("organization_id", normalized.organizationId)
-      .eq("id", normalized.replacesDocumentId)
-      .is("deleted_at", null)
+      .eq("id", normalized.documentId)
       .maybeSingle();
-    if (previous.error || !previous.data) return error("not_found", "Previous PDF document not found.");
-    if (!isDocumentPdfMetadataCoherent(previous.data)) {
-      return error("incoherent_metadata", "Previous PDF metadata is incoherent.");
+    if (existingSuccessor.error) {
+      return error("database_error", existingSuccessor.error.message);
     }
-    version = parseDocumentPdfPath(previous.data.file_path!)!.version + 1;
+    if (
+      existingSuccessor.data &&
+      existingSuccessor.data.deleted_at === null &&
+      existingSuccessor.data.replaces_document_id === normalized.replacesDocumentId &&
+      isDocumentPdfMetadataCoherent(existingSuccessor.data)
+    ) {
+      version = parseDocumentPdfPath(existingSuccessor.data.file_path!)!.version;
+    } else {
+      const previous = await supabase
+        .from("documents")
+        .select(
+          "id, organization_id, document_type, contact_id, application_id, reservation_id, litter_id, litter_group_id, animal_id, payment_id, file_path, file_sha256, file_size_bytes, mime_type, deleted_at, superseded_at",
+        )
+        .eq("organization_id", normalized.organizationId)
+        .eq("id", normalized.replacesDocumentId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (previous.error || !previous.data) {
+        return error("not_found", "Previous PDF document not found.");
+      }
+      if (isDocumentPdfMetadataCoherent(previous.data)) {
+        version = parseDocumentPdfPath(previous.data.file_path!)!.version + 1;
+      } else if (isLegacyDocumentWithoutStoredPdf(previous.data, normalized)) {
+        version = 1;
+      } else {
+        return error("incoherent_metadata", "Previous PDF metadata is incoherent.");
+      }
+    }
   }
 
   const filePath = buildDocumentPdfPath(
