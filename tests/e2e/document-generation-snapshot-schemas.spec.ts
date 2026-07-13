@@ -307,3 +307,59 @@ test("snapshot schema rejects invalid stored scalar values", () => {
     ).toEqual({ success: false, error: "invalid_snapshot" });
   }
 });
+
+test("rejects internally inconsistent snapshot references", () => {
+  const firstId = "77777777-7777-4777-8777-777777777777";
+  const secondId = "88888888-8888-4888-8888-888888888888";
+  const inconsistentInputs: Array<
+    (input: BuildDocumentGenerationSnapshotInput) => void
+  > = [
+    (input) => {
+      input.sources.reservationId = firstId;
+    },
+    (input) => {
+      input.sources.litterId = firstId;
+      input.adoptionProject.litter = { id: secondId };
+    },
+    (input) => {
+      input.sources.litterId = firstId;
+      input.adoptionProject.litter = null;
+    },
+    (input) => {
+      input.sources.litterId = null;
+      input.adoptionProject.litter = { id: firstId };
+    },
+    (input) => {
+      input.sources.litterGroupId = firstId;
+      input.adoptionProject.litterGroup = { id: secondId };
+    },
+    (input) => {
+      input.sources.animalId = firstId;
+      input.adoptionProject.animal = null;
+    },
+    (input) => {
+      input.sources.animalId = firstId;
+      input.adoptionProject.animal = { id: secondId };
+    },
+  ];
+
+  for (const makeInconsistent of inconsistentInputs) {
+    const input = contractInput();
+    makeInconsistent(input);
+    expectBuildError(input, "invalid_source_data");
+  }
+
+  const validSnapshot = expectSuccessfulBuild(contractInput()).snapshot;
+  expect(
+    parseDocumentGenerationSnapshot({
+      documentType: "reservation_contract",
+      generationData: {
+        ...validSnapshot,
+        sources: {
+          ...validSnapshot.sources,
+          reservationId: firstId,
+        },
+      },
+    }),
+  ).toEqual({ success: false, error: "invalid_snapshot" });
+});

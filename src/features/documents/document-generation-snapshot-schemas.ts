@@ -170,6 +170,68 @@ const commonSnapshotShape = {
   signature: signatureDataSchema,
 };
 
+type CommonSnapshotConsistencyData = {
+  sources: z.infer<typeof businessSourcesSchema>;
+  adoptionProject: z.infer<typeof adoptionProjectSchema>;
+  reservation: z.infer<typeof reservationSchema>;
+};
+
+function validateNullableSnapshotReference(
+  sourceId: string | null,
+  photographedObject: { id: string } | null,
+  sourcePath: string,
+  objectPath: string,
+  context: z.RefinementCtx,
+) {
+  if (
+    (sourceId === null && photographedObject === null) ||
+    (sourceId !== null && photographedObject?.id === sourceId)
+  ) {
+    return;
+  }
+
+  context.addIssue({
+    code: "custom",
+    message: `Inconsistent ${sourcePath} and ${objectPath}`,
+    path: ["sources", sourcePath],
+  });
+}
+
+function validateCommonSnapshotConsistency(
+  snapshot: CommonSnapshotConsistencyData,
+  context: z.RefinementCtx,
+) {
+  if (snapshot.sources.reservationId !== snapshot.reservation.id) {
+    context.addIssue({
+      code: "custom",
+      message: "Inconsistent reservation identifiers",
+      path: ["sources", "reservationId"],
+    });
+  }
+
+  validateNullableSnapshotReference(
+    snapshot.sources.litterId,
+    snapshot.adoptionProject.litter,
+    "litterId",
+    "adoptionProject.litter.id",
+    context,
+  );
+  validateNullableSnapshotReference(
+    snapshot.sources.litterGroupId,
+    snapshot.adoptionProject.litterGroup,
+    "litterGroupId",
+    "adoptionProject.litterGroup.id",
+    context,
+  );
+  validateNullableSnapshotReference(
+    snapshot.sources.animalId,
+    snapshot.adoptionProject.animal,
+    "animalId",
+    "adoptionProject.animal.id",
+    context,
+  );
+}
+
 export const reservationContractGenerationSnapshotSchema = z
   .object({
     ...commonSnapshotShape,
@@ -177,14 +239,16 @@ export const reservationContractGenerationSnapshotSchema = z
     mediator: mediatorSchema,
     financials: financialsSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(validateCommonSnapshotConsistency);
 
 export const commitmentCertificateGenerationSnapshotSchema = z
   .object({
     ...commonSnapshotShape,
     documentType: z.literal("commitment_certificate"),
   })
-  .strict();
+  .strict()
+  .superRefine(validateCommonSnapshotConsistency);
 
 export const documentGenerationSnapshotSchema = z.discriminatedUnion(
   "documentType",
