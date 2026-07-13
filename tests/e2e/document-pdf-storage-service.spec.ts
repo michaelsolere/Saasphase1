@@ -300,6 +300,20 @@ test("returns created and existing for two strictly identical concurrent replace
       2,
       sha256(secondPdf),
     )!;
+    const successorObjectCountBeforeReplay = Number(
+      runE2eSqlSync(`
+        select count(*) from storage.objects
+        where bucket_id = 'documents'
+          and name like ${sqlQuote(
+            `organizations/${organizationId}/documents/${identicalReplacementSuccessorId}/%`,
+          )};
+      `),
+    );
+    expect(successorObjectCountBeforeReplay).toBe(1);
+
+    const sequentialReplay = await storeDocumentPdfCore(replacementInput, supabase);
+    expect(sequentialReplay.outcome).toBe("existing");
+
     expect(
       Number(
         runE2eSqlSync(`
@@ -337,7 +351,7 @@ test("returns created and existing for two strictly identical concurrent replace
             )};
         `),
       ),
-    ).toBe(1);
+    ).toBe(successorObjectCountBeforeReplay);
   } finally {
     await cleanup(supabase);
     expect(countDocumentFixtures()).toBe(0);

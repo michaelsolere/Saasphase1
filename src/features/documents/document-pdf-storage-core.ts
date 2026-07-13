@@ -317,11 +317,10 @@ export async function storeDocumentPdfCore(
       .eq("organization_id", normalized.organizationId)
       .eq("id", normalized.replacesDocumentId)
       .is("deleted_at", null)
-      .is("superseded_at", null)
       .maybeSingle();
-    if (previous.error || !previous.data) return error("not_found", "Current PDF document not found.");
+    if (previous.error || !previous.data) return error("not_found", "Previous PDF document not found.");
     if (!isDocumentPdfMetadataCoherent(previous.data)) {
-      return error("incoherent_metadata", "Current PDF metadata is incoherent.");
+      return error("incoherent_metadata", "Previous PDF metadata is incoherent.");
     }
     version = parseDocumentPdfPath(previous.data.file_path!)!.version + 1;
   }
