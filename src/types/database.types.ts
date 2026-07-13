@@ -826,6 +826,67 @@ export type Database = {
           },
         ]
       }
+      document_signed_returns: {
+        Row: {
+          created_at: string
+          created_by: string
+          document_id: string
+          file_path: string
+          file_sha256: string
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          organization_id: string
+          received_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          document_id: string
+          file_path: string
+          file_sha256: string
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          organization_id: string
+          received_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          document_id?: string
+          file_path?: string
+          file_sha256?: string
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          organization_id?: string
+          received_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_signed_returns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_signed_returns_document_organization_fk"
+            columns: ["organization_id", "document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "document_signed_returns_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_templates: {
         Row: {
           breed: string
@@ -3418,6 +3479,21 @@ export type Database = {
       }
     }
     Functions: {
+      archive_document_signed_return: {
+        Args: {
+          p_document_id: string
+          p_file_path: string
+          p_file_sha256: string
+          p_file_size_bytes: number
+          p_mime_type: string
+          p_organization_id: string
+          p_signed_return_id: string
+        }
+        Returns: {
+          outcome: string
+          signed_return_id: string
+        }[]
+      }
       archive_suspect_form_submission_without_application: {
         Args: { p_form_submission_id: string; p_internal_comment?: string }
         Returns: {
