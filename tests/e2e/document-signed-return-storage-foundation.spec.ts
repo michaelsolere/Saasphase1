@@ -52,6 +52,7 @@ const signedReturnIds = {
   wrongOrganization: "a3000000-0000-4000-8000-000000000007",
   invalid: "a3000000-0000-4000-8000-000000000008",
   oversized: "a3000000-0000-4000-8000-000000000009",
+  rpcConflict: "a3000000-0000-4000-8000-000000000010",
 } as const;
 
 const sentOriginalPdf = Buffer.from("%PDF-1.7\nsent original immutable bytes\n%%EOF\n");
@@ -270,6 +271,110 @@ test("validates signed-return PDF signatures and strict dedicated paths", () => 
     fileSha256: sha256(signedPdf),
   });
   expect(parseDocumentSignedReturnPath(path!.replace("signed-returns", "v1"))).toBeNull();
+});
+
+test("compensates a new upload when a thrown RPC reconciles to a conflicting row", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  await cleanup(supabase);
+
+  try {
+    insertRelationalFixtures();
+    await storeOriginals(supabase);
+
+    const conflictPath = buildDocumentSignedReturnPath(
+      organizationId,
+      documentIds.manualSigned,
+      signedReturnIds.rpcConflict,
+      sha256(differentSignedPdf),
+    )!;
+    const conflictUpload = await supabase.storage
+      .from(bucket)
+      .upload(conflictPath, differentSignedPdf, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+    expect(conflictUpload.error).toBeNull();
+
+    runE2eSqlSync(`
+      insert into public.document_signed_returns (
+        id, organization_id, document_id, file_path, file_sha256,
+        file_size_bytes, mime_type, created_by
+      ) values (
+        '${signedReturnIds.rpcConflict}',
+        '${organizationId}',
+        '${documentIds.manualSigned}',
+        ${quote(conflictPath)},
+        '${sha256(differentSignedPdf)}',
+        ${differentSignedPdf.byteLength},
+        'application/pdf',
+        '${userId}'
+      );
+    `);
+
+    const conflictRowBefore = runE2eSqlSync(`
+      select to_jsonb(r)::text
+      from public.document_signed_returns r
+      where id = '${signedReturnIds.rpcConflict}';
+    `);
+    const originalBefore = runE2eSqlSync(`
+      select to_jsonb(d)::text
+      from public.documents d
+      where id = '${documentIds.sent}';
+    `);
+    const attemptedPath = buildDocumentSignedReturnPath(
+      organizationId,
+      documentIds.sent,
+      signedReturnIds.rpcConflict,
+      sha256(signedPdf),
+    )!;
+    const throwingRpcSupabase = new Proxy(supabase, {
+      get(target, property) {
+        if (property === "rpc") {
+          return async () => {
+            throw new Error("simulated RPC transport failure");
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+
+    const result = await archiveDocumentSignedReturnCore(
+      {
+        organizationId,
+        documentId: documentIds.sent,
+        signedReturnId: signedReturnIds.rpcConflict,
+        bytes: signedPdf,
+      },
+      throwingRpcSupabase,
+      { error() {} },
+    );
+
+    expect(result).toMatchObject({ outcome: "error", error: { code: "database_error" } });
+    expect(Number(runE2eSqlSync(`
+      select count(*)
+      from storage.objects
+      where bucket_id = 'documents' and name = ${quote(attemptedPath)};
+    `))).toBe(0);
+    expect(Number(runE2eSqlSync(`
+      select count(*)
+      from storage.objects
+      where bucket_id = 'documents' and name = ${quote(conflictPath)};
+    `))).toBe(1);
+    expect(runE2eSqlSync(`
+      select to_jsonb(r)::text
+      from public.document_signed_returns r
+      where id = '${signedReturnIds.rpcConflict}';
+    `)).toBe(conflictRowBefore);
+    expect(runE2eSqlSync(`
+      select to_jsonb(d)::text
+      from public.documents d
+      where id = '${documentIds.sent}';
+    `)).toBe(originalBefore);
+  } finally {
+    await cleanup(supabase);
+    expect(countAllFixtures()).toBe(0);
+  }
 });
 
 test("archives, signs atomically, preserves originals, rejects conflicts and cleans every fixture", async () => {

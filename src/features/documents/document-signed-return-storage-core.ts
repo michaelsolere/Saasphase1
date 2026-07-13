@@ -316,7 +316,10 @@ export async function archiveDocumentSignedReturnCore(
         fileSizeBytes: pdf.fileSizeBytes,
       };
     }
-    if (!duplicateUpload && reconciliation.outcome === "absent") {
+    if (
+      !duplicateUpload &&
+      (reconciliation.outcome === "absent" || reconciliation.outcome === "conflict")
+    ) {
       const compensated = await compensate(supabase, filePath, logger);
       if (compensated) return compensated;
     }
