@@ -148,7 +148,7 @@ function replayResult(
     document.template_id !== input.templateId ||
     !document.generated_from_template ||
     document.deleted_at !== null ||
-    document.status !== "generated" ||
+    !["generated", "sent", "signed"].includes(document.status) ||
     !document.signature_required ||
     !document.title.trim() ||
     document.file_name !== `${document.file_sha256}.pdf` ||

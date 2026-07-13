@@ -268,6 +268,50 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
       sql(`select superseded_at is not null from public.documents where id = ${q(ids.legacy)}::uuid;`),
     ).toBe("t");
 
+    const lifecycleReplayDependencies: GenerateAndStoreReservationDocumentPdfDependencies = {
+      prepare: async () => { throw new Error("prepare must not run during lifecycle replay"); },
+      render: async () => { throw new Error("render must not run during lifecycle replay"); },
+      store: async () => { throw new Error("store must not run during lifecycle replay"); },
+    };
+    const lifecycleRows = count("documents");
+    const lifecyclePaths = await storagePaths();
+    sql(`update public.documents set status = 'sent', sent_at = '2026-07-13T12:30:00Z' where id = ${q(ids.contractV1)}::uuid;`);
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        contractInput(ids.contractV1),
+        supabase,
+        lifecycleReplayDependencies,
+      ),
+    ).toEqual({ ...contractV1, outcome: "existing" });
+    expect(count("documents")).toBe(lifecycleRows);
+    expect(await storagePaths()).toEqual(lifecyclePaths);
+    expect(
+      sql(`select status || '|' || sent_at::text from public.documents where id = ${q(ids.contractV1)}::uuid;`),
+    ).toBe("sent|2026-07-13 12:30:00+00");
+
+    sql(`update public.documents set status = 'signed', signed_at = '2026-07-13T12:45:00Z' where id = ${q(ids.contractV1)}::uuid;`);
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        contractInput(ids.contractV1),
+        supabase,
+        lifecycleReplayDependencies,
+      ),
+    ).toEqual({ ...contractV1, outcome: "existing" });
+    expect(count("documents")).toBe(lifecycleRows);
+    expect(await storagePaths()).toEqual(lifecyclePaths);
+    expect(
+      sql(`select status || '|' || sent_at::text || '|' || signed_at::text from public.documents where id = ${q(ids.contractV1)}::uuid;`),
+    ).toBe("signed|2026-07-13 12:30:00+00|2026-07-13 12:45:00+00");
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        contractInput(ids.contractV1, laterCapturedAt),
+        supabase,
+        lifecycleReplayDependencies,
+      ),
+    ).toEqual({ outcome: "error", error: { stage: "input", code: "document_id_conflict" } });
+    expect(count("documents")).toBe(lifecycleRows);
+    expect(await storagePaths()).toEqual(lifecyclePaths);
+
     const certificate = await generateAndStoreReservationDocumentPdfCore(
       certificateInput(ids.certificateV1),
       supabase,
