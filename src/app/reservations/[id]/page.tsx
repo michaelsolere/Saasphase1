@@ -45,9 +45,6 @@ import { ReservationAppointmentDialog } from "@/features/reservations/appointmen
 import { ReservationPaymentForm } from "@/features/payments/reservation-payment-form";
 import { ReservationRefundForm } from "@/features/payments/reservation-refund-form";
 import {
-  initializeReservationDocuments,
-} from "@/features/documents/actions";
-import {
   formatPrice,
   getPreReservationDepositBadgeClassName,
   getPreReservationDepositLabel,
@@ -71,6 +68,7 @@ import {
 } from "@/features/reservations/document-confirm-dialog";
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
+import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -96,6 +94,7 @@ type ReservationSearchParams = {
   litter_attach_status?: string;
   balance_request_status?: string;
   document_action_status?: string;
+  document_generation_status?: string;
   note_status?: string;
   scope_sync_status?: string;
   appointment_status?: string;
@@ -861,6 +860,25 @@ function ReservationStatusMessages({
       className: errorStatusMessageClassName,
       message:
         "Le lot de documents contractuels est incomplet : le certificat d’engagement et le contrat de réservation doivent tous les deux être liés avant de valider l’action groupée.",
+    },
+    {
+      when: query.document_generation_status === "created",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Le PDF a bien été généré et enregistré.",
+    },
+    {
+      when: query.document_generation_status === "existing",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "Cette demande avait déjà été traitée. Aucun doublon n’a été créé.",
+    },
+    {
+      when: query.document_generation_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le PDF n’a pas pu être généré. Vérifiez le modèle et les données du dossier, puis réessayez.",
     },
     {
       when: query.note_status === "success",
@@ -2104,14 +2122,11 @@ export default async function ReservationDetailPage({
         .select("id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, file_name, signature_required")
         .eq("reservation_id", reservation.id)
         .is("deleted_at", null)
+        .is("superseded_at", null)
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
   const reservationDocuments = rawDocuments as RelatedDocument[] | null;
-
-  const hasCommitmentDoc = reservationDocuments?.some((d) => d.document_type === "commitment_certificate") ?? false;
-  const hasContractDoc = reservationDocuments?.some((d) => d.document_type === "reservation_contract") ?? false;
-  const needsDocInitialization = !hasCommitmentDoc || !hasContractDoc;
 
   // Fetch read-only post-adoption follow-up events.
   const { data: rawPostAdoptionEvents, error: postAdoptionEventsError } =
@@ -3329,31 +3344,19 @@ export default async function ReservationDetailPage({
                             </div>
                           ) : null}
 
-                          {hasFirstPaid && needsDocInitialization ? (
-                            <form
-                              action={initializeReservationDocuments}
-                              className="border-t mt-6 pt-6"
-                            >
-                              <input
-                                type="hidden"
-                                name="reservation_id"
-                                value={id}
-                              />
+                          {hasFirstPaid ? (
+                            <div className="border-t mt-6 pt-6">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Le versement de pré-réservation est validé. Vous pouvez maintenant initialiser la checklist des documents contractuels attendus (Certificat d’engagement et de connaissance, Contrat de réservation).
+                                Le versement de pré-réservation est validé. Vous
+                                pouvez maintenant générer les PDF contractuels
+                                depuis la section Documents liés.
                               </p>
-                              <button
-                                type="submit"
+                              <a
+                                href="#documents"
                                 className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                               >
-                                Initialiser les documents contractuels
-                              </button>
-                            </form>
-                          ) : hasFirstPaid ? (
-                            <div className="border-t mt-6 pt-6">
-                              <p className="text-xs text-muted">
-                                Documents contractuels initialisés. Retrouvez le suivi d&apos;avancement des signatures dans la section &quot;Documents liés&quot; ci-dessous.
-                              </p>
+                                Générer les documents contractuels
+                              </a>
                             </div>
                           ) : null}
                         </div>
@@ -4304,6 +4307,8 @@ export default async function ReservationDetailPage({
                   <h2 className="text-xl font-semibold mb-6">
                     Documents liés
                   </h2>
+
+                  <ReservationDocumentGenerationSection reservationId={id} />
 
                   <div className="mb-6 rounded-xl border bg-background p-4">
                     <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
