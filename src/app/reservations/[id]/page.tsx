@@ -148,7 +148,6 @@ type RelatedDocument = {
   sent_at: string | null;
   signed_at: string | null;
   received_at: string | null;
-  file_name: string | null;
   signature_required: boolean;
 };
 
@@ -2119,7 +2118,7 @@ export default async function ReservationDetailPage({
   const { data: rawDocuments, error: documentsError } = reservation?.id
     ? await supabase
         .from("documents")
-        .select("id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, file_name, signature_required")
+        .select("id, title, document_type, status, created_at, updated_at, sent_at, signed_at, received_at, signature_required")
         .eq("reservation_id", reservation.id)
         .is("deleted_at", null)
         .is("superseded_at", null)
@@ -4460,9 +4459,6 @@ export default async function ReservationDetailPage({
                                   Créé le : {formatApplicationDate(document.created_at)}
                                 </p>
                               ) : null}
-                              <p className="text-xs text-muted">
-                                Fichier : {document.file_name || "Non renseigné"}
-                              </p>
                               <p className="text-xs text-muted">
                                 Signature requise :{" "}
                                 {getSignatureRequiredLabel(
