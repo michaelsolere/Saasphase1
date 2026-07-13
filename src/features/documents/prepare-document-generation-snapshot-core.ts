@@ -38,6 +38,7 @@ export type PrepareDocumentGenerationSnapshotResult =
       outcome: "success";
       snapshot: DocumentGenerationSnapshot;
       templateDefinition: DocumentTemplateDefinition;
+      templateContent: string;
       templateId: string;
       templateVersion: number;
     }
@@ -301,6 +302,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     outcome: "success",
     snapshot: built.snapshot,
     templateDefinition: built.templateDefinition,
+    templateContent: template.template_content!,
     templateId: template.id,
     templateVersion: template.version,
   };
