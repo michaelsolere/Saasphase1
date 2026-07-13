@@ -1863,7 +1863,8 @@ async function createChoiceAppointmentsTraceForReservation({
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservation.id)
     .in("document_type", ["commitment_certificate", "reservation_contract"])
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (documentsError || !documents) {
     return { outcome: "error" };

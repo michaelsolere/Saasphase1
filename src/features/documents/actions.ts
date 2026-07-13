@@ -69,7 +69,8 @@ async function readReservationForDocumentBundle(reservationId: string) {
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
     .in("document_type", reservationBundleDocumentTypes)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (documentsError || !documents) {
     redirect(getReservationBundleRedirectPath(reservationId, "error"));
@@ -155,7 +156,8 @@ export async function initializeReservationDocuments(formData: FormData) {
     .select("id, document_type")
     .eq("reservation_id", reservationId)
     .in("document_type", ["commitment_certificate", "reservation_contract"])
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (docsError || !existingDocs) {
     redirect(`/reservations/${reservationId}?document_action_status=error#documents`);
@@ -262,6 +264,7 @@ export async function markDocumentAsSent(formData: FormData) {
     .select("id, organization_id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
+    .is("superseded_at", null)
     .maybeSingle();
 
   if (readError || !document) {
@@ -291,7 +294,9 @@ export async function markDocumentAsSent(formData: FormData) {
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
     .eq("status", "to_generate")
-    .in("document_type", actionableReservationDocumentTypes);
+    .in("document_type", actionableReservationDocumentTypes)
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (updateError) {
     redirect(getDocumentActionRedirectPath(formData, documentId, reservationId, "error"));
@@ -344,6 +349,7 @@ export async function markDocumentAsSigned(formData: FormData) {
     .select("id, organization_id, status, reservation_id, document_type")
     .eq("id", documentId)
     .is("deleted_at", null)
+    .is("superseded_at", null)
     .maybeSingle();
 
   if (readError || !document) {
@@ -373,7 +379,9 @@ export async function markDocumentAsSigned(formData: FormData) {
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
     .eq("status", "sent")
-    .in("document_type", actionableReservationDocumentTypes);
+    .in("document_type", actionableReservationDocumentTypes)
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (updateError) {
     redirect(getDocumentActionRedirectPath(formData, documentId, reservationId, "error"));
@@ -409,7 +417,9 @@ export async function markReservationDocumentsAsSent(formData: FormData) {
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
     .in("document_type", reservationBundleDocumentTypes)
-    .neq("status", "signed");
+    .neq("status", "signed")
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (updateError) {
     redirect(getReservationBundleRedirectPath(reservationId, "error"));
@@ -443,7 +453,9 @@ export async function markReservationDocumentsAsSigned(formData: FormData) {
     })
     .eq("organization_id", reservation.organization_id)
     .eq("reservation_id", reservationId)
-    .in("document_type", reservationBundleDocumentTypes);
+    .in("document_type", reservationBundleDocumentTypes)
+    .is("deleted_at", null)
+    .is("superseded_at", null);
 
   if (updateError) {
     redirect(getReservationBundleRedirectPath(reservationId, "error"));

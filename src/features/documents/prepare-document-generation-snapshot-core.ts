@@ -6,6 +6,10 @@ import type {
   DocumentGenerationSnapshot,
   DocumentGenerationSnapshotType,
 } from "./document-generation-snapshot-schemas";
+import {
+  isReservationDocumentTemplateCompatible,
+  resolveEffectiveReservationDocumentTaxonomy,
+} from "./reservation-document-template-compatibility";
 import { readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
 import type { Database } from "@/types/database.types";
 
@@ -57,10 +61,6 @@ function normalizeUuid(value: unknown) {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
   return UUID_PATTERN.test(normalized) ? normalized : null;
-}
-
-function normalizeTaxonomy(value: string) {
-  return value.trim().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("fr-FR");
 }
 
 function validInput(input: PrepareDocumentGenerationSnapshotInput) {
@@ -190,15 +190,16 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   }
 
   if (!template || !template.is_active || template.deleted_at !== null) return fail("template_not_found");
-  if (template.template_format !== "json" || template.document_type !== input.documentType) {
-    return fail("template_mismatch");
-  }
 
-  const species = animal?.species ?? litter?.species ?? application?.species;
-  const breed = animal?.breed ?? litter?.breed ?? application?.breed;
-  if (!organization?.name?.trim() || !contact?.display_name?.trim() || !species?.trim() || !breed?.trim()) {
+  const taxonomy = resolveEffectiveReservationDocumentTaxonomy({
+    animal,
+    litter,
+    application,
+  });
+  if (!organization?.name?.trim() || !contact?.display_name?.trim() || !taxonomy) {
     return fail("incomplete_source_data");
   }
+  const { species, breed } = taxonomy;
   if (
     !reservation.status ||
     !reservation.created_at ||
@@ -210,8 +211,11 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     return fail("incomplete_source_data");
   }
   if (
-    normalizeTaxonomy(template.species) !== normalizeTaxonomy(species) ||
-    normalizeTaxonomy(template.breed) !== normalizeTaxonomy(breed)
+    !isReservationDocumentTemplateCompatible({
+      template,
+      documentType: input.documentType,
+      taxonomy,
+    })
   ) {
     return fail("template_mismatch");
   }
