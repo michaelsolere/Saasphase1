@@ -3493,6 +3493,36 @@ export type Database = {
         Args: { other_profile_id: string }
         Returns: boolean
       }
+      store_document_pdf_version: {
+        Args: {
+          p_animal_id?: string | null
+          p_application_id?: string | null
+          p_contact_id?: string | null
+          p_document_id: string
+          p_document_type: string
+          p_file_path: string
+          p_file_sha256: string
+          p_file_size_bytes: number
+          p_generated_at?: string | null
+          p_generated_from_template?: boolean
+          p_generation_data?: Json
+          p_litter_group_id?: string | null
+          p_litter_id?: string | null
+          p_organization_id: string
+          p_payment_id?: string | null
+          p_replaces_document_id: string | null
+          p_reservation_id?: string | null
+          p_signature_required?: boolean
+          p_source_template_version?: number | null
+          p_template_id?: string | null
+          p_title: string
+          p_version: number
+        }
+        Returns: {
+          document_id: string
+          outcome: string
+        }[]
+      }
       submit_public_application: {
         Args: {
           p_address_line1?: string
