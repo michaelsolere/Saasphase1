@@ -126,7 +126,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   const contactId = reservation.contact_id;
   if (!organizationId || !contactId) return fail("incomplete_source_data");
 
-  const [organizationResult, contactResult, applicationResult, litterResult, groupResult, animalResult, signerResult, documentSettingsResult, templateResult] = await Promise.all([
+  const [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult, templateResult] = await Promise.all([
     supabase.from("organizations").select("id, name, legal_name, legal_form, siret, email, phone, website_url, address_line1, address_line2, postal_code, city, country").eq("id", organizationId).is("deleted_at", null).maybeSingle(),
     supabase.from("contacts").select("id, display_name, first_name, last_name, email, phone, address_line1, address_line2, postal_code, city, country").eq("organization_id", organizationId).eq("id", contactId).is("deleted_at", null).maybeSingle(),
     reservation.application_id
@@ -134,9 +134,6 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       : Promise.resolve({ data: null, error: null }),
     reservation.litter_id
       ? supabase.from("litters").select("id, name, species, breed, actual_birth_date, litter_group_id").eq("organization_id", organizationId).eq("id", reservation.litter_id).is("deleted_at", null).maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    reservation.litter_group_id
-      ? supabase.from("litter_groups").select("id, name, species").eq("organization_id", organizationId).eq("id", reservation.litter_group_id).is("deleted_at", null).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     reservation.animal_id
       ? supabase.from("animals").select("id, official_name, call_name, species, breed, sex, birth_date, identification_number, lof_number").eq("organization_id", organizationId).eq("id", reservation.animal_id).is("deleted_at", null).maybeSingle()
@@ -146,7 +143,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     supabase.from("document_templates").select("id, document_type, species, breed, template_format, template_content, version, is_active, deleted_at").eq("organization_id", organizationId).eq("id", templateId).maybeSingle(),
   ]);
 
-  const reads = [organizationResult, contactResult, applicationResult, litterResult, groupResult, animalResult, signerResult, documentSettingsResult, templateResult];
+  const reads = [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult, templateResult];
   const readError = reads.find((result) => result.error)?.error;
   if (readError) return databaseFailure("document_snapshot_source_read_failed", readError);
 
@@ -154,9 +151,42 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   const contact = contactResult.data;
   const application = applicationResult.data;
   const litter = litterResult.data;
-  const litterGroup = groupResult.data;
   const animal = animalResult.data;
   const template = templateResult.data;
+
+  if (
+    (reservation.application_id && !application) ||
+    (reservation.litter_id && !litter) ||
+    (reservation.animal_id && !animal)
+  ) {
+    return fail("incomplete_source_data");
+  }
+  if (
+    reservation.litter_group_id &&
+    litter?.litter_group_id &&
+    reservation.litter_group_id !== litter.litter_group_id
+  ) {
+    return fail("incomplete_source_data");
+  }
+
+  const effectiveLitterGroupId =
+    reservation.litter_group_id ?? litter?.litter_group_id ?? null;
+  const groupResult = effectiveLitterGroupId
+    ? await supabase
+        .from("litter_groups")
+        .select("id, name, species")
+        .eq("organization_id", organizationId)
+        .eq("id", effectiveLitterGroupId)
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null, error: null };
+  if (groupResult.error) {
+    return databaseFailure("document_snapshot_litter_group_read_failed", groupResult.error);
+  }
+  const litterGroup = groupResult.data;
+  if (effectiveLitterGroupId && !litterGroup) {
+    return fail("incomplete_source_data");
+  }
 
   if (!template || !template.is_active || template.deleted_at !== null) return fail("template_not_found");
   if (template.template_format !== "json" || template.document_type !== input.documentType) {

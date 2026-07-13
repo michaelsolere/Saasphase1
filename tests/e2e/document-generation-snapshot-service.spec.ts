@@ -34,6 +34,7 @@ const ids = {
   viewerUser: "9a140000-0000-4000-8000-000000000021",
   viewerIdentity: "9a140000-0000-4000-8000-000000000022",
   viewerMembership: "9a140000-0000-4000-8000-000000000023",
+  conflictingGroup: "9a140000-0000-4000-8000-000000000024",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -108,7 +109,8 @@ function seed() {
     insert into public.contacts (id, organization_id, display_name, first_name, last_name, email, phone, address_line1, postal_code, city, country)
     values (${q(ids.contact)}, ${q(ids.organization)}, 'Camille Snapshot', 'Camille', 'Snapshot', 'adopter@example.invalid', '+33601020304', '2 rue Test', '69001', 'Lyon', 'FR');
     insert into public.litter_groups (id, organization_id, name, species)
-    values (${q(ids.group)}, ${q(ids.organization)}, 'Groupe Automne QA', 'dog');
+    values (${q(ids.group)}, ${q(ids.organization)}, 'Groupe Automne QA', 'dog'),
+           (${q(ids.conflictingGroup)}, ${q(ids.organization)}, 'Groupe Concurrent QA', 'dog');
     insert into public.applications (id, organization_id, contact_id, species, breed, desired_sex_preference)
     values (${q(ids.application)}, ${q(ids.organization)}, ${q(ids.contact)}, 'dog', 'Golden Retriever', 'female_only');
     insert into public.litters (id, organization_id, litter_group_id, name, species, breed, actual_birth_date)
@@ -179,6 +181,65 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     expect(certificate.snapshot).not.toHaveProperty("mediator");
     expect(certificate.snapshot.adoptionProject).toMatchObject({ litter: { id: ids.litter }, animal: { id: ids.animal, callName: "Nova", identification: "250269000000001" } });
     expect(certificate.templateVersion).toBe(9);
+
+    const expectIncompleteAfterMutation = async (
+      mutation: string,
+      restore: string,
+    ) => {
+      sql(mutation);
+      try {
+        expect(
+          await prepareDocumentGenerationSnapshotForReservationCore({
+            reservationId: ids.animalReservation,
+            documentType: "commitment_certificate",
+            templateId: ids.certificateTemplate,
+            capturedAt,
+          }, supabase),
+        ).toEqual({ outcome: "error", error: { code: "incomplete_source_data" } });
+      } finally {
+        sql(restore);
+      }
+    };
+
+    await expectIncompleteAfterMutation(
+      `update public.applications set deleted_at = now() where id = ${q(ids.application)}::uuid;`,
+      `update public.applications set deleted_at = null where id = ${q(ids.application)}::uuid;`,
+    );
+    await expectIncompleteAfterMutation(
+      `update public.litters set deleted_at = now() where id = ${q(ids.litter)}::uuid;`,
+      `update public.litters set deleted_at = null where id = ${q(ids.litter)}::uuid;`,
+    );
+    await expectIncompleteAfterMutation(
+      `update public.animals set deleted_at = now() where id = ${q(ids.animal)}::uuid;`,
+      `update public.animals set deleted_at = null where id = ${q(ids.animal)}::uuid;`,
+    );
+    await expectIncompleteAfterMutation(
+      `update public.litter_groups set deleted_at = now() where id = ${q(ids.group)}::uuid;`,
+      `update public.litter_groups set deleted_at = null where id = ${q(ids.group)}::uuid;`,
+    );
+    await expectIncompleteAfterMutation(
+      `update public.reservations set litter_group_id = ${q(ids.conflictingGroup)}::uuid where id = ${q(ids.animalReservation)}::uuid;`,
+      `update public.reservations set litter_group_id = ${q(ids.group)}::uuid where id = ${q(ids.animalReservation)}::uuid;`,
+    );
+
+    sql(`update public.reservations set litter_group_id = null where id = ${q(ids.animalReservation)}::uuid;`);
+    try {
+      const inheritedGroup = await prepareDocumentGenerationSnapshotForReservationCore({
+        reservationId: ids.animalReservation,
+        documentType: "commitment_certificate",
+        templateId: ids.certificateTemplate,
+        capturedAt,
+      }, supabase);
+      expect(inheritedGroup.outcome).toBe("success");
+      if (inheritedGroup.outcome !== "success") throw new Error("Expected inherited litter group snapshot");
+      expect(inheritedGroup.snapshot.sources.litterGroupId).toBe(ids.group);
+      expect(inheritedGroup.snapshot.adoptionProject.litterGroup).toEqual({
+        id: ids.group,
+        name: "Groupe Automne QA",
+      });
+    } finally {
+      sql(`update public.reservations set litter_group_id = ${q(ids.group)}::uuid where id = ${q(ids.animalReservation)}::uuid;`);
+    }
 
     expect(await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: "00000000-0000-4000-8000-000000000404", documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase)).toEqual({ outcome: "error", error: { code: "reservation_not_found" } });
     expect(await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.incompleteReservation, documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase)).toEqual({ outcome: "error", error: { code: "incomplete_source_data" } });
