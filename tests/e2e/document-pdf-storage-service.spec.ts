@@ -28,7 +28,15 @@ const concurrentDocumentIds = [
   "e1000000-0000-4000-8000-000000000003",
   "e1000000-0000-4000-8000-000000000004",
 ];
-const allDocumentIds = [firstDocumentId, secondDocumentId, ...concurrentDocumentIds];
+const identicalReplacementInitialId = "e1000000-0000-4000-8000-000000000005";
+const identicalReplacementSuccessorId = "e1000000-0000-4000-8000-000000000006";
+const allDocumentIds = [
+  firstDocumentId,
+  secondDocumentId,
+  ...concurrentDocumentIds,
+  identicalReplacementInitialId,
+  identicalReplacementSuccessorId,
+];
 
 const firstPdf = new TextEncoder().encode("%PDF-1.7\nfirst private document\n%%EOF");
 const secondPdf = Buffer.from("%PDF-1.7\nsecond private document\n%%EOF");
@@ -242,6 +250,94 @@ test("stores, replays, versions, arbitrates concurrency, reads and cleans privat
     expect(
       await createDocumentPdfSignedUrlCore(otherOrganizationId, secondDocumentId, 60, supabase),
     ).toMatchObject({ outcome: "error", error: { code: "forbidden" } });
+  } finally {
+    await cleanup(supabase);
+    expect(countDocumentFixtures()).toBe(0);
+    expect(countStorageFixtures()).toBe(0);
+  }
+});
+
+test("returns created and existing for two strictly identical concurrent replacements", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  await cleanup(supabase);
+
+  try {
+    const initial = await storeDocumentPdfCore(
+      {
+        organizationId,
+        documentId: identicalReplacementInitialId,
+        bytes: firstPdf,
+        documentType: "other",
+        title: "QA identical replacement initial PDF",
+      },
+      supabase,
+    );
+    expect(initial.outcome).toBe("created");
+    if (initial.outcome === "error") throw new Error(initial.error.message);
+
+    const replacementInput = {
+      organizationId,
+      documentId: identicalReplacementSuccessorId,
+      replacesDocumentId: identicalReplacementInitialId,
+      bytes: secondPdf,
+      documentType: "other",
+      title: "QA identical concurrent replacement PDF",
+      generationData: { source: "identical-concurrency-e2e" },
+      signatureRequired: true,
+    } as const;
+    const results = await Promise.all([
+      storeDocumentPdfCore(replacementInput, supabase),
+      storeDocumentPdfCore(replacementInput, supabase),
+    ]);
+
+    expect(results.filter((result) => result.outcome === "created")).toHaveLength(1);
+    expect(results.filter((result) => result.outcome === "existing")).toHaveLength(1);
+    expect(results.filter((result) => result.outcome === "error")).toHaveLength(0);
+
+    const successorPath = buildDocumentPdfPath(
+      organizationId,
+      identicalReplacementSuccessorId,
+      2,
+      sha256(secondPdf),
+    )!;
+    expect(
+      Number(
+        runE2eSqlSync(`
+          select count(*) from public.documents
+          where id = ${sqlQuote(identicalReplacementSuccessorId)}::uuid
+            and replaces_document_id = ${sqlQuote(identicalReplacementInitialId)}::uuid;
+        `),
+      ),
+    ).toBe(1);
+    expect(
+      Number(
+        runE2eSqlSync(`
+          select count(*) from public.documents
+          where id = ${sqlQuote(identicalReplacementInitialId)}::uuid
+            and superseded_at is not null;
+        `),
+      ),
+    ).toBe(1);
+    expect(
+      Number(
+        runE2eSqlSync(`
+          select count(*) from storage.objects
+          where bucket_id = 'documents'
+            and name = ${sqlQuote(successorPath)};
+        `),
+      ),
+    ).toBe(1);
+    expect(
+      Number(
+        runE2eSqlSync(`
+          select count(*) from storage.objects
+          where bucket_id = 'documents'
+            and name like ${sqlQuote(
+              `organizations/${organizationId}/documents/${identicalReplacementSuccessorId}/%`,
+            )};
+        `),
+      ),
+    ).toBe(1);
   } finally {
     await cleanup(supabase);
     expect(countDocumentFixtures()).toBe(0);

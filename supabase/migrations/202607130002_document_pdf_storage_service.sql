@@ -64,9 +64,26 @@ begin
       using errcode = '23514';
   end if;
 
-  select d.* into v_existing
-  from public.documents d
-  where d.id = p_document_id;
+  if p_replaces_document_id is null then
+    select d.* into v_existing
+    from public.documents d
+    where d.id = p_document_id;
+  else
+    select d.* into v_previous
+    from public.documents d
+    where d.organization_id = p_organization_id
+      and d.id = p_replaces_document_id
+    for update;
+
+    if not found then
+      raise exception 'Previous PDF document not found'
+        using errcode = 'P0002';
+    end if;
+
+    select d.* into v_existing
+    from public.documents d
+    where d.id = p_document_id;
+  end if;
 
   if found then
     if v_existing.organization_id = p_organization_id
@@ -106,17 +123,6 @@ begin
         using errcode = '23514';
     end if;
   else
-    select d.* into v_previous
-    from public.documents d
-    where d.organization_id = p_organization_id
-      and d.id = p_replaces_document_id
-    for update;
-
-    if not found then
-      raise exception 'Previous PDF document not found'
-        using errcode = 'P0002';
-    end if;
-
     if v_previous.deleted_at is not null
       or v_previous.superseded_at is not null
       or v_previous.document_type <> p_document_type
