@@ -887,7 +887,7 @@ export type Database = {
           },
         ]
       }
-      document_templates: {
+      document_template_families: {
         Row: {
           breed: string
           created_at: string
@@ -896,9 +896,81 @@ export type Database = {
           description: string | null
           document_type: string
           id: string
-          is_active: boolean
           name: string
           organization_id: string
+          species: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          document_type: string
+          id?: string
+          name: string
+          organization_id: string
+          species?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          document_type?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          species?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_template_families_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_template_families_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_template_families_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      document_templates: {
+        Row: {
+          breed: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          document_type: string
+          family_id: string
+          id: string
+          is_active: boolean
+          lifecycle_status: string
+          name: string
+          organization_id: string
+          publication_metadata_is_legacy: boolean
+          published_at: string | null
+          published_by: string | null
           species: string
           template_content: string | null
           template_format: string
@@ -913,10 +985,15 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           document_type: string
+          family_id: string
           id?: string
           is_active?: boolean
+          lifecycle_status?: string
           name: string
           organization_id: string
+          publication_metadata_is_legacy?: boolean
+          published_at?: string | null
+          published_by?: string | null
           species?: string
           template_content?: string | null
           template_format?: string
@@ -931,10 +1008,15 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           document_type?: string
+          family_id?: string
           id?: string
           is_active?: boolean
+          lifecycle_status?: string
           name?: string
           organization_id?: string
+          publication_metadata_is_legacy?: boolean
+          published_at?: string | null
+          published_by?: string | null
           species?: string
           template_content?: string | null
           template_format?: string
@@ -951,10 +1033,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "document_templates_family_taxonomy_fk"
+            columns: [
+              "organization_id",
+              "family_id",
+              "document_type",
+              "species",
+              "breed",
+            ]
+            isOneToOne: false
+            referencedRelation: "document_template_families"
+            referencedColumns: [
+              "organization_id",
+              "id",
+              "document_type",
+              "species",
+              "breed",
+            ]
+          },
+          {
             foreignKeyName: "document_templates_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_templates_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1181,11 +1289,15 @@ export type Database = {
             referencedColumns: ["organization_id", "id"]
           },
           {
-            foreignKeyName: "documents_template_organization_fk"
-            columns: ["organization_id", "template_id"]
+            foreignKeyName: "documents_template_exact_fk"
+            columns: [
+              "organization_id",
+              "template_id",
+              "source_template_version",
+            ]
             isOneToOne: false
             referencedRelation: "document_templates"
-            referencedColumns: ["organization_id", "id"]
+            referencedColumns: ["organization_id", "id", "version"]
           },
           {
             foreignKeyName: "documents_updated_by_fkey"
@@ -3509,6 +3621,14 @@ export type Database = {
         }
         Returns: string
       }
+      create_document_template_draft: {
+        Args: {
+          p_family_id: string
+          p_template_content?: string
+          p_template_format?: string
+        }
+        Returns: string
+      }
       create_organization_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: string
@@ -3550,6 +3670,10 @@ export type Database = {
           reservation_id: string
           reservation_updated: boolean
         }[]
+      }
+      publish_document_template_version: {
+        Args: { p_template_id: string }
+        Returns: string
       }
       resolve_suspect_form_submission_existing_contact: {
         Args: { p_contact_id: string; p_form_submission_id: string }

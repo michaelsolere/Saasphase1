@@ -93,6 +93,7 @@ function cleanupRows() {
     delete from public.payments where organization_id = ${q(ids.organization)}::uuid;
     delete from public.reservations where organization_id = ${q(ids.organization)}::uuid;
     delete from public.document_templates where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.document_template_families where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.applications where organization_id = ${q(ids.organization)}::uuid;
@@ -139,10 +140,15 @@ function seed() {
       (id, organization_id, signature_city_default)
     values (${q(ids.documentSettings)}, ${q(ids.organization)}, 'Paris');
 
-    insert into public.document_templates
-      (id, organization_id, name, document_type, species, breed, template_format, template_content, version, is_active)
+    insert into public.document_template_families
+      (id, organization_id, name, document_type, species, breed)
     values
-      (${q(ids.template)}, ${q(ids.organization)}, 'Contrat historique E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(templateDefinition))}, 7, true);
+      (${q(ids.template)}, ${q(ids.organization)}, 'Contrat historique E2E', 'reservation_contract', 'dog', 'Golden Retriever');
+
+    insert into public.document_templates
+      (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
+    values
+      (${q(ids.template)}, ${q(ids.organization)}, ${q(ids.template)}, 'Contrat historique E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(templateDefinition))}, 7, 'published', true, now(), ${q(ownerId)});
 
     insert into public.payments
       (id, organization_id, contact_id, reservation_id, amount_cents, payment_type, status)
@@ -404,6 +410,7 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
       "payments",
       "reservations",
       "document_templates",
+      "document_template_families",
       "organization_document_settings",
       "organization_settings",
       "applications",

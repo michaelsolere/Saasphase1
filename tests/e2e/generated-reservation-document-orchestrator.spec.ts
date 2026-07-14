@@ -125,6 +125,7 @@ function cleanupRows() {
     delete from public.payments where organization_id = ${q(ids.organization)}::uuid;
     delete from public.reservations where organization_id = ${q(ids.organization)}::uuid;
     delete from public.document_templates where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.document_template_families where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.animals where organization_id = ${q(ids.organization)}::uuid;
@@ -164,9 +165,15 @@ function seed() {
     values (${q(ids.paymentSettings)}, ${q(ids.organization)}, 30000, 45000);
     insert into public.organization_document_settings (id, organization_id, signature_city_default)
     values (${q(ids.settings)}, ${q(ids.organization)}, 'Paris');
-    insert into public.document_templates (id, organization_id, name, document_type, species, breed, template_format, template_content, version, is_active)
-    values (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 4, true),
-           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 6, true);
+    insert into public.document_template_families
+      (id, organization_id, name, document_type, species, breed)
+    values
+      (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever'),
+      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever');
+    insert into public.document_templates
+      (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
+    values (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 4, 'published', true, now(), ${q(ownerId)}),
+           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 6, 'published', true, now(), ${q(ownerId)});
     insert into public.payments (id, organization_id, contact_id, reservation_id, amount_cents, payment_type, status)
     values (${q(ids.payment)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.contractReservation)}, 75000, 'arrhes', 'paid');
     insert into public.documents (id, organization_id, contact_id, application_id, reservation_id, document_type, status, title, signature_required)
@@ -459,7 +466,7 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
     cleanupRows();
     expect(await storagePaths()).toEqual([]);
     for (const table of [
-      "documents", "payments", "reservations", "document_templates",
+      "documents", "payments", "reservations", "document_templates", "document_template_families",
       "organization_document_settings", "organization_settings", "animals",
       "litters", "litter_groups", "applications", "contacts", "memberships",
     ]) {
