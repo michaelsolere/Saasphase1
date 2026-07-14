@@ -221,8 +221,11 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     await login(page);
 
     await page.goto("/documents");
-    await expect(page.getByRole("link", { name: "Modèles de référence" })).toBeVisible();
-    await page.getByRole("link", { name: "Modèles de référence" }).click();
+    const documentTemplatesLink = page.getByRole("main").getByRole("link", {
+      name: "Modèles de référence",
+    });
+    await expect(documentTemplatesLink).toBeVisible();
+    await documentTemplatesLink.click();
     await expect(page).toHaveURL(/\/documents\/modeles$/);
     await expect(page.getByRole("heading", { name: "Modèles de référence" })).toBeVisible();
     await expect(page.getByText("Contrat UI E2E", { exact: true })).toBeVisible();

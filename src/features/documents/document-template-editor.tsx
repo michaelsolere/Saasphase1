@@ -16,6 +16,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { DocumentTemplateDraftDestructiveAction } from "@/features/documents/document-template-draft-destructive-action";
 import {
   publishDocumentTemplateDraftAction,
   saveDocumentTemplateDraftAction,
@@ -403,6 +404,7 @@ export function DocumentTemplateEditor({
   canSave = false,
   canValidate = false,
   canPublish = false,
+  destructiveAction,
 }: {
   templateId: string;
   version: number;
@@ -413,6 +415,11 @@ export function DocumentTemplateEditor({
   canSave?: boolean;
   canValidate?: boolean;
   canPublish?: boolean;
+  destructiveAction?: {
+    familyId: string;
+    familyName: string;
+    hasPublication: boolean;
+  };
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState(initialDefinition);
@@ -464,10 +471,26 @@ export function DocumentTemplateEditor({
         </div>
       </div>
 
+      <div>
+        <h3 className="text-xl font-semibold">Clauses communes à rédiger</h3>
+        <p className="mt-2 text-sm text-muted">
+          Les textes ci-dessous sont communs aux documents utilisant cette version du modèle.
+        </p>
+      </div>
+
       {configuration.renderEditor({ definition, readOnly, onChange: setDefinition })}
 
       {mode === "draft" ? (
-        <div className="sticky bottom-4 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
+        <>
+          {destructiveAction ? (
+            <DocumentTemplateDraftDestructiveAction
+              {...destructiveAction}
+              templateId={templateId}
+              expectedUpdatedAt={updatedAt}
+              disabled={isPending}
+            />
+          ) : null}
+          <div className="sticky bottom-4 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
           <StatusMessage result={result} />
           <div
             data-editor-save-state={isDirty ? "dirty" : "saved"}
@@ -552,7 +575,8 @@ export function DocumentTemplateEditor({
               ) : null}
             </div>
           </div>
-        </div>
+          </div>
+        </>
       ) : null}
     </div>
   );

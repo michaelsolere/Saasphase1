@@ -23,6 +23,7 @@ export type DocumentTemplateManagementErrorCode =
   | "draft_already_exists"
   | "invalid_template"
   | "stale_draft"
+  | "protected_family"
   | "database_error";
 
 export type DocumentTemplateManagementError = {
@@ -156,6 +157,20 @@ export type PublishDocumentTemplateDraftResult =
   | {
       outcome: "success";
       templateId: string;
+    }
+  | ErrorResult;
+
+export type DiscardDocumentTemplateDraftInput = {
+  organizationId: string;
+  familyId: string;
+  templateId: string;
+  expectedUpdatedAt: string;
+};
+
+export type DiscardDocumentTemplateDraftResult =
+  | {
+      outcome: "success";
+      result: "draft_discarded" | "family_deleted";
     }
   | ErrorResult;
 
@@ -710,4 +725,61 @@ export async function publishDocumentTemplateDraftCore(
   }
 
   return { outcome: "success", templateId: published.data };
+}
+
+export async function discardDocumentTemplateDraftCore(
+  input: DiscardDocumentTemplateDraftInput,
+  supabase: Supabase,
+): Promise<DiscardDocumentTemplateDraftResult> {
+  const organizationId = normalizeUuid(input.organizationId);
+  const familyId = normalizeUuid(input.familyId);
+  const templateId = normalizeUuid(input.templateId);
+  if (
+    !organizationId ||
+    !familyId ||
+    !templateId ||
+    !validTimestamp(input.expectedUpdatedAt)
+  ) {
+    return invalidInput();
+  }
+
+  const authorization = await authorizeOrganization(
+    supabase,
+    organizationId,
+    ADMIN_ROLES,
+  );
+  if ("outcome" in authorization) return authorization;
+
+  const discarded = await supabase.rpc("discard_document_template_draft", {
+    p_organization_id: organizationId,
+    p_family_id: familyId,
+    p_template_id: templateId,
+    p_expected_updated_at: input.expectedUpdatedAt,
+  });
+
+  if (discarded.error) {
+    if (discarded.error.code === "42501") {
+      return failure("forbidden", "Vous n’avez pas les droits nécessaires pour cette opération.");
+    }
+    if (discarded.error.code === "P0002") {
+      return failure("not_found", "Le brouillon est introuvable.");
+    }
+    if (
+      discarded.error.code === "P0001" &&
+      discarded.error.message === "Document template draft is stale"
+    ) {
+      return failure("stale_draft", "Ce brouillon a été modifié. Rechargez la page avant de réessayer.");
+    }
+    if (discarded.error.code === "23503") {
+      return failure("protected_family", "Ce modèle est protégé et ne peut pas être retiré.");
+    }
+    return databaseFailure("document_template_draft_discard_failed", discarded.error);
+  }
+
+  const result = discarded.data?.[0]?.outcome;
+  if (result !== "draft_discarded" && result !== "family_deleted") {
+    return databaseFailure("document_template_draft_discard_invalid_result", discarded.data);
+  }
+
+  return { outcome: "success", result };
 }

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import {
   createDocumentTemplateFamilyWithDraft,
   createNextDocumentTemplateDraft,
+  discardDocumentTemplateDraft,
   listDocumentTemplateFamilies,
   publishDocumentTemplateDraft,
   saveDocumentTemplateDraft,
@@ -29,6 +30,10 @@ export type DocumentTemplateActionResult =
 
 export type CreateDocumentTemplateFamilyActionResult =
   | { outcome: "success"; familyId: string }
+  | { outcome: "error"; code: DocumentTemplateManagementErrorCode; message: string };
+
+export type DiscardDocumentTemplateDraftActionResult =
+  | { outcome: "success"; result: "draft_discarded" | "family_deleted" }
   | { outcome: "error"; code: DocumentTemplateManagementErrorCode; message: string };
 
 function missingOrganization(): DocumentTemplateActionResult {
@@ -213,4 +218,35 @@ export async function publishDocumentTemplateDraftAction(input: {
     outcome: "success",
     message: "Le brouillon a été publié.",
   };
+}
+
+export async function discardDocumentTemplateDraftAction(input: {
+  familyId: string;
+  templateId: string;
+  expectedUpdatedAt: string;
+}): Promise<DiscardDocumentTemplateDraftActionResult> {
+  const organization = await resolveCurrentDocumentTemplateOrganization();
+  if (!organization) {
+    return { outcome: "error", code: "forbidden", message: "Cette opération est impossible." };
+  }
+
+  const result = await discardDocumentTemplateDraft({
+    organizationId: organization.organizationId,
+    familyId: input.familyId,
+    templateId: input.templateId,
+    expectedUpdatedAt: input.expectedUpdatedAt,
+  });
+  if (result.outcome === "error") {
+    const conflict = result.error.code === "stale_draft";
+    return {
+      outcome: "error",
+      code: result.error.code,
+      message: conflict
+        ? "Le brouillon a été modifié entre-temps. Rechargez la page avant de réessayer."
+        : "Cette opération est impossible. Aucune donnée n’a été modifiée.",
+    };
+  }
+
+  revalidateTemplateRoutes(input.familyId);
+  return { outcome: "success", result: result.result };
 }
