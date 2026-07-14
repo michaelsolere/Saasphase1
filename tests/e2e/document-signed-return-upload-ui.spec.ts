@@ -39,6 +39,9 @@ const compensationOriginal = Buffer.from("%PDF-1.4\n% compensation original\n%%E
 const signedV1 = Buffer.from("%PDF-1.7\n% historical signed return\n%%EOF\n");
 const signedV2 = Buffer.from("%PDF-1.7\n% current signed return\n%%EOF\n");
 const differentSigned = Buffer.from("%PDF-1.7\n% conflicting signed return\n%%EOF\n");
+const abandonedSigned = Buffer.alloc(7 * 1024 * 1024, 0x20);
+abandonedSigned.write("%PDF-1.7\n% abandoned signed return\n", 0, "ascii");
+abandonedSigned.write("\n%%EOF\n", abandonedSigned.byteLength - 7, "ascii");
 
 function q(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -343,10 +346,68 @@ test("archive les retours signés par TUS sans altérer les originaux", async ({
       mimeType: "application/pdf",
       buffer: signedV2,
     });
+
+    let failFirstFinalization = true;
+    let uploadIntentionRequests = 0;
+    let tusCreationRequests = 0;
+    let tusHeadRequests = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        request.url().includes("/api/document-signed-returns/upload-intention")
+      ) {
+        uploadIntentionRequests += 1;
+      }
+    });
+    await page.route("**/api/document-signed-returns/finalize", async (route) => {
+      if (failFirstFinalization) {
+        failFirstFinalization = false;
+        await route.abort("connectionfailed");
+        return;
+      }
+      await route.continue();
+    });
+    await page.route("**/storage/v1/upload/resumable/sign**", async (route) => {
+      if (route.request().method() === "POST") tusCreationRequests += 1;
+      if (route.request().method() === "HEAD") tusHeadRequests += 1;
+      await route.continue();
+    });
+
     await dialog.getByRole("button", { name: "Archiver définitivement" }).click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "La finalisation n’a pas pu être confirmée",
+    );
+    expect(sql(`select count(*) from public.document_signed_returns where document_id = ${q(ids.version2)}::uuid;`)).toBe("0");
+    expect(sql(`select count(*) from storage.objects where bucket_id = 'documents' and name = ${q(firstIntention.objectName)};`)).toBe("1");
+    expect(sql(`
+      select jsonb_build_object(
+        'file_path', file_path,
+        'file_sha256', file_sha256,
+        'file_size_bytes', file_size_bytes,
+        'mime_type', mime_type,
+        'generation_data', generation_data,
+        'replaces_document_id', replaces_document_id,
+        'superseded_at', superseded_at
+      )::text from public.documents where id = ${q(ids.version2)}::uuid;
+    `)).toBe(originalMetadataBefore);
+    expect(tusCreationRequests).toBe(1);
+
+    const resumedFinalizationResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/document-signed-returns/finalize") &&
+        response.request().method() === "POST",
+    );
+    await dialog.getByRole("button", { name: "Archiver définitivement" }).click();
+    expect((await resumedFinalizationResponse).status()).toBe(200);
     await expect(
       currentRow.getByRole("link", { name: "Ouvrir le retour signé" }),
     ).toBeVisible();
+    expect(tusHeadRequests).toBeGreaterThanOrEqual(1);
+    expect(tusCreationRequests).toBe(1);
+    expect(uploadIntentionRequests).toBe(1);
+    expect(sql(`select count(*) from storage.objects where bucket_id = 'documents' and name = ${q(firstIntention.objectName)};`)).toBe("1");
+    await page.unroute("**/api/document-signed-returns/finalize");
+    await page.unroute("**/storage/v1/upload/resumable/sign**");
 
     expect(sql(`select status || '|' || (signed_at is not null)::text from public.documents where id = ${q(ids.version2)}::uuid;`)).toBe("signed|true");
     expect(sql(`select count(*) from public.document_signed_returns where document_id = ${q(ids.version2)}::uuid;`)).toBe("1");
@@ -411,6 +472,69 @@ test("archive les retours signés par TUS sans altérer les originaux", async ({
     ).toBeVisible();
     await expect(page.getByText("Le statut “Reçu signé” correspond actuellement", { exact: false })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Archiver le retour signé" })).toHaveCount(0);
+
+    const abandonedPayload = payload(ids.compensationDocument, abandonedSigned);
+    const abandonedIntentionResponse = await page.request.post(
+      "/api/document-signed-returns/upload-intention",
+      { data: abandonedPayload },
+    );
+    expect(abandonedIntentionResponse.status()).toBe(200);
+    const abandonedIntention = await abandonedIntentionResponse.json();
+    let releasePatch = () => undefined;
+    const patchReleased = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    let markPatchStarted = () => undefined;
+    const patchStarted = new Promise<void>((resolve) => {
+      markPatchStarted = resolve;
+    });
+    let intentionDeleteRequests = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "DELETE" &&
+        request.url().includes("/api/document-signed-returns/upload-intention")
+      ) {
+        intentionDeleteRequests += 1;
+      }
+    });
+    await page.route("**/storage/v1/upload/resumable/sign/**", async (route) => {
+      if (route.request().method() !== "PATCH") {
+        await route.continue();
+        return;
+      }
+      markPatchStarted();
+      await patchReleased;
+      await route.continue().catch(() => undefined);
+    });
+
+    await page.goto(`/documents/${ids.compensationDocument}`);
+    const compensationRow = page.locator("li").filter({ hasText: "Version 1" });
+    await compensationRow.getByRole("button", { name: "Archiver le retour signé" }).click();
+    const abandonedDialog = page.getByRole("dialog");
+    await abandonedDialog.locator('input[type="file"]').setInputFiles({
+      name: "certificat-retour-signe-abandonne.pdf",
+      mimeType: "application/pdf",
+      buffer: abandonedSigned,
+    });
+    await abandonedDialog.getByRole("button", { name: "Archiver définitivement" }).click();
+    await patchStarted;
+    await abandonedDialog.getByRole("button", { name: "Annuler" }).click();
+    await expect(abandonedDialog).toBeHidden();
+    releasePatch();
+    await page.unroute("**/storage/v1/upload/resumable/sign/**");
+
+    expect(intentionDeleteRequests).toBe(1);
+    expect(sql(`select count(*) from public.document_signed_returns where document_id = ${q(ids.compensationDocument)}::uuid;`)).toBe("0");
+    expect(sql(`select count(*) from storage.objects where bucket_id = 'documents' and name = ${q(abandonedIntention.objectName)};`)).toBe("0");
+    expect(
+      await page.evaluate(
+        (fingerprint) =>
+          Object.keys(localStorage).filter((key) =>
+            key.startsWith(`tus::${fingerprint}::`),
+          ),
+        `document-signed-return-${ids.compensationDocument}-${sha256(abandonedSigned)}`,
+      ),
+    ).toEqual([]);
 
     const compensationPayload = payload(ids.compensationDocument, differentSigned);
     const compensationIntentionResponse = await page.request.post(

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Upload } from "tus-js-client";
+import { defaultOptions, Upload } from "tus-js-client";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,6 +31,13 @@ type UploadPayload = {
   fileSha256: string;
   fileSizeBytes: number;
 };
+
+type UploadPhase =
+  | "idle"
+  | "validation"
+  | "uploading"
+  | "finalizing"
+  | "abandoning";
 
 function bytesToHex(bytes: ArrayBuffer) {
   return Array.from(new Uint8Array(bytes), (byte) =>
@@ -70,6 +77,15 @@ async function jsonRequest<T>(url: string, method: "POST" | "DELETE", body: Uplo
   return (await response.json()) as T;
 }
 
+async function removeTusResumeEntries(upload: Upload) {
+  const previousUploads = await upload.findPreviousUploads();
+  await Promise.all(
+    previousUploads.map(({ urlStorageKey }) =>
+      defaultOptions.urlStorage.removeUpload(urlStorageKey),
+    ),
+  );
+}
+
 export function DocumentSignedReturnUploadDialog({
   documentId,
   version,
@@ -79,35 +95,66 @@ export function DocumentSignedReturnUploadDialog({
 }) {
   const router = useRouter();
   const uploadRef = useRef<Upload | null>(null);
+  const uploadRejectRef = useRef<((reason: Error) => void) | null>(null);
+  const payloadRef = useRef<UploadPayload | null>(null);
+  const intentionRef = useRef<UploadIntention | null>(null);
+  const phaseRef = useRef<UploadPhase>("idle");
   const [open, setOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [progress, setProgress] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const [phase, setPhase] = useState<UploadPhase>("idle");
+  const [hasPendingUpload, setHasPendingUpload] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function updatePhase(nextPhase: UploadPhase) {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  }
+
+  function currentPhase(): UploadPhase {
+    return phaseRef.current;
+  }
+
   async function archive() {
-    if (!file || busy) return;
-    setBusy(true);
+    if (!file || phaseRef.current !== "idle") return;
     setError(null);
     setProgress(0);
-    let payload: UploadPayload | null = null;
+    updatePhase("validation");
+    let finalizationStarted = false;
 
     try {
       const fileSha256 = await validateAndHashFile(file);
-      payload = { documentId, fileSha256, fileSizeBytes: file.size };
-      const intention = await jsonRequest<UploadIntention>(
-        "/api/document-signed-returns/upload-intention",
-        "POST",
-        payload,
-      );
+      const payload = { documentId, fileSha256, fileSizeBytes: file.size };
+      const pendingPayload = payloadRef.current;
+      if (
+        pendingPayload &&
+        (pendingPayload.documentId !== payload.documentId ||
+          pendingPayload.fileSha256 !== payload.fileSha256 ||
+          pendingPayload.fileSizeBytes !== payload.fileSizeBytes)
+      ) {
+        throw new Error("Abandonnez d’abord le téléversement précédent.");
+      }
+      payloadRef.current = payload;
+      setHasPendingUpload(true);
+      const intention =
+        intentionRef.current ??
+        (await jsonRequest<UploadIntention>(
+          "/api/document-signed-returns/upload-intention",
+          "POST",
+          payload,
+        ));
+      intentionRef.current = intention;
 
+      updatePhase("uploading");
       await new Promise<void>((resolve, reject) => {
+        uploadRejectRef.current = reject;
         const upload = new Upload(file, {
           endpoint: intention.uploadEndpoint,
           chunkSize: TUS_CHUNK_BYTES,
           retryDelays: [0, 3_000, 5_000, 10_000, 20_000],
           uploadDataDuringCreation: true,
-          removeFingerprintOnSuccess: true,
+          removeFingerprintOnSuccess: false,
+          urlStorage: defaultOptions.urlStorage,
           headers: { "x-signature": intention.uploadToken },
           metadata: {
             bucketName: "documents",
@@ -121,9 +168,11 @@ export function DocumentSignedReturnUploadDialog({
             setProgress(Math.round((bytesUploaded / bytesTotal) * 100));
           },
           onError(uploadError) {
+            uploadRejectRef.current = null;
             reject(uploadError);
           },
           onSuccess() {
+            uploadRejectRef.current = null;
             resolve();
           },
         });
@@ -133,35 +182,75 @@ export function DocumentSignedReturnUploadDialog({
           upload.start();
         }, reject);
       });
-      uploadRef.current = null;
 
-      await jsonRequest<{ outcome: "created" | "existing" }>(
+      finalizationStarted = true;
+      updatePhase("finalizing");
+      const result = await jsonRequest<{ outcome: "created" | "existing" }>(
         "/api/document-signed-returns/finalize",
         "POST",
         payload,
       );
+      if (result.outcome !== "created" && result.outcome !== "existing") {
+        throw new Error("La finalisation du retour signé est indéterminée.");
+      }
+      const completedUpload = uploadRef.current;
+      if (completedUpload) await removeTusResumeEntries(completedUpload);
+      uploadRef.current = null;
+      payloadRef.current = null;
+      intentionRef.current = null;
+      setHasPendingUpload(false);
       setOpen(false);
       setFile(null);
       router.refresh();
     } catch (caught) {
-      if (payload && uploadRef.current) {
-        await jsonRequest(
-          "/api/document-signed-returns/upload-intention",
-          "DELETE",
-          payload,
-        ).catch(() => undefined);
-      }
-      setError(caught instanceof Error ? caught.message : "Archivage indisponible.");
+      setError(
+        finalizationStarted
+          ? "La finalisation n’a pas pu être confirmée. Vous pouvez réessayer avec ce même fichier."
+          : caught instanceof Error
+            ? caught.message
+            : "Archivage indisponible.",
+      );
     } finally {
-      setBusy(false);
+      if (currentPhase() !== "abandoning") updatePhase("idle");
     }
   }
 
   async function cancel() {
-    if (uploadRef.current) await uploadRef.current.abort(true).catch(() => undefined);
+    if (phaseRef.current === "finalizing" || phaseRef.current === "abandoning") return;
+    const upload = uploadRef.current;
+    const payload = payloadRef.current;
+    updatePhase("abandoning");
+    uploadRejectRef.current?.(new Error("Téléversement abandonné."));
+    uploadRejectRef.current = null;
+
+    const resumeEntries = upload ? await upload.findPreviousUploads().catch(() => []) : [];
+    await Promise.allSettled([
+      upload?.abort(true),
+      payload
+        ? jsonRequest(
+            "/api/document-signed-returns/upload-intention",
+            "DELETE",
+            payload,
+          )
+        : Promise.resolve(),
+    ]);
+    await Promise.allSettled(
+      resumeEntries.map(({ urlStorageKey }) =>
+        defaultOptions.urlStorage.removeUpload(urlStorageKey),
+      ),
+    );
     uploadRef.current = null;
+    payloadRef.current = null;
+    intentionRef.current = null;
+    setHasPendingUpload(false);
+    setFile(null);
+    setError(null);
+    setProgress(0);
+    updatePhase("idle");
     setOpen(false);
   }
+
+  const busy = phase !== "idle";
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !busy && setOpen(nextOpen)}>
@@ -192,13 +281,13 @@ export function DocumentSignedReturnUploadDialog({
             id={`signed-return-${documentId}`}
             type="file"
             accept="application/pdf,.pdf"
-            disabled={busy}
+            disabled={busy || hasPendingUpload}
             onChange={(event) => {
               setFile(event.target.files?.[0] ?? null);
               setError(null);
             }}
           />
-          {busy ? (
+          {phase === "uploading" ? (
             <div aria-live="polite" className="space-y-1">
               <div className="h-2 overflow-hidden rounded-full bg-muted/20">
                 <div
@@ -209,14 +298,44 @@ export function DocumentSignedReturnUploadDialog({
               <p className="text-xs text-muted">Téléversement : {progress} %</p>
             </div>
           ) : null}
+          {phase === "validation" ? (
+            <p className="text-xs text-muted" aria-live="polite">Validation du PDF…</p>
+          ) : null}
+          {phase === "finalizing" ? (
+            <p className="text-sm font-medium" aria-live="polite">
+              Finalisation en cours…
+            </p>
+          ) : null}
+          {phase === "abandoning" ? (
+            <p className="text-sm font-medium" aria-live="polite">
+              Abandon du téléversement en cours…
+            </p>
+          ) : null}
           {error ? <p className="text-sm text-red-700" role="alert">{error}</p> : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => void cancel()}>
-            Annuler
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              phase === "validation" ||
+              phase === "finalizing" ||
+              phase === "abandoning"
+            }
+            onClick={() => void cancel()}
+          >
+            {phase === "finalizing" ? "Finalisation en cours…" : "Annuler"}
           </Button>
           <Button type="button" disabled={!file || busy} onClick={() => void archive()}>
-            {busy ? "Archivage en cours…" : "Archiver définitivement"}
+            {phase === "validation"
+              ? "Validation…"
+              : phase === "uploading"
+                ? "Téléversement…"
+                : phase === "finalizing"
+                  ? "Finalisation…"
+                  : phase === "abandoning"
+                    ? "Abandon…"
+                    : "Archiver définitivement"}
           </Button>
         </DialogFooter>
       </DialogContent>
