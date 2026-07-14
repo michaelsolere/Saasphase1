@@ -153,6 +153,9 @@ export default async function DocumentTemplateFamilyPage({
           {family.draft ? (
             <>
               <VersionHeader version={family.draft} label="Brouillon actuel" />
+              <p className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Ce brouillon est à compléter avant validation et publication.
+              </p>
               {!hasEditor ? (
                 <VersionPlaceholder kind="unsupported" hasEditor={false} />
               ) : draftDefinition ? (
