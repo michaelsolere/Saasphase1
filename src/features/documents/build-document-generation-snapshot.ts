@@ -22,6 +22,14 @@ export type DocumentGenerationAddressInput = {
   region?: NullableInput<string>;
 };
 
+type DocumentGenerationParentInput = {
+  id: string;
+  officialName?: NullableInput<string>;
+  callName?: NullableInput<string>;
+  identification?: NullableInput<string>;
+  lofNumber?: NullableInput<string>;
+};
+
 export type BuildDocumentGenerationSnapshotInput = {
   documentType: string;
   capturedAt: string;
@@ -77,6 +85,9 @@ export type BuildDocumentGenerationSnapshotInput = {
       id: string;
       name?: NullableInput<string>;
       actualBirthDate?: NullableInput<string>;
+      availableFrom?: NullableInput<string>;
+      mother?: NullableInput<DocumentGenerationParentInput>;
+      father?: NullableInput<DocumentGenerationParentInput>;
     }>;
     litterGroup?: NullableInput<{
       id: string;
@@ -97,6 +108,7 @@ export type BuildDocumentGenerationSnapshotInput = {
     status: string;
     createdAt: string;
     plannedAdoptionDate?: NullableInput<string>;
+    choiceRank?: NullableInput<number>;
   };
   signature?: {
     defaultCity?: NullableInput<string>;
@@ -273,6 +285,51 @@ export function buildDocumentGenerationSnapshot(
                 actualBirthDate: normalizeNullableText(
                   input.adoptionProject.litter.actualBirthDate,
                 ),
+                availableFrom: normalizeNullableText(
+                  input.adoptionProject.litter.availableFrom,
+                ),
+                mother:
+                  input.adoptionProject.litter.mother === null ||
+                  input.adoptionProject.litter.mother === undefined
+                    ? null
+                    : {
+                        id: normalizeRequiredText(
+                          input.adoptionProject.litter.mother.id,
+                        ),
+                        officialName: normalizeNullableText(
+                          input.adoptionProject.litter.mother.officialName,
+                        ),
+                        callName: normalizeNullableText(
+                          input.adoptionProject.litter.mother.callName,
+                        ),
+                        identification: normalizeNullableText(
+                          input.adoptionProject.litter.mother.identification,
+                        ),
+                        lofNumber: normalizeNullableText(
+                          input.adoptionProject.litter.mother.lofNumber,
+                        ),
+                      },
+                father:
+                  input.adoptionProject.litter.father === null ||
+                  input.adoptionProject.litter.father === undefined
+                    ? null
+                    : {
+                        id: normalizeRequiredText(
+                          input.adoptionProject.litter.father.id,
+                        ),
+                        officialName: normalizeNullableText(
+                          input.adoptionProject.litter.father.officialName,
+                        ),
+                        callName: normalizeNullableText(
+                          input.adoptionProject.litter.father.callName,
+                        ),
+                        identification: normalizeNullableText(
+                          input.adoptionProject.litter.father.identification,
+                        ),
+                        lofNumber: normalizeNullableText(
+                          input.adoptionProject.litter.father.lofNumber,
+                        ),
+                      },
               },
         litterGroup:
           input.adoptionProject.litterGroup === null ||
@@ -315,6 +372,7 @@ export function buildDocumentGenerationSnapshot(
         plannedAdoptionDate: normalizeNullableText(
           input.reservation.plannedAdoptionDate,
         ),
+        choiceRank: input.reservation.choiceRank ?? null,
       },
       signature: {
         defaultCity: normalizeNullableText(input.signature?.defaultCity),
@@ -327,6 +385,8 @@ export function buildDocumentGenerationSnapshot(
       const paidCents = financials?.paidCents;
       const refundedCents = financials?.refundedCents;
       const priceCents = financials?.priceCents ?? null;
+      const depositTargetCents = financials?.fullDepositTargetCents;
+      const depositPaidCents = financials?.depositPaidCents;
       const netPaidCents =
         typeof paidCents === "number" && typeof refundedCents === "number"
           ? Math.max(0, paidCents - refundedCents)
@@ -354,6 +414,19 @@ export function buildDocumentGenerationSnapshot(
           remainingCents,
           depositPaidCents: financials?.depositPaidCents,
           fullDepositTargetCents: financials?.fullDepositTargetCents,
+          depositTargetCents,
+          depositRemainingCents:
+            typeof depositTargetCents === "number" &&
+            typeof depositPaidCents === "number"
+              ? Math.max(0, depositTargetCents - depositPaidCents)
+              : Number.NaN,
+          balanceAfterFullDepositCents:
+            priceCents === null
+              ? null
+              : typeof priceCents === "number" &&
+                  typeof depositTargetCents === "number"
+                ? Math.max(0, priceCents - depositTargetCents)
+                : Number.NaN,
         },
       };
     }

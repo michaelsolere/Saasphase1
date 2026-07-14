@@ -2014,6 +2014,7 @@ export type Database = {
         Row: {
           actual_birth_date: string | null
           alive_count: number | null
+          available_from: string | null
           born_female_count: number | null
           born_male_count: number | null
           born_total_count: number | null
@@ -2043,6 +2044,7 @@ export type Database = {
         Insert: {
           actual_birth_date?: string | null
           alive_count?: number | null
+          available_from?: string | null
           born_female_count?: number | null
           born_male_count?: number | null
           born_total_count?: number | null
@@ -2072,6 +2074,7 @@ export type Database = {
         Update: {
           actual_birth_date?: string | null
           alive_count?: number | null
+          available_from?: string | null
           born_female_count?: number | null
           born_male_count?: number | null
           born_total_count?: number | null

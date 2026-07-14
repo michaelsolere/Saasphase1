@@ -168,6 +168,9 @@ test("builds and parses immutable document generation snapshots", () => {
     refundedCents: 10_000,
     netPaidCents: 70_000,
     remainingCents: 180_000,
+    depositTargetCents: 50_000,
+    depositRemainingCents: 0,
+    balanceAfterFullDepositCents: 200_000,
   });
   expect(contract.snapshot.adoptionProject.animal).toBeNull();
   expect(contract.snapshot.adoptionProject.litter).toBeNull();
@@ -190,6 +193,31 @@ test("builds and parses immutable document generation snapshots", () => {
   const certificate = expectSuccessfulBuild(certificateInput());
   expect(certificate.snapshot.documentType).toBe("commitment_certificate");
   expect("financials" in certificate.snapshot).toBe(false);
+
+  const archivedContract = structuredClone(contract.snapshot);
+  delete archivedContract.reservation.choiceRank;
+  delete archivedContract.financials.depositTargetCents;
+  delete archivedContract.financials.depositRemainingCents;
+  delete archivedContract.financials.balanceAfterFullDepositCents;
+  expect(
+    parseDocumentGenerationSnapshot({
+      documentType: "reservation_contract",
+      generationData: archivedContract,
+    }),
+  ).toMatchObject({ success: true });
+
+  const archivedCertificate = structuredClone(certificate.snapshot);
+  if (archivedCertificate.adoptionProject.litter) {
+    delete archivedCertificate.adoptionProject.litter.availableFrom;
+    delete archivedCertificate.adoptionProject.litter.mother;
+    delete archivedCertificate.adoptionProject.litter.father;
+  }
+  expect(
+    parseDocumentGenerationSnapshot({
+      documentType: "commitment_certificate",
+      generationData: archivedCertificate,
+    }),
+  ).toMatchObject({ success: true });
 
   const unknownPrice = contractInput();
   if (unknownPrice.financials) {

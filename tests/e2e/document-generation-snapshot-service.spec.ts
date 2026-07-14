@@ -35,6 +35,8 @@ const ids = {
   viewerIdentity: "9a140000-0000-4000-8000-000000000022",
   viewerMembership: "9a140000-0000-4000-8000-000000000023",
   conflictingGroup: "9a140000-0000-4000-8000-000000000024",
+  mother: "9a140000-0000-4000-8000-000000000025",
+  father: "9a140000-0000-4000-8000-000000000026",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -88,8 +90,9 @@ function cleanup() {
     delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_representatives where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.animals where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.animals where organization_id = ${q(ids.organization)}::uuid and litter_id is not null;
     delete from public.litters where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.animals where organization_id = ${q(ids.organization)}::uuid;
     delete from public.litter_groups where organization_id = ${q(ids.organization)}::uuid;
     delete from public.applications where organization_id = ${q(ids.organization)}::uuid;
     delete from public.contacts where organization_id = ${q(ids.organization)}::uuid;
@@ -114,14 +117,19 @@ function seed() {
            (${q(ids.conflictingGroup)}, ${q(ids.organization)}, 'Groupe Concurrent QA', 'dog');
     insert into public.applications (id, organization_id, contact_id, species, breed, desired_sex_preference)
     values (${q(ids.application)}, ${q(ids.organization)}, ${q(ids.contact)}, 'dog', 'Golden Retriever', 'female_only');
-    insert into public.litters (id, organization_id, litter_group_id, name, species, breed, actual_birth_date)
-    values (${q(ids.litter)}, ${q(ids.organization)}, ${q(ids.group)}, 'Portée QA', 'dog', 'Golden Retriever', '2026-06-01');
+    insert into public.animals (id, organization_id, official_name, call_name, species, breed, sex, identification_number, lof_number)
+    values (${q(ids.mother)}, ${q(ids.organization)}, 'Ushka de la vallée d''Hélios', 'Ushka', 'dog', 'Golden Retriever', 'female', '250269610906173', '251769/28489'),
+           (${q(ids.father)}, ${q(ids.organization)}, 'Rimbaud de Bihan Ki Breizh', 'Rimbaud', 'dog', 'Golden Retriever', 'male', '250268743442598', '203031/20009');
+    insert into public.litters (id, organization_id, litter_group_id, name, species, breed, actual_birth_date, available_from, mother_id, father_id)
+    values (${q(ids.litter)}, ${q(ids.organization)}, ${q(ids.group)}, 'Portée QA', 'dog', 'Golden Retriever', '2026-06-01', '2026-08-01', ${q(ids.mother)}, ${q(ids.father)});
     insert into public.animals (id, organization_id, litter_id, official_name, call_name, species, breed, sex, birth_date, identification_number, lof_number)
     values (${q(ids.animal)}, ${q(ids.organization)}, ${q(ids.litter)}, 'NOVA SNAPSHOT', 'Nova', 'dog', 'Golden Retriever', 'female', '2026-06-01', '250269000000001', 'LOF-QA-1');
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, status, reserved_sex_preference, price_cents, currency, adoption_planned_at, created_at)
     values (${q(ids.groupReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.group)}, 'active', 'male_only', 250000, 'EUR', '2026-08-15', '2026-07-01T09:00:00Z');
+    update public.reservations set rank_active = 3 where id = ${q(ids.groupReservation)}::uuid;
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, litter_id, animal_id, status, reserved_sex_preference, price_cents, currency, created_at)
     values (${q(ids.animalReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.group)}, ${q(ids.litter)}, ${q(ids.animal)}, 'animal_assigned', 'female_only', 270000, 'EUR', '2026-07-02T09:00:00Z');
+    update public.reservations set rank_active = 3 where id = ${q(ids.animalReservation)}::uuid;
     insert into public.reservations (id, organization_id, contact_id, litter_group_id, status, reserved_sex_preference, currency)
     values (${q(ids.incompleteReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.group)}, 'draft', 'no_preference', 'EUR');
     insert into public.organization_settings (id, organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents)
@@ -175,8 +183,8 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
       seller: { tradeName: "Élevage Snapshot QA", legalName: "Snapshot QA SARL" },
       adopter: { displayName: "Camille Snapshot", email: "adopter@example.invalid" },
       adoptionProject: { species: "dog", breed: "Golden Retriever", sexPreference: "male_only", litter: null, litterGroup: { id: ids.group }, animal: null },
-      reservation: { id: ids.groupReservation, status: "active", createdAt: "2026-07-01T09:00:00+00:00", plannedAdoptionDate: "2026-08-15" },
-      financials: { priceCents: 250000, paidCents: 75000, refundedCents: 0, netPaidCents: 75000, remainingCents: 175000, depositPaidCents: 75000, fullDepositTargetCents: 75000 },
+      reservation: { id: ids.groupReservation, status: "active", createdAt: "2026-07-01T09:00:00+00:00", plannedAdoptionDate: "2026-08-15", choiceRank: 3 },
+      financials: { priceCents: 250000, paidCents: 75000, refundedCents: 0, netPaidCents: 75000, remainingCents: 175000, depositPaidCents: 75000, fullDepositTargetCents: 75000, depositTargetCents: 75000, depositRemainingCents: 0, balanceAfterFullDepositCents: 175000 },
     });
     expect(contract.templateId).toBe(ids.contractTemplate);
     expect(contract.templateVersion).toBe(7);
@@ -188,8 +196,47 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     if (certificate.outcome !== "success") throw new Error("Expected certificate snapshot");
     expect(certificate.snapshot).not.toHaveProperty("financials");
     expect(certificate.snapshot).not.toHaveProperty("mediator");
-    expect(certificate.snapshot.adoptionProject).toMatchObject({ litter: { id: ids.litter }, animal: { id: ids.animal, callName: "Nova", identification: "250269000000001" } });
+    expect(certificate.snapshot.reservation.choiceRank).toBe(3);
+    expect(certificate.snapshot.adoptionProject).toMatchObject({
+      litter: {
+        id: ids.litter,
+        availableFrom: "2026-08-01",
+        mother: { id: ids.mother, officialName: "Ushka de la vallée d'Hélios", identification: "250269610906173", lofNumber: "251769/28489" },
+        father: { id: ids.father, officialName: "Rimbaud de Bihan Ki Breizh", identification: "250268743442598", lofNumber: "203031/20009" },
+      },
+      animal: { id: ids.animal, callName: "Nova", identification: "250269000000001" },
+    });
     expect(certificate.templateVersion).toBe(9);
+
+    sql(`update public.animals set deleted_at = now() where id = ${q(ids.mother)}::uuid;`);
+    try {
+      const incompleteParent = await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.animalReservation, documentType: "commitment_certificate", templateId: ids.certificateTemplate, capturedAt }, supabase);
+      expect(incompleteParent.outcome).toBe("success");
+      if (incompleteParent.outcome === "success") {
+        expect(incompleteParent.snapshot.adoptionProject.litter?.mother).toBeNull();
+        expect(incompleteParent.snapshot.adoptionProject.litter?.father?.id).toBe(ids.father);
+      }
+    } finally {
+      sql(`update public.animals set deleted_at = null where id = ${q(ids.mother)}::uuid;`);
+    }
+
+    const expectDepositState = async (expectedPaid: number, expectedRemaining: number) => {
+      const result = await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.groupReservation, documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase);
+      expect(result.outcome).toBe("success");
+      if (result.outcome !== "success" || result.snapshot.documentType !== "reservation_contract") throw new Error("Expected contract snapshot");
+      expect(result.snapshot.financials).toMatchObject({
+        depositPaidCents: expectedPaid,
+        depositTargetCents: 75_000,
+        depositRemainingCents: expectedRemaining,
+        balanceAfterFullDepositCents: 175_000,
+      });
+    };
+    sql(`update public.payments set status = 'pending' where id = ${q(ids.paidArrhes)}::uuid;`);
+    await expectDepositState(30_000, 45_000);
+    sql(`update public.payments set status = 'pending' where id = ${q(ids.paidPreReservation)}::uuid;`);
+    await expectDepositState(0, 75_000);
+    sql(`update public.payments set status = 'paid' where id in (${q(ids.paidPreReservation)}::uuid, ${q(ids.paidArrhes)}::uuid);`);
+    await expectDepositState(75_000, 0);
 
     const expectIncompleteAfterMutation = async (
       mutation: string,
@@ -275,7 +322,27 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     expect(Number(sql(`select count(*) from public.documents where organization_id = ${q(ids.organization)}::uuid;`))).toBe(documentsBefore);
   } finally {
     cleanup();
-    const count = Number(sql(`select count(*) from (select id from public.organizations where id = ${q(ids.organization)}::uuid union all select id from public.memberships where organization_id = ${q(ids.organization)}::uuid union all select id from public.contacts where organization_id = ${q(ids.organization)}::uuid union all select id from public.applications where organization_id = ${q(ids.organization)}::uuid union all select id from public.litter_groups where organization_id = ${q(ids.organization)}::uuid union all select id from public.litters where organization_id = ${q(ids.organization)}::uuid union all select id from public.animals where organization_id = ${q(ids.organization)}::uuid union all select id from public.reservations where organization_id = ${q(ids.organization)}::uuid union all select id from public.payments where organization_id = ${q(ids.organization)}::uuid union all select id from public.document_templates where organization_id = ${q(ids.organization)}::uuid union all select id from public.document_template_families where organization_id = ${q(ids.organization)}::uuid union all select id from public.documents where organization_id = ${q(ids.organization)}::uuid union all select id from auth.users where id = ${q(ids.viewerUser)}::uuid) fixtures;`));
+    const count = Number(sql(`
+      select count(*) from (
+        select id from public.organizations where id = ${q(ids.organization)}::uuid
+        union all select id from public.memberships where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.contacts where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.applications where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.litter_groups where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.litters where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.animals where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.reservations where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.payments where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.organization_settings where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.organization_representatives where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.document_templates where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.document_template_families where organization_id = ${q(ids.organization)}::uuid
+        union all select id from public.documents where organization_id = ${q(ids.organization)}::uuid
+        union all select id from auth.identities where user_id = ${q(ids.viewerUser)}::uuid
+        union all select id from auth.users where id = ${q(ids.viewerUser)}::uuid
+      ) fixtures;
+    `));
     expect(count).toBe(0);
   }
 });
