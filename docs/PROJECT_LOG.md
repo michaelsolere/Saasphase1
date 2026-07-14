@@ -78,8 +78,10 @@ Brevo est intégré côté serveur pour les campagnes transactionnelles. Le socl
 - destinataire et variables métier préparés côté serveur ;
 - journal persistant dans `email_delivery_attempts` ;
 - clé d’idempotence déterministe par organisation, campagne, dossier et version d’opération ;
-- claim concurrent, instantanés du modèle/destinataire/variables, suivi `pending` / `sent` / `failed`, retries et distinction des erreurs certaines ou incertaines ;
+- claim concurrent, instantanés du modèle/destinataire/variables, suivi `pending` / `sending` / `sent` / `failed`, retries et distinction des erreurs certaines ou incertaines ;
 - compensation des ressources métier créées lorsque l’échec est certain et qu’un retour arrière sûr est possible.
+
+`sending` représente une tentative réclamée ; un résultat fournisseur incertain peut rester `sending` afin d’empêcher un nouvel envoi potentiellement doublonné, tandis que les tentatives `failed` peuvent être reprises selon les garde-fous existants.
 
 Campagnes transactionnelles disponibles :
 
