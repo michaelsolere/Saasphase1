@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #259. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #261. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `53046fcb429ae96bf54d3a4246a4897fb08733fa`.
-- Dernière PR incluse : **#259 — Fonder le versionnement sécurisé des modèles documentaires**.
-- Les migrations locales sont appliquées jusqu’à `202607140001`.
+- SHA de `main` documenté : `ca925ca702207f96cdfde975f4c6747e253c3d81`.
+- Dernière PR incluse : **#261 — Ajouter le service serveur de gestion des modèles documentaires**.
+- Les migrations locales sont appliquées jusqu’à `202607140002`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -103,6 +103,14 @@ Campagnes transactionnelles disponibles :
 - La reprise des modèles legacy conserve chaque modèle comme une famille distincte, sans regroupement ni renumérotation.
 - La synchronisation du nom et de la description d’une famille vers ses versions conserve les audits propres aux versions.
 
+### Service serveur de gestion
+
+- Le service liste les familles avec leur brouillon et leur publication courants, crée atomiquement une famille et son premier brouillon, et modifie le nom ou la description d’une famille.
+- Il clone le prochain brouillon et sauvegarde son contenu avec un verrou optimiste afin de signaler les écritures concurrentes.
+- La validation métier réutilise exclusivement le parseur Zod existant. La publication impose ensuite une précondition SQL sur la version exacte validée pour empêcher la publication d’un brouillon modifié entre-temps.
+- Les résultats et erreurs sont typés pour l’interface, sans exposer de messages SQL bruts.
+- Un `viewer` peut lire et valider. Un `member` peut aussi créer et sauvegarder des brouillons. Les rôles `owner` et `admin` disposent de toutes les opérations, dont la création d’une famille et la publication.
+
 ### Modèles et snapshots
 
 - Les modèles documentaires sont définis par des schémas JSON versionnés et validés avec Zod.
@@ -136,9 +144,8 @@ Campagnes transactionnelles disponibles :
 
 Il n’existe pas encore :
 
-- d’interface de gestion des familles et versions dans `/documents` ;
-- de service serveur applicatif validant le schéma Zod avant publication ;
-- de création, d’édition ou de publication de modèles depuis l’interface ;
+- d’interface de gestion ou d’édition des modèles dans `/documents` ;
+- de server action React branchée sur le service de gestion ;
 - de variantes personnalisées par adoptant ;
 - de génération PDF groupée ;
 - de pièces jointes PDF Brevo.
@@ -150,7 +157,7 @@ La feuille de route immédiate est, dans cet ordre :
 3. génération PDF groupée depuis une portée ou un groupe de portées ;
 4. envoi des PDF exacts en pièces jointes Brevo.
 
-Le prochain lot technique attendu est le cadrage puis l’implémentation du service serveur de gestion des modèles et de validation Zod, avant l’interface complète.
+La prochaine étape est : **implémenter l’interface de gestion et l’éditeur des modèles documentaires de référence dans `/documents`, en s’appuyant exclusivement sur le service serveur existant.**
 
 ## Environnement E2E et règles de validation
 
