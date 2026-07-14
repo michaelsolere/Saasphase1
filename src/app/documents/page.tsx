@@ -146,6 +146,12 @@ export default async function DocumentsPage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-4">
+            <Link
+              href="/documents/modeles"
+              className="inline-flex min-h-9 items-center rounded-md border bg-background px-4 py-2 text-sm font-semibold text-accent shadow-sm transition hover:border-accent hover:bg-accent-soft"
+            >
+              Modèles de référence
+            </Link>
             <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
               Lecture seule
             </span>
