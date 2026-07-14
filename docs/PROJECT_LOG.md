@@ -1,13 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #257. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #259. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `9d69981a138e9677fb852ad1d78abd59220c6ad8`.
-- Dernière PR incluse : **#257 — Archiver et consulter les retours signés**.
+- SHA de `main` documenté : `53046fcb429ae96bf54d3a4246a4897fb08733fa`.
+- Dernière PR incluse : **#259 — Fonder le versionnement sécurisé des modèles documentaires**.
+- Les migrations locales sont appliquées jusqu’à `202607140001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -91,6 +92,17 @@ Campagnes transactionnelles disponibles :
 
 ## Moteur PDF et versionnement documentaire
 
+### Familles et versions de modèles
+
+- `document_template_families` porte l’identité stable d’un modèle de référence ; chaque ligne de `document_templates` représente une version de cette famille.
+- Une version suit l’un des états `draft`, `published` ou `retired`. Une famille ne peut avoir qu’un seul brouillon et qu’une seule version publiée à la fois.
+- La création du prochain brouillon est sûre face aux accès concurrents et attribue la version suivante sans doublon.
+- La publication est atomique et réservée aux rôles owner/admin. Les membres autorisés peuvent modifier uniquement les brouillons.
+- Une version publiée, retirée ou déjà utilisée par un document est immuable.
+- Le lien entre un document et son modèle identifie la version exacte au moyen de `documents.template_id` et `documents.source_template_version`.
+- La reprise des modèles legacy conserve chaque modèle comme une famille distincte, sans regroupement ni renumérotation.
+- La synchronisation du nom et de la description d’une famille vers ses versions conserve les audits propres aux versions.
+
 ### Modèles et snapshots
 
 - Les modèles documentaires sont définis par des schémas JSON versionnés et validés avec Zod.
@@ -120,19 +132,25 @@ Campagnes transactionnelles disponibles :
 - Le retour signé est consultable par une route privée et apparaît comme artefact séparé dans l’historique de la version d’origine.
 - Il n’existe qu’un retour signé par document. Une fois archivé, il ne peut être ni substitué, ni supprimé, ni déplacé vers une autre version ; l’original n’est jamais remplacé.
 
-## Limite actuelle et prochaine étape
+## Limites actuelles et feuille de route immédiate
 
-La campagne `birth_documents_deposit` **envoie déjà l’e-mail** et **prépare le complément d’arrhes**. En revanche, elle **n’attache pas encore les vrais PDF générés** du contrat de réservation et du certificat d’engagement.
+Il n’existe pas encore :
 
-Le transport transactionnel actuel accepte uniquement :
+- d’interface de gestion des familles et versions dans `/documents` ;
+- de service serveur applicatif validant le schéma Zod avant publication ;
+- de création, d’édition ou de publication de modèles depuis l’interface ;
+- de variantes personnalisées par adoptant ;
+- de génération PDF groupée ;
+- de pièces jointes PDF Brevo.
 
-- l’identifiant du modèle ;
-- le destinataire ;
-- les variables ;
-- la clé d’idempotence ;
-- les tags.
+La feuille de route immédiate est, dans cet ordre :
 
-Il ne possède encore aucun contrat d’entrée pour des pièces jointes. La prochaine étape fonctionnelle logique est donc d’étendre cette campagne pour envoyer **les deux PDF exacts** générés pour la réservation, en traçant les identifiants et versions réellement transmis, puis en mettant à jour le statut `sent` et `sent_at` de chaque document uniquement après une livraison confirmée et de manière sûre face aux retries, envois partiels et résultats incertains.
+1. gestion et éditeur des modèles documentaires de référence ;
+2. variantes individuelles liées aux adoptants ;
+3. génération PDF groupée depuis une portée ou un groupe de portées ;
+4. envoi des PDF exacts en pièces jointes Brevo.
+
+Le prochain lot technique attendu est le cadrage puis l’implémentation du service serveur de gestion des modèles et de validation Zod, avant l’interface complète.
 
 ## Environnement E2E et règles de validation
 
