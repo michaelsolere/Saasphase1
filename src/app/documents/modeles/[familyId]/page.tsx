@@ -2,13 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CreateDocumentTemplateDraftButton } from "@/features/documents/create-document-template-draft-button";
+import { decodeDocumentTemplateDraft } from "@/features/documents/decode-document-template-draft";
 import { DocumentTemplateEditor } from "@/features/documents/document-template-editor";
 import { hasStructuredDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
 import { getDocumentTypeLabel } from "@/features/documents/formatters";
 import { listDocumentTemplateFamilies, type DocumentTemplateVersionSummary } from "@/features/documents/document-template-management";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
 import { parseDocumentTemplateDefinition, type DocumentTemplateDefinition } from "@/features/documents/document-template-definitions";
-import { ValidateDocumentTemplateDraftButton } from "@/features/documents/validate-document-template-draft-button";
 
 export const dynamic = "force-dynamic";
 
@@ -89,9 +89,15 @@ export default async function DocumentTemplateFamilyPage({
   const family = result.families.find((item) => item.id === familyId);
   if (!family) notFound();
 
-  const hasEditor = hasStructuredDocumentTemplateEditor(family.documentType);
-  const publicationDefinition = hasEditor ? parseVersion(family.publication, family.documentType) : null;
-  const draftDefinition = hasEditor ? parseVersion(family.draft, family.documentType) : null;
+  const documentType = family.documentType;
+  const hasEditor = hasStructuredDocumentTemplateEditor(documentType);
+  const publicationDefinition = hasEditor ? parseVersion(family.publication, documentType) : null;
+  const draftDefinition = hasEditor && family.draft
+    ? decodeDocumentTemplateDraft({
+        documentType,
+        templateContent: family.draft.templateContent,
+      })
+    : null;
   const canSave = result.role !== "viewer";
   const canPublish = result.role === "owner" || result.role === "admin";
 
@@ -154,18 +160,14 @@ export default async function DocumentTemplateFamilyPage({
                   templateId={family.draft.id}
                   version={family.draft.version}
                   initialDefinition={draftDefinition as DocumentTemplateDefinition}
+                  initialSavedContent={family.draft.templateContent}
                   initialUpdatedAt={family.draft.updatedAt}
                   mode="draft"
                   canSave={canSave}
                   canValidate
                   canPublish={canPublish}
                 />
-              ) : (
-                <div className="space-y-4">
-                  <VersionPlaceholder kind="invalid" hasEditor />
-                  <ValidateDocumentTemplateDraftButton templateId={family.draft.id} />
-                </div>
-              )}
+              ) : null}
             </>
           ) : (
             <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center">

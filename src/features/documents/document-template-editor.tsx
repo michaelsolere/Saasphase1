@@ -49,6 +49,31 @@ type StructuredEditorConfiguration = {
 const fieldClassName =
   "mt-2 w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:bg-muted-soft disabled:text-muted";
 
+function sortJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortJsonValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, sortJsonValue(item)]),
+    );
+  }
+  return value;
+}
+
+function fingerprintValue(value: unknown) {
+  return JSON.stringify(sortJsonValue(value));
+}
+
+function fingerprintStoredContent(templateContent: string | null) {
+  if (templateContent === null) return fingerprintValue(null);
+  try {
+    return fingerprintValue(JSON.parse(templateContent));
+  } catch {
+    return fingerprintValue(templateContent);
+  }
+}
+
 function ParagraphList({
   id,
   label,
@@ -372,6 +397,7 @@ export function DocumentTemplateEditor({
   templateId,
   version,
   initialDefinition,
+  initialSavedContent = null,
   initialUpdatedAt,
   mode,
   canSave = false,
@@ -381,6 +407,7 @@ export function DocumentTemplateEditor({
   templateId: string;
   version: number;
   initialDefinition: DocumentTemplateDefinition;
+  initialSavedContent?: string | null;
   initialUpdatedAt: string;
   mode: "draft" | "published";
   canSave?: boolean;
@@ -389,15 +416,24 @@ export function DocumentTemplateEditor({
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState(initialDefinition);
+  const [savedContentFingerprint, setSavedContentFingerprint] = useState(
+    () => fingerprintStoredContent(initialSavedContent),
+  );
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
   const [result, setResult] = useState<DocumentTemplateActionResult | null>(null);
   const [isPending, startTransition] = useTransition();
   const configuration = documentTemplateEditorConfigurations[definition.documentType];
   const readOnly = mode === "published" || !canSave;
+  const templateContent = JSON.stringify(definition);
+  const isDirty = mode === "draft"
+    && fingerprintValue(definition) !== savedContentFingerprint;
 
   function runAction(
     action: () => Promise<DocumentTemplateActionResult>,
-    refreshAfterSuccess = false,
+    options?: {
+      refreshAfterSuccess?: boolean;
+      onSuccess?: () => void;
+    },
   ) {
     setResult(null);
     startTransition(async () => {
@@ -405,7 +441,8 @@ export function DocumentTemplateEditor({
       setResult(nextResult);
       if (nextResult.outcome === "success") {
         if (nextResult.updatedAt) setUpdatedAt(nextResult.updatedAt);
-        if (refreshAfterSuccess) router.refresh();
+        options?.onSuccess?.();
+        if (options?.refreshAfterSuccess) router.refresh();
       }
     });
   }
@@ -432,6 +469,21 @@ export function DocumentTemplateEditor({
       {mode === "draft" ? (
         <div className="sticky bottom-4 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
           <StatusMessage result={result} />
+          <div
+            data-editor-save-state={isDirty ? "dirty" : "saved"}
+            className={isDirty
+              ? "mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              : "mt-3 text-sm text-muted"}
+          >
+            {isDirty ? (
+              <>
+                <span className="font-semibold">Modifications non enregistrées.</span>{" "}
+                Enregistrez le brouillon avant de le publier.
+              </>
+            ) : (
+              "Toutes les modifications affichées sont enregistrées."
+            )}
+          </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-muted">
               La validation contrôle la dernière sauvegarde et ne publie jamais le brouillon.
@@ -444,9 +496,13 @@ export function DocumentTemplateEditor({
                   disabled={isPending}
                   onClick={() => runAction(() => saveDocumentTemplateDraftAction({
                     templateId,
-                    templateContent: JSON.stringify(definition),
+                    templateContent,
                     expectedUpdatedAt: updatedAt,
-                  }))}
+                  }), {
+                    onSuccess: () => setSavedContentFingerprint(
+                      fingerprintStoredContent(templateContent),
+                    ),
+                  })}
                 >
                   Enregistrer le brouillon
                 </Button>
@@ -466,7 +522,13 @@ export function DocumentTemplateEditor({
               {canPublish ? (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button type="button" disabled={isPending}>Publier</Button>
+                    <Button
+                      type="button"
+                      disabled={isPending || isDirty}
+                      title={isDirty ? "Enregistrez les modifications avant de publier." : undefined}
+                    >
+                      Publier
+                    </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
@@ -480,7 +542,7 @@ export function DocumentTemplateEditor({
                       <AlertDialogAction
                         onClick={() => runAction(() => publishDocumentTemplateDraftAction({
                           templateId,
-                        }), true)}
+                        }), { refreshAfterSuccess: true })}
                       >
                         Confirmer la publication
                       </AlertDialogAction>
