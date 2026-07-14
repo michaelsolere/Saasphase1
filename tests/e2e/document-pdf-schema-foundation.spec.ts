@@ -51,6 +51,7 @@ function cleanupSql() {
   sql(`
     delete from public.documents where id::text like '99000000-%';
     delete from public.document_templates where id = '${templateId}';
+    delete from public.document_template_families where id = '${templateId}';
     delete from public.reservations where id = '${reservationId}';
     delete from public.contacts where id = '${contactId}';
     delete from public.litters where id::text like '99000000-%';
@@ -66,6 +67,7 @@ function assertNoFixtures() {
        where bucket_id = 'documents' and name like '%99000000-%')
       + (select count(*) from public.documents where id::text like '99000000-%')
       + (select count(*) from public.document_templates where id::text like '99000000-%')
+      + (select count(*) from public.document_template_families where id::text like '99000000-%')
       + (select count(*) from public.reservations where id::text like '99000000-%')
       + (select count(*) from public.contacts where id::text like '99000000-%')
       + (select count(*) from public.litters where id::text like '99000000-%')
@@ -103,10 +105,18 @@ test("validates document PDF schema and authenticated Storage policies", async (
       values ('${contactId}', '${organizationId}', 'QA PDF contact');
       insert into public.reservations (id, organization_id, contact_id)
       values ('${reservationId}', '${organizationId}', '${contactId}');
-      insert into public.document_templates (
-        id, organization_id, name, document_type, version
+      insert into public.document_template_families (
+        id, organization_id, name, document_type
       ) values (
-        '${templateId}', '${organizationId}', 'QA PDF template', 'reservation_contract', 1
+        '${templateId}', '${organizationId}', 'QA PDF template', 'reservation_contract'
+      );
+      insert into public.document_templates (
+        id, organization_id, family_id, name, document_type, version,
+        lifecycle_status, is_active, published_at, published_by
+      ) values (
+        '${templateId}', '${organizationId}', '${templateId}',
+        'QA PDF template', 'reservation_contract', 1, 'published', true,
+        now(), '${userId}'
       );
     `);
 
@@ -192,7 +202,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
         `, '${reservationId}', '${contactId}', true, now(), now()`,
         "reservation_contract",
       ),
-      /documents_generation_check/,
+      /documents_generation_check|exact document template version/,
     );
     expectSqlFailure(
       insertDocument(
@@ -201,7 +211,7 @@ test("validates document PDF schema and authenticated Storage policies", async (
         `, '${reservationId}', '${contactId}', true, '${templateId}', now()`,
         "reservation_contract",
       ),
-      /documents_generation_check/,
+      /documents_generation_check|exact document template version/,
     );
 
     sql(insertDocument(

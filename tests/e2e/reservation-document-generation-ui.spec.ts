@@ -99,6 +99,7 @@ function cleanupRows() {
     delete from public.payments where organization_id = ${q(ids.organization)}::uuid;
     delete from public.reservations where organization_id = ${q(ids.organization)}::uuid;
     delete from public.document_templates where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.document_template_families where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.applications where organization_id = ${q(ids.organization)}::uuid;
@@ -142,12 +143,19 @@ function seed() {
       (id, organization_id, signature_city_default)
     values (${q(ids.documentSettings)}, ${q(ids.organization)}, 'Paris');
 
-    insert into public.document_templates
-      (id, organization_id, name, document_type, species, breed, template_format, template_content, version, is_active)
+    insert into public.document_template_families
+      (id, organization_id, name, document_type, species, breed)
     values
-      (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat compatible UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 3, true),
-      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat compatible UI E2E', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 5, true),
-      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon', 'json', ${q(JSON.stringify(contractDefinition))}, 9, true);
+      (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat compatible UI E2E', 'reservation_contract', 'dog', 'Golden Retriever'),
+      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat compatible UI E2E', 'commitment_certificate', 'dog', 'Golden Retriever'),
+      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon');
+
+    insert into public.document_templates
+      (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
+    values
+      (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat compatible UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 3, 'published', true, now(), ${q(ownerId)}),
+      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat compatible UI E2E', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 5, 'published', true, now(), ${q(ownerId)}),
+      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, ${q(ids.incompatibleTemplate)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon', 'json', ${q(JSON.stringify(contractDefinition))}, 9, 'published', true, now(), ${q(ownerId)});
   `);
 }
 
@@ -293,6 +301,7 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       "payments",
       "reservations",
       "document_templates",
+      "document_template_families",
       "organization_document_settings",
       "organization_settings",
       "applications",

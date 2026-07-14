@@ -84,6 +84,7 @@ function cleanup() {
     delete from public.payments where organization_id = ${q(ids.organization)}::uuid;
     delete from public.reservations where organization_id = ${q(ids.organization)}::uuid;
     delete from public.document_templates where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.document_template_families where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_representatives where organization_id = ${q(ids.organization)}::uuid;
     delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
@@ -129,9 +130,15 @@ function seed() {
     values (${q(ids.representative)}, ${q(ids.organization)}, 'Alice Signataire', 'Alice', 'Signataire', 'Gérante', 'alice@example.invalid', true, true);
     insert into public.organization_document_settings (id, organization_id, mediator_name, mediator_contact, mediator_website_url, signature_city_default)
     values (${q(ids.documentSettings)}, ${q(ids.organization)}, 'Médiateur QA', 'contact médiateur', 'https://mediateur.example.invalid', 'Paris');
-    insert into public.document_templates (id, organization_id, name, document_type, species, breed, template_format, template_content, version, is_active)
-    values (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'DOG', ' golden retriever ', 'json', ${q(JSON.stringify(contractDefinition))}, 7, true),
-           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 9, true);
+    insert into public.document_template_families
+      (id, organization_id, name, document_type, species, breed)
+    values
+      (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'DOG', ' golden retriever '),
+      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever');
+    insert into public.document_templates
+      (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
+    values (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat QA', 'reservation_contract', 'DOG', ' golden retriever ', 'json', ${q(JSON.stringify(contractDefinition))}, 7, 'published', true, now(), ${q(ownerId)}),
+           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 9, 'published', true, now(), ${q(ownerId)});
     insert into public.payments (id, organization_id, contact_id, reservation_id, amount_cents, payment_type, status, deleted_at)
     values (${q(ids.paidPreReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.groupReservation)}, 30000, 'pre_reservation_deposit_refundable', 'paid', null),
            (${q(ids.paidArrhes)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.groupReservation)}, 45000, 'arrhes', 'paid', null),
@@ -246,18 +253,10 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     expect(await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: "00000000-0000-4000-8000-000000000404", documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase)).toEqual({ outcome: "error", error: { code: "reservation_not_found" } });
     expect(await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.incompleteReservation, documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase)).toEqual({ outcome: "error", error: { code: "incomplete_source_data" } });
 
-    for (const mutation of [
-      "is_active = false",
-      "deleted_at = now()",
-      "template_format = 'html'",
-      "species = 'cat'",
-      "breed = 'Labrador Retriever'",
-    ]) {
-      sql(`update public.document_templates set ${mutation} where id = ${q(ids.contractTemplate)}::uuid;`);
-      const refused = await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.groupReservation, documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase);
-      expect(refused.outcome).toBe("error");
-      sql(`update public.document_templates set is_active = true, deleted_at = null, template_format = 'json', document_type = 'reservation_contract', species = 'dog', breed = 'Golden Retriever' where id = ${q(ids.contractTemplate)}::uuid;`);
-    }
+    sql(`update public.document_templates set lifecycle_status = 'retired', is_active = false where id = ${q(ids.contractTemplate)}::uuid;`);
+    const inactiveTemplate = await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.groupReservation, documentType: "reservation_contract", templateId: ids.contractTemplate, capturedAt }, supabase);
+    expect(inactiveTemplate.outcome).toBe("error");
+    sql(`update public.document_templates set lifecycle_status = 'published', is_active = true where id = ${q(ids.contractTemplate)}::uuid;`);
     expect(await prepareDocumentGenerationSnapshotForReservationCore({ reservationId: ids.groupReservation, documentType: "reservation_contract", templateId: ids.certificateTemplate, capturedAt }, supabase)).toEqual({ outcome: "error", error: { code: "template_mismatch" } });
 
     sql(`delete from public.organization_representatives where id = ${q(ids.representative)}::uuid; delete from public.organization_document_settings where id = ${q(ids.documentSettings)}::uuid;`);
@@ -276,7 +275,7 @@ test("prepares validated reservation snapshots from authenticated Supabase reads
     expect(Number(sql(`select count(*) from public.documents where organization_id = ${q(ids.organization)}::uuid;`))).toBe(documentsBefore);
   } finally {
     cleanup();
-    const count = Number(sql(`select count(*) from (select id from public.organizations where id = ${q(ids.organization)}::uuid union all select id from public.memberships where organization_id = ${q(ids.organization)}::uuid union all select id from public.contacts where organization_id = ${q(ids.organization)}::uuid union all select id from public.applications where organization_id = ${q(ids.organization)}::uuid union all select id from public.litter_groups where organization_id = ${q(ids.organization)}::uuid union all select id from public.litters where organization_id = ${q(ids.organization)}::uuid union all select id from public.animals where organization_id = ${q(ids.organization)}::uuid union all select id from public.reservations where organization_id = ${q(ids.organization)}::uuid union all select id from public.payments where organization_id = ${q(ids.organization)}::uuid union all select id from public.document_templates where organization_id = ${q(ids.organization)}::uuid union all select id from public.documents where organization_id = ${q(ids.organization)}::uuid union all select id from auth.users where id = ${q(ids.viewerUser)}::uuid) fixtures;`));
+    const count = Number(sql(`select count(*) from (select id from public.organizations where id = ${q(ids.organization)}::uuid union all select id from public.memberships where organization_id = ${q(ids.organization)}::uuid union all select id from public.contacts where organization_id = ${q(ids.organization)}::uuid union all select id from public.applications where organization_id = ${q(ids.organization)}::uuid union all select id from public.litter_groups where organization_id = ${q(ids.organization)}::uuid union all select id from public.litters where organization_id = ${q(ids.organization)}::uuid union all select id from public.animals where organization_id = ${q(ids.organization)}::uuid union all select id from public.reservations where organization_id = ${q(ids.organization)}::uuid union all select id from public.payments where organization_id = ${q(ids.organization)}::uuid union all select id from public.document_templates where organization_id = ${q(ids.organization)}::uuid union all select id from public.document_template_families where organization_id = ${q(ids.organization)}::uuid union all select id from public.documents where organization_id = ${q(ids.organization)}::uuid union all select id from auth.users where id = ${q(ids.viewerUser)}::uuid) fixtures;`));
     expect(count).toBe(0);
   }
 });
