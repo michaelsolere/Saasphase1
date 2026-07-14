@@ -9,6 +9,7 @@ export type DocumentVersionSource = {
   title: string;
   document_type: string;
   status: string;
+  sent_at: string | null;
   replaces_document_id: string | null;
   superseded_at: string | null;
   generated_at: string | null;
@@ -24,20 +25,33 @@ export type OriginalDocumentPdfArtifact = {
   version: number;
 };
 
+export type SignedReturnPdfArtifact = {
+  kind: "signed_return_pdf";
+  signedReturnId: string;
+  receivedAt: string;
+  fileSizeBytes: number;
+};
+
+export type DocumentVersionArtifact =
+  | OriginalDocumentPdfArtifact
+  | SignedReturnPdfArtifact;
+
 export type DocumentVersionHistoryEntry = {
   documentId: string;
   title: string;
   documentType: string;
   businessStatus: string;
+  sentAt: string | null;
   position: "current" | "historical";
   version: number | null;
   generatedAt: string | null;
   sourceTemplateVersion: number | null;
-  artifacts: OriginalDocumentPdfArtifact[];
+  artifacts: DocumentVersionArtifact[];
 };
 
 export type DocumentVersionHistory = {
   currentDocumentId: string;
+  canArchiveSignedReturns?: boolean;
   entries: DocumentVersionHistoryEntry[];
 };
 
@@ -60,6 +74,7 @@ function toHistoryEntry(
     title: document.title,
     documentType: document.document_type,
     businessStatus: document.status,
+    sentAt: document.sent_at,
     position: document.id === currentDocumentId ? "current" : "historical",
     version,
     generatedAt: document.generated_at,

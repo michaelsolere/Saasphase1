@@ -13,7 +13,7 @@ import type { Database } from "@/types/database.types";
 type Supabase = SupabaseClient<Database>;
 
 const versionFields =
-  "id, organization_id, title, document_type, status, replaces_document_id, superseded_at, generated_at, source_template_version, file_path, file_sha256, file_size_bytes, mime_type";
+  "id, organization_id, title, document_type, status, sent_at, replaces_document_id, superseded_at, generated_at, source_template_version, file_path, file_sha256, file_size_bytes, mime_type";
 
 export type ReadDocumentVersionHistoryResult =
   | { outcome: "success"; history: DocumentVersionHistory }
@@ -64,7 +64,7 @@ export async function readDocumentVersionHistory(
   );
   if (!currentDocument) return { outcome: "error" };
 
-  return reconstructDocumentVersionChainFromCurrent(
+  const reconstructed = await reconstructDocumentVersionChainFromCurrent(
     currentDocument,
     async (previousId, organizationId) => {
       const previous = await supabase
@@ -80,4 +80,58 @@ export async function readDocumentVersionHistory(
         : (previous.data as DocumentVersionSource);
     },
   );
+  if (reconstructed.outcome !== "success") return reconstructed;
+
+  const documentIds = reconstructed.history.entries.map((entry) => entry.documentId);
+  const [returns, auth] = await Promise.all([
+    supabase
+      .from("document_signed_returns")
+      .select("id, document_id, received_at, file_size_bytes")
+      .in("document_id", documentIds),
+    supabase.auth.getUser(),
+  ]);
+  if (returns.error) return { outcome: "error" };
+
+  let canArchiveSignedReturns = false;
+  if (auth.data.user) {
+    const membership = await supabase
+      .from("memberships")
+      .select("role")
+      .eq("organization_id", currentDocument.organization_id)
+      .eq("profile_id", auth.data.user.id)
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .maybeSingle();
+    canArchiveSignedReturns = Boolean(
+      membership.data && ["owner", "admin", "member"].includes(membership.data.role),
+    );
+  }
+
+  const signedReturnByDocumentId = new Map(
+    returns.data.map((signedReturn) => [signedReturn.document_id, signedReturn]),
+  );
+  return {
+    outcome: "success",
+    history: {
+      ...reconstructed.history,
+      canArchiveSignedReturns,
+      entries: reconstructed.history.entries.map((entry) => {
+        const signedReturn = signedReturnByDocumentId.get(entry.documentId);
+        return signedReturn
+          ? {
+              ...entry,
+              artifacts: [
+                ...entry.artifacts,
+                {
+                  kind: "signed_return_pdf" as const,
+                  signedReturnId: signedReturn.id,
+                  receivedAt: signedReturn.received_at,
+                  fileSizeBytes: signedReturn.file_size_bytes,
+                },
+              ],
+            }
+          : entry;
+      }),
+    },
+  };
 }
