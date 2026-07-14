@@ -254,6 +254,7 @@ set search_path = ''
 as $$
 declare
   v_is_internal boolean := current_user in ('postgres', 'supabase_admin');
+  v_user_id uuid := auth.uid();
   v_is_used boolean;
 begin
   if tg_op = 'DELETE' then
@@ -281,6 +282,15 @@ begin
       and d.template_id = old.id
   );
 
+  if not v_is_internal and (
+    new.id is distinct from old.id
+    or new.created_at is distinct from old.created_at
+    or new.created_by is distinct from old.created_by
+  ) then
+    raise exception using
+      message = 'document template identity and creation audit are immutable';
+  end if;
+
   if new.deleted_at is distinct from old.deleted_at
     and (old.lifecycle_status in ('published', 'retired') or v_is_used)
   then
@@ -301,6 +311,13 @@ begin
       raise exception using
         message = 'published, retired or used document template versions are immutable';
     end if;
+
+    if not v_is_internal
+      and new.updated_by is distinct from old.updated_by
+    then
+      raise exception using
+        message = 'published, retired or used document template author history is immutable';
+    end if;
   end if;
 
   if not v_is_internal and (
@@ -318,6 +335,15 @@ begin
   ) then
     raise exception using
       message = 'document template lifecycle, version, family and taxonomy require a lifecycle function';
+  end if;
+
+  if not v_is_internal then
+    if v_user_id is null then
+      raise exception using
+        message = 'authenticated document template updates require an author';
+    end if;
+
+    new.updated_by := v_user_id;
   end if;
 
   return new;
@@ -362,12 +388,25 @@ create trigger document_templates_20_validate_family
 before insert or update on public.document_templates
 for each row execute function public.validate_document_template_family_consistency();
 
-create or replace function public.protect_and_sync_document_template_family()
+create or replace function public.protect_document_template_family_audit()
 returns trigger
 language plpgsql
 set search_path = ''
 as $$
+declare
+  v_is_internal boolean := current_user in ('postgres', 'supabase_admin');
+  v_user_id uuid := auth.uid();
 begin
+  if not v_is_internal and (
+    new.id is distinct from old.id
+    or new.organization_id is distinct from old.organization_id
+    or new.created_at is distinct from old.created_at
+    or new.created_by is distinct from old.created_by
+  ) then
+    raise exception using
+      message = 'document template family identity and creation audit are immutable';
+  end if;
+
   if (
     new.document_type is distinct from old.document_type
     or new.species is distinct from old.species
@@ -396,6 +435,29 @@ begin
       message = 'document template family can only be archived after all versions are retired';
   end if;
 
+  if not v_is_internal then
+    if v_user_id is null then
+      raise exception using
+        message = 'authenticated document template family updates require an author';
+    end if;
+
+    new.updated_by := v_user_id;
+  end if;
+
+  return new;
+end
+$$;
+
+create trigger document_template_families_10_protect_audit
+before update on public.document_template_families
+for each row execute function public.protect_document_template_family_audit();
+
+create or replace function public.protect_and_sync_document_template_family()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
   if new.name is distinct from old.name
     or new.description is distinct from old.description
   then
@@ -471,7 +533,7 @@ for each row execute function public.validate_generated_document_template_versio
 
 create or replace function public.create_document_template_draft(
   p_family_id uuid,
-  p_template_format text default 'json',
+  p_template_format text default null,
   p_template_content text default null
 )
 returns uuid
@@ -484,6 +546,9 @@ declare
   v_family public.document_template_families%rowtype;
   v_template_id uuid := gen_random_uuid();
   v_next_version integer;
+  v_template_format text;
+  v_template_content text;
+  v_has_publication boolean := false;
 begin
   select family.* into v_family
   from public.document_template_families family
@@ -519,6 +584,36 @@ begin
   from public.document_templates dt
   where dt.family_id = v_family.id;
 
+  select
+    dt.template_format,
+    dt.template_content
+    into
+      v_template_format,
+      v_template_content
+  from public.document_templates dt
+  where dt.organization_id = v_family.organization_id
+    and dt.family_id = v_family.id
+    and dt.lifecycle_status = 'published'
+    and dt.is_active
+    and dt.deleted_at is null;
+
+  v_has_publication := found;
+
+  if p_template_content is null then
+    if not v_has_publication then
+      raise exception 'Document template draft requires explicit format and content when no publication exists'
+        using errcode = '23514';
+    end if;
+  else
+    if p_template_format is null then
+      raise exception 'Document template draft format is required when content is provided'
+        using errcode = '23514';
+    end if;
+
+    v_template_format := p_template_format;
+    v_template_content := p_template_content;
+  end if;
+
   insert into public.document_templates (
     id, organization_id, family_id, name, description, document_type,
     species, breed, template_format, template_content, version,
@@ -526,7 +621,7 @@ begin
   ) values (
     v_template_id, v_family.organization_id, v_family.id, v_family.name,
     v_family.description, v_family.document_type, v_family.species,
-    v_family.breed, p_template_format, p_template_content, v_next_version,
+    v_family.breed, v_template_format, v_template_content, v_next_version,
     'draft', false, v_user_id, v_user_id
   );
 

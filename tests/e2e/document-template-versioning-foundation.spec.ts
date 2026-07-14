@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
+import {
+  parseDocumentTemplateDefinition,
+  type ReservationContractTemplateDefinition,
+} from "../../src/features/documents/document-template-definitions";
 import type { Database } from "../../src/types/database.types";
 import {
   createAuthenticatedSupabaseClient,
@@ -10,6 +14,7 @@ import {
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const prefix = "9d140000-0000-4000-8000-0000000000";
+const otherOrganizationId = "30000000-0000-4000-8000-000000000099";
 const ids = {
   family: `${prefix}01`,
   adminFamily: `${prefix}02`,
@@ -35,6 +40,31 @@ const ids = {
   draftGeneratedDocument: `${prefix}52`,
   draftReferenceDocument: `${prefix}53`,
 } as const;
+
+const reservationContractDefinition: ReservationContractTemplateDefinition = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat de référence",
+  preamble: ["Préambule du contrat de référence."],
+  clauses: {
+    reservationPurpose: ["Objet de la réservation."],
+    priceAndPayments: ["Prix et modalités de paiement."],
+    deposit: ["Conditions relatives aux arrhes."],
+    cancellationAndRefund: ["Conditions d’annulation et de remboursement."],
+    postponementAndCredit: ["Conditions de report et d’avoir."],
+    potentialWithholding: ["Conditions d’une éventuelle retenue."],
+    finalConditions: ["Conditions finales de la réservation."],
+  },
+  signatureLabels: {
+    breeder: "L’éleveur",
+    reservingParty: "Le réservant",
+  },
+};
+
+function reservationContractContent(title: string) {
+  return JSON.stringify({ ...reservationContractDefinition, title });
+}
 
 const users = {
   admin: {
@@ -182,7 +212,7 @@ function createInitialFamilyAndPublication() {
       gen_random_uuid(), ${q(organizationId)}::uuid, ${q(ids.family)}::uuid,
       'Contrat de référence', 'Famille E2E stable',
       'reservation_contract', 'dog', 'Golden Retriever', 'json',
-      '{"schemaVersion":1,"documentType":"reservation_contract","title":"Version 1"}',
+      ${q(reservationContractContent("Version 1"))},
       1, 'published', true, now(), ${q(ownerId)}::uuid,
       ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
     );
@@ -218,6 +248,42 @@ test("versions document templates atomically, enforces permissions and cleans fi
     });
     expect(adminFamily.error).toBeNull();
 
+    const familyAuditUpdate = await admin
+      .from("document_template_families")
+      .update({
+        description: "Description modifiée par admin",
+        updated_by: users.viewer.id,
+      })
+      .eq("id", ids.adminFamily);
+    expect(familyAuditUpdate.error).toBeNull();
+    expect(sql(`
+      select updated_by::text from public.document_template_families
+      where id = ${q(ids.adminFamily)}::uuid;
+    `)).toBe(users.admin.id);
+
+    for (const mutation of [
+      { id: `${prefix}09` },
+      { organization_id: otherOrganizationId },
+      { created_at: "2000-01-01T00:00:00.000Z" },
+      { created_by: users.member.id },
+    ]) {
+      const immutableFamilyIdentity = await admin
+        .from("document_template_families")
+        .update(mutation)
+        .eq("id", ids.adminFamily);
+      expect(immutableFamilyIdentity.error?.message).toMatch(
+        /family identity and creation audit are immutable/,
+      );
+    }
+
+    const immutableFamilyTaxonomy = await admin
+      .from("document_template_families")
+      .update({ species: "cat" })
+      .eq("id", ids.family);
+    expect(immutableFamilyTaxonomy.error?.message).toMatch(
+      /family taxonomy is immutable/,
+    );
+
     const memberFamily = await member.from("document_template_families").insert({
       id: `${prefix}06`,
       organization_id: organizationId,
@@ -225,6 +291,25 @@ test("versions document templates atomically, enforces permissions and cleans fi
       document_type: "other",
     });
     expect(memberFamily.error).not.toBeNull();
+
+    const missingInitialDraftContent = await admin.rpc(
+      "create_document_template_draft",
+      { p_family_id: ids.adminFamily },
+    );
+    expect(missingInitialDraftContent.error?.message).toMatch(
+      /requires explicit format and content when no publication exists/,
+    );
+
+    const explicitInitialDraft = await admin.rpc(
+      "create_document_template_draft",
+      {
+        p_family_id: ids.adminFamily,
+        p_template_content: "{}",
+        p_template_format: "json",
+      },
+    );
+    expect(explicitInitialDraft.error).toBeNull();
+    draftIds.push(explicitInitialDraft.data!);
 
     const renamedFamily = await admin
       .from("document_template_families")
@@ -245,19 +330,42 @@ test("versions document templates atomically, enforces permissions and cleans fi
 
     const createdByMember = await member.rpc("create_document_template_draft", {
       p_family_id: ids.family,
-      p_template_content: '{"version":2}',
-      p_template_format: "json",
     });
     expect(createdByMember.error).toBeNull();
     expect(createdByMember.data).toEqual(expect.any(String));
     const version2Id = createdByMember.data!;
     draftIds.push(version2Id);
+    expect(sql(`
+      select template_format || ':' || (template_content = ${q(reservationContractContent("Version 1"))})::text
+      from public.document_templates where id = ${q(version2Id)}::uuid;
+    `)).toBe("json:true");
 
     const memberEdit = await member
       .from("document_templates")
-      .update({ template_content: '{"version":2,"editedBy":"member"}' })
+      .update({
+        template_content: reservationContractContent("Version 2"),
+        updated_by: users.admin.id,
+      })
       .eq("id", version2Id);
     expect(memberEdit.error).toBeNull();
+    expect(sql(`
+      select updated_by::text from public.document_templates
+      where id = ${q(version2Id)}::uuid;
+    `)).toBe(users.member.id);
+
+    for (const mutation of [
+      { id: `${prefix}09` },
+      { created_at: "2000-01-01T00:00:00.000Z" },
+      { created_by: users.admin.id },
+    ]) {
+      const immutableDraftIdentity = await member
+        .from("document_templates")
+        .update(mutation)
+        .eq("id", version2Id);
+      expect(immutableDraftIdentity.error?.message).toMatch(
+        /identity and creation audit are immutable/,
+      );
+    }
 
     const directLifecycleChange = await member
       .from("document_templates")
@@ -277,7 +385,8 @@ test("versions document templates atomically, enforces permissions and cleans fi
       ) values (
         ${q(ids.duplicateDraft)}::uuid, ${q(organizationId)}::uuid,
         ${q(ids.family)}::uuid, 'duplicate', 'reservation_contract', 'dog',
-        'Golden Retriever', 'json', '{}', 20, 'draft', false
+        'Golden Retriever', 'json',
+        ${q(reservationContractContent("Duplicate draft"))}, 20, 'draft', false
       );`,
       /document_templates_one_draft_per_family_idx/,
     );
@@ -289,7 +398,9 @@ test("versions document templates atomically, enforces permissions and cleans fi
       ) values (
         ${q(ids.duplicatePublished)}::uuid, ${q(organizationId)}::uuid,
         ${q(ids.family)}::uuid, 'duplicate', 'reservation_contract', 'dog',
-        'Golden Retriever', 'json', '{}', 21, 'published', true,
+        'Golden Retriever', 'json',
+        ${q(reservationContractContent("Duplicate publication"))},
+        21, 'published', true,
         now(), ${q(ownerId)}::uuid
       );`,
       /document_templates_one_published_per_family_idx/,
@@ -351,6 +462,40 @@ test("versions document templates atomically, enforces permissions and cleans fi
       select published_at is not null from public.document_templates where id = ${q(version2Id)}::uuid;
     `)).toBe("t");
 
+    const retiredCreationAuthorTamper = await admin
+      .from("document_templates")
+      .update({ created_by: users.member.id })
+      .eq("family_id", ids.family)
+      .eq("version", 1);
+    expect(retiredCreationAuthorTamper.error?.message).toMatch(
+      /identity and creation audit are immutable/,
+    );
+
+    const retiredUpdateAuthorTamper = await admin
+      .from("document_templates")
+      .update({ updated_by: users.member.id })
+      .eq("family_id", ids.family)
+      .eq("version", 1);
+    expect(retiredUpdateAuthorTamper.error?.message).toMatch(
+      /author history is immutable/,
+    );
+
+    const publishedAuthorTamper = await admin
+      .from("document_templates")
+      .update({ published_by: users.member.id })
+      .eq("id", version2Id);
+    expect(publishedAuthorTamper.error?.message).toMatch(
+      /require a lifecycle function/,
+    );
+
+    const publishedUpdateAuthorTamper = await member
+      .from("document_templates")
+      .update({ updated_by: users.member.id })
+      .eq("id", version2Id);
+    expect(publishedUpdateAuthorTamper.error?.message).toMatch(
+      /author history is immutable/,
+    );
+
     const retiredEdit = await admin
       .from("document_templates")
       .update({ template_content: '{"changed":true}' })
@@ -368,13 +513,9 @@ test("versions document templates atomically, enforces permissions and cleans fi
     const concurrentDrafts = await Promise.all([
       owner.rpc("create_document_template_draft", {
         p_family_id: ids.family,
-        p_template_content: '{"version":3,"request":"owner"}',
-        p_template_format: "json",
       }),
       member.rpc("create_document_template_draft", {
         p_family_id: ids.family,
-        p_template_content: '{"version":3,"request":"member"}',
-        p_template_format: "json",
       }),
     ]);
     const createdDrafts = concurrentDrafts.filter((result) => !result.error);
@@ -387,6 +528,10 @@ test("versions document templates atomically, enforces permissions and cleans fi
     expect(Number(sql(`
       select version from public.document_templates where id = ${q(version3Id)}::uuid;
     `))).toBe(3);
+    expect(sql(`
+      select (template_content = ${q(reservationContractContent("Version 2"))})::text
+      from public.document_templates where id = ${q(version3Id)}::uuid;
+    `)).toBe("true");
 
     const concurrentPublications = await Promise.all([
       owner.rpc("publish_document_template_version", { p_template_id: version3Id }),
@@ -404,6 +549,18 @@ test("versions document templates atomically, enforces permissions and cleans fi
       )
       from public.document_templates where family_id = ${q(ids.family)}::uuid;
     `)).toBe("1:retired:false,2:retired:false,3:published:true");
+
+    const publishedContent = sql(`
+      select template_content from public.document_templates
+      where id = ${q(version3Id)}::uuid;
+    `);
+    expect(
+      parseDocumentTemplateDefinition({
+        templateFormat: "json",
+        documentType: "reservation_contract",
+        templateContent: publishedContent,
+      }),
+    ).toMatchObject({ success: true });
 
     sql(`
       insert into public.contacts (id, organization_id, display_name)
@@ -441,12 +598,14 @@ test("versions document templates atomically, enforces permissions and cleans fi
 
     const version4 = await member.rpc("create_document_template_draft", {
       p_family_id: ids.family,
-      p_template_content: '{"version":4}',
-      p_template_format: "json",
     });
     expect(version4.error).toBeNull();
     const version4Id = version4.data!;
     draftIds.push(version4Id);
+    expect(sql(`
+      select (template_content = ${q(publishedContent)})::text
+      from public.document_templates where id = ${q(version4Id)}::uuid;
+    `)).toBe("true");
 
     expectSqlFailure(
       `insert into public.documents (
@@ -475,9 +634,17 @@ test("versions document templates atomically, enforces permissions and cleans fi
 
     const usedDraftEdit = await member
       .from("document_templates")
-      .update({ template_content: '{"version":4,"changed":true}' })
+      .update({ template_content: reservationContractContent("Version 4 modifiée") })
       .eq("id", version4Id);
     expect(usedDraftEdit.error?.message).toMatch(/immutable/);
+
+    const usedDraftAuthorTamper = await member
+      .from("document_templates")
+      .update({ updated_by: users.admin.id })
+      .eq("id", version4Id);
+    expect(usedDraftAuthorTamper.error?.message).toMatch(
+      /author history is immutable/,
+    );
 
     const usedDraftSoftDelete = await member
       .from("document_templates")
