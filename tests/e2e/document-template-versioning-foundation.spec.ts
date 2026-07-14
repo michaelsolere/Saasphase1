@@ -101,6 +101,24 @@ function sql(value: string) {
   return runE2eSqlSync(value);
 }
 
+function publishArgs(templateId: string) {
+  return JSON.parse(sql(`
+    select json_build_object(
+      'p_template_id', id,
+      'p_expected_updated_at', updated_at,
+      'p_expected_template_format', template_format,
+      'p_expected_template_content', template_content
+    )::text
+    from public.document_templates
+    where id = ${q(templateId)}::uuid;
+  `)) as {
+    p_template_id: string;
+    p_expected_updated_at: string;
+    p_expected_template_format: string;
+    p_expected_template_content: string;
+  };
+}
+
 function expectSqlFailure(value: string, expected: RegExp) {
   expect(() => sql(value)).toThrow(expected);
 }
@@ -236,17 +254,16 @@ test("versions document templates atomically, enforces permissions and cleans fi
     const member = await clientFor(users.member);
     const viewer = await clientFor(users.viewer);
 
-    const adminFamily = await admin.from("document_template_families").insert({
-      id: ids.adminFamily,
-      organization_id: organizationId,
-      name: "Famille créée par admin",
-      document_type: "other",
-      species: "dog",
-      breed: "Golden Retriever",
-      created_by: users.admin.id,
-      updated_by: users.admin.id,
-    });
-    expect(adminFamily.error).toBeNull();
+    sql(`
+      insert into public.document_template_families (
+        id, organization_id, name, document_type, species, breed,
+        created_by, updated_by
+      ) values (
+        ${q(ids.adminFamily)}::uuid, ${q(organizationId)}::uuid,
+        'Famille créée par admin', 'other', 'dog', 'Golden Retriever',
+        ${q(users.admin.id)}::uuid, ${q(users.admin.id)}::uuid
+      );
+    `);
 
     const familyAuditUpdate = await admin
       .from("document_template_families")
@@ -373,9 +390,10 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .eq("id", version2Id);
     expect(directLifecycleChange.error?.message).toMatch(/require a lifecycle function/);
 
-    const memberPublish = await member.rpc("publish_document_template_version", {
-      p_template_id: version2Id,
-    });
+    const memberPublish = await member.rpc(
+      "publish_document_template_version",
+      publishArgs(version2Id),
+    );
     expect(memberPublish.error?.message).toMatch(/Insufficient organization permissions/);
 
     expectSqlFailure(
@@ -441,9 +459,10 @@ test("versions document templates atomically, enforces permissions and cleans fi
       /document_templates_lifecycle_active_check/,
     );
 
-    const adminPublish = await admin.rpc("publish_document_template_version", {
-      p_template_id: version2Id,
-    });
+    const adminPublish = await admin.rpc(
+      "publish_document_template_version",
+      publishArgs(version2Id),
+    );
     expect(adminPublish.error).toBeNull();
     expect(adminPublish.data).toBe(version2Id);
 
@@ -568,14 +587,15 @@ test("versions document templates atomically, enforces permissions and cleans fi
       from public.document_templates where id = ${q(version3Id)}::uuid;
     `)).toBe("true");
 
+    const version3PublishArgs = publishArgs(version3Id);
     const concurrentPublications = await Promise.all([
-      owner.rpc("publish_document_template_version", { p_template_id: version3Id }),
-      admin.rpc("publish_document_template_version", { p_template_id: version3Id }),
+      owner.rpc("publish_document_template_version", version3PublishArgs),
+      admin.rpc("publish_document_template_version", version3PublishArgs),
     ]);
     expect(concurrentPublications.filter((result) => !result.error)).toHaveLength(1);
     expect(concurrentPublications.filter((result) => result.error)).toHaveLength(1);
     expect(concurrentPublications.find((result) => result.error)?.error?.message).toMatch(
-      /not publishable/,
+      /stale/,
     );
     expect(sql(`
       select string_agg(
