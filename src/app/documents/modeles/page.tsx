@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
+import { CreateDocumentTemplateFamilyDialog } from "@/features/documents/create-document-template-family-dialog";
 import { getDocumentTypeLabel } from "@/features/documents/formatters";
 import { listDocumentTemplateFamilies } from "@/features/documents/document-template-management";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
@@ -36,6 +37,8 @@ export default async function DocumentTemplatesPage() {
   const result = organization
     ? await listDocumentTemplateFamilies({ organizationId: organization.organizationId })
     : null;
+  const canCreate = result?.outcome === "success" && (result.role === "owner" || result.role === "admin");
+  const showHeaderCreate = canCreate && result?.families.length > 0;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -52,9 +55,12 @@ export default async function DocumentTemplatesPage() {
             </p>
           </div>
           {result?.outcome === "success" ? (
-            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-              {roleLabels[result.role]}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
+                {roleLabels[result.role]}
+              </span>
+              {showHeaderCreate ? <CreateDocumentTemplateFamilyDialog /> : null}
+            </div>
           ) : null}
         </div>
       </header>
@@ -66,6 +72,7 @@ export default async function DocumentTemplatesPage() {
           <div className="rounded-2xl border border-dashed bg-surface px-6 py-12 text-center">
             <p className="font-semibold">Aucun modèle de référence</p>
             <p className="mt-2 text-sm text-muted">Les familles documentaires configurées apparaîtront ici.</p>
+            {canCreate ? <div className="mt-5 flex justify-center"><CreateDocumentTemplateFamilyDialog /></div> : null}
           </div>
         ) : (
           <div className="grid gap-5 lg:grid-cols-2">

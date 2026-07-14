@@ -14,6 +14,11 @@ export const documentTemplateTypePresentations: Record<
   },
 };
 
+export const creatableStructuredDocumentTemplateTypes = [
+  "commitment_certificate",
+  "reservation_contract",
+] as const satisfies readonly DocumentTemplateType[];
+
 export function hasStructuredDocumentTemplateEditor(
   documentType: string,
 ): documentType is DocumentTemplateType {

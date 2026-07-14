@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  createDocumentTemplateFamilyWithDraft,
   createNextDocumentTemplateDraft,
   listDocumentTemplateFamilies,
   publishDocumentTemplateDraft,
@@ -10,6 +11,8 @@ import {
   validateDocumentTemplateDraft,
   type DocumentTemplateManagementErrorCode,
 } from "@/features/documents/document-template-management";
+import { createInitialDocumentTemplateDefinition } from "@/features/documents/create-initial-document-template-definition";
+import { hasStructuredDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
 
 export type DocumentTemplateActionResult =
@@ -24,6 +27,10 @@ export type DocumentTemplateActionResult =
       message: string;
     };
 
+export type CreateDocumentTemplateFamilyActionResult =
+  | { outcome: "success"; familyId: string }
+  | { outcome: "error"; code: DocumentTemplateManagementErrorCode; message: string };
+
 function missingOrganization(): DocumentTemplateActionResult {
   return {
     outcome: "error",
@@ -35,6 +42,49 @@ function missingOrganization(): DocumentTemplateActionResult {
 function revalidateTemplateRoutes(familyId: string) {
   revalidatePath("/documents/modeles");
   revalidatePath(`/documents/modeles/${familyId}`);
+}
+
+function neutralCreationError(
+  code: DocumentTemplateManagementErrorCode,
+): CreateDocumentTemplateFamilyActionResult {
+  return {
+    outcome: "error",
+    code,
+    message: "La création du modèle est impossible. Vérifiez les informations saisies puis réessayez.",
+  };
+}
+
+export async function createDocumentTemplateFamilyAction(input: {
+  name: string;
+  description?: string;
+  documentType: string;
+  species: string;
+  breed: string;
+}): Promise<CreateDocumentTemplateFamilyActionResult> {
+  const organization = await resolveCurrentDocumentTemplateOrganization();
+  if (!organization) return neutralCreationError("forbidden");
+
+  if (!hasStructuredDocumentTemplateEditor(input.documentType)) {
+    return neutralCreationError("invalid_input");
+  }
+
+  const result = await createDocumentTemplateFamilyWithDraft({
+    organizationId: organization.organizationId,
+    name: input.name,
+    description: input.description?.trim() || null,
+    documentType: input.documentType,
+    species: input.species,
+    breed: input.breed,
+    templateFormat: "json",
+    templateContent: JSON.stringify(
+      createInitialDocumentTemplateDefinition(input.documentType),
+    ),
+  });
+
+  if (result.outcome === "error") return neutralCreationError(result.error.code);
+
+  revalidatePath("/documents/modeles");
+  return { outcome: "success", familyId: result.familyId };
 }
 
 async function resolveCurrentDraft(templateId: string) {
