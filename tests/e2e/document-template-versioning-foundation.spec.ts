@@ -462,6 +462,41 @@ test("versions document templates atomically, enforces permissions and cleans fi
       select published_at is not null from public.document_templates where id = ${q(version2Id)}::uuid;
     `)).toBe("t");
 
+    const publishedAuditBeforeDirectUpdate = sql(`
+      select updated_by::text || '|' || updated_at::text
+      from public.document_templates where id = ${q(version2Id)}::uuid;
+    `);
+    const publishedNoOpUpdate = await admin
+      .from("document_templates")
+      .update({ name: "Contrat de référence renommé" })
+      .eq("id", version2Id);
+    expect(publishedNoOpUpdate.error?.message).toMatch(
+      /immutable to direct authenticated updates/,
+    );
+    expect(sql(`
+      select updated_by::text || '|' || updated_at::text
+      from public.document_templates where id = ${q(version2Id)}::uuid;
+    `)).toBe(publishedAuditBeforeDirectUpdate);
+
+    const familySyncAfterPublication = await admin
+      .from("document_template_families")
+      .update({
+        name: "Contrat synchronisé sans audit version",
+        description: "Description synchronisée sans audit version",
+      })
+      .eq("id", ids.family);
+    expect(familySyncAfterPublication.error).toBeNull();
+    expect(sql(`
+      select name || '|' || description from public.document_templates
+      where id = ${q(version2Id)}::uuid;
+    `)).toBe(
+      "Contrat synchronisé sans audit version|Description synchronisée sans audit version",
+    );
+    expect(sql(`
+      select updated_by::text || '|' || updated_at::text
+      from public.document_templates where id = ${q(version2Id)}::uuid;
+    `)).toBe(publishedAuditBeforeDirectUpdate);
+
     const retiredCreationAuthorTamper = await admin
       .from("document_templates")
       .update({ created_by: users.member.id })
@@ -477,7 +512,7 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .eq("family_id", ids.family)
       .eq("version", 1);
     expect(retiredUpdateAuthorTamper.error?.message).toMatch(
-      /author history is immutable/,
+      /immutable to direct authenticated updates/,
     );
 
     const publishedAuthorTamper = await admin
@@ -485,7 +520,7 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .update({ published_by: users.member.id })
       .eq("id", version2Id);
     expect(publishedAuthorTamper.error?.message).toMatch(
-      /require a lifecycle function/,
+      /immutable to direct authenticated updates/,
     );
 
     const publishedUpdateAuthorTamper = await member
@@ -493,7 +528,7 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .update({ updated_by: users.member.id })
       .eq("id", version2Id);
     expect(publishedUpdateAuthorTamper.error?.message).toMatch(
-      /author history is immutable/,
+      /immutable to direct authenticated updates/,
     );
 
     const retiredEdit = await admin
@@ -643,7 +678,7 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .update({ updated_by: users.admin.id })
       .eq("id", version4Id);
     expect(usedDraftAuthorTamper.error?.message).toMatch(
-      /author history is immutable/,
+      /immutable to direct authenticated updates/,
     );
 
     const usedDraftSoftDelete = await member

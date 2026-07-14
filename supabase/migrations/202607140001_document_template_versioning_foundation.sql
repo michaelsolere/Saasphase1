@@ -247,6 +247,10 @@ alter table public.documents
       )
     );
 
+alter trigger document_templates_set_updated_at
+on public.document_templates
+rename to document_templates_05_set_updated_at;
+
 create or replace function public.protect_document_template_version()
 returns trigger
 language plpgsql
@@ -254,6 +258,11 @@ set search_path = ''
 as $$
 declare
   v_is_internal boolean := current_user in ('postgres', 'supabase_admin');
+  v_is_family_sync boolean := current_user in ('postgres', 'supabase_admin')
+    and coalesce(
+      current_setting('app.document_template_family_sync', true),
+      'off'
+    ) = 'on';
   v_user_id uuid := auth.uid();
   v_is_used boolean;
 begin
@@ -282,6 +291,11 @@ begin
       and d.template_id = old.id
   );
 
+  if v_is_family_sync then
+    new.updated_at := old.updated_at;
+    new.updated_by := old.updated_by;
+  end if;
+
   if not v_is_internal and (
     new.id is distinct from old.id
     or new.created_at is distinct from old.created_at
@@ -298,6 +312,13 @@ begin
       message = 'published, retired or used document template versions cannot be soft-deleted';
   end if;
 
+  if not v_is_internal
+    and (old.lifecycle_status in ('published', 'retired') or v_is_used)
+  then
+    raise exception using
+      message = 'published, retired or used document template versions are immutable to direct authenticated updates';
+  end if;
+
   if old.lifecycle_status in ('published', 'retired') or v_is_used then
     if new.template_content is distinct from old.template_content
       or new.template_format is distinct from old.template_format
@@ -310,13 +331,6 @@ begin
     then
       raise exception using
         message = 'published, retired or used document template versions are immutable';
-    end if;
-
-    if not v_is_internal
-      and new.updated_by is distinct from old.updated_by
-    then
-      raise exception using
-        message = 'published, retired or used document template author history is immutable';
     end if;
   end if;
 
@@ -455,16 +469,21 @@ for each row execute function public.protect_document_template_family_audit();
 create or replace function public.protect_and_sync_document_template_family()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
   if new.name is distinct from old.name
     or new.description is distinct from old.description
   then
+    perform set_config('app.document_template_family_sync', 'on', true);
+
     update public.document_templates
     set name = new.name, description = new.description
     where organization_id = new.organization_id
       and family_id = new.id;
+
+    perform set_config('app.document_template_family_sync', 'off', true);
   end if;
 
   return new;
@@ -474,6 +493,8 @@ $$;
 create trigger document_template_families_protect_and_sync
 after update on public.document_template_families
 for each row execute function public.protect_and_sync_document_template_family();
+
+revoke all on function public.protect_and_sync_document_template_family() from public;
 
 create or replace function public.validate_generated_document_template_version()
 returns trigger
