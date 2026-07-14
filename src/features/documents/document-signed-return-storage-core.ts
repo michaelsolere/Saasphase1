@@ -4,7 +4,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
 
-const DOCUMENTS_BUCKET = "documents";
+import {
+  isDocumentPdfMetadataCoherent,
+  readDocumentPdfCore,
+} from "@/features/documents/document-pdf-storage-core";
+
+export const DOCUMENT_SIGNED_RETURN_BUCKET = "documents";
 export const DOCUMENT_SIGNED_RETURN_MAX_BYTES = 10 * 1024 * 1024;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -13,6 +18,36 @@ const PDF_EOF = new Uint8Array([0x25, 0x25, 0x45, 0x4f, 0x46]);
 
 type Supabase = SupabaseClient<Database>;
 type SignedReturnRow = Database["public"]["Tables"]["document_signed_returns"]["Row"];
+type DocumentRow = Database["public"]["Tables"]["documents"]["Row"];
+
+export type PrepareDocumentSignedReturnUploadInput = {
+  documentId: string;
+  fileSha256: string;
+  fileSizeBytes: number;
+};
+
+export type PreparedDocumentSignedReturnUpload = {
+  outcome: "prepared";
+  signedReturnId: string;
+  documentId: string;
+  filePath: string;
+  uploadToken: string;
+};
+
+export type PrepareDocumentSignedReturnUploadResult =
+  | PreparedDocumentSignedReturnUpload
+  | ErrorResult;
+
+export type FinalizeDocumentSignedReturnUploadResult =
+  | {
+      outcome: "created" | "existing";
+      signedReturnId: string;
+      documentId: string;
+      filePath: string;
+      fileSha256: string;
+      fileSizeBytes: number;
+    }
+  | ErrorResult;
 
 export type ArchiveDocumentSignedReturnInput = {
   organizationId: string;
@@ -66,7 +101,7 @@ function error(code: DocumentSignedReturnErrorCode, message: string): ErrorResul
   return { outcome: "error", error: { code, message } };
 }
 
-function normalizeUuid(value: string) {
+export function normalizeDocumentSignedReturnUuid(value: string) {
   const normalized = value.trim().toLowerCase();
   return UUID_PATTERN.test(normalized) ? normalized : null;
 }
@@ -123,9 +158,9 @@ export function buildDocumentSignedReturnPath(
   signedReturnId: string,
   fileSha256: string,
 ) {
-  const organization = normalizeUuid(organizationId);
-  const document = normalizeUuid(documentId);
-  const signedReturn = normalizeUuid(signedReturnId);
+  const organization = normalizeDocumentSignedReturnUuid(organizationId);
+  const document = normalizeDocumentSignedReturnUuid(documentId);
+  const signedReturn = normalizeDocumentSignedReturnUuid(signedReturnId);
   if (!organization || !document || !signedReturn || !SHA256_PATTERN.test(fileSha256)) {
     return null;
   }
@@ -139,11 +174,30 @@ export function parseDocumentSignedReturnPath(path: string) {
   );
   if (!match) return null;
 
-  const organizationId = normalizeUuid(match[1]);
-  const documentId = normalizeUuid(match[2]);
-  const signedReturnId = normalizeUuid(match[3]);
+  const organizationId = normalizeDocumentSignedReturnUuid(match[1]);
+  const documentId = normalizeDocumentSignedReturnUuid(match[2]);
+  const signedReturnId = normalizeDocumentSignedReturnUuid(match[3]);
   if (!organizationId || !documentId || !signedReturnId) return null;
   return { organizationId, documentId, signedReturnId, fileSha256: match[4] };
+}
+
+export function deriveDocumentSignedReturnId(
+  organizationIdValue: string,
+  documentIdValue: string,
+  fileSha256: string,
+) {
+  const organizationId = normalizeDocumentSignedReturnUuid(organizationIdValue);
+  const documentId = normalizeDocumentSignedReturnUuid(documentIdValue);
+  if (!organizationId || !documentId || !SHA256_PATTERN.test(fileSha256)) return null;
+
+  const bytes = createHash("sha256")
+    .update(`document-signed-return\0${organizationId}\0${documentId}\0${fileSha256}`)
+    .digest()
+    .subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 async function authorize(supabase: Supabase, organizationId: string, write: boolean) {
@@ -175,7 +229,9 @@ async function verifyStoredBytes(
   expectedSha256: string,
   expectedSize: number,
 ) {
-  const downloaded = await supabase.storage.from(DOCUMENTS_BUCKET).download(path);
+  const downloaded = await supabase.storage
+    .from(DOCUMENT_SIGNED_RETURN_BUCKET)
+    .download(path);
   if (downloaded.error || !downloaded.data) return false;
   const validated = validateAndHashSignedReturnPdf(
     new Uint8Array(await downloaded.data.arrayBuffer()),
@@ -187,12 +243,29 @@ async function verifyStoredBytes(
   );
 }
 
-async function compensate(
+export async function compensateDocumentSignedReturnIntent(
   supabase: Supabase,
   path: string,
   logger: DocumentSignedReturnLogger,
 ) {
-  const removed = await supabase.storage.from(DOCUMENTS_BUCKET).remove([path]);
+  const parsed = parseDocumentSignedReturnPath(path);
+  if (!parsed) return error("invalid_input", "The upload intention is invalid.");
+
+  const referenced = await supabase
+    .from("document_signed_returns")
+    .select("id")
+    .eq("file_path", path)
+    .limit(1);
+  if (referenced.error) {
+    return error("database_error", "The upload intention could not be checked safely.");
+  }
+  if (referenced.data.length > 0) {
+    return error("conflict", "An archived signed PDF cannot be removed.");
+  }
+
+  const removed = await supabase.storage
+    .from(DOCUMENT_SIGNED_RETURN_BUCKET)
+    .remove([path]);
   if (!removed.error) return null;
 
   logger.error("document_signed_return_storage_orphan", {
@@ -203,6 +276,128 @@ async function compensate(
     "orphaned_storage_object",
     "The signed PDF could not be archived safely.",
   );
+}
+
+function isEligibleDocument(
+  document: Pick<
+    DocumentRow,
+    | "id"
+    | "organization_id"
+    | "document_type"
+    | "status"
+    | "sent_at"
+    | "deleted_at"
+    | "file_path"
+    | "file_sha256"
+    | "file_size_bytes"
+    | "mime_type"
+  >,
+) {
+  return Boolean(
+    document.deleted_at === null &&
+      ["reservation_contract", "commitment_certificate"].includes(
+        document.document_type,
+      ) &&
+      ["sent", "signed"].includes(document.status) &&
+      document.sent_at &&
+      isDocumentPdfMetadataCoherent(document),
+  );
+}
+
+const eligibilityFields =
+  "id, organization_id, document_type, status, sent_at, deleted_at, file_path, file_sha256, file_size_bytes, mime_type";
+
+async function loadDocumentForWrite(documentId: string, supabase: Supabase) {
+  const document = await supabase
+    .from("documents")
+    .select(eligibilityFields)
+    .eq("id", documentId)
+    .maybeSingle();
+  if (document.error || !document.data) return error("not_found", "The document was not found.");
+
+  const authorization = await authorize(supabase, document.data.organization_id, true);
+  if (authorization) return authorization;
+  return { outcome: "success" as const, document: document.data as DocumentRow };
+}
+
+async function verifyEligibleOriginal(document: DocumentRow, supabase: Supabase) {
+  if (!isEligibleDocument(document)) {
+    return error("conflict", "This document version cannot receive a signed PDF.");
+  }
+
+  const original = await readDocumentPdfCore(
+    document.organization_id,
+    document.id,
+    supabase,
+  );
+  if (original.outcome !== "success") {
+    return error("incoherent_metadata", "The original PDF could not be verified.");
+  }
+  return { outcome: "success" as const };
+}
+
+async function loadEligibleDocument(documentId: string, supabase: Supabase) {
+  const loaded = await loadDocumentForWrite(documentId, supabase);
+  if (loaded.outcome !== "success") return loaded;
+  const eligible = await verifyEligibleOriginal(loaded.document, supabase);
+  if (eligible.outcome !== "success") return eligible;
+  return loaded;
+}
+
+export async function prepareDocumentSignedReturnUploadCore(
+  input: PrepareDocumentSignedReturnUploadInput,
+  supabase: Supabase,
+): Promise<PrepareDocumentSignedReturnUploadResult> {
+  const documentId = normalizeDocumentSignedReturnUuid(input.documentId);
+  if (
+    !documentId ||
+    !SHA256_PATTERN.test(input.fileSha256) ||
+    !Number.isSafeInteger(input.fileSizeBytes) ||
+    input.fileSizeBytes <= 0 ||
+    input.fileSizeBytes > DOCUMENT_SIGNED_RETURN_MAX_BYTES
+  ) {
+    return error("invalid_input", "A valid PDF upload intention is required.");
+  }
+
+  const eligible = await loadEligibleDocument(documentId, supabase);
+  if (eligible.outcome !== "success") return eligible;
+  const organizationId = eligible.document.organization_id;
+  const signedReturnId = deriveDocumentSignedReturnId(
+    organizationId,
+    documentId,
+    input.fileSha256,
+  )!;
+  const filePath = buildDocumentSignedReturnPath(
+    organizationId,
+    documentId,
+    signedReturnId,
+    input.fileSha256,
+  )!;
+
+  const existing = await supabase
+    .from("document_signed_returns")
+    .select("id, document_id, file_path, file_sha256, file_size_bytes")
+    .eq("document_id", documentId)
+    .maybeSingle();
+  if (existing.error) return error("database_error", "The upload intention could not be prepared.");
+  if (existing.data) {
+    return error("conflict", "A signed PDF is already archived for this version.");
+  }
+
+  const signedUpload = await supabase.storage
+    .from(DOCUMENT_SIGNED_RETURN_BUCKET)
+    .createSignedUploadUrl(filePath, { upsert: false });
+  if (signedUpload.error || !signedUpload.data?.token) {
+    return error("storage_error", "The upload intention could not be prepared.");
+  }
+
+  return {
+    outcome: "prepared",
+    signedReturnId,
+    documentId,
+    filePath,
+    uploadToken: signedUpload.data.token,
+  };
 }
 
 async function reconcileUnknownRpcOutcome(
@@ -241,9 +436,9 @@ export async function archiveDocumentSignedReturnCore(
   supabase: Supabase,
   logger: DocumentSignedReturnLogger = defaultLogger,
 ): Promise<ArchiveDocumentSignedReturnResult> {
-  const organizationId = normalizeUuid(input.organizationId);
-  const documentId = normalizeUuid(input.documentId);
-  const signedReturnId = normalizeUuid(input.signedReturnId);
+  const organizationId = normalizeDocumentSignedReturnUuid(input.organizationId);
+  const documentId = normalizeDocumentSignedReturnUuid(input.documentId);
+  const signedReturnId = normalizeDocumentSignedReturnUuid(input.signedReturnId);
   const pdf = validateAndHashSignedReturnPdf(input.bytes);
   if (!organizationId || !documentId || !signedReturnId || !pdf) {
     return error("invalid_input", "A valid signed PDF of at most 10 MiB is required.");
@@ -258,10 +453,12 @@ export async function archiveDocumentSignedReturnCore(
     signedReturnId,
     pdf.fileSha256,
   )!;
-  const upload = await supabase.storage.from(DOCUMENTS_BUCKET).upload(filePath, pdf.bytes, {
-    contentType: "application/pdf",
-    upsert: false,
-  });
+  const upload = await supabase.storage
+    .from(DOCUMENT_SIGNED_RETURN_BUCKET)
+    .upload(filePath, pdf.bytes, {
+      contentType: "application/pdf",
+      upsert: false,
+    });
   const duplicateUpload = Boolean(
     upload.error &&
       (upload.error.message.toLowerCase().includes("duplicate") ||
@@ -274,12 +471,50 @@ export async function archiveDocumentSignedReturnCore(
     });
     return error("storage_error", "The signed PDF could not be archived safely.");
   }
-  if (
-    duplicateUpload &&
-    !(await verifyStoredBytes(supabase, filePath, pdf.fileSha256, pdf.fileSizeBytes))
-  ) {
-    logger.error("document_signed_return_duplicate_incoherent", { path: filePath });
-    return error("incoherent_metadata", "The signed PDF could not be archived safely.");
+  return finalizeUploadedDocumentSignedReturn(
+    {
+      organizationId,
+      documentId,
+      signedReturnId,
+      filePath,
+      fileSha256: pdf.fileSha256,
+      fileSizeBytes: pdf.fileSizeBytes,
+    },
+    supabase,
+    logger,
+  );
+}
+
+async function finalizeUploadedDocumentSignedReturn(
+  intent: {
+    organizationId: string;
+    documentId: string;
+    signedReturnId: string;
+    filePath: string;
+    fileSha256: string;
+    fileSizeBytes: number;
+  },
+  supabase: Supabase,
+  logger: DocumentSignedReturnLogger,
+): Promise<FinalizeDocumentSignedReturnUploadResult> {
+  const {
+    organizationId,
+    documentId,
+    signedReturnId,
+    filePath,
+    fileSha256,
+    fileSizeBytes,
+  } = intent;
+
+  if (!(await verifyStoredBytes(supabase, filePath, fileSha256, fileSizeBytes))) {
+    logger.error("document_signed_return_uploaded_object_invalid", { path: filePath });
+    const compensated = await compensateDocumentSignedReturnIntent(
+      supabase,
+      filePath,
+      logger,
+    );
+    if (compensated && compensated.error.code !== "conflict") return compensated;
+    return error("incoherent_metadata", "The signed PDF could not be verified.");
   }
 
   let rpcResult;
@@ -289,8 +524,8 @@ export async function archiveDocumentSignedReturnCore(
       p_document_id: documentId,
       p_signed_return_id: signedReturnId,
       p_file_path: filePath,
-      p_file_sha256: pdf.fileSha256,
-      p_file_size_bytes: pdf.fileSizeBytes,
+      p_file_sha256: fileSha256,
+      p_file_size_bytes: fileSizeBytes,
       p_mime_type: "application/pdf",
     });
   } catch (rpcError) {
@@ -303,8 +538,8 @@ export async function archiveDocumentSignedReturnCore(
       documentId,
       signedReturnId,
       filePath,
-      fileSha256: pdf.fileSha256,
-      fileSizeBytes: pdf.fileSizeBytes,
+      fileSha256,
+      fileSizeBytes,
     });
     if (reconciliation.outcome === "existing") {
       return {
@@ -312,15 +547,16 @@ export async function archiveDocumentSignedReturnCore(
         signedReturnId,
         documentId,
         filePath,
-        fileSha256: pdf.fileSha256,
-        fileSizeBytes: pdf.fileSizeBytes,
+        fileSha256,
+        fileSizeBytes,
       };
     }
-    if (
-      !duplicateUpload &&
-      (reconciliation.outcome === "absent" || reconciliation.outcome === "conflict")
-    ) {
-      const compensated = await compensate(supabase, filePath, logger);
+    if (reconciliation.outcome === "absent" || reconciliation.outcome === "conflict") {
+      const compensated = await compensateDocumentSignedReturnIntent(
+        supabase,
+        filePath,
+        logger,
+      );
       if (compensated) return compensated;
     }
     return error("database_error", "The signed PDF could not be archived safely.");
@@ -332,8 +568,23 @@ export async function archiveDocumentSignedReturnCore(
       databaseCode: rpcResult.error.code,
       databaseError: rpcResult.error.message,
     });
-    if (!duplicateUpload) {
-      const compensated = await compensate(supabase, filePath, logger);
+    const reconciliation = await reconcileUnknownRpcOutcome(supabase, intent);
+    if (reconciliation.outcome === "existing") {
+      return {
+        outcome: "existing",
+        signedReturnId,
+        documentId,
+        filePath,
+        fileSha256,
+        fileSizeBytes,
+      };
+    }
+    if (reconciliation.outcome === "absent" || reconciliation.outcome === "conflict") {
+      const compensated = await compensateDocumentSignedReturnIntent(
+        supabase,
+        filePath,
+        logger,
+      );
       if (compensated) return compensated;
     }
     return error("conflict", "The signed PDF could not be archived safely.");
@@ -342,8 +593,13 @@ export async function archiveDocumentSignedReturnCore(
   const stored = rpcResult.data?.[0];
   if (!stored || !["created", "existing"].includes(stored.outcome)) {
     logger.error("document_signed_return_rpc_invalid_result", { path: filePath });
-    if (!duplicateUpload) {
-      const compensated = await compensate(supabase, filePath, logger);
+    const reconciliation = await reconcileUnknownRpcOutcome(supabase, intent);
+    if (reconciliation.outcome === "absent" || reconciliation.outcome === "conflict") {
+      const compensated = await compensateDocumentSignedReturnIntent(
+        supabase,
+        filePath,
+        logger,
+      );
       if (compensated) return compensated;
     }
     return error("database_error", "The signed PDF could not be archived safely.");
@@ -354,9 +610,95 @@ export async function archiveDocumentSignedReturnCore(
     signedReturnId: stored.signed_return_id,
     documentId,
     filePath,
-    fileSha256: pdf.fileSha256,
-    fileSizeBytes: pdf.fileSizeBytes,
+    fileSha256,
+    fileSizeBytes,
   };
+}
+
+export async function finalizeDocumentSignedReturnUploadCore(
+  input: PrepareDocumentSignedReturnUploadInput,
+  supabase: Supabase,
+  logger: DocumentSignedReturnLogger = defaultLogger,
+): Promise<FinalizeDocumentSignedReturnUploadResult> {
+  const documentId = normalizeDocumentSignedReturnUuid(input.documentId);
+  if (
+    !documentId ||
+    !SHA256_PATTERN.test(input.fileSha256) ||
+    !Number.isSafeInteger(input.fileSizeBytes) ||
+    input.fileSizeBytes <= 0 ||
+    input.fileSizeBytes > DOCUMENT_SIGNED_RETURN_MAX_BYTES
+  ) {
+    return error("invalid_input", "A valid PDF upload intention is required.");
+  }
+
+  const loaded = await loadDocumentForWrite(documentId, supabase);
+  if (loaded.outcome !== "success") return loaded;
+  const organizationId = loaded.document.organization_id;
+  const signedReturnId = deriveDocumentSignedReturnId(
+    organizationId,
+    documentId,
+    input.fileSha256,
+  )!;
+  const filePath = buildDocumentSignedReturnPath(
+    organizationId,
+    documentId,
+    signedReturnId,
+    input.fileSha256,
+  )!;
+
+  const eligibility = await verifyEligibleOriginal(loaded.document, supabase);
+  if (eligibility.outcome !== "success") {
+    const compensated = await compensateDocumentSignedReturnIntent(
+      supabase,
+      filePath,
+      logger,
+    );
+    if (compensated && compensated.error.code !== "conflict") return compensated;
+    return eligibility;
+  }
+
+  return finalizeUploadedDocumentSignedReturn(
+    {
+      organizationId,
+      documentId,
+      signedReturnId,
+      filePath,
+      fileSha256: input.fileSha256,
+      fileSizeBytes: input.fileSizeBytes,
+    },
+    supabase,
+    logger,
+  );
+}
+
+export async function abandonDocumentSignedReturnUploadCore(
+  input: PrepareDocumentSignedReturnUploadInput,
+  supabase: Supabase,
+  logger: DocumentSignedReturnLogger = defaultLogger,
+) {
+  const documentId = normalizeDocumentSignedReturnUuid(input.documentId);
+  if (!documentId || !SHA256_PATTERN.test(input.fileSha256)) {
+    return error("invalid_input", "The upload intention is invalid.");
+  }
+  const eligible = await loadDocumentForWrite(documentId, supabase);
+  if (eligible.outcome !== "success") return eligible;
+  const signedReturnId = deriveDocumentSignedReturnId(
+    eligible.document.organization_id,
+    documentId,
+    input.fileSha256,
+  )!;
+  const filePath = buildDocumentSignedReturnPath(
+    eligible.document.organization_id,
+    documentId,
+    signedReturnId,
+    input.fileSha256,
+  )!;
+  const compensated = await compensateDocumentSignedReturnIntent(
+    supabase,
+    filePath,
+    logger,
+  );
+  return compensated ?? { outcome: "removed" as const };
 }
 
 export async function readDocumentSignedReturnCore(
@@ -364,8 +706,8 @@ export async function readDocumentSignedReturnCore(
   signedReturnIdValue: string,
   supabase: Supabase,
 ): Promise<ReadDocumentSignedReturnResult> {
-  const organizationId = normalizeUuid(organizationIdValue);
-  const signedReturnId = normalizeUuid(signedReturnIdValue);
+  const organizationId = normalizeDocumentSignedReturnUuid(organizationIdValue);
+  const signedReturnId = normalizeDocumentSignedReturnUuid(signedReturnIdValue);
   if (!organizationId || !signedReturnId) {
     return error("invalid_input", "Invalid signed PDF identifier.");
   }
@@ -397,7 +739,9 @@ export async function readDocumentSignedReturnCore(
     return error("incoherent_metadata", "The signed PDF could not be verified.");
   }
 
-  const downloaded = await supabase.storage.from(DOCUMENTS_BUCKET).download(result.data.file_path);
+  const downloaded = await supabase.storage
+    .from(DOCUMENT_SIGNED_RETURN_BUCKET)
+    .download(result.data.file_path);
   if (downloaded.error || !downloaded.data) {
     return error("storage_error", "The signed PDF could not be read.");
   }

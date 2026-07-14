@@ -1,4 +1,5 @@
 import { getDocumentStatusLabel } from "@/features/documents/formatters";
+import { DocumentSignedReturnUploadDialog } from "@/features/documents/document-signed-return-upload-dialog";
 import type {
   DocumentVersionHistory,
   DocumentVersionHistoryEntry,
@@ -14,28 +15,92 @@ function formatGeneratedAt(value: string | null) {
   }).format(new Date(value));
 }
 
-function VersionActions({ entry }: { entry: DocumentVersionHistoryEntry }) {
+function formatFileSize(value: number) {
+  return `${(value / (1024 * 1024)).toLocaleString("fr-FR", {
+    maximumFractionDigits: 2,
+  })} Mio`;
+}
+
+function VersionActions({
+  entry,
+  canArchiveSignedReturns,
+}: {
+  entry: DocumentVersionHistoryEntry;
+  canArchiveSignedReturns: boolean;
+}) {
   const originalPdf = entry.artifacts.find(
     (artifact) => artifact.kind === "original_pdf",
   );
-  if (!originalPdf) return null;
+  const signedReturn = entry.artifacts.find(
+    (artifact) => artifact.kind === "signed_return_pdf",
+  );
+  const canArchive = Boolean(
+    canArchiveSignedReturns &&
+      originalPdf &&
+      entry.version &&
+      entry.sentAt &&
+      ["reservation_contract", "commitment_certificate"].includes(entry.documentType) &&
+      ["sent", "signed"].includes(entry.businessStatus) &&
+      !signedReturn,
+  );
 
   return (
-    <div className="flex flex-wrap gap-2">
-      <a
-        href={`/documents/${entry.documentId}/pdf`}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-      >
-        Ouvrir l’original
-      </a>
-      <a
-        href={`/documents/${entry.documentId}/pdf?download=1`}
-        className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-      >
-        Télécharger l’original
-      </a>
+    <div className="space-y-3 sm:min-w-72">
+      {originalPdf ? (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            PDF original
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/documents/${entry.documentId}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+            >
+              Ouvrir l’original
+            </a>
+            <a
+              href={`/documents/${entry.documentId}/pdf?download=1`}
+              className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+            >
+              Télécharger l’original
+            </a>
+          </div>
+        </div>
+      ) : null}
+      {signedReturn ? (
+        <div>
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Retour signé archivé
+          </p>
+          <p className="mb-2 text-xs text-muted">
+            Reçu le {formatGeneratedAt(signedReturn.receivedAt)} · {formatFileSize(signedReturn.fileSizeBytes)}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`/document-signed-returns/${signedReturn.signedReturnId}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+            >
+              Ouvrir le retour signé
+            </a>
+            <a
+              href={`/document-signed-returns/${signedReturn.signedReturnId}/pdf?download=1`}
+              className="inline-flex rounded-lg border px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+            >
+              Télécharger le retour signé
+            </a>
+          </div>
+        </div>
+      ) : null}
+      {canArchive && entry.version ? (
+        <DocumentSignedReturnUploadDialog
+          documentId={entry.documentId}
+          version={entry.version}
+        />
+      ) : null}
     </div>
   );
 }
@@ -43,15 +108,16 @@ function VersionActions({ entry }: { entry: DocumentVersionHistoryEntry }) {
 function VersionRow({
   entry,
   selectedDocumentId,
+  canArchiveSignedReturns,
 }: {
   entry: DocumentVersionHistoryEntry;
   selectedDocumentId?: string;
+  canArchiveSignedReturns: boolean;
 }) {
   const isSelected = entry.documentId === selectedDocumentId;
   const requiresSignedFileClarification =
     entry.businessStatus === "signed" &&
-    entry.artifacts.length === 1 &&
-    entry.artifacts[0]?.kind === "original_pdf";
+    !entry.artifacts.some((artifact) => artifact.kind === "signed_return_pdf");
 
   return (
     <li
@@ -84,7 +150,10 @@ function VersionRow({
             {formatGeneratedAt(entry.generatedAt)}
           </p>
         </div>
-        <VersionActions entry={entry} />
+        <VersionActions
+          entry={entry}
+          canArchiveSignedReturns={canArchiveSignedReturns}
+        />
       </div>
       {entry.artifacts.length === 0 ? (
         <p className="mt-2 text-xs text-muted">
@@ -95,8 +164,8 @@ function VersionRow({
         <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
           Le statut “Reçu signé” correspond actuellement au suivi manuel du
           dossier. Il ne signifie pas qu’un fichier retourné signé est archivé.
-          Celui-ci sera conservé plus tard comme une pièce distincte liée à la
-          version originale envoyée.
+          Archivez le PDF retourné pour le conserver comme une pièce distincte
+          liée à cette version exacte.
         </p>
       ) : null}
     </li>
@@ -146,6 +215,7 @@ export function DocumentVersionHistoryList({
             <VersionRow
               entry={current}
               selectedDocumentId={selectedDocumentId}
+              canArchiveSignedReturns={history.canArchiveSignedReturns ?? false}
             />
           ) : null}
         </ul>
@@ -162,6 +232,7 @@ export function DocumentVersionHistoryList({
                 key={entry.documentId}
                 entry={entry}
                 selectedDocumentId={selectedDocumentId}
+                canArchiveSignedReturns={history.canArchiveSignedReturns ?? false}
               />
             ))}
           </ul>
