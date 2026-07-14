@@ -82,11 +82,24 @@ const adopterSchema = z
   })
   .strict();
 
+const parentSchema = z
+  .object({
+    id: uuidSchema,
+    officialName: nullableTextSchema,
+    callName: nullableTextSchema,
+    identification: nullableTextSchema,
+    lofNumber: nullableTextSchema,
+  })
+  .strict();
+
 const litterSchema = z
   .object({
     id: uuidSchema,
     name: nullableTextSchema,
     actualBirthDate: nullableDateSchema,
+    availableFrom: nullableDateSchema.optional(),
+    mother: parentSchema.nullable().optional(),
+    father: parentSchema.nullable().optional(),
   })
   .strict();
 
@@ -126,6 +139,7 @@ const reservationSchema = z
     status: requiredTextSchema,
     createdAt: isoDateTimeSchema,
     plannedAdoptionDate: nullableDateSchema,
+    choiceRank: z.number().int().positive().nullable().optional(),
   })
   .strict();
 
@@ -153,6 +167,9 @@ const financialsSchema = z
     remainingCents: nullableNonNegativeCentsSchema,
     depositPaidCents: nonNegativeCentsSchema,
     fullDepositTargetCents: nonNegativeCentsSchema,
+    depositTargetCents: nonNegativeCentsSchema.optional(),
+    depositRemainingCents: nonNegativeCentsSchema.optional(),
+    balanceAfterFullDepositCents: nullableNonNegativeCentsSchema.optional(),
   })
   .strict();
 

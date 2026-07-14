@@ -104,7 +104,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
 
   const reservationResult = await supabase
     .from("reservations")
-    .select("id, organization_id, contact_id, application_id, litter_id, litter_group_id, animal_id, reserved_sex_preference, status, price_cents, currency, adoption_planned_at, created_at")
+    .select("id, organization_id, contact_id, application_id, litter_id, litter_group_id, animal_id, reserved_sex_preference, rank_active, status, price_cents, currency, adoption_planned_at, created_at")
     .eq("id", reservationId)
     .in("organization_id", organizationIds)
     .is("deleted_at", null)
@@ -134,7 +134,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       ? supabase.from("applications").select("id, species, breed, desired_sex_preference").eq("organization_id", organizationId).eq("id", reservation.application_id).is("deleted_at", null).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     reservation.litter_id
-      ? supabase.from("litters").select("id, name, species, breed, actual_birth_date, litter_group_id").eq("organization_id", organizationId).eq("id", reservation.litter_id).is("deleted_at", null).maybeSingle()
+      ? supabase.from("litters").select("id, name, species, breed, actual_birth_date, available_from, litter_group_id, mother_id, father_id").eq("organization_id", organizationId).eq("id", reservation.litter_id).is("deleted_at", null).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     reservation.animal_id
       ? supabase.from("animals").select("id, official_name, call_name, species, breed, sex, birth_date, identification_number, lof_number").eq("organization_id", organizationId).eq("id", reservation.animal_id).is("deleted_at", null).maybeSingle()
@@ -162,6 +162,35 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   ) {
     return fail("incomplete_source_data");
   }
+
+  const [motherResult, fatherResult] = await Promise.all([
+    litter?.mother_id
+      ? supabase
+          .from("animals")
+          .select("id, official_name, call_name, identification_number, lof_number")
+          .eq("organization_id", organizationId)
+          .eq("id", litter.mother_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    litter?.father_id
+      ? supabase
+          .from("animals")
+          .select("id, official_name, call_name, identification_number, lof_number")
+          .eq("organization_id", organizationId)
+          .eq("id", litter.father_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  if (motherResult.error || fatherResult.error) {
+    return databaseFailure(
+      "document_snapshot_litter_parents_read_failed",
+      motherResult.error ?? fatherResult.error,
+    );
+  }
+  const mother = motherResult.data;
+  const father = fatherResult.data;
   if (
     reservation.litter_group_id &&
     litter?.litter_group_id &&
@@ -283,7 +312,14 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       species,
       breed,
       sexPreference: reservation.reserved_sex_preference ?? application?.desired_sex_preference,
-      litter: litter ? { id: litter.id, name: litter.name, actualBirthDate: litter.actual_birth_date } : null,
+      litter: litter ? {
+        id: litter.id,
+        name: litter.name,
+        actualBirthDate: litter.actual_birth_date,
+        availableFrom: litter.available_from,
+        mother: mother ? { id: mother.id, officialName: mother.official_name, callName: mother.call_name, identification: mother.identification_number, lofNumber: mother.lof_number } : null,
+        father: father ? { id: father.id, officialName: father.official_name, callName: father.call_name, identification: father.identification_number, lofNumber: father.lof_number } : null,
+      } : null,
       litterGroup: litterGroup ? { id: litterGroup.id, name: litterGroup.name } : null,
       animal: animal ? { id: animal.id, officialName: animal.official_name, callName: animal.call_name, sex: animal.sex, birthDate: animal.birth_date, identification: animal.identification_number, lofNumber: animal.lof_number } : null,
     },
@@ -292,6 +328,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       status: reservation.status!,
       createdAt: reservation.created_at!,
       plannedAdoptionDate: reservation.adoption_planned_at?.slice(0, 10),
+      choiceRank: reservation.rank_active,
     },
     signature: { defaultCity: settings?.signature_city_default },
     mediator: input.documentType === "reservation_contract" ? { name: settings?.mediator_name, contact: settings?.mediator_contact, website: settings?.mediator_website_url } : undefined,

@@ -412,6 +412,7 @@ export async function createLitter(formData: FormData) {
   const actualBirthDate = normalizeOptionalDate(
     formData.get("actual_birth_date"),
   );
+  const availableFrom = normalizeOptionalDate(formData.get("available_from"));
 
   const notes = normalizeOptionalText(formData.get("notes"));
 
@@ -514,6 +515,7 @@ export async function createLitter(formData: FormData) {
       estimated_ovulation_date: estimatedOvulationDate,
       expected_birth_date: expectedBirthDate,
       actual_birth_date: actualBirthDate,
+      available_from: availableFrom,
       notes,
       created_by: user.id,
       updated_by: user.id,
@@ -638,6 +640,7 @@ export async function updateLitterDetails(formData: FormData) {
   const actualBirthDate = normalizeOptionalDate(
     formData.get("actual_birth_date"),
   );
+  const availableFrom = normalizeOptionalDate(formData.get("available_from"));
 
   const notes = normalizeOptionalText(formData.get("notes"));
 
@@ -720,6 +723,7 @@ export async function updateLitterDetails(formData: FormData) {
       estimated_ovulation_date: estimatedOvulationDate,
       expected_birth_date: expectedBirthDate,
       actual_birth_date: actualBirthDate,
+      available_from: availableFrom,
       notes,
       updated_at: new Date().toISOString(),
       updated_by: user.id,

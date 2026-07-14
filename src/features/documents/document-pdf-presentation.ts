@@ -119,6 +119,7 @@ function commonSections(snapshot: DocumentGenerationSnapshot) {
   const adopterContacts = formatContacts(snapshot.adopter);
   const project = snapshot.adoptionProject;
   const animal = project.animal;
+  const litterBirthDate = project.litter?.actualBirthDate ?? animal?.birthDate;
 
   const sections: DocumentPdfPresentationSection[] = [
     {
@@ -159,11 +160,13 @@ function commonSections(snapshot: DocumentGenerationSnapshot) {
           ? `Groupe de portées : ${project.litterGroup.name ?? "Non nommé"}`
           : null,
         project.litter
-          ? `Portée : ${project.litter.name ?? "Non nommée"}${
-              project.litter.actualBirthDate
-                ? ` - naissance le ${formatDate(project.litter.actualBirthDate)}`
-                : ""
-            }`
+          ? `Portée : ${project.litter.name ?? "Non nommée"}`
+          : null,
+        litterBirthDate
+          ? `Date de naissance : ${formatDate(litterBirthDate)}`
+          : null,
+        snapshot.reservation.choiceRank
+          ? `Rang de choix : ${snapshot.reservation.choiceRank}`
           : null,
         animal
           ? `Animal attribué : ${animal.callName ?? animal.officialName ?? "Nom non renseigné"}`
@@ -172,7 +175,6 @@ function commonSections(snapshot: DocumentGenerationSnapshot) {
           ? `Nom officiel : ${animal.officialName}`
           : null,
         animal?.sex ? `Sexe : ${sexLabels[animal.sex] ?? animal.sex}` : null,
-        animal?.birthDate ? `Date de naissance : ${formatDate(animal.birthDate)}` : null,
         animal?.identification ? `Identification : ${animal.identification}` : null,
         animal?.lofNumber ? `Numéro LOF : ${animal.lofNumber}` : null,
       ]),
@@ -189,6 +191,42 @@ function commonSections(snapshot: DocumentGenerationSnapshot) {
     },
   ];
 
+  const mother = project.litter?.mother;
+  const father = project.litter?.father;
+  const automaticSections: DocumentPdfPresentationSection[] = [];
+  if (mother || father) {
+    automaticSections.push({
+      id: "parentage",
+      title: "Parentage",
+      paragraphs: compact([
+        mother
+          ? `Mère : ${mother.officialName ?? mother.callName ?? "Nom non renseigné"}`
+          : null,
+        mother?.identification
+          ? `Identification : ${mother.identification}`
+          : null,
+        mother?.lofNumber ? `LOF : ${mother.lofNumber}` : null,
+        father
+          ? `Père : ${father.officialName ?? father.callName ?? "Nom non renseigné"}`
+          : null,
+        father?.identification
+          ? `Identification : ${father.identification}`
+          : null,
+        father?.lofNumber ? `LOF : ${father.lofNumber}` : null,
+      ]),
+    });
+  }
+  if (project.litter?.availableFrom) {
+    automaticSections.push({
+      id: "availability",
+      title: "Disponibilité",
+      paragraphs: [
+        `Les chiots de cette portée seront disponibles à partir du ${formatDate(project.litter.availableFrom)}.`,
+      ],
+    });
+  }
+  sections.splice(-1, 0, ...automaticSections);
+
   return sections;
 }
 
@@ -197,6 +235,16 @@ function buildContractPresentation(
   template: ReservationContractTemplateDefinition,
 ): DocumentPdfPresentation {
   const financials = snapshot.financials;
+  const depositTargetCents =
+    financials.depositTargetCents ?? financials.fullDepositTargetCents;
+  const depositRemainingCents =
+    financials.depositRemainingCents ??
+    Math.max(0, depositTargetCents - financials.depositPaidCents);
+  const balanceAfterFullDepositCents =
+    financials.balanceAfterFullDepositCents ??
+    (financials.priceCents === null
+      ? null
+      : Math.max(0, financials.priceCents - depositTargetCents));
   const mediator = snapshot.mediator;
   const sections = commonSections(snapshot);
 
@@ -206,15 +254,17 @@ function buildContractPresentation(
     paragraphs: compact([
       financials.priceCents === null
         ? null
-        : `Prix total : ${formatCents(financials.priceCents, financials.currency)}`,
-      `Montant payé : ${formatCents(financials.paidCents, financials.currency)}`,
-      `Montant remboursé : ${formatCents(financials.refundedCents, financials.currency)}`,
-      `Payé net : ${formatCents(financials.netPaidCents, financials.currency)}`,
-      financials.remainingCents === null
+        : `Prix total de l’animal : ${formatCents(financials.priceCents, financials.currency)}`,
+      `Montant total des arrhes convenues : ${formatCents(depositTargetCents, financials.currency)}`,
+      financials.depositPaidCents > 0
+        ? `Arrhes déjà reçues à la date de génération : ${formatCents(financials.depositPaidCents, financials.currency)}`
+        : null,
+      depositRemainingCents > 0
+        ? `Complément d’arrhes restant à verser : ${formatCents(depositRemainingCents, financials.currency)}`
+        : null,
+      balanceAfterFullDepositCents === null
         ? null
-        : `Reste dû : ${formatCents(financials.remainingCents, financials.currency)}`,
-      `Arrhes payées : ${formatCents(financials.depositPaidCents, financials.currency)}`,
-      `Objectif d’arrhes complètes : ${formatCents(financials.fullDepositTargetCents, financials.currency)}`,
+        : `Solde restant après versement complet des arrhes : ${formatCents(balanceAfterFullDepositCents, financials.currency)}`,
     ]),
   });
 

@@ -38,6 +38,7 @@ export type LitterFieldDefaults = {
   estimatedOvulationDate?: string | null;
   expectedBirthDate?: string | null;
   actualBirthDate?: string | null;
+  availableFrom?: string | null;
   notes?: string | null;
 };
 
@@ -317,6 +318,19 @@ export function LitterFields({
           name="actual_birth_date"
           type="date"
           defaultValue={values.actualBirthDate ?? ""}
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label htmlFor={`${idPrefix}-available-from`} className={labelClass}>
+          Disponible à partir du
+        </label>
+        <input
+          id={`${idPrefix}-available-from`}
+          name="available_from"
+          type="date"
+          defaultValue={values.availableFrom ?? ""}
           className={inputClass}
         />
       </div>

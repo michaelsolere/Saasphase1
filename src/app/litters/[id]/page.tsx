@@ -1563,7 +1563,7 @@ export default async function LitterDetailPage({
   const { data: rawLitter, error: readError } = await supabase
     .from("litters")
     .select(
-      "id, organization_id, name, species, breed, status, litter_group_id, mother_id, father_id, mating_date, mating_date_2, estimated_ovulation_date, expected_birth_date, actual_birth_date, pregnancy_confirmed_at, pregnancy_confirmation_method, expected_puppy_count, born_total_count, born_male_count, born_female_count, alive_count, notes, created_at, updated_at, deleted_at",
+      "id, organization_id, name, species, breed, status, litter_group_id, mother_id, father_id, mating_date, mating_date_2, estimated_ovulation_date, expected_birth_date, actual_birth_date, available_from, pregnancy_confirmed_at, pregnancy_confirmation_method, expected_puppy_count, born_total_count, born_male_count, born_female_count, alive_count, notes, created_at, updated_at, deleted_at",
     )
     .eq("id", id)
     .is("deleted_at", null)
@@ -3202,6 +3202,7 @@ export default async function LitterDetailPage({
                       estimatedOvulationDate: litter.estimated_ovulation_date,
                       expectedBirthDate: litter.expected_birth_date,
                       actualBirthDate: litter.actual_birth_date,
+                      availableFrom: litter.available_from,
                       notes: litter.notes,
                     }}
                     motherOptions={motherOptions}
