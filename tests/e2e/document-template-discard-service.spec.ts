@@ -1,7 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
-import { discardDocumentTemplateDraftCore } from "../../src/features/documents/document-template-management-core";
+import {
+  discardDocumentTemplateDraftCore,
+  saveDocumentTemplateDraftCore,
+  updateDocumentTemplateFamilyMetadataCore,
+} from "../../src/features/documents/document-template-management-core";
 import type { Database } from "../../src/types/database.types";
 import { createAuthenticatedSupabaseClient, runE2eSqlSync } from "./helpers/supabase";
 
@@ -183,6 +187,18 @@ test("abandonne ou retire les brouillons avec autorisation, protection et concur
     expect(ownerResult, JSON.stringify(ownerResult)).toMatchObject({ outcome: "success", result: "family_deleted" });
     expect(sql(`select deleted_at is not null from public.document_template_families where id = ${q(neverPublishedOwner.familyId)}::uuid;`)).toBe("t");
     expect(sql(`select deleted_at is not null from public.document_templates where id = ${q(neverPublishedOwner.draftId)}::uuid;`)).toBe("t");
+    const directDraftRestore = await owner
+      .from("document_templates")
+      .update({ deleted_at: null })
+      .eq("id", neverPublishedOwner.draftId);
+    expect(directDraftRestore.error?.message).toContain("deletion state requires a lifecycle function");
+    const directFamilyRestore = await owner
+      .from("document_template_families")
+      .update({ deleted_at: null })
+      .eq("id", neverPublishedOwner.familyId);
+    expect(directFamilyRestore.error?.message).toContain("deletion state requires a lifecycle function");
+    expect(sql(`select deleted_at is not null from public.document_templates where id = ${q(neverPublishedOwner.draftId)}::uuid;`)).toBe("t");
+    expect(sql(`select deleted_at is not null from public.document_template_families where id = ${q(neverPublishedOwner.familyId)}::uuid;`)).toBe("t");
 
     const postPublicationAdmin = seedFamily({ suffix: "41", published: true });
     const publicationBefore = sql(`select updated_at::text from public.document_templates where id = ${q(postPublicationAdmin.publishedId)}::uuid;`);
@@ -203,7 +219,52 @@ test("abandonne ou retire les brouillons avec autorisation, protection et concur
       });
       expect(directRpc.error?.code).toBe("42501");
       expect(sql(`select deleted_at is null from public.document_templates where id = ${q(protectedByRole.draftId)}::uuid;`)).toBe("t");
+
+      if (client === member) {
+        const directMemberDelete = await member
+          .from("document_templates")
+          .update({ deleted_at: new Date().toISOString() })
+          .eq("id", protectedByRole.draftId);
+        expect(directMemberDelete.error?.message).toContain("deletion state requires a lifecycle function");
+
+        const saved = await saveDocumentTemplateDraftCore({
+          organizationId,
+          templateId: protectedByRole.draftId,
+          templateContent: '{"saved":true}',
+          expectedUpdatedAt: protectedByRole.expectedUpdatedAt,
+        }, member);
+        expect(saved).toMatchObject({ outcome: "success", templateId: protectedByRole.draftId });
+      }
     }
+
+    const directUpdateProtected = seedFamily({ suffix: "50" });
+    for (const client of [owner, admin]) {
+      const directDraftDelete = await client
+        .from("document_templates")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", directUpdateProtected.draftId);
+      expect(directDraftDelete.error?.message).toContain("deletion state requires a lifecycle function");
+
+      const directFamilyDelete = await client
+        .from("document_template_families")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", directUpdateProtected.familyId);
+      expect(directFamilyDelete.error?.message).toContain("deletion state requires a lifecycle function");
+    }
+    expect(sql(`select deleted_at is null from public.document_templates where id = ${q(directUpdateProtected.draftId)}::uuid;`)).toBe("t");
+    expect(sql(`select deleted_at is null from public.document_template_families where id = ${q(directUpdateProtected.familyId)}::uuid;`)).toBe("t");
+
+    const metadataUpdate = await updateDocumentTemplateFamilyMetadataCore({
+      organizationId,
+      familyId: directUpdateProtected.familyId,
+      name: `${fixtureNamePrefix}métadonnées normales`,
+      description: "Modification normale autorisée.",
+    }, owner);
+    expect(metadataUpdate).toMatchObject({
+      outcome: "success",
+      familyId: directUpdateProtected.familyId,
+      name: `${fixtureNamePrefix}métadonnées normales`,
+    });
 
     const immutablePublished = seedFamily({ suffix: "44", published: true });
     const publishedAttempt = await discardDocumentTemplateDraftCore({ ...immutablePublished, templateId: immutablePublished.publishedId }, owner);

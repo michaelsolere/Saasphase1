@@ -1,3 +1,123 @@
+create or replace function public.protect_document_template_version()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_is_internal boolean := current_user in ('postgres', 'supabase_admin');
+  v_is_family_sync boolean := current_user in ('postgres', 'supabase_admin')
+    and coalesce(
+      current_setting('app.document_template_family_sync', true),
+      'off'
+    ) = 'on';
+  v_user_id uuid := auth.uid();
+  v_is_used boolean;
+begin
+  if tg_op = 'DELETE' then
+    v_is_used := exists (
+      select 1
+      from public.documents d
+      where d.organization_id = old.organization_id
+        and d.template_id = old.id
+    );
+
+    if not v_is_internal
+      and (old.lifecycle_status in ('published', 'retired') or v_is_used)
+    then
+      raise exception using
+        message = 'published, retired or used document template versions cannot be deleted';
+    end if;
+
+    return old;
+  end if;
+
+  v_is_used := exists (
+    select 1
+    from public.documents d
+    where d.organization_id = old.organization_id
+      and d.template_id = old.id
+  );
+
+  if v_is_family_sync then
+    new.updated_at := old.updated_at;
+    new.updated_by := old.updated_by;
+  end if;
+
+  if not v_is_internal and (
+    new.id is distinct from old.id
+    or new.created_at is distinct from old.created_at
+    or new.created_by is distinct from old.created_by
+  ) then
+    raise exception using
+      message = 'document template identity and creation audit are immutable';
+  end if;
+
+  if not v_is_internal
+    and new.deleted_at is distinct from old.deleted_at
+  then
+    raise exception using
+      message = 'document template deletion state requires a lifecycle function';
+  end if;
+
+  if new.deleted_at is distinct from old.deleted_at
+    and (old.lifecycle_status in ('published', 'retired') or v_is_used)
+  then
+    raise exception using
+      message = 'published, retired or used document template versions cannot be soft-deleted';
+  end if;
+
+  if not v_is_internal
+    and (old.lifecycle_status in ('published', 'retired') or v_is_used)
+  then
+    raise exception using
+      message = 'published, retired or used document template versions are immutable to direct authenticated updates';
+  end if;
+
+  if old.lifecycle_status in ('published', 'retired') or v_is_used then
+    if new.template_content is distinct from old.template_content
+      or new.template_format is distinct from old.template_format
+      or new.version is distinct from old.version
+      or new.family_id is distinct from old.family_id
+      or new.organization_id is distinct from old.organization_id
+      or new.document_type is distinct from old.document_type
+      or new.species is distinct from old.species
+      or new.breed is distinct from old.breed
+    then
+      raise exception using
+        message = 'published, retired or used document template versions are immutable';
+    end if;
+  end if;
+
+  if not v_is_internal and (
+    new.lifecycle_status is distinct from old.lifecycle_status
+    or new.is_active is distinct from old.is_active
+    or new.version is distinct from old.version
+    or new.family_id is distinct from old.family_id
+    or new.organization_id is distinct from old.organization_id
+    or new.document_type is distinct from old.document_type
+    or new.species is distinct from old.species
+    or new.breed is distinct from old.breed
+    or new.published_at is distinct from old.published_at
+    or new.published_by is distinct from old.published_by
+    or new.publication_metadata_is_legacy is distinct from old.publication_metadata_is_legacy
+  ) then
+    raise exception using
+      message = 'document template lifecycle, version, family and taxonomy require a lifecycle function';
+  end if;
+
+  if not v_is_internal then
+    if v_user_id is null then
+      raise exception using
+        message = 'authenticated document template updates require an author';
+    end if;
+
+    new.updated_by := v_user_id;
+  end if;
+
+  return new;
+end
+$$;
+
 create or replace function public.protect_document_template_family_audit()
 returns trigger
 language plpgsql
@@ -7,6 +127,13 @@ declare
   v_is_internal boolean := current_user in ('postgres', 'supabase_admin');
   v_user_id uuid := auth.uid();
 begin
+  if not v_is_internal
+    and new.deleted_at is distinct from old.deleted_at
+  then
+    raise exception using
+      message = 'document template family deletion state requires a lifecycle function';
+  end if;
+
   if not v_is_internal and (
     new.id is distinct from old.id
     or new.organization_id is distinct from old.organization_id
