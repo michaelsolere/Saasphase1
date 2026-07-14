@@ -3669,6 +3669,17 @@ export type Database = {
           reservation_id: string
         }[]
       }
+      discard_document_template_draft: {
+        Args: {
+          p_expected_updated_at: string
+          p_family_id: string
+          p_organization_id: string
+          p_template_id: string
+        }
+        Returns: {
+          outcome: string
+        }[]
+      }
       has_organization_role: {
         Args: { allowed_roles: string[]; org_id: string }
         Returns: boolean

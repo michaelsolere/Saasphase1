@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createDocumentTemplateFamilyWithDraftCore,
   createNextDocumentTemplateDraftCore,
+  discardDocumentTemplateDraftCore,
   listDocumentTemplateFamiliesCore,
   publishDocumentTemplateDraftCore,
   saveDocumentTemplateDraftCore,
@@ -21,6 +22,8 @@ export type {
   CreateDocumentTemplateFamilyWithDraftResult,
   CreateNextDocumentTemplateDraftInput,
   CreateNextDocumentTemplateDraftResult,
+  DiscardDocumentTemplateDraftInput,
+  DiscardDocumentTemplateDraftResult,
   DocumentTemplateFamilySummary,
   DocumentTemplateManagementError,
   DocumentTemplateManagementErrorCode,
@@ -93,4 +96,11 @@ export async function publishDocumentTemplateDraft(
   supabase?: Supabase,
 ) {
   return publishDocumentTemplateDraftCore(input, await serverClient(supabase));
+}
+
+export async function discardDocumentTemplateDraft(
+  input: Parameters<typeof discardDocumentTemplateDraftCore>[0],
+  supabase?: Supabase,
+) {
+  return discardDocumentTemplateDraftCore(input, await serverClient(supabase));
 }

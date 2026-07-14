@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { CreateDocumentTemplateDraftButton } from "@/features/documents/create-document-template-draft-button";
 import { decodeDocumentTemplateDraft } from "@/features/documents/decode-document-template-draft";
+import { DocumentTemplateAutomaticContent } from "@/features/documents/document-template-automatic-content";
 import { DocumentTemplateEditor } from "@/features/documents/document-template-editor";
 import { hasStructuredDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
 import { getDocumentTypeLabel } from "@/features/documents/formatters";
@@ -149,6 +150,10 @@ export default async function DocumentTemplateFamilyPage({
           )}
         </section>
 
+        {hasEditor ? (
+          <DocumentTemplateAutomaticContent documentType={documentType} />
+        ) : null}
+
         <section className="rounded-2xl border bg-surface p-5 shadow-sm sm:p-7">
           {family.draft ? (
             <>
@@ -169,6 +174,11 @@ export default async function DocumentTemplateFamilyPage({
                   canSave={canSave}
                   canValidate
                   canPublish={canPublish}
+                  destructiveAction={canPublish ? {
+                    familyId: family.id,
+                    familyName: family.name,
+                    hasPublication: Boolean(family.publication),
+                  } : undefined}
                 />
               ) : null}
             </>
