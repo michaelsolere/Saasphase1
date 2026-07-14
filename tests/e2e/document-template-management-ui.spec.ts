@@ -1,0 +1,337 @@
+import { expect, test, type Page } from "@playwright/test";
+
+import { decodeDocumentTemplateDraft } from "../../src/features/documents/decode-document-template-draft";
+import type {
+  CommitmentCertificateTemplateDefinition,
+  ReservationContractTemplateDefinition,
+} from "../../src/features/documents/document-template-definitions";
+import {
+  E2E_OWNER_EMAIL,
+  E2E_OWNER_PASSWORD,
+  runE2eSqlSync,
+} from "./helpers/supabase";
+
+test.setTimeout(180_000);
+
+const organizationId = "20000000-0000-4000-8000-000000000001";
+const ownerId = "10000000-0000-4000-8000-000000000001";
+const membershipId = "30000000-0000-4000-8000-000000000001";
+const ids = {
+  reservationFamily: "9f140003-0000-4000-8000-000000000001",
+  commitmentFamily: "9f140003-0000-4000-8000-000000000002",
+  unsupportedFamily: "9f140003-0000-4000-8000-000000000003",
+  reservationPublication: "9f140003-0000-4000-8000-000000000011",
+  commitmentPublication: "9f140003-0000-4000-8000-000000000012",
+  commitmentDraft: "9f140003-0000-4000-8000-000000000013",
+  unsupportedDraft: "9f140003-0000-4000-8000-000000000014",
+} as const;
+
+const familyIds = [
+  ids.reservationFamily,
+  ids.commitmentFamily,
+  ids.unsupportedFamily,
+];
+
+const reservationDefinition: ReservationContractTemplateDefinition = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat UI E2E publié",
+  preamble: ["Préambule du contrat UI E2E."],
+  clauses: {
+    reservationPurpose: ["Objet de la réservation."],
+    priceAndPayments: ["Prix et paiements."],
+    deposit: ["Arrhes."],
+    cancellationAndRefund: ["Annulation et remboursement."],
+    postponementAndCredit: ["Report et avoir."],
+    potentialWithholding: ["Retenue éventuelle."],
+    finalConditions: ["Conditions finales."],
+  },
+  signatureLabels: {
+    breeder: "L’éleveur",
+    reservingParty: "Le réservant",
+  },
+};
+
+const commitmentDefinition: CommitmentCertificateTemplateDefinition = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat UI E2E",
+  introduction: ["Introduction du certificat UI E2E."],
+  sections: {
+    animalNeeds: ["Besoins de l’animal."],
+    health: ["Santé de l’animal."],
+    educationAndBehavior: ["Éducation et comportement."],
+    costsAndConstraints: ["Coûts et contraintes."],
+    holderObligations: ["Obligations du détenteur."],
+  },
+  acknowledgmentText: ["Je reconnais avoir pris connaissance de ces informations."],
+  signatureLabels: {
+    holder: "Le détenteur",
+    issuer: "L’émetteur",
+  },
+};
+
+function q(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function sql(statement: string) {
+  return runE2eSqlSync(statement);
+}
+
+function familyIdList() {
+  return familyIds.map((id) => `${q(id)}::uuid`).join(", ");
+}
+
+function cleanup() {
+  sql(`
+    delete from public.document_templates
+    where family_id in (${familyIdList()});
+    delete from public.document_template_families
+    where id in (${familyIdList()});
+    set session_replication_role = replica;
+    update public.memberships
+    set role = 'owner'
+    where id = ${q(membershipId)}::uuid
+      and organization_id = ${q(organizationId)}::uuid
+      and profile_id = ${q(ownerId)}::uuid;
+    set session_replication_role = origin;
+  `);
+}
+
+function remainingFixtureCount() {
+  return Number(sql(`
+    select
+      (select count(*) from public.document_templates
+       where family_id in (${familyIdList()}))
+      + (select count(*) from public.document_template_families
+         where id in (${familyIdList()}))
+      + (select count(*) from public.memberships
+         where id = ${q(membershipId)}::uuid and role <> 'owner');
+  `));
+}
+
+function seedFixtures() {
+  const familyRows = [
+    `(${q(ids.reservationFamily)}, ${q(organizationId)}, 'Contrat UI E2E', 'Famille avec publication sans brouillon', 'reservation_contract')`,
+    `(${q(ids.commitmentFamily)}, ${q(organizationId)}, 'Certificat UI E2E', 'Famille avec publication et brouillon', 'commitment_certificate')`,
+    `(${q(ids.unsupportedFamily)}, ${q(organizationId)}, 'Document libre UI E2E', 'Type volontairement sans éditeur structuré', 'other')`,
+  ].join(",\n");
+
+  sql(`
+    insert into public.document_template_families (
+      id, organization_id, name, description, document_type,
+      species, breed, created_by, updated_by
+    ) values
+      ${familyRows.replaceAll(")", `, 'dog', 'Golden Retriever', ${q(ownerId)}, ${q(ownerId)})`)};
+
+    insert into public.document_templates (
+      id, organization_id, family_id, name, description, document_type,
+      species, breed, template_format, template_content, version,
+      lifecycle_status, is_active, published_at, published_by,
+      created_by, updated_by
+    ) values
+      (${q(ids.reservationPublication)}, ${q(organizationId)}, ${q(ids.reservationFamily)},
+       'Contrat UI E2E', 'Publication du contrat', 'reservation_contract',
+       'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(reservationDefinition))},
+       1, 'published', true, now(), ${q(ownerId)}, ${q(ownerId)}, ${q(ownerId)}),
+      (${q(ids.commitmentPublication)}, ${q(organizationId)}, ${q(ids.commitmentFamily)},
+       'Certificat UI E2E', 'Publication du certificat', 'commitment_certificate',
+       'dog', 'Golden Retriever', 'json', ${q(JSON.stringify({ ...commitmentDefinition, title: "Certificat UI E2E publié" }))},
+       1, 'published', true, now(), ${q(ownerId)}, ${q(ownerId)}, ${q(ownerId)}),
+      (${q(ids.commitmentDraft)}, ${q(organizationId)}, ${q(ids.commitmentFamily)},
+       'Certificat UI E2E', 'Brouillon du certificat', 'commitment_certificate',
+       'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(commitmentDefinition))},
+       2, 'draft', false, null, null, ${q(ownerId)}, ${q(ownerId)}),
+      (${q(ids.unsupportedDraft)}, ${q(organizationId)}, ${q(ids.unsupportedFamily)},
+       'Document libre UI E2E', 'Brouillon sans éditeur', 'other',
+       'dog', 'Golden Retriever', 'json', '{}',
+       1, 'draft', false, null, null, ${q(ownerId)}, ${q(ownerId)});
+  `);
+}
+
+async function login(page: Page) {
+  await page.goto("/login");
+  await page.getByLabel("Email").fill(E2E_OWNER_EMAIL);
+  await page.getByLabel("Mot de passe").fill(E2E_OWNER_PASSWORD);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await expect(page).not.toHaveURL(/\/login$/);
+}
+
+function setRole(role: "viewer" | "member" | "admin" | "owner") {
+  sql(`
+    set session_replication_role = replica;
+    update public.memberships set role = ${q(role)}
+    where id = ${q(membershipId)}::uuid
+      and organization_id = ${q(organizationId)}::uuid
+      and profile_id = ${q(ownerId)}::uuid;
+    set session_replication_role = origin;
+  `);
+}
+
+function draftSection(page: Page) {
+  return page.locator("section").filter({
+    has: page.getByRole("heading", { name: /Brouillon actuel/ }),
+  });
+}
+
+test("reconstruit une forme éditable sans valider le brouillon", () => {
+  const commitment = decodeDocumentTemplateDraft({
+    documentType: "commitment_certificate",
+    templateContent: JSON.stringify({
+      documentType: "commitment_certificate",
+      title: "",
+      introduction: [],
+      sections: { health: ["Santé conservée."] },
+    }),
+  });
+  expect(commitment.documentType).toBe("commitment_certificate");
+  if (commitment.documentType !== "commitment_certificate") return;
+  expect(commitment.title).toBe("");
+  expect(commitment.introduction).toEqual([]);
+  expect(commitment.sections.health).toEqual(["Santé conservée."]);
+  expect(commitment.sections.animalNeeds).toEqual([]);
+  expect(commitment.signatureLabels).toEqual({ holder: "", issuer: "" });
+
+  const reservation = decodeDocumentTemplateDraft({
+    documentType: "reservation_contract",
+    templateContent: "{}",
+  });
+  expect(reservation.documentType).toBe("reservation_contract");
+  if (reservation.documentType !== "reservation_contract") return;
+  expect(reservation.preamble).toEqual([]);
+  expect(reservation.clauses.finalConditions).toEqual([]);
+  expect(reservation.signatureLabels).toEqual({ breeder: "", reservingParty: "" });
+});
+
+test("gère les modèles documentaires avec permissions, validation et concurrence", async ({ page }) => {
+  cleanup();
+  expect(remainingFixtureCount()).toBe(0);
+  seedFixtures();
+  const createdTemplateIds = [
+    ids.reservationPublication,
+    ids.commitmentPublication,
+    ids.commitmentDraft,
+    ids.unsupportedDraft,
+  ];
+
+  try {
+    await login(page);
+
+    await page.goto("/documents");
+    await expect(page.getByRole("link", { name: "Modèles de référence" })).toBeVisible();
+    await page.getByRole("link", { name: "Modèles de référence" }).click();
+    await expect(page).toHaveURL(/\/documents\/modeles$/);
+    await expect(page.getByRole("heading", { name: "Modèles de référence" })).toBeVisible();
+    await expect(page.getByText("Contrat UI E2E", { exact: true })).toBeVisible();
+    await expect(page.getByText("Certificat UI E2E", { exact: true })).toBeVisible();
+    await expect(page.getByText("Document libre UI E2E", { exact: true })).toBeVisible();
+    await expect(page.getByText("Version 2", { exact: true })).toBeVisible();
+    await expect(page.getByText("Version 1", { exact: true }).first()).toBeVisible();
+
+    await page.goto(`/documents/modeles/${ids.unsupportedFamily}`);
+    await expect(page.getByText("Éditeur non encore disponible")).toBeVisible();
+    await expect(page.getByText("Ce type documentaire reste consultable")).toBeVisible();
+
+    setRole("viewer");
+    await page.goto(`/documents/modeles/${ids.commitmentFamily}`);
+    const viewerDraft = draftSection(page);
+    await expect(viewerDraft.getByRole("button", { name: "Valider le brouillon" })).toBeVisible();
+    await expect(viewerDraft.getByRole("button", { name: "Enregistrer le brouillon" })).toHaveCount(0);
+    await expect(viewerDraft.getByRole("button", { name: "Publier" })).toHaveCount(0);
+    await expect(viewerDraft.getByLabel("Titre")).toBeDisabled();
+    await viewerDraft.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(viewerDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+
+    setRole("member");
+    await page.reload();
+    const memberDraft = draftSection(page);
+    await expect(memberDraft.getByRole("button", { name: "Enregistrer le brouillon" })).toBeVisible();
+    await expect(memberDraft.getByRole("button", { name: "Valider le brouillon" })).toBeVisible();
+    await expect(memberDraft.getByRole("button", { name: "Publier" })).toHaveCount(0);
+    await memberDraft.getByLabel("Titre").fill("Certificat UI E2E modifié par membre");
+    await memberDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(memberDraft.getByRole("status")).toContainText("a été enregistré");
+    expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(ids.commitmentDraft)}::uuid;`))
+      .toBe("Certificat UI E2E modifié par membre");
+
+    await page.goto(`/documents/modeles/${ids.reservationFamily}`);
+    await expect(page.getByRole("button", { name: "Créer le prochain brouillon" })).toBeVisible();
+    await page.getByRole("button", { name: "Créer le prochain brouillon" }).click();
+    await expect(page.getByRole("heading", { name: /Brouillon actuel · version 2/ })).toBeVisible({ timeout: 20_000 });
+    const reservationDraftId = sql(`select id::text from public.document_templates where family_id = ${q(ids.reservationFamily)}::uuid and lifecycle_status = 'draft';`);
+    expect(reservationDraftId).toMatch(/^[0-9a-f-]{36}$/);
+    createdTemplateIds.push(reservationDraftId);
+
+    let reservationDraft = draftSection(page);
+    await reservationDraft.getByLabel("Titre").fill("Contrat UI E2E sauvegardé");
+    await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("a été enregistré");
+    await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+
+    sql(`select pg_sleep(0.05); update public.document_templates set template_content = jsonb_set(template_content::jsonb, '{title}', '"Contrat UI E2E concurrent"')::text where id = ${q(reservationDraftId)}::uuid;`);
+    await reservationDraft.getByLabel("Titre").fill("Écrasement UI E2E refusé");
+    await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("Rechargez-le avant de réessayer");
+    await expect(reservationDraft.getByText("Modifications non enregistrées")).toBeVisible();
+
+    await page.reload();
+    reservationDraft = draftSection(page);
+    const preamble = reservationDraft.locator('[data-paragraph-list$="preamble"]');
+    await preamble.getByRole("button", { name: "Supprimer le paragraphe 1" }).click();
+    await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect.poll(() => sql(`select jsonb_array_length(template_content::jsonb->'preamble') from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("0");
+    await page.reload();
+    reservationDraft = draftSection(page);
+    await expect(reservationDraft.getByLabel("Titre")).toBeVisible();
+    const emptyPreamble = reservationDraft.locator('[data-paragraph-list$="preamble"]');
+    await expect(emptyPreamble.getByText("Aucun paragraphe")).toBeVisible();
+    await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("ne respecte pas le schéma documentaire attendu");
+
+    await emptyPreamble.getByRole("button", { name: "Ajouter un paragraphe" }).click();
+    await emptyPreamble.getByRole("textbox", { name: "Paragraphe 1" }).fill("Préambule UI E2E réparé.");
+    await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("a été enregistré");
+    await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(reservationDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+
+    setRole("admin");
+    await page.reload();
+    const adminDraft = draftSection(page);
+    const savedTitle = sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`);
+    await adminDraft.getByLabel("Titre").fill("Contrat UI E2E prêt à publier");
+    await expect(adminDraft.getByText("Modifications non enregistrées")).toBeVisible();
+    await expect(adminDraft.getByRole("button", { name: "Publier" })).toBeDisabled();
+    expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe(savedTitle);
+    expect(sql(`select lifecycle_status from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("draft");
+
+    await adminDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(adminDraft.getByText("Toutes les modifications affichées sont enregistrées")).toBeVisible();
+    await expect(adminDraft.getByRole("button", { name: "Publier" })).toBeEnabled();
+    expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("Contrat UI E2E prêt à publier");
+
+    await adminDraft.getByRole("button", { name: "Publier" }).click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog.getByText("Publier la version 2 ?")).toBeVisible();
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    expect(sql(`select lifecycle_status from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("draft");
+    await adminDraft.getByRole("button", { name: "Publier" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Confirmer la publication" }).click();
+    await expect(page.getByRole("heading", { name: /Version publiée · version 2/ })).toBeVisible({ timeout: 20_000 });
+    expect(sql(`select lifecycle_status from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("published");
+
+    setRole("owner");
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Créer le prochain brouillon" })).toBeVisible();
+
+    console.info(`document-template-management-ui fixture families: ${familyIds.join(",")}`);
+    console.info(`document-template-management-ui fixture templates: ${createdTemplateIds.join(",")}`);
+  } finally {
+    cleanup();
+    expect(remainingFixtureCount()).toBe(0);
+  }
+});
