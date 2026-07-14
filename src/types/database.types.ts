@@ -3629,6 +3629,23 @@ export type Database = {
         }
         Returns: string
       }
+      create_document_template_family_with_draft: {
+        Args: {
+          p_breed: string
+          p_description?: string | null
+          p_document_type: string
+          p_name: string
+          p_organization_id: string
+          p_species: string
+          p_template_content: string
+          p_template_format: string
+        }
+        Returns: {
+          family_id: string
+          template_id: string
+          version: number
+        }[]
+      }
       create_organization_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: string
@@ -3672,7 +3689,12 @@ export type Database = {
         }[]
       }
       publish_document_template_version: {
-        Args: { p_template_id: string }
+        Args: {
+          p_expected_template_content: string | null
+          p_expected_template_format: string
+          p_expected_updated_at: string
+          p_template_id: string
+        }
         Returns: string
       }
       resolve_suspect_form_submission_existing_contact: {
