@@ -20,6 +20,7 @@ import {
   generateReservationDocumentPdf,
   type ReservationDocumentGenerationIntention,
 } from "@/features/reservations/generate-reservation-document-action";
+import { ReservationDocumentPreviewDialog } from "@/features/reservations/reservation-document-preview-dialog";
 
 export type ReservationDocumentGenerationCard = {
   documentType: "commitment_certificate" | "reservation_contract";
@@ -75,6 +76,15 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
       </select>
     </>
   );
+  const preview = (
+    <ReservationDocumentPreviewDialog
+      reservationId={card.intention.reservationId}
+      documentType={card.documentType}
+      documentLabel={card.label}
+      templateId={templateId}
+      disabled={card.templates.length === 0}
+    />
+  );
 
   if (!hasPdf) {
     return (
@@ -87,6 +97,7 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
         >
           Générer le PDF
         </Button>
+        {preview}
       </form>
     );
   }
@@ -94,44 +105,45 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
   return (
     <div className="mt-5 space-y-3">
       {templateSelector}
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button
-              type="button"
-              disabled={card.templates.length === 0}
-              className="w-full"
-            >
-              Créer une nouvelle version
-            </Button>
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Créer une nouvelle version ?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Le PDF courant sera conservé comme version historique et le
-                nouveau PDF deviendra le document courant. Cette action ne
-                change ni la réservation ni les e-mails.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <form action={action}>
-              <input type="hidden" name="template_id" value={templateId} />
-              <AlertDialogFooter>
-                <AlertDialogCancel type="button">Annuler</AlertDialogCancel>
-                <AlertDialogAction asChild>
-                  <button
-                    type="submit"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.currentTarget.form?.requestSubmit();
-                    }}
-                  >
-                    Confirmer la nouvelle version
-                  </button>
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </form>
-          </AlertDialogContent>
-        </AlertDialog>
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button
+            type="button"
+            disabled={card.templates.length === 0}
+            className="w-full"
+          >
+            Créer une nouvelle version
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Créer une nouvelle version ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Le PDF courant sera conservé comme version historique et le
+              nouveau PDF deviendra le document courant. Cette action ne change
+              ni la réservation ni les e-mails.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <form action={action}>
+            <input type="hidden" name="template_id" value={templateId} />
+            <AlertDialogFooter>
+              <AlertDialogCancel type="button">Annuler</AlertDialogCancel>
+              <AlertDialogAction asChild>
+                <button
+                  type="submit"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.currentTarget.form?.requestSubmit();
+                  }}
+                >
+                  Confirmer la nouvelle version
+                </button>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </form>
+        </AlertDialogContent>
+      </AlertDialog>
+      {preview}
     </div>
   );
 }
@@ -203,7 +215,8 @@ export function ReservationDocumentGenerationPanel({
         </h3>
         <p className="mt-1 text-xs leading-5 text-muted">
           Chaque génération crée une version immuable à partir du modèle
-          sélectionné et des données actuelles du dossier.
+          sélectionné et des données actuelles du dossier. La génération
+          définitive relira ces données au moment de sa confirmation.
         </p>
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
