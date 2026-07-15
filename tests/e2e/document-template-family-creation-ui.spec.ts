@@ -161,6 +161,7 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await expect(page.getByLabel("Titre")).toBeEditable();
     await expect(page.getByLabel("Contenu du contrat")).toContainText("Il a été convenu ce qui suit entre les parties");
     await expect(page.getByLabel("Contenu du contrat")).toContainText("[[reservation.prix_en_lettres]]");
+    await expect(page.getByLabel("Contenu du contrat")).toContainText("Couleur : [[animal.couleur]]");
     await expect(page.getByLabel("Insérer une donnée")).toBeEditable();
     await expect(page.getByText("Contenu automatiquement ajouté au document")).toHaveCount(0);
     await expect(page.getByText("Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.")).toBeVisible();

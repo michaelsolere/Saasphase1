@@ -44,6 +44,23 @@ export type ResolveReservationContractTextResult =
 const compact = (values: Array<string | null | undefined>) =>
   values.filter((value): value is string => Boolean(value?.trim()));
 
+function normalizeIdentityPart(value: string | null | undefined) {
+  return value?.trim().replace(/\s+/g, " ") || null;
+}
+
+function resolveSellerFullIdentity(snapshot: ReservationContractGenerationSnapshot) {
+  const signerName = normalizeIdentityPart(snapshot.signer?.displayName);
+  const organizationName = normalizeIdentityPart(snapshot.seller.legalName)
+    ?? normalizeIdentityPart(snapshot.seller.tradeName);
+
+  if (!signerName) return organizationName;
+  if (!organizationName) return signerName;
+  if (signerName.toLocaleLowerCase("fr-FR") === organizationName.toLocaleLowerCase("fr-FR")) {
+    return signerName;
+  }
+  return `${signerName} ${organizationName}`;
+}
+
 function formatAddress(
   address: ReservationContractGenerationSnapshot["seller"]["address"],
   country: string | null,
@@ -157,7 +174,7 @@ const variable = (
 ): VariableDefinition => ({ key, label, missingLabel, category, resolve });
 
 export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[] = [
-  variable("vendeur.identite_complete", "Identité complète", "identité complète du vendeur", "Vendeur", (s) => s.signer?.displayName ?? s.seller.legalName ?? s.seller.tradeName),
+  variable("vendeur.identite_complete", "Identité complète", "identité complète du vendeur", "Vendeur", resolveSellerFullIdentity),
   variable("vendeur.nom_commercial", "Nom commercial", "nom commercial du vendeur", "Vendeur", (s) => s.seller.tradeName),
   variable("vendeur.raison_sociale", "Raison sociale", "raison sociale du vendeur", "Vendeur", (s) => s.seller.legalName),
   variable("vendeur.forme_juridique", "Forme juridique", "forme juridique du vendeur", "Vendeur", (s) => s.seller.legalForm ? legalFormLabels[s.seller.legalForm] ?? s.seller.legalForm : null),

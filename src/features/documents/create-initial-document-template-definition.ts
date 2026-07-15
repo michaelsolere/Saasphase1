@@ -24,6 +24,7 @@ La réservation d’un chiot de race [[projet.race]] aux caractéristiques suiva
 Né le : [[projet.date_naissance]]
 Sexe : [[projet.sexe]]
 Rang du choix : [[reservation.rang_choix]]
+Couleur : [[animal.couleur]]
 
 Mère : [[portee.mere.nom]]
 ID : [[portee.mere.identification]]

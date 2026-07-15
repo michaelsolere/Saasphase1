@@ -93,10 +93,41 @@ test("résout une seule passe avec les formats français et les règles métier"
     text: "3 | 1 600 € | mille six cents euros | Femelle | 02/05/2026 | Sable doré fictif",
     missingVariables: [],
   });
+  if (!resolved.success) throw new Error("Résolution du rendu fictif impossible");
+  expect(resolved.text).not.toContain("[[");
 
   snapshot.adopter.displayName = "[[animal.nom]]";
   const singlePass = resolveReservationContractText({ text: "[[adoptant.nom_complet]]", snapshot });
   expect(singlePass).toMatchObject({ success: true, text: "[[animal.nom]]" });
+});
+
+test("compose l’identité complète du vendeur sans duplication", () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  if (!snapshot.signer) throw new Error("Signataire fictif absent");
+  snapshot.signer.displayName = "  Michael   Solere ";
+  snapshot.seller.legalName = " EARL La Poulanière ";
+  snapshot.seller.tradeName = "La Poulanière";
+
+  const resolveIdentity = () => resolveReservationContractText({
+    text: "[[vendeur.identite_complete]]",
+    snapshot,
+  });
+
+  expect(resolveIdentity()).toEqual({
+    success: true,
+    text: "Michael Solere EARL La Poulanière",
+    missingVariables: [],
+  });
+
+  snapshot.signer.displayName = "EARL La Poulanière";
+  expect(resolveIdentity()).toMatchObject({ success: true, text: "EARL La Poulanière" });
+
+  snapshot.signer = null;
+  expect(resolveIdentity()).toMatchObject({ success: true, text: "EARL La Poulanière" });
+
+  snapshot.signer = { displayName: "Michael Solere" };
+  snapshot.seller.legalName = null;
+  expect(resolveIdentity()).toMatchObject({ success: true, text: "Michael Solere La Poulanière" });
 });
 
 test("rend les absences visibles en aperçu et les bloque par défaut", async () => {
@@ -144,10 +175,14 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     title: "Contrat de réservation",
     body: INITIAL_FREE_RESERVATION_CONTRACT_BODY,
   });
+  expect(INITIAL_FREE_RESERVATION_CONTRACT_BODY).toContain(
+    "Né le : [[projet.date_naissance]]\nSexe : [[projet.sexe]]\nRang du choix : [[reservation.rang_choix]]\nCouleur : [[animal.couleur]]",
+  );
 });
 
 test("fige la couleur selon coat_color puis color et accepte un ancien snapshot sans couleur", () => {
   expect(resolveAnimalSnapshotColor("Crème", "Doré")).toBe("Crème");
+  expect(resolveAnimalSnapshotColor("Crème prioritaire", "Doré secondaire")).toBe("Crème prioritaire");
   expect(resolveAnimalSnapshotColor("", "Doré")).toBe("Doré");
 
   const historical = createDocumentTemplatePreviewSnapshot("reservation_contract");
