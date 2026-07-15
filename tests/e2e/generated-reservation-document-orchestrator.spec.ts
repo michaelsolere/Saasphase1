@@ -51,6 +51,7 @@ const ids = {
   v2MissingTemplate: "7e150000-0000-4000-8000-000000000034",
   v2ValidDocument: "7e150000-0000-4000-8000-000000000035",
   v2MissingDocument: "7e150000-0000-4000-8000-000000000036",
+  v2InvalidDocument: "7e150000-0000-4000-8000-000000000037",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -417,6 +418,55 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
     });
     expect(count("documents")).toBe(rowsBeforeMissingV2);
     expect(await storagePaths()).toEqual(pathsBeforeMissingV2);
+
+    sql(`update public.contacts set display_name = 'Camille [[animal.nom]]' where id = ${q(ids.contact)}::uuid;`);
+    let invalidValueStoreCalled = false;
+    const realPreparation = await import("../../src/features/documents/prepare-document-generation-snapshot-core");
+    const realRenderer = await import("../../src/features/documents/document-pdf-renderer-core");
+    const invalidValueDependencies: GenerateAndStoreReservationDocumentPdfDependencies = {
+      prepare: realPreparation.prepareDocumentGenerationSnapshotForReservationCore,
+      render: realRenderer.renderDocumentPdfCore,
+      store: async () => {
+        invalidValueStoreCalled = true;
+        throw new Error("store must not be called for an invalid variable value");
+      },
+    };
+    const rowsBeforeInvalidV2 = count("documents");
+    const pathsBeforeInvalidV2 = await storagePaths();
+    const historyBeforeInvalidV2 = sql(`
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', id,
+        'status', status,
+        'superseded_at', superseded_at,
+        'replaces_document_id', replaces_document_id
+      ) order by id)::text, '[]')
+      from public.documents
+      where organization_id = ${q(ids.organization)}::uuid;
+    `);
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        v2Input(ids.v2InvalidDocument),
+        supabase,
+        invalidValueDependencies,
+      ),
+    ).toEqual({
+      outcome: "error",
+      error: { stage: "render", code: "invalid_template_variable_value" },
+    });
+    expect(invalidValueStoreCalled).toBe(false);
+    expect(count("documents")).toBe(rowsBeforeInvalidV2);
+    expect(await storagePaths()).toEqual(pathsBeforeInvalidV2);
+    expect(sql(`
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', id,
+        'status', status,
+        'superseded_at', superseded_at,
+        'replaces_document_id', replaces_document_id
+      ) order by id)::text, '[]')
+      from public.documents
+      where organization_id = ${q(ids.organization)}::uuid;
+    `)).toBe(historyBeforeInvalidV2);
+    sql(`update public.contacts set display_name = 'Camille Orchestrateur' where id = ${q(ids.contact)}::uuid;`);
 
     const validV2 = await generateAndStoreReservationDocumentPdfCore(
       v2Input(ids.v2ValidDocument),

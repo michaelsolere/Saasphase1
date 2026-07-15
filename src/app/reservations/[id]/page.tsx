@@ -900,6 +900,13 @@ function ReservationStatusMessages({
         "Le document ne peut pas être généré : certaines données utilisées dans le modèle sont manquantes.",
     },
     {
+      when: query.document_generation_status === "invalid_data",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le document ne peut pas être généré : certaines données utilisées dans le modèle sont invalides.",
+    },
+    {
       when: query.document_generation_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,

@@ -36,9 +36,13 @@ export type ResolveReservationContractTextResult =
   | { success: true; text: string; missingVariables: string[] }
   | {
       success: false;
-      error: "invalid_template_variables" | "missing_template_variables";
+      error:
+        | "invalid_template_variables"
+        | "missing_template_variables"
+        | "invalid_template_variable_value";
       issues?: TemplateVariableIssue[];
       missingVariables?: string[];
+      invalidVariables?: string[];
     };
 
 const compact = (values: Array<string | null | undefined>) =>
@@ -287,14 +291,28 @@ export function resolveReservationContractText({
   const parsed = parseReservationContractVariables(text);
   if (!parsed.success) return { success: false, error: "invalid_template_variables", issues: parsed.issues };
   const missingVariables = new Set<string>();
+  const invalidVariables = new Set<string>();
   const resolved = parsed.segments.map((segment) => {
     if (segment.type === "text") return segment.value;
     const definition = VARIABLE_BY_KEY.get(segment.key)!;
     const value = definition.resolve(snapshot);
-    if (value !== null && value !== undefined && value !== "") return value;
+    if (value !== null && value !== undefined && value !== "") {
+      if (value.includes("[[") || value.includes("]]")) {
+        invalidVariables.add(segment.key);
+        return `[Donnée invalide : la valeur « ${definition.missingLabel} » contient une syntaxe réservée]`;
+      }
+      return value;
+    }
     missingVariables.add(segment.key);
     return `[Donnée manquante : ${definition.missingLabel}]`;
   }).join("");
+  if (invalidVariables.size > 0 && !allowMissingTemplateVariables) {
+    return {
+      success: false,
+      error: "invalid_template_variable_value",
+      invalidVariables: [...invalidVariables],
+    };
+  }
   if (missingVariables.size > 0 && !allowMissingTemplateVariables) {
     return { success: false, error: "missing_template_variables", missingVariables: [...missingVariables] };
   }

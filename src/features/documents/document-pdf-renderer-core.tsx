@@ -24,6 +24,7 @@ export type RenderDocumentPdfErrorCode =
   | "template_hash_mismatch"
   | "branding_mismatch"
   | "missing_template_variables"
+  | "invalid_template_variable_value"
   | "render_error";
 
 export type RenderDocumentPdfResult =
@@ -96,6 +97,8 @@ export async function renderDocumentPdfCore(
       return fail(
         resolved.error === "missing_template_variables"
           ? "missing_template_variables"
+          : resolved.error === "invalid_template_variable_value"
+            ? "invalid_template_variable_value"
           : "invalid_template",
       );
     }

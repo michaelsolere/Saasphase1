@@ -97,8 +97,71 @@ test("résout une seule passe avec les formats français et les règles métier"
   expect(resolved.text).not.toContain("[[");
 
   snapshot.adopter.displayName = "[[animal.nom]]";
-  const singlePass = resolveReservationContractText({ text: "[[adoptant.nom_complet]]", snapshot });
-  expect(singlePass).toMatchObject({ success: true, text: "[[animal.nom]]" });
+  if (!snapshot.adoptionProject.animal) throw new Error("Animal fictif absent");
+  snapshot.adoptionProject.animal.callName = "Nom animal qui ne doit pas être injecté";
+  expect(resolveReservationContractText({
+    text: "[[adoptant.nom_complet]]",
+    snapshot,
+  })).toEqual({
+    success: false,
+    error: "invalid_template_variable_value",
+    invalidVariables: ["adoptant.nom_complet"],
+  });
+
+  const singlePassPreview = resolveReservationContractText({
+    text: "[[adoptant.nom_complet]]",
+    snapshot,
+    allowMissingTemplateVariables: true,
+  });
+  expect(singlePassPreview).toEqual({
+    success: true,
+    text: "[Donnée invalide : la valeur « nom complet de l’adoptant » contient une syntaxe réservée]",
+    missingVariables: [],
+  });
+  if (!singlePassPreview.success) throw new Error("Aperçu de la valeur invalide impossible");
+  expect(singlePassPreview.text).not.toContain("Nom animal qui ne doit pas être injecté");
+  expect(singlePassPreview.text).not.toContain("[[");
+  expect(singlePassPreview.text).not.toContain("]]");
+
+  snapshot.adopter.displayName = "Référence animal.nom conservée telle quelle";
+  expect(resolveReservationContractText({
+    text: "[[adoptant.nom_complet]]",
+    snapshot,
+  })).toMatchObject({ success: true, text: "Référence animal.nom conservée telle quelle" });
+});
+
+test("affiche un marqueur sans token brut en aperçu et bloque le PDF définitif", async () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  snapshot.adopter.displayName = "Camille [[animal.nom]]";
+  const definition: FreeReservationContractTemplateDefinition = {
+    ...v2,
+    title: "Contrat",
+    body: "Adoptant : [[adoptant.nom_complet]]",
+  };
+  snapshot.template.templateContentSha256 = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
+
+  const preview = buildDocumentPdfPresentation(snapshot, definition, {
+    allowMissingTemplateVariables: true,
+  });
+  expect(preview?.freeBody).toBe(
+    "Adoptant : [Donnée invalide : la valeur « nom complet de l’adoptant » contient une syntaxe réservée]",
+  );
+  expect(preview?.freeBody).not.toContain("[[");
+  expect(preview?.freeBody).not.toContain("]]");
+  expect(preview?.freeBody).not.toContain("Nova");
+
+  expect(await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+  })).toEqual({ outcome: "error", error: { code: "invalid_template_variable_value" } });
+
+  expect((await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+    allowMissingTemplateVariables: true,
+  })).outcome).toBe("success");
 });
 
 test("compose l’identité complète du vendeur sans duplication", () => {
