@@ -113,6 +113,16 @@ export type BuildDocumentGenerationSnapshotInput = {
   signature?: {
     defaultCity?: NullableInput<string>;
   };
+  branding?: {
+    logo: {
+      assetId: string;
+      fileSha256: string;
+      fileSizeBytes: number;
+      mimeType: "image/png" | "image/jpeg";
+      widthPx: number;
+      heightPx: number;
+    } | null;
+  };
   mediator?: {
     name?: NullableInput<string>;
     contact?: NullableInput<string>;
@@ -376,6 +386,9 @@ export function buildDocumentGenerationSnapshot(
       },
       signature: {
         defaultCity: normalizeNullableText(input.signature?.defaultCity),
+      },
+      branding: {
+        logo: input.branding?.logo ?? null,
       },
     };
 

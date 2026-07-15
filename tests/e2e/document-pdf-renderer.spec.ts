@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
+
 import { expect, test } from "@playwright/test";
+import sharp from "sharp";
 
 import {
   buildDocumentGenerationSnapshot,
@@ -191,6 +194,68 @@ function expectPdfEnvelope(bytes: Buffer) {
   expect(bytes.toString("ascii").trimEnd().endsWith("%%EOF")).toBe(true);
   expect(bytes.byteLength).toBeGreaterThan(4_000);
 }
+
+test("fige la version du logo dans le snapshot et les octets PDF historiques", async () => {
+  const logoA = await sharp({ create: { width: 300, height: 90, channels: 4, background: "#166534" } }).png().toBuffer();
+  const logoB = await sharp({ create: { width: 90, height: 300, channels: 3, background: "#1d4ed8" } }).jpeg().toBuffer();
+  const metadata = (assetId: string, bytes: Buffer, mimeType: "image/png" | "image/jpeg", widthPx: number, heightPx: number) => ({
+    assetId,
+    fileSha256: createHash("sha256").update(bytes).digest("hex"),
+    fileSizeBytes: bytes.byteLength,
+    mimeType,
+    widthPx,
+    heightPx,
+  });
+
+  const inputA = contractInput();
+  inputA.branding = { logo: metadata("9f150002-0000-4000-8000-000000000011", logoA, "image/png", 300, 90) };
+  const builtA = successfulBuild(inputA);
+  const renderedA = await renderDocumentPdfCore({
+    documentType: inputA.documentType,
+    snapshot: builtA.snapshot,
+    templateContent: inputA.template.content!,
+    logoBytes: logoA,
+  });
+  expect(renderedA.outcome).toBe("success");
+  if (renderedA.outcome !== "success") throw new Error("Expected PDF A");
+  const storedHistoricalBytes = Buffer.from(renderedA.bytes);
+  const storedHistoricalSha = createHash("sha256").update(storedHistoricalBytes).digest("hex");
+
+  const inputB = contractInput();
+  inputB.branding = { logo: metadata("9f150002-0000-4000-8000-000000000012", logoB, "image/jpeg", 90, 300) };
+  const builtB = successfulBuild(inputB);
+  const renderedB = await renderDocumentPdfCore({
+    documentType: inputB.documentType,
+    snapshot: builtB.snapshot,
+    templateContent: inputB.template.content!,
+    logoBytes: logoB,
+  });
+  expect(renderedB.outcome).toBe("success");
+  if (renderedB.outcome !== "success") throw new Error("Expected PDF B");
+
+  expect(createHash("sha256").update(storedHistoricalBytes).digest("hex")).toBe(storedHistoricalSha);
+  expect(createHash("sha256").update(renderedB.bytes).digest("hex")).not.toBe(storedHistoricalSha);
+  expect(builtA.snapshot.branding?.logo?.assetId).toBe("9f150002-0000-4000-8000-000000000011");
+  expect(builtB.snapshot.branding?.logo?.assetId).toBe("9f150002-0000-4000-8000-000000000012");
+
+  const withoutLogoInput = contractInput();
+  withoutLogoInput.branding = { logo: null };
+  const withoutLogo = successfulBuild(withoutLogoInput);
+  expect(withoutLogo.snapshot.branding).toEqual({ logo: null });
+  expect((await renderDocumentPdfCore({
+    documentType: withoutLogoInput.documentType,
+    snapshot: withoutLogo.snapshot,
+    templateContent: withoutLogoInput.template.content!,
+    logoBytes: null,
+  })).outcome).toBe("success");
+
+  expect(await renderDocumentPdfCore({
+    documentType: inputA.documentType,
+    snapshot: builtA.snapshot,
+    templateContent: inputA.template.content!,
+    logoBytes: logoB,
+  })).toEqual({ outcome: "error", error: { code: "branding_mismatch" } });
+});
 
 test("builds ordered contract presentation and renders an in-memory A4 PDF", async () => {
   const input = contractInput();

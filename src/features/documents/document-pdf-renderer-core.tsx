@@ -6,11 +6,13 @@ import { DocumentPdfDocument } from "./document-pdf-document";
 import { buildDocumentPdfPresentation } from "./document-pdf-presentation";
 import { parseDocumentGenerationSnapshot } from "./parse-document-generation-snapshot";
 import { parseDocumentTemplateDefinition } from "./parse-document-template-definition";
+import { validateOrganizationLogoBytes } from "@/features/settings/organization-logo-image";
 
 export type RenderDocumentPdfInput = {
   documentType: string;
   snapshot: unknown;
   templateContent: string;
+  logoBytes?: Buffer | null;
 };
 
 export type RenderDocumentPdfErrorCode =
@@ -18,6 +20,7 @@ export type RenderDocumentPdfErrorCode =
   | "invalid_template"
   | "document_type_mismatch"
   | "template_hash_mismatch"
+  | "branding_mismatch"
   | "render_error";
 
 export type RenderDocumentPdfResult =
@@ -83,8 +86,34 @@ export async function renderDocumentPdfCore(
   );
   if (!presentation) return fail("document_type_mismatch");
 
+  const snapshotLogo = parsedSnapshot.snapshot.branding?.logo;
+  let renderedLogo: { dataUri: string; widthPx: number; heightPx: number } | null = null;
+  if (snapshotLogo) {
+    if (!input.logoBytes) return fail("branding_mismatch");
+    const validatedLogo = await validateOrganizationLogoBytes({
+      bytes: input.logoBytes,
+      declaredMimeType: snapshotLogo.mimeType,
+    });
+    if (
+      !validatedLogo.ok ||
+      validatedLogo.logo.fileSha256 !== snapshotLogo.fileSha256 ||
+      validatedLogo.logo.fileSizeBytes !== snapshotLogo.fileSizeBytes ||
+      validatedLogo.logo.widthPx !== snapshotLogo.widthPx ||
+      validatedLogo.logo.heightPx !== snapshotLogo.heightPx
+    ) {
+      return fail("branding_mismatch");
+    }
+    renderedLogo = {
+      dataUri: `data:${snapshotLogo.mimeType};base64,${input.logoBytes.toString("base64")}`,
+      widthPx: snapshotLogo.widthPx,
+      heightPx: snapshotLogo.heightPx,
+    };
+  } else if (input.logoBytes) {
+    return fail("branding_mismatch");
+  }
+
   try {
-    const bytes = await renderToBuffer(DocumentPdfDocument({ presentation }));
+    const bytes = await renderToBuffer(DocumentPdfDocument({ presentation, logo: renderedLogo }));
     return {
       outcome: "success",
       bytes: Buffer.from(bytes),

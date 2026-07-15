@@ -10,6 +10,7 @@ import { getDocumentTypeLabel } from "@/features/documents/formatters";
 import { listDocumentTemplateFamilies, type DocumentTemplateVersionSummary } from "@/features/documents/document-template-management";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
 import { parseDocumentTemplateDefinition, type DocumentTemplateDefinition } from "@/features/documents/document-template-definitions";
+import { readActiveOrganizationLogo } from "@/features/settings/organization-logo-service";
 
 export const dynamic = "force-dynamic";
 
@@ -75,6 +76,9 @@ export default async function DocumentTemplateFamilyPage({
   const result = organization
     ? await listDocumentTemplateFamilies({ organizationId: organization.organizationId })
     : null;
+  const activeLogo = organization
+    ? await readActiveOrganizationLogo(organization.organizationId)
+    : null;
 
   if (!result || result.outcome === "error") {
     return (
@@ -137,6 +141,12 @@ export default async function DocumentTemplateFamilyPage({
                   initialDefinition={publicationDefinition as DocumentTemplateDefinition}
                   initialUpdatedAt={family.publication.updatedAt}
                   mode="published"
+                  previewLogo={activeLogo?.ok && activeLogo.logo ? {
+                    dataUri: activeLogo.logo.dataUri,
+                    widthPx: activeLogo.logo.asset.width_px,
+                    heightPx: activeLogo.logo.asset.height_px,
+                  } : null}
+                  previewBrandingUnavailable={Boolean(activeLogo && !activeLogo.ok)}
                 />
               ) : (
                 <VersionPlaceholder kind={hasEditor ? "invalid" : "unsupported"} hasEditor={hasEditor} />
@@ -174,6 +184,12 @@ export default async function DocumentTemplateFamilyPage({
                   canSave={canSave}
                   canValidate
                   canPublish={canPublish}
+                  previewLogo={activeLogo?.ok && activeLogo.logo ? {
+                    dataUri: activeLogo.logo.dataUri,
+                    widthPx: activeLogo.logo.asset.width_px,
+                    heightPx: activeLogo.logo.asset.height_px,
+                  } : null}
+                  previewBrandingUnavailable={Boolean(activeLogo && !activeLogo.ok)}
                   destructiveAction={canPublish ? {
                     familyId: family.id,
                     familyName: family.name,

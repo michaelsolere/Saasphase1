@@ -1,4 +1,4 @@
-import { Document, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
+import { Document, Image, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import { createElement } from "react";
 
 import type { DocumentPdfPresentation } from "./document-pdf-presentation";
@@ -20,6 +20,11 @@ export const documentPdfStyles = StyleSheet.create({
     lineHeight: 1.2,
     marginBottom: 20,
     textAlign: "center" as const,
+  },
+  logo: {
+    alignSelf: "center" as const,
+    marginBottom: 12,
+    objectFit: "contain" as const,
   },
   sectionHeading: {
     marginTop: 8,
@@ -72,9 +77,17 @@ export const documentPdfStyles = StyleSheet.create({
 
 export function DocumentPdfDocument({
   presentation,
+  logo = null,
 }: {
   presentation: DocumentPdfPresentation;
+  logo?: { dataUri: string; widthPx: number; heightPx: number } | null;
 }) {
+  const logoSize = logo
+    ? (() => {
+        const scale = Math.min(120 / logo.widthPx, 60 / logo.heightPx, 1);
+        return { width: logo.widthPx * scale, height: logo.heightPx * scale };
+      })()
+    : null;
   const sectionElements = presentation.sections.flatMap((section) => {
     if (section.signatureLabels) {
       return [
@@ -157,6 +170,12 @@ export function DocumentPdfDocument({
         render: ({ pageNumber, totalPages }) =>
           `Page ${pageNumber} / ${totalPages}`,
       }),
+      logo && logoSize
+        ? createElement(Image, {
+            src: logo.dataUri,
+            style: [documentPdfStyles.logo, logoSize],
+          })
+        : null,
       createElement(Text, { style: documentPdfStyles.title }, presentation.title),
       ...sectionElements,
     ),

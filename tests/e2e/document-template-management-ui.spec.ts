@@ -310,7 +310,7 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     await expect(editorPane).toBeVisible();
     await expect(previewPane).toBeVisible();
     await expect(previewPane.getByText(
-      "Aperçu avec données fictives — aucune réservation ni aucun document n’est créé ou modifié.",
+      "Aperçu avec données fictives et identité visuelle actuelle — aucune réservation ni aucun document n’est créé ou modifié.",
     )).toBeVisible();
     await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]'))
       .toBeVisible({ timeout: 30_000 });

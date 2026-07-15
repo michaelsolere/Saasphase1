@@ -10,8 +10,12 @@ import { createDocumentTemplatePreviewSnapshot } from "./document-template-previ
 
 export function DocumentTemplatePdfPreview({
   definition,
+  logo,
+  brandingUnavailable = false,
 }: {
   definition: DocumentTemplateDefinition;
+  logo?: { dataUri: string; widthPx: number; heightPx: number } | null;
+  brandingUnavailable?: boolean;
 }) {
   const presentation = useMemo(() => {
     const snapshot = createDocumentTemplatePreviewSnapshot(
@@ -20,11 +24,11 @@ export function DocumentTemplatePdfPreview({
     return buildDocumentPdfPresentation(snapshot, definition);
   }, [definition]);
   const document = useMemo(
-    () => presentation ? DocumentPdfDocument({ presentation }) : null,
-    [presentation],
+    () => presentation ? DocumentPdfDocument({ presentation, logo }) : null,
+    [presentation, logo],
   );
 
-  if (!presentation || !document) {
+  if (!presentation || !document || brandingUnavailable) {
     return (
       <div
         role="status"

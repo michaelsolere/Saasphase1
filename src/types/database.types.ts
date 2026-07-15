@@ -2543,6 +2543,76 @@ export type Database = {
           },
         ]
       }
+      organization_brand_assets: {
+        Row: {
+          asset_type: string
+          created_at: string
+          created_by: string
+          file_path: string
+          file_sha256: string
+          file_size_bytes: number
+          height_px: number
+          id: string
+          mime_type: string
+          organization_id: string
+          retired_at: string | null
+          retired_by: string | null
+          width_px: number
+        }
+        Insert: {
+          asset_type?: string
+          created_at?: string
+          created_by: string
+          file_path: string
+          file_sha256: string
+          file_size_bytes: number
+          height_px: number
+          id: string
+          mime_type: string
+          organization_id: string
+          retired_at?: string | null
+          retired_by?: string | null
+          width_px: number
+        }
+        Update: {
+          asset_type?: string
+          created_at?: string
+          created_by?: string
+          file_path?: string
+          file_sha256?: string
+          file_size_bytes?: number
+          height_px?: number
+          id?: string
+          mime_type?: string
+          organization_id?: string
+          retired_at?: string | null
+          retired_by?: string | null
+          width_px?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_brand_assets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_brand_assets_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_brand_assets_retired_by_fkey"
+            columns: ["retired_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_document_settings: {
         Row: {
           commitment_certificate_text: string | null
@@ -3594,6 +3664,22 @@ export type Database = {
       }
     }
     Functions: {
+      activate_organization_logo: {
+        Args: {
+          p_asset_id: string
+          p_file_path: string
+          p_file_sha256: string
+          p_file_size_bytes: number
+          p_height_px: number
+          p_mime_type: string
+          p_organization_id: string
+          p_width_px: number
+        }
+        Returns: {
+          asset_id: string
+          outcome: string
+        }[]
+      }
       archive_document_signed_return: {
         Args: {
           p_document_id: string
@@ -3723,6 +3809,13 @@ export type Database = {
         Returns: {
           application_id: string
           contact_id: string
+        }[]
+      }
+      retire_active_organization_logo: {
+        Args: { p_organization_id: string }
+        Returns: {
+          asset_id: string | null
+          outcome: string
         }[]
       }
       shares_organization_with: {

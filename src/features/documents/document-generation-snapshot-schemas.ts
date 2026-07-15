@@ -15,6 +15,22 @@ const nullableNonNegativeCentsSchema = nonNegativeCentsSchema.nullable();
 const currencySchema = z.string().trim().regex(/^[A-Z]{3}$/);
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 
+export const documentBrandingSchema = z
+  .object({
+    logo: z
+      .object({
+        assetId: uuidSchema,
+        fileSha256: sha256Schema,
+        fileSizeBytes: z.number().int().positive().max(512 * 1024),
+        mimeType: z.enum(["image/png", "image/jpeg"]),
+        widthPx: z.number().int().min(16).max(2000),
+        heightPx: z.number().int().min(16).max(2000),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
 const addressSchema = z
   .object({
     line1: nullableTextSchema,
@@ -185,6 +201,7 @@ const commonSnapshotShape = {
   adoptionProject: adoptionProjectSchema,
   reservation: reservationSchema,
   signature: signatureDataSchema,
+  branding: documentBrandingSchema.optional(),
 };
 
 type CommonSnapshotConsistencyData = {

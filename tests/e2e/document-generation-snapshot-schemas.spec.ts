@@ -195,6 +195,7 @@ test("builds and parses immutable document generation snapshots", () => {
   expect("financials" in certificate.snapshot).toBe(false);
 
   const archivedContract = structuredClone(contract.snapshot);
+  delete archivedContract.branding;
   delete archivedContract.reservation.choiceRank;
   delete archivedContract.financials.depositTargetCents;
   delete archivedContract.financials.depositRemainingCents;
@@ -205,6 +206,8 @@ test("builds and parses immutable document generation snapshots", () => {
       generationData: archivedContract,
     }),
   ).toMatchObject({ success: true });
+
+  expect(contract.snapshot.branding).toEqual({ logo: null });
 
   const archivedCertificate = structuredClone(certificate.snapshot);
   if (archivedCertificate.adoptionProject.litter) {
