@@ -52,6 +52,10 @@ const ids = {
   v2ValidDocument: "7e150000-0000-4000-8000-000000000035",
   v2MissingDocument: "7e150000-0000-4000-8000-000000000036",
   v2InvalidDocument: "7e150000-0000-4000-8000-000000000037",
+  v2MissingReservation: "7e150000-0000-4000-8000-000000000038",
+  v2FormattingFamily: "7e150000-0000-4000-8000-000000000039",
+  v2FormattingTemplate: "7e150000-0000-4000-8000-000000000040",
+  v2FormattingDocument: "7e150000-0000-4000-8000-000000000041",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -100,13 +104,19 @@ const validV2Definition = {
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat libre V2 — [[animal.nom]]",
-  body: "Adoptant : [[adoptant.nom_complet]]\nRace : [[projet.race]]\nRobe : [[animal.couleur]]\nPrix : [[reservation.prix_formate]]\nDate : [[document.date_generation]]",
+  body: "**Adoptant : [[adoptant.nom_complet]]**\nRace : [[projet.race]]\nGroupe : **[[groupe_portees.nom]]**\nProjet : [[projet.portee_ou_groupe]]\nRobe : [[animal.couleur]]\nPrix : **[[reservation.prix_formate]]**\nDate : [[document.date_generation]]",
 };
 
 const missingV2Definition = {
   ...validV2Definition,
   title: "Contrat libre V2 incomplet",
-  body: "Téléphone : [[adoptant.telephone]]",
+  body: "Groupe : [[groupe_portees.nom]]",
+};
+
+const invalidFormattingV2Definition = {
+  ...validV2Definition,
+  title: "Contrat libre V2 format invalide",
+  body: "Adoptant : **[[adoptant.nom_complet]]",
 };
 
 function q(value: string) {
@@ -186,6 +196,8 @@ function seed() {
     values (${q(ids.animal)}, ${q(ids.organization)}, ${q(ids.litter)}, 'NOVA QA', 'Nova', 'dog', 'Golden Retriever', 'female', '2026-06-01', '250269000000009', 'Crème prioritaire', 'Doré secondaire');
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, litter_id, rank_active, status, reserved_sex_preference, price_cents, currency, created_at)
     values (${q(ids.contractReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.group)}, ${q(ids.litter)}, 3, 'active', 'female_only', 250000, 'EUR', '2026-07-01T09:00:00Z');
+    insert into public.reservations (id, organization_id, contact_id, application_id, status, reserved_sex_preference, price_cents, currency, created_at)
+    values (${q(ids.v2MissingReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, 'active', 'female_only', 250000, 'EUR', '2026-07-01T10:00:00Z');
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, litter_id, animal_id, status, reserved_sex_preference, price_cents, currency, created_at)
     values (${q(ids.certificateReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.group)}, ${q(ids.litter)}, ${q(ids.animal)}, 'animal_assigned', 'female_only', 270000, 'EUR', '2026-07-02T09:00:00Z');
     insert into public.organization_settings (id, organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents)
@@ -198,13 +210,15 @@ function seed() {
       (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever'),
       (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever'),
       (${q(ids.v2ValidFamily)}, ${q(ids.organization)}, 'Contrat libre V2 QA', 'reservation_contract', 'dog', 'Golden Retriever'),
-      (${q(ids.v2MissingFamily)}, ${q(ids.organization)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever');
+      (${q(ids.v2MissingFamily)}, ${q(ids.organization)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever'),
+      (${q(ids.v2FormattingFamily)}, ${q(ids.organization)}, 'Contrat libre V2 format invalide QA', 'reservation_contract', 'dog', 'Golden Retriever');
     insert into public.document_templates
       (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
     values (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 4, 'published', true, now(), ${q(ownerId)}),
            (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 6, 'published', true, now(), ${q(ownerId)}),
            (${q(ids.v2ValidTemplate)}, ${q(ids.organization)}, ${q(ids.v2ValidFamily)}, 'Contrat libre V2 QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(validV2Definition))}, 1, 'published', true, now(), ${q(ownerId)}),
-           (${q(ids.v2MissingTemplate)}, ${q(ids.organization)}, ${q(ids.v2MissingFamily)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(missingV2Definition))}, 1, 'published', true, now(), ${q(ownerId)});
+           (${q(ids.v2MissingTemplate)}, ${q(ids.organization)}, ${q(ids.v2MissingFamily)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(missingV2Definition))}, 1, 'published', true, now(), ${q(ownerId)}),
+           (${q(ids.v2FormattingTemplate)}, ${q(ids.organization)}, ${q(ids.v2FormattingFamily)}, 'Contrat libre V2 format invalide QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(invalidFormattingV2Definition))}, 1, 'published', true, now(), ${q(ownerId)});
     insert into public.payments (id, organization_id, contact_id, reservation_id, amount_cents, payment_type, status)
     values (${q(ids.payment)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.contractReservation)}, 75000, 'arrhes', 'paid');
     insert into public.documents (id, organization_id, contact_id, application_id, reservation_id, litter_id, document_type, status, title, signature_required)
@@ -241,9 +255,19 @@ function certificateInput(documentId: string) {
 function v2Input(documentId: string, missing = false) {
   return {
     documentId,
-    reservationId: missing ? ids.contractReservation : ids.certificateReservation,
+    reservationId: missing ? ids.v2MissingReservation : ids.certificateReservation,
     documentType: "reservation_contract" as const,
     templateId: missing ? ids.v2MissingTemplate : ids.v2ValidTemplate,
+    capturedAt,
+  };
+}
+
+function invalidFormattingV2Input() {
+  return {
+    documentId: ids.v2FormattingDocument,
+    reservationId: ids.certificateReservation,
+    documentType: "reservation_contract" as const,
+    templateId: ids.v2FormattingTemplate,
     capturedAt,
   };
 }
@@ -419,6 +443,40 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
     expect(count("documents")).toBe(rowsBeforeMissingV2);
     expect(await storagePaths()).toEqual(pathsBeforeMissingV2);
 
+    const rowsBeforeInvalidFormatting = count("documents");
+    const pathsBeforeInvalidFormatting = await storagePaths();
+    const historyBeforeInvalidFormatting = sql(`
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', id,
+        'status', status,
+        'superseded_at', superseded_at,
+        'replaces_document_id', replaces_document_id
+      ) order by id)::text, '[]')
+      from public.documents
+      where organization_id = ${q(ids.organization)}::uuid;
+    `);
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        invalidFormattingV2Input(),
+        supabase,
+      ),
+    ).toEqual({
+      outcome: "error",
+      error: { stage: "prepare", code: "invalid_template_formatting" },
+    });
+    expect(count("documents")).toBe(rowsBeforeInvalidFormatting);
+    expect(await storagePaths()).toEqual(pathsBeforeInvalidFormatting);
+    expect(sql(`
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', id,
+        'status', status,
+        'superseded_at', superseded_at,
+        'replaces_document_id', replaces_document_id
+      ) order by id)::text, '[]')
+      from public.documents
+      where organization_id = ${q(ids.organization)}::uuid;
+    `)).toBe(historyBeforeInvalidFormatting);
+
     sql(`update public.contacts set display_name = 'Camille [[animal.nom]]' where id = ${q(ids.contact)}::uuid;`);
     let invalidValueStoreCalled = false;
     const realPreparation = await import("../../src/features/documents/prepare-document-generation-snapshot-core");
@@ -484,7 +542,11 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
     expect(storedV2.outcome).toBe("success");
     if (storedV2.outcome !== "success") throw new Error("V2 contract read failed");
     expect(storedV2.document.generation_data).toMatchObject({
-      adoptionProject: { animal: { color: "Crème prioritaire" } },
+      adoptionProject: {
+        litter: { name: "Portée QA" },
+        litterGroup: { name: "Groupe QA" },
+        animal: { color: "Crème prioritaire" },
+      },
       template: { templateId: ids.v2ValidTemplate, templateVersion: 1 },
       capturedAt,
     });

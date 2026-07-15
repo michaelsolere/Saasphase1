@@ -10,6 +10,7 @@ import type {
   ReservationContractGenerationSnapshot,
 } from "./document-generation-snapshot-schemas";
 import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
+import type { FreeTextParagraph } from "./reservation-contract-template-variables";
 
 export type DocumentPdfPresentationSection = {
   id: string;
@@ -26,6 +27,7 @@ export type DocumentPdfPresentation = {
   preparedAt: string;
   sections: DocumentPdfPresentationSection[];
   freeBody?: string;
+  freeTextParagraphs?: FreeTextParagraph[];
 };
 
 const legalFormLabels: Record<string, string> = {
@@ -327,6 +329,7 @@ function buildFreeContractPresentation(
     preparedAt: snapshot.capturedAt,
     sections: [],
     freeBody: resolved.body,
+    freeTextParagraphs: resolved.bodyParagraphs,
   };
 }
 

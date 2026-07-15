@@ -1,9 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Bold, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 
 import {
   AlertDialog,
@@ -33,6 +33,7 @@ import type {
   ReservationContractTemplateDefinition,
 } from "@/features/documents/document-template-definitions";
 import { insertTemplateVariableAtSelection } from "@/features/documents/insert-template-variable";
+import { insertTemplateBoldAtSelection } from "@/features/documents/insert-template-bold";
 import { RESERVATION_CONTRACT_VARIABLE_CATALOG } from "@/features/documents/reservation-contract-template-variables";
 
 const DocumentTemplatePdfPreview = dynamic(
@@ -386,6 +387,7 @@ const variableCategories = [
   "Projet et animal",
   "Réservation et finances",
   "Portée et parents",
+  "Groupe de portées",
   "Document",
 ] as const;
 
@@ -396,24 +398,76 @@ function FreeReservationContractEditor({
 }: DefinitionEditorProps<FreeReservationContractTemplateDefinition>) {
   const editorId = useId();
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodySelectionRef = useRef({ start: 0, end: 0 });
+  const pendingBodySelectionRef = useRef<{ start: number; end: number } | null>(null);
   const [selectedVariable, setSelectedVariable] = useState(
     RESERVATION_CONTRACT_VARIABLE_CATALOG[0].key,
   );
 
+  useLayoutEffect(() => {
+    const pending = pendingBodySelectionRef.current;
+    const textarea = bodyRef.current;
+    if (!pending || !textarea) return;
+    pendingBodySelectionRef.current = null;
+    textarea.focus();
+    textarea.setSelectionRange(pending.start, pending.end);
+    bodySelectionRef.current = pending;
+  }, [definition.body]);
+
+  function rememberBodySelection(textarea: HTMLTextAreaElement) {
+    bodySelectionRef.current = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+  }
+
+  function currentBodySelection(textarea: HTMLTextAreaElement) {
+    return document.activeElement === textarea
+      ? { start: textarea.selectionStart, end: textarea.selectionEnd }
+      : bodySelectionRef.current;
+  }
+
   function insertVariable() {
     const textarea = bodyRef.current;
     if (!textarea || readOnly) return;
+    const selection = currentBodySelection(textarea);
     const inserted = insertTemplateVariableAtSelection({
       value: definition.body,
       variable: selectedVariable,
-      selectionStart: textarea.selectionStart,
-      selectionEnd: textarea.selectionEnd,
+      selectionStart: selection.start,
+      selectionEnd: selection.end,
     });
     onChange({ ...definition, body: inserted.value });
     window.requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(inserted.cursor, inserted.cursor);
+      bodySelectionRef.current = { start: inserted.cursor, end: inserted.cursor };
     });
+  }
+
+  function insertBold() {
+    const textarea = bodyRef.current;
+    if (!textarea || readOnly) return;
+    const selection = currentBodySelection(textarea);
+    const inserted = insertTemplateBoldAtSelection({
+      value: definition.body,
+      selectionStart: selection.start,
+      selectionEnd: selection.end,
+    });
+    if (inserted.changed) {
+      pendingBodySelectionRef.current = {
+        start: inserted.selectionStart,
+        end: inserted.selectionEnd,
+      };
+      onChange({ ...definition, body: inserted.value });
+    } else {
+      textarea.focus();
+      textarea.setSelectionRange(inserted.selectionStart, inserted.selectionEnd);
+      bodySelectionRef.current = {
+        start: inserted.selectionStart,
+        end: inserted.selectionEnd,
+      };
+    }
   }
 
   return (
@@ -426,9 +480,26 @@ function FreeReservationContractEditor({
         onChange={(title) => onChange({ ...definition, title })}
       />
       <div>
-        <label htmlFor={`${editorId}-template-body`} className="text-sm font-semibold">
-          Contenu du contrat
-        </label>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor={`${editorId}-template-body`} className="text-sm font-semibold">
+            Contenu du contrat
+          </label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={readOnly}
+            aria-label="Gras"
+            onPointerDown={() => {
+              if (bodyRef.current) rememberBodySelection(bodyRef.current);
+            }}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={insertBold}
+          >
+            <Bold aria-hidden="true" className="size-4" />
+            Gras
+          </Button>
+        </div>
         <textarea
           ref={bodyRef}
           id={`${editorId}-template-body`}
@@ -436,11 +507,23 @@ function FreeReservationContractEditor({
           maxLength={30_000}
           value={definition.body}
           disabled={readOnly}
-          onChange={(event) => onChange({ ...definition, body: event.target.value })}
+          onChange={(event) => {
+            rememberBodySelection(event.currentTarget);
+            onChange({ ...definition, body: event.target.value });
+          }}
+          onSelect={(event) => rememberBodySelection(event.currentTarget)}
+          onKeyUp={(event) => rememberBodySelection(event.currentTarget)}
+          onBlur={(event) => rememberBodySelection(event.currentTarget)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === "b") {
+              event.preventDefault();
+              insertBold();
+            }
+          }}
           className={`${fieldClassName} min-h-[34rem] resize-y font-sans leading-relaxed`}
         />
         <p className="mt-2 text-sm text-muted">
-          Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.
+          Utilisez **texte** pour afficher un passage en gras. Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.
         </p>
       </div>
       <div className="rounded-xl border bg-surface p-4">

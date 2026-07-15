@@ -35,6 +35,7 @@ export type PrepareDocumentGenerationSnapshotErrorCode =
   | "reservation_not_found"
   | "template_not_found"
   | "invalid_template"
+  | "invalid_template_formatting"
   | "template_mismatch"
   | "incomplete_source_data"
   | "branding_inconsistent"
@@ -361,7 +362,13 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   });
 
   if (!built.success) {
-    return fail(built.error === "invalid_template" ? "invalid_template" : built.error === "document_type_mismatch" ? "template_mismatch" : "incomplete_source_data");
+    return fail(
+      built.error === "invalid_template" || built.error === "invalid_template_formatting"
+        ? built.error
+        : built.error === "document_type_mismatch"
+          ? "template_mismatch"
+          : "incomplete_source_data",
+    );
   }
 
   return {

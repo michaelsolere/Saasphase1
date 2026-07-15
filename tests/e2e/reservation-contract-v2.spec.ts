@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import { createInitialDocumentTemplateDefinition, INITIAL_FREE_RESERVATION_CONTRACT_BODY } from "../../src/features/documents/create-initial-document-template-definition";
 import { insertTemplateVariableAtSelection } from "../../src/features/documents/insert-template-variable";
+import { insertTemplateBoldAtSelection } from "../../src/features/documents/insert-template-bold";
 import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
 import { renderDocumentPdfCore } from "../../src/features/documents/document-pdf-renderer-core";
 import { createDocumentTemplatePreviewSnapshot } from "../../src/features/documents/document-template-preview-snapshot";
@@ -13,6 +14,8 @@ import {
   formatFrenchDate,
   formatFrenchMoney,
   formatFrenchMoneyInWords,
+  RESERVATION_CONTRACT_VARIABLE_CATALOG,
+  resolveFreeReservationContractBody,
   parseReservationContractVariables,
   resolveReservationContractText,
 } from "../../src/features/documents/reservation-contract-template-variables";
@@ -130,6 +133,156 @@ test("résout une seule passe avec les formats français et les règles métier"
   })).toMatchObject({ success: true, text: "Référence animal.nom conservée telle quelle" });
 });
 
+test("résout le groupe de portées et donne la priorité à la portée nommée", () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  expect(RESERVATION_CONTRACT_VARIABLE_CATALOG).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      key: "groupe_portees.nom",
+      label: "Nom du groupe de portées",
+      category: "Groupe de portées",
+    }),
+    expect.objectContaining({ key: "projet.portee_ou_groupe" }),
+  ]));
+
+  expect(resolveReservationContractText({
+    text: "[[groupe_portees.nom]] | [[projet.portee_ou_groupe]]",
+    snapshot,
+  })).toMatchObject({
+    success: true,
+    text: "Groupe Été fictif | Portée Démonstration",
+  });
+
+  snapshot.adoptionProject.litter = null;
+  expect(resolveReservationContractText({
+    text: "[[projet.portee_ou_groupe]]",
+    snapshot,
+  })).toMatchObject({ success: true, text: "Groupe Été fictif" });
+
+  snapshot.adoptionProject.litterGroup = null;
+  expect(resolveReservationContractText({
+    text: "[[groupe_portees.nom]] | [[projet.portee_ou_groupe]]",
+    snapshot,
+    allowMissingTemplateVariables: true,
+  })).toMatchObject({
+    success: true,
+    text: "[Donnée manquante : nom du groupe de portées] | [Donnée manquante : nom de la portée ou du groupe de portées]",
+    missingVariables: ["groupe_portees.nom", "projet.portee_ou_groupe"],
+  });
+  expect(resolveReservationContractText({
+    text: "[[groupe_portees.nom]]",
+    snapshot,
+  })).toEqual({
+    success: false,
+    error: "missing_template_variables",
+    missingVariables: ["groupe_portees.nom"],
+  });
+});
+
+test("parse, présente et rend uniquement le gras provenant du modèle source", async () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  snapshot.adopter.displayName = "Camille **texte métier littéral**";
+  const resolved = resolveFreeReservationContractBody({
+    body: "Normal * littéral\n**Le vendeur :** et **[[vendeur.identite_complete]]**\n\nPrix : **montant [[reservation.prix_formate]] TTC**",
+    snapshot,
+  });
+  expect(resolved).toMatchObject({
+    success: true,
+    paragraphs: [
+      { runs: [{ text: "Normal * littéral", bold: false }] },
+      { runs: [
+        { text: "Le vendeur :", bold: true },
+        { text: " et ", bold: false },
+        { text: "Alice Éleveuse (personne fictive) Les Amandiers Démonstration SARL", bold: true },
+      ] },
+      { runs: [] },
+      { runs: [
+        { text: "Prix : ", bold: false },
+        { text: "montant ", bold: true },
+        { text: "2 500 €", bold: true },
+        { text: " TTC", bold: true },
+      ] },
+    ],
+  });
+  if (!resolved.success) throw new Error("Corps libre non résolu");
+  expect(resolved.text).not.toContain("**Le vendeur");
+
+  const businessValue = resolveFreeReservationContractBody({
+    body: "Adoptant : [[adoptant.nom_complet]]",
+    snapshot,
+  });
+  expect(businessValue).toMatchObject({
+    success: true,
+    paragraphs: [{ runs: [
+      { text: "Adoptant : ", bold: false },
+      { text: "Camille **texte métier littéral**", bold: false },
+    ] }],
+  });
+
+  const definition: FreeReservationContractTemplateDefinition = {
+    ...v2,
+    title: "Contrat",
+    body: "Normal\n\n**Adoptant : [[adoptant.nom_complet]]** et prix **[[reservation.prix_formate]]**",
+  };
+  snapshot.template.templateContentSha256 = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
+  const presentation = buildDocumentPdfPresentation(snapshot, definition);
+  expect(presentation?.freeTextParagraphs).toMatchObject([
+    { runs: [{ text: "Normal", bold: false }] },
+    { runs: [] },
+    { runs: [
+      { text: "Adoptant : ", bold: true },
+      { text: "Camille **texte métier littéral**", bold: true },
+      { text: " et prix ", bold: false },
+      { text: "2 500 €", bold: true },
+    ] },
+  ]);
+  expect(presentation?.freeBody).not.toContain("**Adoptant");
+  expect((await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+  })).outcome).toBe("success");
+});
+
+test("refuse les délimitations de gras invalides dans le corps et le titre", async () => {
+  expect(parse({ ...v2, body: "Texte **non refermé" })).toMatchObject({
+    success: false,
+    error: "invalid_template_formatting",
+    formattingIssues: [{ code: "unclosed_bold" }],
+  });
+  expect(parse({ ...v2, body: "Avant **** après" })).toMatchObject({
+    success: false,
+    error: "invalid_template_formatting",
+    formattingIssues: [{ code: "empty_bold" }],
+  });
+  expect(parse({ ...v2, body: "fermeture**" })).toMatchObject({
+    success: false,
+    error: "invalid_template_formatting",
+    formattingIssues: [{ code: "unexpected_bold_closer" }],
+  });
+  expect(parse({ ...v2, body: "**extérieur **intérieur** extérieur**" })).toMatchObject({
+    success: false,
+    error: "invalid_template_formatting",
+    formattingIssues: expect.arrayContaining([expect.objectContaining({ code: "nested_bold" })]),
+  });
+  expect(parse({ ...v2, title: "**Contrat**" })).toMatchObject({
+    success: false,
+    error: "invalid_template_formatting",
+    formattingIssues: [{ code: "formatting_in_title" }],
+  });
+
+  const definition = { ...v2, title: "Contrat", body: "Texte **non refermé" };
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  snapshot.template.templateContentSha256 = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
+  expect(buildDocumentPdfPresentation(snapshot, definition, {
+    allowMissingTemplateVariables: true,
+  })).toBeNull();
+  expect(await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+  })).toEqual({ outcome: "error", error: { code: "invalid_template_formatting" } });
+});
+
 test("affiche un marqueur sans token brut en aperçu et bloque le PDF définitif", async () => {
   const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
   snapshot.adopter.displayName = "Camille [[animal.nom]]";
@@ -188,7 +341,7 @@ test("compose l’identité complète du vendeur sans duplication", () => {
   snapshot.signer = null;
   expect(resolveIdentity()).toMatchObject({ success: true, text: "EARL La Poulanière" });
 
-  snapshot.signer = { displayName: "Michael Solere" };
+  snapshot.signer = { ...snapshot.signer!, displayName: "Michael Solere" };
   snapshot.seller.legalName = null;
   expect(resolveIdentity()).toMatchObject({ success: true, text: "Michael Solere La Poulanière" });
 });
@@ -231,6 +384,31 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     value: "Bonjour [[animal.nom]]",
     cursor: 22,
   });
+  expect(insertTemplateBoldAtSelection({
+    value: "Le vendeur",
+    selectionStart: 0,
+    selectionEnd: 10,
+  })).toEqual({
+    value: "**Le vendeur**",
+    selectionStart: 2,
+    selectionEnd: 12,
+    changed: true,
+  });
+  expect(insertTemplateBoldAtSelection({
+    value: "Le vendeur",
+    selectionStart: 3,
+    selectionEnd: 3,
+  })).toEqual({
+    value: "Le ****vendeur",
+    selectionStart: 5,
+    selectionEnd: 5,
+    changed: true,
+  });
+  expect(insertTemplateBoldAtSelection({
+    value: "x".repeat(30_000),
+    selectionStart: 0,
+    selectionEnd: 1,
+  })).toMatchObject({ value: "x".repeat(30_000), changed: false });
   expect(createInitialDocumentTemplateDefinition("reservation_contract")).toEqual({
     schemaVersion: 2,
     locale: "fr-FR",

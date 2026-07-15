@@ -6,7 +6,9 @@ import {
   type DocumentTemplateType,
 } from "./document-template-definition-schemas";
 import {
+  parseFreeReservationContractBody,
   parseReservationContractVariables,
+  type TemplateFormattingIssue,
   type TemplateVariableIssue,
 } from "./reservation-contract-template-variables";
 
@@ -29,8 +31,10 @@ export type ParseDocumentTemplateDefinitionResult =
         | "unsupported_schema_version"
         | "document_type_mismatch"
         | "invalid_template_content"
-        | "invalid_template_variables";
+        | "invalid_template_variables"
+        | "invalid_template_formatting";
       variableIssues?: TemplateVariableIssue[];
+      formattingIssues?: TemplateFormattingIssue[];
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -90,11 +94,25 @@ export function parseDocumentTemplateDefinition({
   }
 
   if (result.data.schemaVersion === FREE_RESERVATION_CONTRACT_SCHEMA_VERSION) {
+    if (result.data.title.includes("**")) {
+      return {
+        success: false,
+        error: "invalid_template_formatting",
+        formattingIssues: [{ code: "formatting_in_title", offset: result.data.title.indexOf("**") }],
+      };
+    }
     const titleVariables = parseReservationContractVariables(result.data.title);
-    const bodyVariables = parseReservationContractVariables(result.data.body);
+    const body = parseFreeReservationContractBody(result.data.body);
+    if (!body.success && body.error === "invalid_template_formatting") {
+      return {
+        success: false,
+        error: body.error,
+        formattingIssues: body.issues,
+      };
+    }
     const issues = [
       ...(titleVariables.success ? [] : titleVariables.issues),
-      ...(bodyVariables.success ? [] : bodyVariables.issues),
+      ...(body.success ? [] : body.issues),
     ];
     if (issues.length > 0) {
       return {
