@@ -101,6 +101,7 @@ export type BuildDocumentGenerationSnapshotInput = {
       birthDate?: NullableInput<string>;
       identification?: NullableInput<string>;
       lofNumber?: NullableInput<string>;
+      color?: NullableInput<string>;
     }>;
   };
   reservation: {
@@ -373,6 +374,9 @@ export function buildDocumentGenerationSnapshot(
                 lofNumber: normalizeNullableText(
                   input.adoptionProject.animal.lofNumber,
                 ),
+                ...(parsedTemplate.definition.schemaVersion === 2
+                  ? { color: normalizeNullableText(input.adoptionProject.animal.color) }
+                  : {}),
               },
       },
       reservation: {

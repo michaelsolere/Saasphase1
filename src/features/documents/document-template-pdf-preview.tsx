@@ -100,7 +100,9 @@ export function DocumentTemplatePdfPreview({
     const snapshot = createDocumentTemplatePreviewSnapshot(
       definition.documentType,
     );
-    return buildDocumentPdfPresentation(snapshot, definition);
+    return buildDocumentPdfPresentation(snapshot, definition, {
+      allowMissingTemplateVariables: true,
+    });
   }, [definition]);
   const document = useMemo(
     () => presentation ? DocumentPdfDocument({ presentation, logo }) : null,

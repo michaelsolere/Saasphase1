@@ -41,6 +41,9 @@ export const documentPdfStyles = StyleSheet.create({
   paragraph: {
     marginBottom: 5,
   },
+  freeBody: {
+    marginBottom: 14,
+  },
   sectionEnd: {
     marginBottom: 14,
   },
@@ -109,10 +112,10 @@ export function DocumentPdfDocument({
           createElement(
             View,
             { style: documentPdfStyles.signatures, wrap: false },
-            ...section.signatureLabels.map((label) =>
+            ...section.signatureLabels.map((label, index) =>
               createElement(
                 View,
-                { key: label, style: documentPdfStyles.signatureBlock },
+                { key: `${section.id}-${index}`, style: documentPdfStyles.signatureBlock },
                 createElement(
                   Text,
                   { style: documentPdfStyles.signatureLabel },
@@ -180,6 +183,9 @@ export function DocumentPdfDocument({
           })
         : null,
       createElement(Text, { style: documentPdfStyles.title }, presentation.title),
+      presentation.freeBody !== undefined
+        ? createElement(Text, { style: documentPdfStyles.freeBody }, presentation.freeBody)
+        : null,
       ...sectionElements,
     ),
   );

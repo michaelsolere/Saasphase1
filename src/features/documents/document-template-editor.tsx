@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 
@@ -29,8 +29,11 @@ import type {
   CommitmentCertificateTemplateDefinition,
   DocumentTemplateDefinition,
   DocumentTemplateType,
+  FreeReservationContractTemplateDefinition,
   ReservationContractTemplateDefinition,
 } from "@/features/documents/document-template-definitions";
+import { insertTemplateVariableAtSelection } from "@/features/documents/insert-template-variable";
+import { RESERVATION_CONTRACT_VARIABLE_CATALOG } from "@/features/documents/reservation-contract-template-variables";
 
 const DocumentTemplatePdfPreview = dynamic(
   () => import("@/features/documents/document-template-pdf-preview")
@@ -377,6 +380,102 @@ function ReservationContractEditor({
   );
 }
 
+const variableCategories = [
+  "Vendeur",
+  "Adoptant",
+  "Projet et animal",
+  "Réservation et finances",
+  "Portée et parents",
+  "Document",
+] as const;
+
+function FreeReservationContractEditor({
+  definition,
+  readOnly,
+  onChange,
+}: DefinitionEditorProps<FreeReservationContractTemplateDefinition>) {
+  const editorId = useId();
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [selectedVariable, setSelectedVariable] = useState(
+    RESERVATION_CONTRACT_VARIABLE_CATALOG[0].key,
+  );
+
+  function insertVariable() {
+    const textarea = bodyRef.current;
+    if (!textarea || readOnly) return;
+    const inserted = insertTemplateVariableAtSelection({
+      value: definition.body,
+      variable: selectedVariable,
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+    });
+    onChange({ ...definition, body: inserted.value });
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(inserted.cursor, inserted.cursor);
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <TextField
+        id={`${editorId}-template-title`}
+        label="Titre"
+        value={definition.title}
+        readOnly={readOnly}
+        onChange={(title) => onChange({ ...definition, title })}
+      />
+      <div>
+        <label htmlFor={`${editorId}-template-body`} className="text-sm font-semibold">
+          Contenu du contrat
+        </label>
+        <textarea
+          ref={bodyRef}
+          id={`${editorId}-template-body`}
+          rows={30}
+          maxLength={30_000}
+          value={definition.body}
+          disabled={readOnly}
+          onChange={(event) => onChange({ ...definition, body: event.target.value })}
+          className={`${fieldClassName} min-h-[34rem] resize-y font-sans leading-relaxed`}
+        />
+        <p className="mt-2 text-sm text-muted">
+          Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.
+        </p>
+      </div>
+      <div className="rounded-xl border bg-surface p-4">
+        <label htmlFor={`${editorId}-template-variable`} className="text-sm font-semibold">
+          Insérer une donnée
+        </label>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+          <select
+            id={`${editorId}-template-variable`}
+            value={selectedVariable}
+            disabled={readOnly}
+            onChange={(event) => setSelectedVariable(event.target.value)}
+            className="min-h-10 min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:bg-muted-soft"
+          >
+            {variableCategories.map((category) => (
+              <optgroup key={category} label={category}>
+                {RESERVATION_CONTRACT_VARIABLE_CATALOG
+                  .filter((item) => item.category === category)
+                  .map((item) => (
+                    <option key={item.key} value={item.key}>
+                      {item.label} — [[{item.key}]]
+                    </option>
+                  ))}
+              </optgroup>
+            ))}
+          </select>
+          <Button type="button" disabled={readOnly} onClick={insertVariable}>
+            Insérer
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export const documentTemplateEditorConfigurations: Record<
   DocumentTemplateType,
   StructuredEditorConfiguration
@@ -392,7 +491,11 @@ export const documentTemplateEditorConfigurations: Record<
     ...documentTemplateTypePresentations.reservation_contract,
     renderEditor: ({ definition, ...props }) =>
       definition.documentType === "reservation_contract" ? (
-        <ReservationContractEditor definition={definition} {...props} />
+        definition.schemaVersion === 2 ? (
+          <FreeReservationContractEditor definition={definition} {...props} />
+        ) : (
+          <ReservationContractEditor definition={definition} {...props} />
+        )
       ) : null,
   },
 };
@@ -529,9 +632,13 @@ export function DocumentTemplateEditor({
           className={mobileView === "edit" ? "space-y-5" : "hidden space-y-5 lg:block"}
         >
           <div>
-            <h3 className="text-xl font-semibold">Clauses communes à rédiger</h3>
+            <h3 className="text-xl font-semibold">
+              {definition.schemaVersion === 2 ? "Contrat libre" : "Clauses communes à rédiger"}
+            </h3>
             <p className="mt-2 text-sm text-muted">
-              Les textes ci-dessous sont communs aux documents utilisant cette version du modèle.
+              {definition.schemaVersion === 2
+                ? "Composez librement le contrat et insérez les données à l’endroit souhaité."
+                : "Les textes ci-dessous sont communs aux documents utilisant cette version du modèle."}
             </p>
           </div>
 

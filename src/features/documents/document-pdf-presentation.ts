@@ -2,12 +2,14 @@ import type {
   CommitmentCertificateTemplateDefinition,
   DocumentTemplateDefinition,
   ReservationContractTemplateDefinition,
+  FreeReservationContractTemplateDefinition,
 } from "./document-template-definition-schemas";
 import type {
   CommitmentCertificateGenerationSnapshot,
   DocumentGenerationSnapshot,
   ReservationContractGenerationSnapshot,
 } from "./document-generation-snapshot-schemas";
+import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
 
 export type DocumentPdfPresentationSection = {
   id: string;
@@ -23,6 +25,7 @@ export type DocumentPdfPresentation = {
   fileName: string;
   preparedAt: string;
   sections: DocumentPdfPresentationSection[];
+  freeBody?: string;
 };
 
 const legalFormLabels: Record<string, string> = {
@@ -306,6 +309,27 @@ function buildContractPresentation(
   };
 }
 
+function buildFreeContractPresentation(
+  snapshot: ReservationContractGenerationSnapshot,
+  template: FreeReservationContractTemplateDefinition,
+  allowMissingTemplateVariables: boolean,
+): DocumentPdfPresentation | null {
+  const resolved = resolveFreeReservationContractDefinition({
+    definition: template,
+    snapshot,
+    allowMissingTemplateVariables,
+  });
+  if (!resolved.success) return null;
+  return {
+    documentType: snapshot.documentType,
+    title: resolved.title,
+    fileName: `contrat-reservation-${snapshot.reservation.id}.pdf`,
+    preparedAt: snapshot.capturedAt,
+    sections: [],
+    freeBody: resolved.body,
+  };
+}
+
 function buildCertificatePresentation(
   snapshot: CommitmentCertificateGenerationSnapshot,
   template: CommitmentCertificateTemplateDefinition,
@@ -341,11 +365,19 @@ function buildCertificatePresentation(
 export function buildDocumentPdfPresentation(
   snapshot: DocumentGenerationSnapshot,
   template: DocumentTemplateDefinition,
+  options: { allowMissingTemplateVariables?: boolean } = {},
 ): DocumentPdfPresentation | null {
   if (
     snapshot.documentType === "reservation_contract" &&
     template.documentType === "reservation_contract"
   ) {
+    if (template.schemaVersion === 2) {
+      return buildFreeContractPresentation(
+        snapshot,
+        template,
+        options.allowMissingTemplateVariables ?? false,
+      );
+    }
     return buildContractPresentation(snapshot, template);
   }
   if (

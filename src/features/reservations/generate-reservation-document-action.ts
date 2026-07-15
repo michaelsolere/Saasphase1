@@ -15,7 +15,7 @@ export type ReservationDocumentGenerationIntention = Omit<
 
 function redirectPath(
   reservationId: string,
-  status: "created" | "existing" | "error",
+  status: "created" | "existing" | "error" | "missing_data" | "invalid_data",
 ) {
   return `/reservations/${reservationId}?document_generation_status=${status}#documents`;
 }
@@ -36,6 +36,18 @@ export async function generateReservationDocumentPdf(
   });
 
   if (result.outcome === "error") {
+    if (
+      result.error.stage === "render" &&
+      result.error.code === "missing_template_variables"
+    ) {
+      redirect(redirectPath(intention.reservationId, "missing_data"));
+    }
+    if (
+      result.error.stage === "render" &&
+      result.error.code === "invalid_template_variable_value"
+    ) {
+      redirect(redirectPath(intention.reservationId, "invalid_data"));
+    }
     redirect(redirectPath(intention.reservationId, "error"));
   }
 

@@ -200,7 +200,7 @@ test("reconstruit une forme éditable sans valider le brouillon", () => {
     templateContent: "{}",
   });
   expect(reservation.documentType).toBe("reservation_contract");
-  if (reservation.documentType !== "reservation_contract") return;
+  if (reservation.documentType !== "reservation_contract" || reservation.schemaVersion !== 1) return;
   expect(reservation.preamble).toEqual([]);
   expect(reservation.clauses.finalConditions).toEqual([]);
   expect(reservation.signatureLabels).toEqual({ breeder: "", reservingParty: "" });

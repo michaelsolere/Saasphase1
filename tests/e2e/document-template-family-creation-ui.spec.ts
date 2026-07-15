@@ -159,18 +159,61 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await createTemplate(page, { name: contractName, type: "reservation_contract" });
     trackFixture(contractName, createdFamilyIds, createdTemplateIds);
     await expect(page.getByLabel("Titre")).toBeEditable();
-    await expect(page.getByText("Préambule", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Signature de l’éleveur")).toBeEditable();
+    await expect(page.getByLabel("Contenu du contrat")).toContainText("Il a été convenu ce qui suit entre les parties");
+    await expect(page.getByLabel("Contenu du contrat")).toContainText("[[reservation.prix_en_lettres]]");
+    await expect(page.getByLabel("Contenu du contrat")).toContainText("Couleur : [[animal.couleur]]");
+    await expect(page.getByLabel("Insérer une donnée")).toBeEditable();
+    await expect(page.getByText("Contenu automatiquement ajouté au document")).toHaveCount(0);
+    await expect(page.getByText("Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.")).toBeVisible();
     expect(sql(`
       select count(*) from public.document_templates template
       join public.document_template_families family on family.id = template.family_id
       where family.name = ${q(contractName)}
         and template.lifecycle_status = 'draft'
+        and template.template_content::jsonb->>'schemaVersion' = '2'
         and template.template_content::jsonb ?& array[
-          'schemaVersion', 'locale', 'documentType', 'title', 'preamble',
-          'clauses', 'signatureLabels'
-        ];
+          'schemaVersion', 'locale', 'documentType', 'title', 'body'
+        ]
+        and not (template.template_content::jsonb ?| array['preamble', 'clauses', 'signatureLabels']);
     `)).toBe("1");
+
+    const body = page.getByLabel("Contenu du contrat");
+    await body.fill("Bonjour monde");
+    await body.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(8, 8);
+    });
+    await page.getByLabel("Insérer une donnée").selectOption("adoptant.prenom");
+    await page.getByRole("button", { name: "Insérer", exact: true }).click();
+    await expect(body).toHaveValue("Bonjour [[adoptant.prenom]]monde");
+    await expect(body).toBeFocused();
+    await body.evaluate((element) => (element as HTMLTextAreaElement).setSelectionRange(8, 27));
+    await page.getByLabel("Insérer une donnée").selectOption("animal.nom");
+    await page.getByRole("button", { name: "Insérer", exact: true }).click();
+    await expect(body).toHaveValue("Bonjour [[animal.nom]]monde");
+
+    await body.fill("Variable erronée : [[adoptant.telephonne]]");
+    await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(page.getByText("Le brouillon a été enregistré.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(page.getByText(/Corrigez les variables du modèle/)).toContainText("[[adoptant.telephonne]]");
+    expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published';`)).toBe("0");
+
+    await body.fill("Bonjour [[adoptant.prenom]], prix : [[reservation.prix_formate]].");
+    await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await page.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(page.getByText("Le brouillon respecte le schéma documentaire.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Publier" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Confirmer la publication" }).click();
+    await expect(page.getByRole("heading", { name: /Version publiée · version 1/ })).toBeVisible({ timeout: 20_000 });
+    expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published' and template.template_content::jsonb->>'schemaVersion' = '2';`)).toBe("1");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByLabel("Contenu du contrat")).toBeVisible();
+    await expect(page.getByLabel("Insérer une donnée")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Insérer", exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.goto("/documents/modeles");
     await page.getByRole("button", { name: "Créer un modèle de référence" }).first().click();
@@ -191,6 +234,8 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
         and name = ${q(repeatedName)};
     `)).toBe("1");
   } finally {
+    console.info(`document-template-family-creation-ui fixture families: ${createdFamilyIds.join(",")}`);
+    console.info(`document-template-family-creation-ui fixture templates: ${createdTemplateIds.join(",")}`);
     cleanup(createdFamilyIds, createdTemplateIds);
     expect(remainingFixtureCount()).toBe(0);
   }

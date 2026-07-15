@@ -1,9 +1,14 @@
 import {
   DOCUMENT_TEMPLATE_SCHEMA_VERSION,
+  FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
   documentTemplateDefinitionSchema,
   type DocumentTemplateDefinition,
   type DocumentTemplateType,
 } from "./document-template-definition-schemas";
+import {
+  parseReservationContractVariables,
+  type TemplateVariableIssue,
+} from "./reservation-contract-template-variables";
 
 type ParseDocumentTemplateDefinitionInput = {
   templateFormat: string;
@@ -23,7 +28,9 @@ export type ParseDocumentTemplateDefinitionResult =
         | "invalid_json"
         | "unsupported_schema_version"
         | "document_type_mismatch"
-        | "invalid_template_content";
+        | "invalid_template_content"
+        | "invalid_template_variables";
+      variableIssues?: TemplateVariableIssue[];
     };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,7 +67,8 @@ export function parseDocumentTemplateDefinition({
 
   if (
     "schemaVersion" in parsedContent &&
-    parsedContent.schemaVersion !== DOCUMENT_TEMPLATE_SCHEMA_VERSION
+    parsedContent.schemaVersion !== DOCUMENT_TEMPLATE_SCHEMA_VERSION &&
+    parsedContent.schemaVersion !== FREE_RESERVATION_CONTRACT_SCHEMA_VERSION
   ) {
     return { success: false, error: "unsupported_schema_version" };
   }
@@ -79,6 +87,22 @@ export function parseDocumentTemplateDefinition({
 
   if (result.data.documentType !== documentType) {
     return { success: false, error: "document_type_mismatch" };
+  }
+
+  if (result.data.schemaVersion === FREE_RESERVATION_CONTRACT_SCHEMA_VERSION) {
+    const titleVariables = parseReservationContractVariables(result.data.title);
+    const bodyVariables = parseReservationContractVariables(result.data.body);
+    const issues = [
+      ...(titleVariables.success ? [] : titleVariables.issues),
+      ...(bodyVariables.success ? [] : bodyVariables.issues),
+    ];
+    if (issues.length > 0) {
+      return {
+        success: false,
+        error: "invalid_template_variables",
+        variableIssues: issues.slice(0, 50),
+      };
+    }
   }
 
   return { success: true, definition: result.data };

@@ -32,21 +32,11 @@ const ids = {
 const ownerId = "10000000-0000-4000-8000-000000000001";
 
 const contractDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat réservation UI E2E",
-  preamble: ["Préambule."],
-  clauses: {
-    reservationPurpose: ["Objet."],
-    priceAndPayments: ["Prix."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation."],
-    postponementAndCredit: ["Report."],
-    potentialWithholding: ["Retenue."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Adoptant : [[adoptant.nom_complet]]\nRace : [[projet.race]]\nPrix : [[reservation.prix_formate]]\nArrhes versées : [[reservation.arrhes_versees_formatees]]\nFait à [[document.lieu_signature]] le [[document.date_generation]].",
 };
 
 const certificateDefinition = {

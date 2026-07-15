@@ -142,7 +142,7 @@ test("validates versioned JSON document template definitions and SQL constraints
     expect(
       parse("reservation_contract", {
         ...reservationContract,
-        schemaVersion: 2,
+        schemaVersion: 3,
       }),
     ).toEqual({ success: false, error: "unsupported_schema_version" });
     expect(parse("commitment_certificate", reservationContract)).toEqual({

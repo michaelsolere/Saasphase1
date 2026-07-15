@@ -70,6 +70,7 @@ export async function GET(
     snapshot: prepared.snapshot,
     templateContent: prepared.templateContent,
     logoBytes: prepared.logoBytes,
+    allowMissingTemplateVariables: true,
   });
   if (rendered.outcome === "error") return errorResponse(503);
 

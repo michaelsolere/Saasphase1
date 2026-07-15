@@ -6,6 +6,7 @@ import { DocumentPdfDocument } from "./document-pdf-document";
 import { buildDocumentPdfPresentation } from "./document-pdf-presentation";
 import { parseDocumentGenerationSnapshot } from "./parse-document-generation-snapshot";
 import { parseDocumentTemplateDefinition } from "./parse-document-template-definition";
+import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
 import { validateOrganizationLogoBytes } from "@/features/settings/organization-logo-image";
 
 export type RenderDocumentPdfInput = {
@@ -13,6 +14,7 @@ export type RenderDocumentPdfInput = {
   snapshot: unknown;
   templateContent: string;
   logoBytes?: Buffer | null;
+  allowMissingTemplateVariables?: boolean;
 };
 
 export type RenderDocumentPdfErrorCode =
@@ -21,6 +23,8 @@ export type RenderDocumentPdfErrorCode =
   | "document_type_mismatch"
   | "template_hash_mismatch"
   | "branding_mismatch"
+  | "missing_template_variables"
+  | "invalid_template_variable_value"
   | "render_error";
 
 export type RenderDocumentPdfResult =
@@ -80,9 +84,30 @@ export async function renderDocumentPdfCore(
     return fail("template_hash_mismatch");
   }
 
+  if (
+    parsedTemplate.definition.schemaVersion === 2 &&
+    parsedSnapshot.snapshot.documentType === "reservation_contract"
+  ) {
+    const resolved = resolveFreeReservationContractDefinition({
+      definition: parsedTemplate.definition,
+      snapshot: parsedSnapshot.snapshot,
+      allowMissingTemplateVariables: input.allowMissingTemplateVariables ?? false,
+    });
+    if (!resolved.success) {
+      return fail(
+        resolved.error === "missing_template_variables"
+          ? "missing_template_variables"
+          : resolved.error === "invalid_template_variable_value"
+            ? "invalid_template_variable_value"
+          : "invalid_template",
+      );
+    }
+  }
+
   const presentation = buildDocumentPdfPresentation(
     parsedSnapshot.snapshot,
     parsedTemplate.definition,
+    { allowMissingTemplateVariables: input.allowMissingTemplateVariables },
   );
   if (!presentation) return fail("document_type_mismatch");
 

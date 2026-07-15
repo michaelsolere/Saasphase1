@@ -13,6 +13,7 @@ import {
 import { readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
 import { readActiveOrganizationLogo } from "@/features/settings/organization-logo-service";
 import type { Database } from "@/types/database.types";
+import { resolveAnimalSnapshotColor } from "./resolve-animal-snapshot-color";
 
 type Supabase = SupabaseClient<Database>;
 
@@ -151,7 +152,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       ? supabase.from("litters").select("id, name, species, breed, actual_birth_date, available_from, litter_group_id, mother_id, father_id").eq("organization_id", organizationId).eq("id", reservation.litter_id).is("deleted_at", null).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     reservation.animal_id
-      ? supabase.from("animals").select("id, official_name, call_name, species, breed, sex, birth_date, identification_number, lof_number").eq("organization_id", organizationId).eq("id", reservation.animal_id).is("deleted_at", null).maybeSingle()
+      ? supabase.from("animals").select("id, official_name, call_name, species, breed, sex, birth_date, identification_number, lof_number, coat_color, color").eq("organization_id", organizationId).eq("id", reservation.animal_id).is("deleted_at", null).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
     supabase.from("organization_representatives").select("display_name, first_name, last_name, representative_role, email, phone").eq("organization_id", organizationId).eq("is_default_signatory", true).eq("is_active", true).is("deleted_at", null).maybeSingle(),
     supabase.from("organization_document_settings").select("mediator_name, mediator_contact, mediator_website_url, signature_city_default").eq("organization_id", organizationId).is("deleted_at", null).maybeSingle(),
@@ -335,7 +336,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
         father: father ? { id: father.id, officialName: father.official_name, callName: father.call_name, identification: father.identification_number, lofNumber: father.lof_number } : null,
       } : null,
       litterGroup: litterGroup ? { id: litterGroup.id, name: litterGroup.name } : null,
-      animal: animal ? { id: animal.id, officialName: animal.official_name, callName: animal.call_name, sex: animal.sex, birthDate: animal.birth_date, identification: animal.identification_number, lofNumber: animal.lof_number } : null,
+      animal: animal ? { id: animal.id, officialName: animal.official_name, callName: animal.call_name, sex: animal.sex, birthDate: animal.birth_date, identification: animal.identification_number, lofNumber: animal.lof_number, color: resolveAnimalSnapshotColor(animal.coat_color, animal.color) } : null,
     },
     reservation: {
       id: reservationId,

@@ -105,6 +105,7 @@ export default async function DocumentTemplateFamilyPage({
     : null;
   const canSave = result.role !== "viewer";
   const canPublish = result.role === "owner" || result.role === "admin";
+  const activeDefinition = draftDefinition ?? publicationDefinition;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 sm:px-10">
@@ -160,7 +161,7 @@ export default async function DocumentTemplateFamilyPage({
           )}
         </section>
 
-        {hasEditor ? (
+        {hasEditor && activeDefinition?.schemaVersion !== 2 ? (
           <DocumentTemplateAutomaticContent documentType={documentType} />
         ) : null}
 
