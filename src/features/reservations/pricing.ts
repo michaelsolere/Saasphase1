@@ -69,11 +69,17 @@ export function resolveReservationPriceProposal({
     return resolveSexPriceProposal(settings, animalSex);
   }
 
-  if (reservedSexPreference === "male_only") {
+  if (
+    reservedSexPreference === "male_only" ||
+    reservedSexPreference === "male_preferred_female_possible"
+  ) {
     return resolveSexPriceProposal(settings, "male");
   }
 
-  if (reservedSexPreference === "female_only") {
+  if (
+    reservedSexPreference === "female_only" ||
+    reservedSexPreference === "female_preferred_male_possible"
+  ) {
     return resolveSexPriceProposal(settings, "female");
   }
 

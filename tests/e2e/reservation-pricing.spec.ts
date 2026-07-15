@@ -13,7 +13,7 @@ test("proposes the male setting for an assigned male animal", () => {
     resolveReservationPriceProposal({
       settings,
       animalSex: "male",
-      reservedSexPreference: "female_only",
+      reservedSexPreference: "female_preferred_male_possible",
     }),
   ).toEqual({ amountCents: 181000, source: "male" });
 });
@@ -23,7 +23,7 @@ test("proposes the female setting for an assigned female animal", () => {
     resolveReservationPriceProposal({
       settings,
       animalSex: "female",
-      reservedSexPreference: "male_only",
+      reservedSexPreference: "male_preferred_female_possible",
     }),
   ).toEqual({ amountCents: 202000, source: "female" });
 });
@@ -51,12 +51,45 @@ test("uses a strict preference when no animal is assigned", () => {
   ).toEqual({ amountCents: 202000, source: "female" });
 });
 
-test("uses only the generic setting for a flexible preference", () => {
+test("uses the male setting for a flexible male preference", () => {
   expect(
     resolveReservationPriceProposal({
       settings,
       animalSex: null,
       reservedSexPreference: "male_preferred_female_possible",
+    }),
+  ).toEqual({ amountCents: 181000, source: "male" });
+});
+
+test("uses the female setting for a flexible female preference", () => {
+  expect(
+    resolveReservationPriceProposal({
+      settings,
+      animalSex: null,
+      reservedSexPreference: "female_preferred_male_possible",
+    }),
+  ).toEqual({ amountCents: 202000, source: "female" });
+});
+
+test("falls back to the generic setting for a flexible preference", () => {
+  expect(
+    resolveReservationPriceProposal({
+      settings: {
+        ...settings,
+        default_female_puppy_price_cents: null,
+      },
+      animalSex: null,
+      reservedSexPreference: "female_preferred_male_possible",
+    }),
+  ).toEqual({ amountCents: 190000, source: "generic" });
+});
+
+test("uses only the generic setting when there is no sex preference", () => {
+  expect(
+    resolveReservationPriceProposal({
+      settings,
+      animalSex: null,
+      reservedSexPreference: "no_preference",
     }),
   ).toEqual({ amountCents: 190000, source: "generic" });
 });
