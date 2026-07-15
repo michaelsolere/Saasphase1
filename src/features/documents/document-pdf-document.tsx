@@ -44,6 +44,9 @@ export const documentPdfStyles = StyleSheet.create({
   freeBody: {
     marginBottom: 14,
   },
+  freeBodyBold: {
+    fontFamily: "Helvetica-Bold",
+  },
   sectionEnd: {
     marginBottom: 14,
   },
@@ -183,8 +186,24 @@ export function DocumentPdfDocument({
           })
         : null,
       createElement(Text, { style: documentPdfStyles.title }, presentation.title),
-      presentation.freeBody !== undefined
-        ? createElement(Text, { style: documentPdfStyles.freeBody }, presentation.freeBody)
+      presentation.freeTextParagraphs !== undefined
+        ? createElement(
+            Text,
+            { style: documentPdfStyles.freeBody },
+            ...presentation.freeTextParagraphs.flatMap((paragraph, paragraphIndex) => [
+              ...paragraph.runs.map((run, runIndex) => createElement(
+                Text,
+                {
+                  key: `free-${paragraphIndex}-${runIndex}`,
+                  style: run.bold ? documentPdfStyles.freeBodyBold : undefined,
+                },
+                run.text,
+              )),
+              paragraphIndex < presentation.freeTextParagraphs!.length - 1 ? "\n" : "",
+            ]),
+          )
+        : presentation.freeBody !== undefined
+          ? createElement(Text, { style: documentPdfStyles.freeBody }, presentation.freeBody)
         : null,
       ...sectionElements,
     ),

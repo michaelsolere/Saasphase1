@@ -149,6 +149,7 @@ export type BuildDocumentGenerationSnapshotResult =
       success: false;
       error:
         | "invalid_template"
+        | "invalid_template_formatting"
         | "document_type_mismatch"
         | "unsupported_document_type"
         | "invalid_source_data";
@@ -216,6 +217,8 @@ export function buildDocumentGenerationSnapshot(
         error:
           parsedTemplate.error === "document_type_mismatch"
             ? "document_type_mismatch"
+            : parsedTemplate.error === "invalid_template_formatting"
+              ? "invalid_template_formatting"
             : "invalid_template",
       };
     }

@@ -7,6 +7,7 @@ export type ReservationContractVariableCategory =
   | "Projet et animal"
   | "Réservation et finances"
   | "Portée et parents"
+  | "Groupe de portées"
   | "Document";
 
 type VariableDefinition = {
@@ -28,6 +29,38 @@ type TemplateSegment =
   | { type: "text"; value: string }
   | { type: "variable"; key: string };
 
+export type FreeTextRun = {
+  text: string;
+  bold: boolean;
+};
+
+export type FreeTextParagraph = {
+  runs: FreeTextRun[];
+};
+
+export type TemplateFormattingIssue = {
+  code:
+    | "unclosed_bold"
+    | "unexpected_bold_closer"
+    | "empty_bold"
+    | "nested_bold"
+    | "formatting_in_title";
+  offset: number;
+};
+
+type FreeTextTemplateNode =
+  | { type: "text"; value: string; bold: boolean }
+  | { type: "variable"; key: string; bold: boolean };
+
+type FreeTextTemplateParagraph = {
+  nodes: FreeTextTemplateNode[];
+};
+
+export type ParseFreeReservationContractBodyResult =
+  | { success: true; paragraphs: FreeTextTemplateParagraph[]; variables: string[] }
+  | { success: false; error: "invalid_template_formatting"; issues: TemplateFormattingIssue[] }
+  | { success: false; error: "invalid_template_variables"; issues: TemplateVariableIssue[] };
+
 export type ParseReservationContractVariablesResult =
   | { success: true; segments: TemplateSegment[]; variables: string[] }
   | { success: false; issues: TemplateVariableIssue[] };
@@ -40,6 +73,26 @@ export type ResolveReservationContractTextResult =
         | "invalid_template_variables"
         | "missing_template_variables"
         | "invalid_template_variable_value";
+      issues?: TemplateVariableIssue[];
+      missingVariables?: string[];
+      invalidVariables?: string[];
+    };
+
+export type ResolveFreeReservationContractBodyResult =
+  | {
+      success: true;
+      paragraphs: FreeTextParagraph[];
+      text: string;
+      missingVariables: string[];
+    }
+  | {
+      success: false;
+      error:
+        | "invalid_template_formatting"
+        | "invalid_template_variables"
+        | "missing_template_variables"
+        | "invalid_template_variable_value";
+      formattingIssues?: TemplateFormattingIssue[];
       issues?: TemplateVariableIssue[];
       missingVariables?: string[];
       invalidVariables?: string[];
@@ -196,6 +249,7 @@ export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[
   variable("projet.race", "Race", "race du projet", "Projet et animal", (s) => s.adoptionProject.breed),
   variable("projet.date_naissance", "Date de naissance", "date de naissance de l’animal ou de la portée", "Projet et animal", (s) => formatFrenchDate(s.adoptionProject.animal?.birthDate ?? s.adoptionProject.litter?.actualBirthDate)),
   variable("projet.sexe", "Sexe", "sexe de l’animal ou préférence de la réservation", "Projet et animal", (s) => s.adoptionProject.animal?.sex ? sexLabels[s.adoptionProject.animal.sex] ?? s.adoptionProject.animal.sex : s.adoptionProject.sexPreference ? sexPreferenceLabels[s.adoptionProject.sexPreference] ?? s.adoptionProject.sexPreference : null),
+  variable("projet.portee_ou_groupe", "Portée ou groupe", "nom de la portée ou du groupe de portées", "Projet et animal", (s) => s.adoptionProject.litter?.name ?? s.adoptionProject.litterGroup?.name ?? null),
   variable("animal.nom", "Nom", "nom de l’animal", "Projet et animal", (s) => s.adoptionProject.animal?.callName ?? s.adoptionProject.animal?.officialName ?? null),
   variable("animal.nom_officiel", "Nom officiel", "nom officiel de l’animal", "Projet et animal", (s) => s.adoptionProject.animal?.officialName ?? null),
   variable("animal.nom_usage", "Nom d’usage", "nom d’usage de l’animal", "Projet et animal", (s) => s.adoptionProject.animal?.callName ?? null),
@@ -221,6 +275,7 @@ export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[
       variable(`${prefix}.numero_lof`, `Numéro LOF ${subject}`, `numéro LOF du ${subject}`, "Portée et parents", (s) => get(s)?.lofNumber ?? null),
     ];
   }),
+  variable("groupe_portees.nom", "Nom du groupe de portées", "nom du groupe de portées", "Groupe de portées", (s) => s.adoptionProject.litterGroup?.name ?? null),
   variable("document.lieu_signature", "Lieu de signature", "lieu de signature", "Document", (s) => s.signature.defaultCity),
   variable("document.date_generation", "Date de génération", "date de génération", "Document", (s) => formatFrenchDate(s.capturedAt)),
 ] as const;
@@ -319,6 +374,153 @@ export function resolveReservationContractText({
   return { success: true, text: resolved, missingVariables: [...missingVariables] };
 }
 
+function appendTemplateNodes(
+  nodes: FreeTextTemplateNode[],
+  value: string,
+  bold: boolean,
+): TemplateVariableIssue[] {
+  if (!value) return [];
+  const parsed = parseReservationContractVariables(value);
+  if (!parsed.success) return parsed.issues;
+  for (const segment of parsed.segments) {
+    nodes.push(segment.type === "text"
+      ? { type: "text", value: segment.value, bold }
+      : { type: "variable", key: segment.key, bold });
+  }
+  return [];
+}
+
+export function parseFreeReservationContractBody(
+  body: string,
+): ParseFreeReservationContractBodyResult {
+  const paragraphs: FreeTextTemplateParagraph[] = [];
+  const variables = new Set<string>();
+  const formattingIssues: TemplateFormattingIssue[] = [];
+  const variableIssues: TemplateVariableIssue[] = [];
+  let globalOffset = 0;
+
+  for (const line of body.split("\n")) {
+    const nodes: FreeTextTemplateNode[] = [];
+    let cursor = 0;
+    let bold = false;
+    let boldOpener = -1;
+
+    while (cursor < line.length) {
+      const marker = line.indexOf("**", cursor);
+      if (marker === -1) {
+        const issues = appendTemplateNodes(nodes, line.slice(cursor), bold);
+        variableIssues.push(...issues.map((issue) => ({ ...issue, offset: globalOffset + cursor + issue.offset })));
+        cursor = line.length;
+        break;
+      }
+
+      const issues = appendTemplateNodes(nodes, line.slice(cursor, marker), bold);
+      variableIssues.push(...issues.map((issue) => ({ ...issue, offset: globalOffset + cursor + issue.offset })));
+      const previousCharacter = marker > 0 ? line[marker - 1] : "";
+      const nextCharacter = line[marker + 2] ?? "";
+      const canOpen = Boolean(nextCharacter && !/\s/.test(nextCharacter));
+      const canClose = Boolean(previousCharacter && !/\s/.test(previousCharacter));
+
+      if (!bold && !canOpen) {
+        formattingIssues.push({ code: "unexpected_bold_closer", offset: globalOffset + marker });
+        cursor = marker + 2;
+        continue;
+      }
+      if (bold && !canClose) {
+        formattingIssues.push({
+          code: canOpen ? "nested_bold" : "unclosed_bold",
+          offset: globalOffset + marker,
+        });
+        cursor = marker + 2;
+        continue;
+      }
+      if (bold && marker === boldOpener + 2) {
+        formattingIssues.push({ code: "empty_bold", offset: globalOffset + boldOpener });
+      }
+      bold = !bold;
+      boldOpener = bold ? marker : -1;
+      cursor = marker + 2;
+    }
+
+    if (bold) {
+      formattingIssues.push({ code: "unclosed_bold", offset: globalOffset + boldOpener });
+    }
+    for (const node of nodes) {
+      if (node.type === "variable") variables.add(node.key);
+    }
+    paragraphs.push({ nodes });
+    globalOffset += line.length + 1;
+  }
+
+  if (formattingIssues.length > 0) {
+    return {
+      success: false,
+      error: "invalid_template_formatting",
+      issues: formattingIssues.slice(0, 50),
+    };
+  }
+  if (variableIssues.length > 0) {
+    return {
+      success: false,
+      error: "invalid_template_variables",
+      issues: variableIssues.slice(0, 50),
+    };
+  }
+  return { success: true, paragraphs, variables: [...variables] };
+}
+
+export function resolveFreeReservationContractBody({
+  body,
+  snapshot,
+  allowMissingTemplateVariables = false,
+}: {
+  body: string;
+  snapshot: ReservationContractGenerationSnapshot;
+  allowMissingTemplateVariables?: boolean;
+}): ResolveFreeReservationContractBodyResult {
+  const parsed = parseFreeReservationContractBody(body);
+  if (!parsed.success) {
+    return parsed.error === "invalid_template_formatting"
+      ? { success: false, error: parsed.error, formattingIssues: parsed.issues }
+      : { success: false, error: parsed.error, issues: parsed.issues };
+  }
+
+  const missingVariables = new Set<string>();
+  const invalidVariables = new Set<string>();
+  const paragraphs = parsed.paragraphs.map(({ nodes }) => ({
+    runs: nodes.map((node): FreeTextRun => {
+      if (node.type === "text") return { text: node.value, bold: node.bold };
+      const definition = VARIABLE_BY_KEY.get(node.key)!;
+      const value = definition.resolve(snapshot);
+      if (value !== null && value !== undefined && value !== "") {
+        if (value.includes("[[") || value.includes("]]")) {
+          invalidVariables.add(node.key);
+          return {
+            text: `[Donnée invalide : la valeur « ${definition.missingLabel} » contient une syntaxe réservée]`,
+            bold: node.bold,
+          };
+        }
+        return { text: value, bold: node.bold };
+      }
+      missingVariables.add(node.key);
+      return { text: `[Donnée manquante : ${definition.missingLabel}]`, bold: node.bold };
+    }),
+  }));
+
+  if (invalidVariables.size > 0 && !allowMissingTemplateVariables) {
+    return { success: false, error: "invalid_template_variable_value", invalidVariables: [...invalidVariables] };
+  }
+  if (missingVariables.size > 0 && !allowMissingTemplateVariables) {
+    return { success: false, error: "missing_template_variables", missingVariables: [...missingVariables] };
+  }
+  return {
+    success: true,
+    paragraphs,
+    text: paragraphs.map((paragraph) => paragraph.runs.map((run) => run.text).join("")).join("\n"),
+    missingVariables: [...missingVariables],
+  };
+}
+
 export function resolveFreeReservationContractDefinition({
   definition,
   snapshot,
@@ -328,14 +530,21 @@ export function resolveFreeReservationContractDefinition({
   snapshot: ReservationContractGenerationSnapshot;
   allowMissingTemplateVariables?: boolean;
 }) {
+  if (definition.title.includes("**")) {
+    return {
+      success: false as const,
+      error: "invalid_template_formatting" as const,
+      formattingIssues: [{ code: "formatting_in_title" as const, offset: definition.title.indexOf("**") }],
+    };
+  }
   const title = resolveReservationContractText({
     text: definition.title,
     snapshot,
     allowMissingTemplateVariables,
   });
   if (!title.success) return title;
-  const body = resolveReservationContractText({
-    text: definition.body,
+  const body = resolveFreeReservationContractBody({
+    body: definition.body,
     snapshot,
     allowMissingTemplateVariables,
   });
@@ -344,6 +553,7 @@ export function resolveFreeReservationContractDefinition({
     success: true as const,
     title: title.text,
     body: body.text,
+    bodyParagraphs: body.paragraphs,
     missingVariables: [...new Set([...title.missingVariables, ...body.missingVariables])],
   };
 }

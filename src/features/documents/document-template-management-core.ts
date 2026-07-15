@@ -300,6 +300,8 @@ export function getDocumentTemplateValidationMessage(
       return variableIssues?.length
         ? `Corrigez les variables du modèle : ${variableIssues.map((issue) => issue.message).join(" ")}`
         : "Les variables du modèle sont inconnues ou mal écrites.";
+    case "invalid_template_formatting":
+      return "Corrigez la mise en forme du modèle : une zone en gras est mal délimitée.";
   }
 }
 

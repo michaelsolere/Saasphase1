@@ -280,6 +280,8 @@ export async function generateAndStoreReservationDocumentPdfCore(
           ? "missing_template_variables"
           : resolvedDefinition.error === "invalid_template_variable_value"
             ? "invalid_template_variable_value"
+          : resolvedDefinition.error === "invalid_template_formatting"
+            ? "invalid_template_formatting"
           : "invalid_template",
       );
     }

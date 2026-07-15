@@ -12,6 +12,7 @@ const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const membershipId = "30000000-0000-4000-8000-000000000001";
 const fixturePrefix = "[E2E document template family creation]";
+const primaryModifier = process.platform === "darwin" ? "Meta" : "Control";
 
 function q(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -164,7 +165,10 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await expect(page.getByLabel("Contenu du contrat")).toContainText("Couleur : [[animal.couleur]]");
     await expect(page.getByLabel("Insérer une donnée")).toBeEditable();
     await expect(page.getByText("Contenu automatiquement ajouté au document")).toHaveCount(0);
-    await expect(page.getByText("Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.")).toBeVisible();
+    await expect(page.getByText("Utilisez **texte** pour afficher un passage en gras. Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.")).toBeVisible();
+    await expect(page.locator('optgroup[label="Groupe de portées"]')).toHaveCount(1);
+    await expect(page.getByLabel("Insérer une donnée").locator('option[value="groupe_portees.nom"]')).toHaveText(/Nom du groupe de portées/);
+    await expect(page.getByLabel("Insérer une donnée").locator('option[value="projet.portee_ou_groupe"]')).toHaveText(/Portée ou groupe/);
     expect(sql(`
       select count(*) from public.document_templates template
       join public.document_template_families family on family.id = template.family_id
@@ -193,11 +197,50 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await page.getByRole("button", { name: "Insérer", exact: true }).click();
     await expect(body).toHaveValue("Bonjour [[animal.nom]]monde");
 
+    await body.fill("Le vendeur");
+    await body.press(`${primaryModifier}+a`);
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("**Le vendeur**");
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => ({
+      start: (element as HTMLTextAreaElement).selectionStart,
+      end: (element as HTMLTextAreaElement).selectionEnd,
+    }))).toEqual({ start: 2, end: 12 });
+
+    await body.fill("Bonjour");
+    await body.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(3, 3);
+    });
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("Bon****jour");
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(5);
+
+    await body.fill("Prix");
+    await body.press("End");
+    await body.press(`${primaryModifier}+b`);
+    await expect(body).toHaveValue("Prix****");
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(6);
+
     await body.fill("Variable erronée : [[adoptant.telephonne]]");
     await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
     await expect(page.getByText("Le brouillon a été enregistré.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Valider le brouillon" }).click();
     await expect(page.getByText(/Corrigez les variables du modèle/)).toContainText("[[adoptant.telephonne]]");
+    expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published';`)).toBe("0");
+
+    await body.fill("Texte **non refermé");
+    await expect(page.getByText("Aperçu indisponible.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
+    await expect(page.getByText("Le brouillon a été enregistré.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Valider le brouillon" }).click();
+    await expect(page.getByText("Corrigez la mise en forme du modèle : une zone en gras est mal délimitée.", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Publier" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Confirmer la publication" }).click();
+    await expect(page.getByText("Corrigez la mise en forme du modèle : une zone en gras est mal délimitée.", { exact: true })).toBeVisible();
     expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published';`)).toBe("0");
 
     await body.fill("Bonjour [[adoptant.prenom]], prix : [[reservation.prix_formate]].");
@@ -207,12 +250,15 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await page.getByRole("button", { name: "Publier" }).click();
     await page.getByRole("alertdialog").getByRole("button", { name: "Confirmer la publication" }).click();
     await expect(page.getByRole("heading", { name: /Version publiée · version 1/ })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toBeDisabled();
     expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published' and template.template_content::jsonb->>'schemaVersion' = '2';`)).toBe("1");
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByLabel("Contenu du contrat")).toBeVisible();
     await expect(page.getByLabel("Insérer une donnée")).toBeVisible();
     await expect(page.getByRole("button", { name: "Insérer", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Gras", exact: true })).toBeDisabled();
     await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.goto("/documents/modeles");
