@@ -57,6 +57,10 @@ import {
   isFinalReservationStatus,
 } from "@/features/reservations/statuses";
 import { isAssignableReservationAnimal } from "@/features/reservations/assignable-animals";
+import {
+  resolveReservationPriceProposal,
+  type ReservationPriceProposalSource,
+} from "@/features/reservations/pricing";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
 import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationFinanceDialogs } from "@/features/reservations/finance-dialogs";
@@ -285,6 +289,22 @@ function formatDepositSettingAmount(cents: number, currency: string | null) {
   }
 
   return formatPrice(cents, currency);
+}
+
+function getPriceProposalSourceLabel(source: ReservationPriceProposalSource) {
+  if (source === "male") {
+    return "Tarif mâle paramétré";
+  }
+
+  if (source === "female") {
+    return "Tarif femelle paramétré";
+  }
+
+  if (source === "generic") {
+    return "Tarif générique paramétré";
+  }
+
+  return "Aucun tarif paramétré disponible";
 }
 
 function deriveAppointmentSummary({
@@ -2042,6 +2062,27 @@ export default async function ReservationDetailPage({
 
   const relatedAnimal = rawAnimal as RelatedAnimal | null;
 
+  const { data: priceSettings, error: priceSettingsError } =
+    reservation?.organization_id
+      ? await supabase
+          .from("organization_settings")
+          .select(
+            "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
+          )
+          .eq("organization_id", reservation.organization_id)
+          .is("deleted_at", null)
+          .maybeSingle()
+      : { data: null, error: null };
+
+  const priceProposal = resolveReservationPriceProposal({
+    settings: priceSettingsError ? null : priceSettings,
+    animalSex: relatedAnimal?.sex,
+    reservedSexPreference: reservation?.reserved_sex_preference,
+  });
+  const priceProposalSourceLabel = getPriceProposalSourceLabel(
+    priceProposal.source,
+  );
+
   // Fetch payments
   const { data: rawPayments, error: paymentsError } = reservation?.id
     ? await supabase
@@ -3373,6 +3414,48 @@ export default async function ReservationDetailPage({
                         name="reservation_id"
                         value={id}
                       />
+                      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl border bg-background px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                            Prix convenu actuel
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            {reservation.price_cents === null
+                              ? "Non renseigné"
+                              : formatPrice(
+                                  reservation.price_cents,
+                                  reservation.currency,
+                                )}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border bg-muted-soft px-4 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                            Tarif paramétré proposé
+                          </p>
+                          {priceProposal.amountCents === null ? (
+                            <p className="mt-1 text-sm text-muted">
+                              {priceProposalSourceLabel}
+                            </p>
+                          ) : (
+                            <>
+                              <p className="mt-1 text-sm font-semibold text-foreground">
+                                {formatPrice(
+                                  priceProposal.amountCents,
+                                  reservation.currency,
+                                )}
+                              </p>
+                              <p className="mt-1 text-xs text-muted">
+                                {priceProposalSourceLabel}
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mb-5 text-xs leading-5 text-muted">
+                        Proposition informative uniquement : elle ne modifie pas
+                        le prix convenu tant que vous ne l’enregistrez pas
+                        manuellement.
+                      </p>
                       <label
                         htmlFor="price"
                         className="text-xs font-semibold uppercase tracking-wide text-muted"
