@@ -157,7 +157,7 @@ async function login(page: Page) {
   await page.getByLabel("Email").fill(E2E_OWNER_EMAIL);
   await page.getByLabel("Mot de passe").fill(E2E_OWNER_PASSWORD);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).not.toHaveURL(/\/login$/);
+  await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
 
 function setRole(role: "viewer" | "member" | "admin" | "owner") {
@@ -305,12 +305,38 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     setRole("admin");
     await page.reload();
     const adminDraft = draftSection(page);
+    const editorPane = adminDraft.locator("[data-template-editor-pane]");
+    const previewPane = adminDraft.locator("[data-template-preview-pane]");
+    await expect(editorPane).toBeVisible();
+    await expect(previewPane).toBeVisible();
+    await expect(previewPane.getByText(
+      "Aperçu avec données fictives — aucune réservation ni aucun document n’est créé ou modifié.",
+    )).toBeVisible();
+    await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]'))
+      .toBeVisible({ timeout: 30_000 });
     const savedTitle = sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`);
+    const savedUpdatedAt = sql(`select updated_at::text from public.document_templates where id = ${q(reservationDraftId)}::uuid;`);
     await adminDraft.getByLabel("Titre").fill("Contrat UI E2E prêt à publier");
     await expect(adminDraft.getByText("Modifications non enregistrées")).toBeVisible();
     await expect(adminDraft.getByRole("button", { name: "Publier" })).toBeDisabled();
+    await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]'))
+      .toHaveAttribute("title", "Aperçu PDF — Contrat UI E2E prêt à publier", {
+        timeout: 30_000,
+      });
     expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe(savedTitle);
+    expect(sql(`select updated_at::text from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe(savedUpdatedAt);
     expect(sql(`select lifecycle_status from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("draft");
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(adminDraft.getByRole("button", { name: "Modifier" })).toBeVisible();
+    await expect(adminDraft.getByRole("button", { name: "Aperçu" })).toBeVisible();
+    await adminDraft.getByRole("button", { name: "Aperçu" }).click();
+    await expect(previewPane).toBeVisible();
+    await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]')).toBeVisible();
+    await adminDraft.getByRole("button", { name: "Modifier" }).click();
+    await expect(editorPane).toBeVisible();
+    await expect(adminDraft.getByLabel("Titre")).toHaveValue("Contrat UI E2E prêt à publier");
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     await adminDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
     await expect(adminDraft.getByText("Toutes les modifications affichées sont enregistrées")).toBeVisible();

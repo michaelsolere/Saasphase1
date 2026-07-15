@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState, useTransition, type ReactNode } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useId, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 
@@ -30,6 +31,22 @@ import type {
   DocumentTemplateType,
   ReservationContractTemplateDefinition,
 } from "@/features/documents/document-template-definitions";
+
+const DocumentTemplatePdfPreview = dynamic(
+  () => import("@/features/documents/document-template-pdf-preview")
+    .then((module) => module.DocumentTemplatePdfPreview),
+  {
+    ssr: false,
+    loading: () => (
+      <div
+        role="status"
+        className="flex min-h-[32rem] items-center justify-center rounded-lg bg-muted-soft p-6 text-center text-sm text-muted"
+      >
+        Préparation de l’aperçu…
+      </div>
+    ),
+  },
+);
 
 type DefinitionEditorProps<TDefinition extends DocumentTemplateDefinition> = {
   definition: TDefinition;
@@ -428,12 +445,21 @@ export function DocumentTemplateEditor({
   );
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
   const [result, setResult] = useState<DocumentTemplateActionResult | null>(null);
+  const [previewDefinition, setPreviewDefinition] = useState(initialDefinition);
+  const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
   const [isPending, startTransition] = useTransition();
   const configuration = documentTemplateEditorConfigurations[definition.documentType];
   const readOnly = mode === "published" || !canSave;
   const templateContent = JSON.stringify(definition);
   const isDirty = mode === "draft"
     && fingerprintValue(definition) !== savedContentFingerprint;
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setPreviewDefinition(definition);
+    }, 400);
+    return () => window.clearTimeout(timeout);
+  }, [definition]);
 
   function runAction(
     action: () => Promise<DocumentTemplateActionResult>,
@@ -471,113 +497,154 @@ export function DocumentTemplateEditor({
         </div>
       </div>
 
-      <div>
-        <h3 className="text-xl font-semibold">Clauses communes à rédiger</h3>
-        <p className="mt-2 text-sm text-muted">
-          Les textes ci-dessous sont communs aux documents utilisant cette version du modèle.
-        </p>
+      <div
+        className="grid grid-cols-2 rounded-lg border bg-muted-soft p-1 lg:hidden"
+        aria-label="Vue de l’éditeur"
+      >
+        <Button
+          type="button"
+          variant={mobileView === "edit" ? "secondary" : "ghost"}
+          aria-pressed={mobileView === "edit"}
+          onClick={() => setMobileView("edit")}
+        >
+          Modifier
+        </Button>
+        <Button
+          type="button"
+          variant={mobileView === "preview" ? "secondary" : "ghost"}
+          aria-pressed={mobileView === "preview"}
+          onClick={() => setMobileView("preview")}
+        >
+          Aperçu
+        </Button>
       </div>
 
-      {configuration.renderEditor({ definition, readOnly, onChange: setDefinition })}
-
-      {mode === "draft" ? (
-        <>
-          {destructiveAction ? (
-            <DocumentTemplateDraftDestructiveAction
-              {...destructiveAction}
-              templateId={templateId}
-              expectedUpdatedAt={updatedAt}
-              disabled={isPending}
-            />
-          ) : null}
-          <div className="sticky bottom-4 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
-          <StatusMessage result={result} />
-          <div
-            data-editor-save-state={isDirty ? "dirty" : "saved"}
-            className={isDirty
-              ? "mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
-              : "mt-3 text-sm text-muted"}
-          >
-            {isDirty ? (
-              <>
-                <span className="font-semibold">Modifications non enregistrées.</span>{" "}
-                Enregistrez le brouillon avant de le publier.
-              </>
-            ) : (
-              "Toutes les modifications affichées sont enregistrées."
-            )}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted">
-              La validation contrôle la dernière sauvegarde et ne publie jamais le brouillon.
+      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(26rem,0.95fr)] lg:items-start lg:gap-6">
+        <div
+          data-template-editor-pane
+          className={mobileView === "edit" ? "space-y-5" : "hidden space-y-5 lg:block"}
+        >
+          <div>
+            <h3 className="text-xl font-semibold">Clauses communes à rédiger</h3>
+            <p className="mt-2 text-sm text-muted">
+              Les textes ci-dessous sont communs aux documents utilisant cette version du modèle.
             </p>
-            <div className="flex flex-wrap gap-2">
-              {canSave ? (
-                <Button
-                  type="button"
-                  variant="outline"
+          </div>
+
+          {configuration.renderEditor({ definition, readOnly, onChange: setDefinition })}
+
+          {mode === "draft" ? (
+            <>
+              {destructiveAction ? (
+                <DocumentTemplateDraftDestructiveAction
+                  {...destructiveAction}
+                  templateId={templateId}
+                  expectedUpdatedAt={updatedAt}
                   disabled={isPending}
-                  onClick={() => runAction(() => saveDocumentTemplateDraftAction({
-                    templateId,
-                    templateContent,
-                    expectedUpdatedAt: updatedAt,
-                  }), {
-                    onSuccess: () => setSavedContentFingerprint(
-                      fingerprintStoredContent(templateContent),
-                    ),
-                  })}
-                >
-                  Enregistrer le brouillon
-                </Button>
+                />
               ) : null}
-              {canValidate ? (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={isPending}
-                  onClick={() => runAction(() => validateDocumentTemplateDraftAction({
-                    templateId,
-                  }))}
+              <div className="sticky bottom-4 rounded-xl border bg-background/95 p-4 shadow-lg backdrop-blur">
+                <StatusMessage result={result} />
+                <div
+                  data-editor-save-state={isDirty ? "dirty" : "saved"}
+                  className={isDirty
+                    ? "mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                    : "mt-3 text-sm text-muted"}
                 >
-                  Valider le brouillon
-                </Button>
-              ) : null}
-              {canPublish ? (
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      type="button"
-                      disabled={isPending || isDirty}
-                      title={isDirty ? "Enregistrez les modifications avant de publier." : undefined}
-                    >
-                      Publier
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>Publier la version {version} ?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Cette version deviendra la référence publiée. L’ancienne publication sera retirée.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Annuler</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => runAction(() => publishDocumentTemplateDraftAction({
+                  {isDirty ? (
+                    <>
+                      <span className="font-semibold">Modifications non enregistrées.</span>{" "}
+                      Enregistrez le brouillon avant de le publier.
+                    </>
+                  ) : (
+                    "Toutes les modifications affichées sont enregistrées."
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs text-muted">
+                    La validation contrôle la dernière sauvegarde et ne publie jamais le brouillon.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {canSave ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={isPending}
+                        onClick={() => runAction(() => saveDocumentTemplateDraftAction({
                           templateId,
-                        }), { refreshAfterSuccess: true })}
+                          templateContent,
+                          expectedUpdatedAt: updatedAt,
+                        }), {
+                          onSuccess: () => setSavedContentFingerprint(
+                            fingerprintStoredContent(templateContent),
+                          ),
+                        })}
                       >
-                        Confirmer la publication
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              ) : null}
-            </div>
-          </div>
-          </div>
-        </>
-      ) : null}
+                        Enregistrer le brouillon
+                      </Button>
+                    ) : null}
+                    {canValidate ? (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={isPending}
+                        onClick={() => runAction(() => validateDocumentTemplateDraftAction({
+                          templateId,
+                        }))}
+                      >
+                        Valider le brouillon
+                      </Button>
+                    ) : null}
+                    {canPublish ? (
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button
+                            type="button"
+                            disabled={isPending || isDirty}
+                            title={isDirty ? "Enregistrez les modifications avant de publier." : undefined}
+                          >
+                            Publier
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Publier la version {version} ?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Cette version deviendra la référence publiée. L’ancienne publication sera retirée.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Annuler</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => runAction(() => publishDocumentTemplateDraftAction({
+                                templateId,
+                              }), { refreshAfterSuccess: true })}
+                            >
+                              Confirmer la publication
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : null}
+        </div>
+
+        <aside
+          data-template-preview-pane
+          className={mobileView === "preview"
+            ? "space-y-3 lg:sticky lg:top-5"
+            : "hidden space-y-3 lg:sticky lg:top-5 lg:block"}
+        >
+          <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
+            Aperçu avec données fictives — aucune réservation ni aucun document n’est créé ou modifié.
+          </p>
+          <DocumentTemplatePdfPreview definition={previewDefinition} />
+        </aside>
+      </div>
     </div>
   );
 }
