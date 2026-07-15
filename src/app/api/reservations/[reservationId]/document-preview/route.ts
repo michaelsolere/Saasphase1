@@ -59,7 +59,7 @@ export async function GET(
 
   if (prepared.outcome === "error") {
     if (prepared.error.code === "unauthenticated") return errorResponse(401);
-    if (prepared.error.code === "forbidden") return errorResponse(403);
+    if (prepared.error.code === "forbidden") return errorResponse(404);
     if (prepared.error.code === "invalid_input") return errorResponse(400);
     if (prepared.error.code === "database_error") return errorResponse(503);
     return errorResponse(404);
