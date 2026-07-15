@@ -207,9 +207,15 @@ test("reconstruit une forme éditable sans valider le brouillon", () => {
 });
 
 test("gère les modèles documentaires avec permissions, validation et concurrence", async ({ page }) => {
-  cleanup();
-  expect(remainingFixtureCount()).toBe(0);
-  seedFixtures();
+  await page.addInitScript(() => {
+    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+    const revokedUrls: string[] = [];
+    Object.defineProperty(window, "__revokedBlobUrls", { value: revokedUrls });
+    URL.revokeObjectURL = (url: string) => {
+      revokedUrls.push(url);
+      originalRevokeObjectUrl(url);
+    };
+  });
   const createdTemplateIds = [
     ids.reservationPublication,
     ids.commitmentPublication,
@@ -218,6 +224,9 @@ test("gère les modèles documentaires avec permissions, validation et concurren
   ];
 
   try {
+    cleanup();
+    expect(remainingFixtureCount()).toBe(0);
+    seedFixtures();
     await login(page);
 
     await page.goto("/documents");
@@ -314,8 +323,16 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     )).toBeVisible();
     await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]'))
       .toBeVisible({ timeout: 30_000 });
+    const fullSizeLink = previewPane.getByRole("link", { name: "Ouvrir l’aperçu en grand" });
+    await expect(fullSizeLink).toBeVisible();
+    await expect(fullSizeLink).toHaveAttribute("target", "_blank");
+    await expect(fullSizeLink).toHaveAttribute("rel", "noopener noreferrer");
+    const initialBlobUrl = await fullSizeLink.getAttribute("href");
+    expect(initialBlobUrl).toMatch(/^blob:/);
     const savedTitle = sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`);
     const savedUpdatedAt = sql(`select updated_at::text from public.document_templates where id = ${q(reservationDraftId)}::uuid;`);
+    const initialDocumentCount = sql(`select count(*) from public.documents where organization_id = ${q(organizationId)}::uuid;`);
+    const initialDocumentObjectCount = sql("select count(*) from storage.objects where bucket_id = 'documents';");
     await adminDraft.getByLabel("Titre").fill("Contrat UI E2E prêt à publier");
     await expect(adminDraft.getByText("Modifications non enregistrées")).toBeVisible();
     await expect(adminDraft.getByRole("button", { name: "Publier" })).toBeDisabled();
@@ -323,15 +340,54 @@ test("gère les modèles documentaires avec permissions, validation et concurren
       .toHaveAttribute("title", "Aperçu PDF — Contrat UI E2E prêt à publier", {
         timeout: 30_000,
       });
+    await expect(fullSizeLink).toHaveAttribute("href", /^blob:/);
+    const localDraftBlobUrl = await fullSizeLink.getAttribute("href");
+    expect(localDraftBlobUrl).not.toBe(initialBlobUrl);
+    await expect.poll(() => page.evaluate((url) =>
+      (window as Window & { __revokedBlobUrls: string[] }).__revokedBlobUrls.includes(url),
+    initialBlobUrl!)).toBe(true);
+    const localPdf = await page.evaluate(async (url) => {
+      const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+      const title = "Contrat UI E2E prêt à publier";
+      const utf16Title = new Uint8Array([
+        0xfe,
+        0xff,
+        ...Array.from(title).flatMap((character) => {
+          const codePoint = character.charCodeAt(0);
+          return [codePoint >> 8, codePoint & 0xff];
+        }),
+      ]);
+      const includesBytes = (needle: Uint8Array) => bytes.some((_, index) =>
+        index + needle.length <= bytes.length
+          && needle.every((value, offset) => bytes[index + offset] === value));
+      return {
+        prefix: String.fromCharCode(...bytes.slice(0, 5)),
+        size: bytes.byteLength,
+        containsLocalTitle: new TextDecoder("latin1")
+          .decode(bytes)
+          .includes(title) || includesBytes(utf16Title),
+      };
+    }, localDraftBlobUrl!);
+    expect(localPdf).toMatchObject({ prefix: "%PDF-", containsLocalTitle: true });
+    expect(localPdf.size).toBeGreaterThan(4_000);
+    const popupPromise = page.waitForEvent("popup");
+    await fullSizeLink.click();
+    const popup = await popupPromise;
+    expect(await fullSizeLink.getAttribute("href")).toBe(localDraftBlobUrl);
+    expect(popup.isClosed()).toBe(false);
+    await popup.close();
     expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe(savedTitle);
     expect(sql(`select updated_at::text from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe(savedUpdatedAt);
     expect(sql(`select lifecycle_status from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("draft");
+    expect(sql(`select count(*) from public.documents where organization_id = ${q(organizationId)}::uuid;`)).toBe(initialDocumentCount);
+    expect(sql("select count(*) from storage.objects where bucket_id = 'documents';")).toBe(initialDocumentObjectCount);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(adminDraft.getByRole("button", { name: "Modifier" })).toBeVisible();
     await expect(adminDraft.getByRole("button", { name: "Aperçu" })).toBeVisible();
     await adminDraft.getByRole("button", { name: "Aperçu" }).click();
     await expect(previewPane).toBeVisible();
+    await expect(previewPane.getByRole("link", { name: "Ouvrir l’aperçu en grand" })).toBeVisible();
     await expect(previewPane.locator('iframe[data-document-pdf-preview="ready"]')).toBeVisible();
     await adminDraft.getByRole("button", { name: "Modifier" }).click();
     await expect(editorPane).toBeVisible();

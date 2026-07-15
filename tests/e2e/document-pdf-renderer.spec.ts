@@ -9,6 +9,10 @@ import {
 } from "../../src/features/documents/build-document-generation-snapshot";
 import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
 import { renderDocumentPdfCore } from "../../src/features/documents/document-pdf-renderer-core";
+import {
+  documentPdfStyles,
+  getDocumentPdfLogoSize,
+} from "../../src/features/documents/document-pdf-document";
 import type {
   CommitmentCertificateTemplateDefinition,
   ReservationContractTemplateDefinition,
@@ -198,6 +202,8 @@ function expectPdfEnvelope(bytes: Buffer) {
 test("fige la version du logo dans le snapshot et les octets PDF historiques", async () => {
   const logoA = await sharp({ create: { width: 300, height: 90, channels: 4, background: "#166534" } }).png().toBuffer();
   const logoB = await sharp({ create: { width: 90, height: 300, channels: 3, background: "#1d4ed8" } }).jpeg().toBuffer();
+  expect(getDocumentPdfLogoSize({ widthPx: 300, heightPx: 90 })).toEqual({ width: 120, height: 36 });
+  expect(getDocumentPdfLogoSize({ widthPx: 90, heightPx: 300 })).toEqual({ width: 18, height: 60 });
   const metadata = (assetId: string, bytes: Buffer, mimeType: "image/png" | "image/jpeg", widthPx: number, heightPx: number) => ({
     assetId,
     fileSha256: createHash("sha256").update(bytes).digest("hex"),
@@ -258,6 +264,7 @@ test("fige la version du logo dans le snapshot et les octets PDF historiques", a
 });
 
 test("builds ordered contract presentation and renders an in-memory A4 PDF", async () => {
+  expect(documentPdfStyles.title.fontSize).toBe(24);
   const input = contractInput();
   input.sources.litterId = "66666666-6666-4666-8666-666666666666";
   input.adoptionProject.litter = {

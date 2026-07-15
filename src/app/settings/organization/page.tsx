@@ -26,6 +26,26 @@ const legalFormOptions = [
 ] as const;
 
 type StatusValue = "success" | "error" | undefined;
+type BrandingErrorValue =
+  | "invalid_dimensions"
+  | "too_large"
+  | "invalid_type"
+  | "unreadable";
+
+function brandingErrorMessage(value: BrandingErrorValue | undefined) {
+  switch (value) {
+    case "invalid_dimensions":
+      return "Le logo dépasse la dimension maximale autorisée de 2 000 pixels en largeur ou en hauteur. Réduisez ses dimensions puis réessayez.";
+    case "too_large":
+      return "Le logo dépasse la taille maximale autorisée de 512 Kio. Compressez le fichier puis réessayez.";
+    case "invalid_type":
+      return "Ce fichier n’est pas un PNG ou un JPEG valide.";
+    case "unreadable":
+      return "Le fichier semble endommagé ou ne peut pas être lu. Choisissez une autre image.";
+    default:
+      return "Impossible de modifier le logo. Réessayez dans quelques instants.";
+  }
+}
 type BrevoStatusValue =
   | "success"
   | "not_configured"
@@ -240,6 +260,7 @@ export default async function OrganizationSettingsPage({
     brevo_templates_status?: StatusValue;
     brevo_status?: BrevoStatusValue;
     branding_status?: "success" | "removed" | "error";
+    branding_error?: BrandingErrorValue;
   }>;
 }) {
   const query = await searchParams;
@@ -455,7 +476,7 @@ export default async function OrganizationSettingsPage({
         <StatusMessage
           value={query.branding_status === "removed" ? "success" : query.branding_status}
           success={query.branding_status === "removed" ? "Le logo actif a été retiré. Les versions précédentes et les PDF existants sont conservés." : "Le logo de l’organisation a bien été importé."}
-          error="Impossible de modifier le logo. Vérifiez le format, les dimensions et la taille du fichier, puis réessayez."
+          error={brandingErrorMessage(query.branding_error)}
         />
       </div>
 

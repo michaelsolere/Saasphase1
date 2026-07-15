@@ -16,14 +16,14 @@ export const documentPdfStyles = StyleSheet.create({
   },
   title: {
     fontFamily: "Helvetica-Bold",
-    fontSize: 18,
+    fontSize: 24,
     lineHeight: 1.2,
-    marginBottom: 20,
+    marginBottom: 22,
     textAlign: "center" as const,
   },
   logo: {
     alignSelf: "center" as const,
-    marginBottom: 12,
+    marginBottom: 14,
     objectFit: "contain" as const,
   },
   sectionHeading: {
@@ -75,6 +75,14 @@ export const documentPdfStyles = StyleSheet.create({
   },
 });
 
+export function getDocumentPdfLogoSize(logo: {
+  widthPx: number;
+  heightPx: number;
+}) {
+  const scale = Math.min(120 / logo.widthPx, 60 / logo.heightPx, 1);
+  return { width: logo.widthPx * scale, height: logo.heightPx * scale };
+}
+
 export function DocumentPdfDocument({
   presentation,
   logo = null,
@@ -82,12 +90,7 @@ export function DocumentPdfDocument({
   presentation: DocumentPdfPresentation;
   logo?: { dataUri: string; widthPx: number; heightPx: number } | null;
 }) {
-  const logoSize = logo
-    ? (() => {
-        const scale = Math.min(120 / logo.widthPx, 60 / logo.heightPx, 1);
-        return { width: logo.widthPx * scale, height: logo.heightPx * scale };
-      })()
-    : null;
+  const logoSize = logo ? getDocumentPdfLogoSize(logo) : null;
   const sectionElements = presentation.sections.flatMap((section) => {
     if (section.signatureLabels) {
       return [

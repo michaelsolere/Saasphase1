@@ -1,7 +1,10 @@
 import { renderToBuffer } from "@react-pdf/renderer";
 import { expect, test } from "@playwright/test";
 
-import { DocumentPdfDocument } from "../../src/features/documents/document-pdf-document";
+import {
+  DocumentPdfDocument,
+  documentPdfStyles,
+} from "../../src/features/documents/document-pdf-document";
 import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
 import { parseDocumentGenerationSnapshot } from "../../src/features/documents/parse-document-generation-snapshot";
 import type {
@@ -146,6 +149,11 @@ test("rend contrat et certificat avec le composant React PDF partagé", async ()
     presentation: certificatePresentation,
   });
   expect(contractDocument.type).toBe(certificateDocument.type);
+  expect(documentPdfStyles.title).toMatchObject({
+    fontFamily: "Helvetica-Bold",
+    fontSize: 24,
+    textAlign: "center",
+  });
 
   expectPdf(await renderToBuffer(contractDocument));
   expectPdf(await renderToBuffer(certificateDocument));

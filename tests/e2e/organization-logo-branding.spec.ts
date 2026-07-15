@@ -18,6 +18,12 @@ const assetA = "9f150002-0000-4000-8000-000000000001";
 const assetB = "9f150002-0000-4000-8000-000000000002";
 const assetOther = "9f150002-0000-4000-8000-000000000003";
 const assetCompensation = "9f150002-0000-4000-8000-000000000004";
+const rejectedAssets = {
+  invalidDimensions: "9f150002-0000-4000-8000-000000000005",
+  tooLarge: "9f150002-0000-4000-8000-000000000006",
+  invalidType: "9f150002-0000-4000-8000-000000000007",
+  unreadable: "9f150002-0000-4000-8000-000000000008",
+} as const;
 const previewFamilyId = "9f150002-0000-4000-8000-000000000010";
 const previewTemplateId = "9f150002-0000-4000-8000-000000000011";
 const previewDefinition = JSON.stringify({
@@ -62,7 +68,10 @@ async function imageFixtures() {
   const jpegB = await sharp({
     create: { width: 180, height: 300, channels: 3, background: "#1d4ed8" },
   }).jpeg({ quality: 90 }).toBuffer();
-  return { pngA, jpegB };
+  const invalidDimensions = await sharp({
+    create: { width: 2001, height: 32, channels: 4, background: "#991b1b" },
+  }).png().toBuffer();
+  return { pngA, jpegB, invalidDimensions };
 }
 
 function sha256(bytes: Buffer) {
@@ -104,6 +113,22 @@ async function uploadThroughUi(page: Page, input: {
   );
 }
 
+async function expectRejectedLogo(page: Page, input: {
+  assetId: string;
+  name: string;
+  mimeType: string;
+  bytes: Buffer;
+  code: "invalid_dimensions" | "too_large" | "invalid_type" | "unreadable";
+  message: string;
+}) {
+  await uploadThroughUi(page, input, "error");
+  await expect(page).toHaveURL(new RegExp(`branding_error=${input.code}`));
+  await expect(page.locator("main section[role='alert']")).toHaveText(input.message);
+  expect(page.url()).not.toMatch(/organization-assets|organizations%2F|branding%2Flogos|sql/i);
+  expect(Number(sql(`select count(*) from public.organization_brand_assets where id = ${sqlQuote(input.assetId)}::uuid;`))).toBe(0);
+  expect(Number(sql(`select count(*) from storage.objects where name like ${sqlQuote(`organizations/${organizationId}/branding/logos/${input.assetId}/%`)};`))).toBe(0);
+}
+
 async function expectTemplatePreview(page: Page, familyId: string) {
   await page.goto(`/documents/modeles/${familyId}`);
   const mobilePreviewButton = page.getByRole("button", { name: "Aperçu", exact: true }).first();
@@ -117,7 +142,7 @@ async function expectTemplatePreview(page: Page, familyId: string) {
 }
 
 test("valide les octets PNG/JPEG et refuse les formats falsifiés ou invalides", async () => {
-  const { pngA, jpegB } = await imageFixtures();
+  const { pngA, jpegB, invalidDimensions } = await imageFixtures();
   const png = await validateOrganizationLogoBytes({ bytes: pngA, declaredMimeType: "image/png" });
   const jpeg = await validateOrganizationLogoBytes({ bytes: jpegB, declaredMimeType: "image/jpeg" });
   expect(png).toMatchObject({ ok: true, logo: { widthPx: 320, heightPx: 100, mimeType: "image/png" } });
@@ -127,6 +152,7 @@ test("valide les octets PNG/JPEG et refuse les formats falsifiés ou invalides",
   expect(await validateOrganizationLogoBytes({ bytes: Buffer.from("GIF89a"), declaredMimeType: "image/gif" })).toEqual({ ok: false, code: "invalid_type" });
   expect(await validateOrganizationLogoBytes({ bytes: Buffer.from([1, 2, 3]), declaredMimeType: "image/png" })).toEqual({ ok: false, code: "unreadable" });
   expect(await validateOrganizationLogoBytes({ bytes: Buffer.alloc(512 * 1024 + 1), declaredMimeType: "image/png" })).toEqual({ ok: false, code: "too_large" });
+  expect(await validateOrganizationLogoBytes({ bytes: invalidDimensions, declaredMimeType: "image/png" })).toEqual({ ok: false, code: "invalid_dimensions" });
   const tooSmall = await sharp({ create: { width: 15, height: 16, channels: 4, background: "red" } }).png().toBuffer();
   expect(await validateOrganizationLogoBytes({ bytes: tooSmall, declaredMimeType: "image/png" })).toEqual({ ok: false, code: "invalid_dimensions" });
 });
@@ -134,7 +160,7 @@ test("valide les octets PNG/JPEG et refuse les formats falsifiés ou invalides",
 test("versionne le logo, protège Storage/RPC et conserve toutes les versions après retrait", async ({ page }) => {
   test.setTimeout(180_000);
   const supabase = await createAuthenticatedSupabaseClient();
-  const { pngA, jpegB } = await imageFixtures();
+  const { pngA, jpegB, invalidDimensions } = await imageFixtures();
   const hashA = sha256(pngA);
   const hashB = sha256(jpegB);
   const pathA = assetPath(assetA, hashA, "png");
@@ -142,34 +168,40 @@ test("versionne le logo, protège Storage/RPC et conserve toutes les versions ap
   const otherPath = assetPath(assetOther, hashA, "png", otherOrganizationId);
   const compensationPath = assetPath(assetCompensation, hashA, "png");
   const paths = [pathA, pathB, otherPath, compensationPath];
-
-  sql(`delete from public.document_templates where id = ${sqlQuote(previewTemplateId)}::uuid; delete from public.document_template_families where id = ${sqlQuote(previewFamilyId)}::uuid;`);
-  sql(`delete from public.organization_brand_assets where id in (${sqlQuote(assetA)}::uuid, ${sqlQuote(assetB)}::uuid, ${sqlQuote(assetOther)}::uuid, ${sqlQuote(assetCompensation)}::uuid);`);
-  const initialRemoval = await supabase.storage.from("organization-assets").remove(paths);
-  if (initialRemoval.error) throw new Error(`initial Storage cleanup: ${initialRemoval.error.message}`);
-  setRole("owner");
-  sql(`
-    insert into public.document_template_families (
-      id, organization_id, name, description, document_type, species, breed, created_by, updated_by
-    ) values (
-      ${sqlQuote(previewFamilyId)}::uuid, ${sqlQuote(organizationId)}::uuid,
-      'Aperçu branding E2E', 'Fixture temporaire branding', 'reservation_contract',
-      'dog', 'Golden Retriever', ${sqlQuote(userId)}::uuid, ${sqlQuote(userId)}::uuid
-    );
-    insert into public.document_templates (
-      id, organization_id, family_id, name, description, document_type, species, breed,
-      template_format, template_content, version, lifecycle_status, is_active,
-      published_at, published_by, created_by, updated_by
-    ) values (
-      ${sqlQuote(previewTemplateId)}::uuid, ${sqlQuote(organizationId)}::uuid,
-      ${sqlQuote(previewFamilyId)}::uuid, 'Aperçu branding E2E', 'Fixture temporaire branding',
-      'reservation_contract', 'dog', 'Golden Retriever', 'json', ${sqlQuote(previewDefinition)},
-      1, 'published', true, now(), ${sqlQuote(userId)}::uuid,
-      ${sqlQuote(userId)}::uuid, ${sqlQuote(userId)}::uuid
-    );
-  `);
+  const allAssetIds = [
+    assetA,
+    assetB,
+    assetOther,
+    assetCompensation,
+    ...Object.values(rejectedAssets),
+  ];
 
   try {
+    sql(`delete from public.document_templates where id = ${sqlQuote(previewTemplateId)}::uuid; delete from public.document_template_families where id = ${sqlQuote(previewFamilyId)}::uuid;`);
+    sql(`delete from public.organization_brand_assets where id in (${allAssetIds.map((id) => `${sqlQuote(id)}::uuid`).join(", ")});`);
+    const initialRemoval = await supabase.storage.from("organization-assets").remove(paths);
+    if (initialRemoval.error) throw new Error(`initial Storage cleanup: ${initialRemoval.error.message}`);
+    setRole("owner");
+    sql(`
+      insert into public.document_template_families (
+        id, organization_id, name, description, document_type, species, breed, created_by, updated_by
+      ) values (
+        ${sqlQuote(previewFamilyId)}::uuid, ${sqlQuote(organizationId)}::uuid,
+        'Aperçu branding E2E', 'Fixture temporaire branding', 'reservation_contract',
+        'dog', 'Golden Retriever', ${sqlQuote(userId)}::uuid, ${sqlQuote(userId)}::uuid
+      );
+      insert into public.document_templates (
+        id, organization_id, family_id, name, description, document_type, species, breed,
+        template_format, template_content, version, lifecycle_status, is_active,
+        published_at, published_by, created_by, updated_by
+      ) values (
+        ${sqlQuote(previewTemplateId)}::uuid, ${sqlQuote(organizationId)}::uuid,
+        ${sqlQuote(previewFamilyId)}::uuid, 'Aperçu branding E2E', 'Fixture temporaire branding',
+        'reservation_contract', 'dog', 'Golden Retriever', 'json', ${sqlQuote(previewDefinition)},
+        1, 'published', true, now(), ${sqlQuote(userId)}::uuid,
+        ${sqlQuote(userId)}::uuid, ${sqlQuote(userId)}::uuid
+      );
+    `);
     expect(Number(sql(`select count(*) from pg_policies where schemaname = 'public' and tablename = 'organization_brand_assets' and cmd = 'SELECT';`))).toBe(1);
     expect(Number(sql(`select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname like 'organization_assets_objects_%';`))).toBe(3);
     expect(sql(`select has_table_privilege('authenticated', 'public.organization_brand_assets', 'SELECT')::text || ',' || has_table_privilege('authenticated', 'public.organization_brand_assets', 'INSERT')::text || ',' || has_table_privilege('authenticated', 'public.organization_brand_assets', 'UPDATE')::text || ',' || has_table_privilege('authenticated', 'public.organization_brand_assets', 'DELETE')::text;`)).toBe("true,false,false,false");
@@ -180,6 +212,46 @@ test("versionne le logo, protège Storage/RPC et conserve toutes les versions ap
     });
     await expect(page.getByRole("heading", { name: "Identité visuelle" })).toBeVisible();
     await expect(page.getByText("Aucun logo actif")).toBeVisible();
+    await test.step("refus précis sans écriture SQL ou Storage", async () => {
+      const rejectionCases = [
+        {
+          assetId: rejectedAssets.invalidDimensions,
+          name: "logo-trop-large-en-pixels.png",
+          mimeType: "image/png",
+          bytes: invalidDimensions,
+          code: "invalid_dimensions" as const,
+          message: "Le logo dépasse la dimension maximale autorisée de 2 000 pixels en largeur ou en hauteur. Réduisez ses dimensions puis réessayez.",
+        },
+        {
+          assetId: rejectedAssets.tooLarge,
+          name: "logo-trop-lourd.png",
+          mimeType: "image/png",
+          bytes: Buffer.alloc(512 * 1024 + 1),
+          code: "too_large" as const,
+          message: "Le logo dépasse la taille maximale autorisée de 512 Kio. Compressez le fichier puis réessayez.",
+        },
+        {
+          assetId: rejectedAssets.invalidType,
+          name: "faux-logo.png",
+          mimeType: "image/png",
+          bytes: jpegB,
+          code: "invalid_type" as const,
+          message: "Ce fichier n’est pas un PNG ou un JPEG valide.",
+        },
+        {
+          assetId: rejectedAssets.unreadable,
+          name: "logo-corrompu.png",
+          mimeType: "image/png",
+          bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          code: "unreadable" as const,
+          message: "Le fichier semble endommagé ou ne peut pas être lu. Choisissez une autre image.",
+        },
+      ];
+      for (const rejection of rejectionCases) {
+        await expectRejectedLogo(page, rejection);
+      }
+      await expect(page.getByText("Aucun logo actif")).toBeVisible();
+    });
     await test.step("import PNG A par l’interface", async () => {
       await uploadThroughUi(page, { assetId: assetA, name: "logo-a.png", mimeType: "image/png", bytes: pngA });
     });
@@ -282,10 +354,10 @@ test("versionne le logo, protège Storage/RPC et conserve toutes les versions ap
   } finally {
     setRole("owner");
     sql(`delete from public.document_templates where id = ${sqlQuote(previewTemplateId)}::uuid; delete from public.document_template_families where id = ${sqlQuote(previewFamilyId)}::uuid;`);
-    sql(`delete from public.organization_brand_assets where id in (${sqlQuote(assetA)}::uuid, ${sqlQuote(assetB)}::uuid, ${sqlQuote(assetOther)}::uuid, ${sqlQuote(assetCompensation)}::uuid);`);
+    sql(`delete from public.organization_brand_assets where id in (${allAssetIds.map((id) => `${sqlQuote(id)}::uuid`).join(", ")});`);
     const removal = await supabase.storage.from("organization-assets").remove(paths);
     if (removal.error) throw new Error(`final Storage cleanup: ${removal.error.message}`);
-    expect(Number(sql(`select count(*) from public.organization_brand_assets where id in (${sqlQuote(assetA)}::uuid, ${sqlQuote(assetB)}::uuid, ${sqlQuote(assetOther)}::uuid, ${sqlQuote(assetCompensation)}::uuid) or file_sha256 in (${sqlQuote(hashA)}, ${sqlQuote(hashB)});`))).toBe(0);
+    expect(Number(sql(`select count(*) from public.organization_brand_assets where id in (${allAssetIds.map((id) => `${sqlQuote(id)}::uuid`).join(", ")}) or file_sha256 in (${sqlQuote(hashA)}, ${sqlQuote(hashB)});`))).toBe(0);
     expect(Number(sql(`select count(*) from storage.objects where bucket_id = 'organization-assets' and (name in (${paths.map(sqlQuote).join(",")}) or name like 'organizations/${organizationId}/branding/logos/9f150002-%');`))).toBe(0);
     expect(Number(sql(`select (select count(*) from public.document_templates where id = ${sqlQuote(previewTemplateId)}::uuid) + (select count(*) from public.document_template_families where id = ${sqlQuote(previewFamilyId)}::uuid);`))).toBe(0);
   }

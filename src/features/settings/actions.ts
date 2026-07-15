@@ -8,6 +8,7 @@ import {
   retireActiveOrganizationLogo,
   uploadOrganizationLogo,
 } from "@/features/settings/organization-logo-service";
+import type { OrganizationLogoValidationCode } from "@/features/settings/organization-logo-image";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -31,8 +32,14 @@ function statusUrl(
   return `${settingsPath}?${key}=${outcome}${anchor ? `#${anchor}` : ""}`;
 }
 
-function brandingStatusUrl(outcome: "success" | "removed" | "error") {
-  return `${settingsPath}?branding_status=${outcome}#visual-identity`;
+function brandingStatusUrl(
+  outcome: "success" | "removed" | "error",
+  validationCode?: OrganizationLogoValidationCode,
+) {
+  const error = outcome === "error" && validationCode
+    ? `&branding_error=${validationCode}`
+    : "";
+  return `${settingsPath}?branding_status=${outcome}${error}#visual-identity`;
 }
 
 export async function uploadOrganizationLogoAction(formData: FormData) {
@@ -46,7 +53,20 @@ export async function uploadOrganizationLogoAction(formData: FormData) {
     redirect(brandingStatusUrl("error"));
   }
   const result = await uploadOrganizationLogo({ organizationId, file, assetId });
-  if (!result.ok) redirect(brandingStatusUrl("error"));
+  if (!result.ok) {
+    const validationCodes = new Set<OrganizationLogoValidationCode>([
+      "invalid_dimensions",
+      "too_large",
+      "invalid_type",
+      "unreadable",
+    ]);
+    redirect(brandingStatusUrl(
+      "error",
+      validationCodes.has(result.code as OrganizationLogoValidationCode)
+        ? result.code as OrganizationLogoValidationCode
+        : undefined,
+    ));
+  }
   revalidatePath(settingsPath);
   revalidatePath("/documents/modeles", "layout");
   redirect(brandingStatusUrl("success"));
