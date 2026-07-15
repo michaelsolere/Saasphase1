@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { expect, test, type Page } from "@playwright/test";
 
 import { generateAndStoreReservationDocumentPdfCore } from "../../src/features/documents/generated-reservation-document-orchestrator-core";
@@ -20,6 +22,11 @@ const ids = {
   certificateTemplate: "7e160000-0000-4000-8000-000000000009",
   incompatibleTemplate: "7e160000-0000-4000-8000-000000000010",
   incompatibleDocument: "7e160000-0000-4000-8000-000000000011",
+  alternateContractTemplate: "7e160000-0000-4000-8000-000000000012",
+  foreignOrganization: "7e160000-0000-4000-8000-000000000013",
+  foreignContact: "7e160000-0000-4000-8000-000000000014",
+  foreignReservation: "7e160000-0000-4000-8000-000000000015",
+  foreignTemplate: "7e160000-0000-4000-8000-000000000016",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -59,6 +66,11 @@ const certificateDefinition = {
   signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
 };
 
+const alternateContractDefinition = {
+  ...contractDefinition,
+  title: "Contrat alternatif sélectionné UI E2E",
+};
+
 function q(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
 }
@@ -94,18 +106,18 @@ async function removeStorageObjects(
 
 function cleanupRows() {
   sql(`
-    delete from public.documents where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.email_delivery_attempts where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.payments where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.reservations where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.document_templates where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.document_template_families where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.organization_document_settings where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.organization_settings where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.applications where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.contacts where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.memberships where organization_id = ${q(ids.organization)}::uuid;
-    delete from public.organizations where id = ${q(ids.organization)}::uuid;
+    delete from public.documents where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.email_delivery_attempts where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.payments where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.reservations where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.document_templates where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.document_template_families where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.organization_document_settings where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.organization_settings where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.applications where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.contacts where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.memberships where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.organizations where id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
   `);
 }
 
@@ -115,7 +127,8 @@ function seed() {
     insert into public.organizations
       (id, name, legal_name, legal_form, slug, email, address_line1, postal_code, city, country)
     values
-      (${q(ids.organization)}, 'Élevage UI E2E', 'Élevage UI E2E', 'company', 'reservation-documents-ui-e2e', 'seller-ui@example.invalid', '1 rue E2E', '75001', 'Paris', 'FR');
+      (${q(ids.organization)}, 'Élevage UI E2E', 'Élevage UI E2E', 'company', 'reservation-documents-ui-e2e', 'seller-ui@example.invalid', '1 rue E2E', '75001', 'Paris', 'FR'),
+      (${q(ids.foreignOrganization)}, 'Élevage étranger UI E2E', 'Élevage étranger UI E2E', 'company', 'reservation-documents-foreign-ui-e2e', 'foreign-ui@example.invalid', '9 rue E2E', '33000', 'Bordeaux', 'FR');
 
     insert into public.memberships (id, organization_id, profile_id, role, status)
     values (${q(ids.membership)}, ${q(ids.organization)}, ${q(ownerId)}, 'member', 'active');
@@ -123,7 +136,8 @@ function seed() {
     insert into public.contacts
       (id, organization_id, display_name, first_name, last_name, email, address_line1, postal_code, city, country)
     values
-      (${q(ids.contact)}, ${q(ids.organization)}, 'Adoptant UI E2E', 'Adoptant', 'UI E2E', 'adopter-ui@example.invalid', '2 rue E2E', '69001', 'Lyon', 'FR');
+      (${q(ids.contact)}, ${q(ids.organization)}, 'Adoptant UI E2E', 'Adoptant', 'UI E2E', 'adopter-ui@example.invalid', '2 rue E2E', '69001', 'Lyon', 'FR'),
+      (${q(ids.foreignContact)}, ${q(ids.foreignOrganization)}, 'Adoptant étranger UI E2E', 'Adoptant', 'Étranger', 'foreign-adopter-ui@example.invalid', '8 rue E2E', '33000', 'Bordeaux', 'FR');
 
     insert into public.applications
       (id, organization_id, contact_id, species, breed, desired_sex_preference, status)
@@ -133,7 +147,8 @@ function seed() {
     insert into public.reservations
       (id, organization_id, contact_id, application_id, status, reserved_sex_preference, price_cents, currency, created_at)
     values
-      (${q(ids.reservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, 'active', 'female_only', 250000, 'EUR', '2026-07-13T09:00:00Z');
+      (${q(ids.reservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, 'active', 'female_only', 250000, 'EUR', '2026-07-13T09:00:00Z'),
+      (${q(ids.foreignReservation)}, ${q(ids.foreignOrganization)}, ${q(ids.foreignContact)}, null, 'active', 'female_only', 240000, 'EUR', '2026-07-13T09:00:00Z');
 
     insert into public.organization_settings
       (id, organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents)
@@ -148,15 +163,30 @@ function seed() {
     values
       (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat compatible UI E2E', 'reservation_contract', 'dog', 'Golden Retriever'),
       (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat compatible UI E2E', 'commitment_certificate', 'dog', 'Golden Retriever'),
-      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon');
+      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon'),
+      (${q(ids.alternateContractTemplate)}, ${q(ids.organization)}, 'Contrat alternatif UI E2E', 'reservation_contract', 'dog', 'Golden Retriever'),
+      (${q(ids.foreignTemplate)}, ${q(ids.foreignOrganization)}, 'Contrat étranger UI E2E', 'reservation_contract', 'dog', 'Golden Retriever');
 
     insert into public.document_templates
       (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
     values
       (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat compatible UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 3, 'published', true, now(), ${q(ownerId)}),
       (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat compatible UI E2E', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 5, 'published', true, now(), ${q(ownerId)}),
-      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, ${q(ids.incompatibleTemplate)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon', 'json', ${q(JSON.stringify(contractDefinition))}, 9, 'published', true, now(), ${q(ownerId)});
+      (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, ${q(ids.incompatibleTemplate)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon', 'json', ${q(JSON.stringify(contractDefinition))}, 9, 'published', true, now(), ${q(ownerId)}),
+      (${q(ids.alternateContractTemplate)}, ${q(ids.organization)}, ${q(ids.alternateContractTemplate)}, 'Contrat alternatif UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(alternateContractDefinition))}, 2, 'published', true, now(), ${q(ownerId)}),
+      (${q(ids.foreignTemplate)}, ${q(ids.foreignOrganization)}, ${q(ids.foreignTemplate)}, 'Contrat étranger UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 1, 'published', true, now(), ${q(ownerId)});
   `);
+}
+
+function previewUrl(
+  reservationId: string,
+  documentType: "commitment_certificate" | "reservation_contract",
+  templateId: string,
+) {
+  return `/api/reservations/${reservationId}/document-preview?${new URLSearchParams({
+    documentType,
+    templateId,
+  })}`;
 }
 
 async function login(page: Page) {
@@ -174,6 +204,25 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
   const supabase = await createAuthenticatedSupabaseClient();
   await removeStorageObjects(supabase);
   seed();
+  await page.addInitScript(() => {
+    const originalCreateObjectUrl = URL.createObjectURL.bind(URL);
+    const originalRevokeObjectUrl = URL.revokeObjectURL.bind(URL);
+    const trackedWindow = window as unknown as Window & {
+      __createdReservationPreviewUrls: string[];
+      __revokedReservationPreviewUrls: string[];
+    };
+    trackedWindow.__createdReservationPreviewUrls = [];
+    trackedWindow.__revokedReservationPreviewUrls = [];
+    URL.createObjectURL = (object) => {
+      const url = originalCreateObjectUrl(object);
+      trackedWindow.__createdReservationPreviewUrls.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url) => {
+      trackedWindow.__revokedReservationPreviewUrls.push(url);
+      originalRevokeObjectUrl(url);
+    };
+  });
 
   const reservationBefore = sql(
     `select row_to_json(r)::text from public.reservations r where id = ${q(ids.reservation)}::uuid;`,
@@ -181,6 +230,16 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
   const emailsBefore = organizationCount("email_delivery_attempts");
 
   try {
+    const unauthenticated = await page.request.get(
+      previewUrl(
+        ids.reservation,
+        "reservation_contract",
+        ids.contractTemplate,
+      ),
+    );
+    expect(unauthenticated.status()).toBe(401);
+    expect(await unauthenticated.json()).toEqual({ error: "Aperçu indisponible." });
+
     await login(page);
     await page.goto(`/reservations/${ids.reservation}#documents`);
 
@@ -194,6 +253,222 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
     await expect(
       contractCard.getByRole("option", { name: /Contrat incompatible UI E2E/ }),
     ).toHaveCount(0);
+
+    const previewStateBefore = {
+      documents: organizationCount("documents"),
+      documentObjects: storagePaths(),
+      reservation: reservationBefore,
+      payments: organizationCount("payments"),
+      emails: emailsBefore,
+    };
+
+    const certificateCard = page
+      .locator("article")
+      .filter({ hasText: "Certificat d’engagement et de connaissance" });
+    const certificateResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("/document-preview?") &&
+        response.url().includes("documentType=commitment_certificate"),
+    );
+    await certificateCard
+      .getByRole("button", { name: "Prévisualiser avec les données du dossier" })
+      .click();
+    const certificateResponse = await certificateResponsePromise;
+    expect(certificateResponse.status()).toBe(200);
+    expect(certificateResponse.headers()["content-type"]).toBe("application/pdf");
+    expect(certificateResponse.headers()["content-disposition"]).toContain("inline");
+    expect(certificateResponse.headers()["cache-control"]).toBe("private, no-store");
+    expect(certificateResponse.headers()["x-content-type-options"]).toBe("nosniff");
+    expect(new URL(certificateResponse.url()).searchParams.get("templateId")).toBe(
+      ids.certificateTemplate,
+    );
+    await expect(
+      page.getByText(
+        "Aperçu temporaire avec les données actuelles du dossier — aucun document n’est créé ou modifié.",
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByTitle("Aperçu PDF — Certificat d’engagement et de connaissance"),
+    ).toBeVisible({ timeout: 30_000 });
+    const certificateFullSize = page.getByRole("link", {
+      name: "Ouvrir l’aperçu en grand",
+    });
+    await expect(certificateFullSize).toHaveAttribute("target", "_blank");
+    await expect(certificateFullSize).toHaveAttribute(
+      "rel",
+      "noopener noreferrer",
+    );
+    const firstCertificateBlobUrl = await certificateFullSize.getAttribute(
+      "href",
+    );
+    expect(firstCertificateBlobUrl).toMatch(/^blob:/);
+    await page.getByRole("button", { name: "Fermer" }).click();
+    await expect(
+      page.getByTitle("Aperçu PDF — Certificat d’engagement et de connaissance"),
+    ).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          (url) =>
+            (
+              window as unknown as Window & {
+                __revokedReservationPreviewUrls: string[];
+              }
+            ).__revokedReservationPreviewUrls.includes(url),
+          firstCertificateBlobUrl!,
+        ),
+      )
+      .toBe(true);
+
+    const reopenedCertificateResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("documentType=commitment_certificate") &&
+        response.status() === 200,
+    );
+    await certificateCard
+      .getByRole("button", { name: "Prévisualiser avec les données du dossier" })
+      .click();
+    await reopenedCertificateResponse;
+    await expect(
+      page.getByTitle("Aperçu PDF — Certificat d’engagement et de connaissance"),
+    ).toBeVisible({ timeout: 30_000 });
+    const reopenedBlobUrl = await page
+      .getByRole("link", { name: "Ouvrir l’aperçu en grand" })
+      .getAttribute("href");
+    expect(reopenedBlobUrl).toMatch(/^blob:/);
+    expect(reopenedBlobUrl).not.toBe(firstCertificateBlobUrl);
+    await page.getByRole("button", { name: "Fermer" }).click();
+
+    await contractCard
+      .getByLabel("Modèle compatible")
+      .selectOption(ids.alternateContractTemplate);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const contractPreviewResponse = page.waitForResponse(
+      (response) =>
+        response.url().includes("documentType=reservation_contract") &&
+        response.url().includes(`templateId=${ids.alternateContractTemplate}`),
+    );
+    await contractCard
+      .getByRole("button", { name: "Prévisualiser avec les données du dossier" })
+      .click();
+    const alternateResponse = await contractPreviewResponse;
+    expect(alternateResponse.status()).toBe(200);
+    await expect(
+      page.getByTitle("Aperçu PDF — Contrat de réservation"),
+    ).toBeVisible({ timeout: 30_000 });
+    const fullSizeLink = page.getByRole("link", {
+      name: "Ouvrir l’aperçu en grand",
+    });
+    const popupPromise = page.waitForEvent("popup");
+    await fullSizeLink.click();
+    const popup = await popupPromise;
+    expect(popup.isClosed()).toBe(false);
+    await popup.close();
+    await page.getByRole("button", { name: "Fermer" }).click();
+    await page.setViewportSize({ width: 1280, height: 720 });
+
+    await page.route("**/api/reservations/*/document-preview?*", async (route) => {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "raw_database_error_must_not_be_shown" }),
+        headers: { "Cache-Control": "private, no-store" },
+      });
+    });
+    await certificateCard
+      .getByRole("button", { name: "Prévisualiser avec les données du dossier" })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "L’aperçu est indisponible pour le moment.",
+    );
+    await expect(page.getByText("raw_database_error_must_not_be_shown")).toHaveCount(
+      0,
+    );
+    await expect(
+      page.getByRole("button", { name: "Ouvrir l’aperçu en grand" }),
+    ).toBeDisabled();
+    await page.getByRole("button", { name: "Fermer" }).click();
+    await page.unroute("**/api/reservations/*/document-preview?*");
+
+    const mainPdf = await page.request.get(
+      previewUrl(ids.reservation, "reservation_contract", ids.contractTemplate),
+    );
+    const alternatePdf = await page.request.get(
+      previewUrl(
+        ids.reservation,
+        "reservation_contract",
+        ids.alternateContractTemplate,
+      ),
+    );
+    expect(mainPdf.status()).toBe(200);
+    expect(alternatePdf.status()).toBe(200);
+    const mainBytes = Buffer.from(await mainPdf.body());
+    const alternateBytes = Buffer.from(await alternatePdf.body());
+    expect(mainBytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    expect(alternateBytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    expect(createHash("sha256").update(mainBytes).digest("hex")).not.toBe(
+      createHash("sha256").update(alternateBytes).digest("hex"),
+    );
+
+    const missingReservation = await page.request.get(
+      previewUrl(
+        "7e160000-0000-4000-8000-000000000099",
+        "reservation_contract",
+        ids.contractTemplate,
+      ),
+    );
+    const foreignReservation = await page.request.get(
+      previewUrl(
+        ids.foreignReservation,
+        "reservation_contract",
+        ids.foreignTemplate,
+      ),
+    );
+    expect(foreignReservation.status()).toBe(missingReservation.status());
+    expect(await foreignReservation.json()).toEqual(
+      await missingReservation.json(),
+    );
+
+    for (const templateId of [
+      ids.foreignTemplate,
+      ids.incompatibleTemplate,
+      "7e160000-0000-4000-8000-000000000098",
+    ]) {
+      const rejected = await page.request.get(
+        previewUrl(ids.reservation, "reservation_contract", templateId),
+      );
+      expect(rejected.status()).toBe(404);
+      expect(await rejected.json()).toEqual({ error: "Aperçu indisponible." });
+      expect(rejected.headers()["cache-control"]).toBe("private, no-store");
+    }
+
+    sql(
+      `update public.memberships set role = 'viewer' where id = ${q(ids.membership)}::uuid;`,
+    );
+    const forbiddenRole = await page.request.get(
+      previewUrl(ids.reservation, "reservation_contract", ids.contractTemplate),
+    );
+    expect(forbiddenRole.status()).toBe(404);
+    expect(await forbiddenRole.json()).toEqual({ error: "Aperçu indisponible." });
+    sql(
+      `update public.memberships set role = 'member' where id = ${q(ids.membership)}::uuid;`,
+    );
+
+    expect(organizationCount("documents")).toBe(previewStateBefore.documents);
+    expect(storagePaths()).toEqual(previewStateBefore.documentObjects);
+    expect(
+      sql(
+        `select row_to_json(r)::text from public.reservations r where id = ${q(ids.reservation)}::uuid;`,
+      ),
+    ).toBe(previewStateBefore.reservation);
+    expect(organizationCount("payments")).toBe(previewStateBefore.payments);
+    expect(organizationCount("email_delivery_attempts")).toBe(
+      previewStateBefore.emails,
+    );
+
+    await contractCard
+      .getByLabel("Modèle compatible")
+      .selectOption(ids.contractTemplate);
 
     await contractCard.getByRole("button", { name: "Générer le PDF" }).click();
     await expect(page).toHaveURL(/document_generation_status=created/, {
@@ -309,7 +584,11 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       "memberships",
     ]) {
       expect(
-        organizationCount(table),
+        Number(
+          sql(
+            `select count(*) from public.${table} where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);`,
+          ),
+        ),
         `${table} fixtures must be hard-deleted`,
       ).toBe(0);
     }
@@ -317,6 +596,13 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       Number(
         sql(
           `select count(*) from public.organizations where id = ${q(ids.organization)}::uuid;`,
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      Number(
+        sql(
+          `select count(*) from public.organizations where id = ${q(ids.foreignOrganization)}::uuid;`,
         ),
       ),
     ).toBe(0);
