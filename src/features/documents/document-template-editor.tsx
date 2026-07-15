@@ -422,6 +422,8 @@ export function DocumentTemplateEditor({
   canValidate = false,
   canPublish = false,
   destructiveAction,
+  previewLogo = null,
+  previewBrandingUnavailable = false,
 }: {
   templateId: string;
   version: number;
@@ -437,6 +439,8 @@ export function DocumentTemplateEditor({
     familyName: string;
     hasPublication: boolean;
   };
+  previewLogo?: { dataUri: string; widthPx: number; heightPx: number } | null;
+  previewBrandingUnavailable?: boolean;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState(initialDefinition);
@@ -640,9 +644,13 @@ export function DocumentTemplateEditor({
             : "hidden space-y-3 lg:sticky lg:top-5 lg:block"}
         >
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-            Aperçu avec données fictives — aucune réservation ni aucun document n’est créé ou modifié.
+            Aperçu avec données fictives et identité visuelle actuelle — aucune réservation ni aucun document n’est créé ou modifié.
           </p>
-          <DocumentTemplatePdfPreview definition={previewDefinition} />
+          <DocumentTemplatePdfPreview
+            definition={previewDefinition}
+            logo={previewLogo}
+            brandingUnavailable={previewBrandingUnavailable}
+          />
         </aside>
       </div>
     </div>

@@ -257,6 +257,7 @@ export async function generateAndStoreReservationDocumentPdfCore(
     documentType: input.documentType,
     snapshot: prepared.snapshot,
     templateContent: prepared.templateContent,
+    logoBytes: prepared.logoBytes,
   });
   if (rendered.outcome === "error") {
     return fail("render", rendered.error.code);

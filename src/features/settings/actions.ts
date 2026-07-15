@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getBrevoTransactionalTemplateConfig } from "@/features/settings/brevo-template-registry";
+import {
+  retireActiveOrganizationLogo,
+  uploadOrganizationLogo,
+} from "@/features/settings/organization-logo-service";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -25,6 +29,37 @@ function statusUrl(
   anchor?: string,
 ) {
   return `${settingsPath}?${key}=${outcome}${anchor ? `#${anchor}` : ""}`;
+}
+
+function brandingStatusUrl(outcome: "success" | "removed" | "error") {
+  return `${settingsPath}?branding_status=${outcome}#visual-identity`;
+}
+
+export async function uploadOrganizationLogoAction(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const requestedAssetId = normalizeOptionalText(formData.get("asset_id"), 64);
+  const assetId = requestedAssetId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestedAssetId)
+    ? requestedAssetId.toLowerCase()
+    : undefined;
+  const file = formData.get("logo");
+  if (!organizationId || !(file instanceof File)) {
+    redirect(brandingStatusUrl("error"));
+  }
+  const result = await uploadOrganizationLogo({ organizationId, file, assetId });
+  if (!result.ok) redirect(brandingStatusUrl("error"));
+  revalidatePath(settingsPath);
+  revalidatePath("/documents/modeles", "layout");
+  redirect(brandingStatusUrl("success"));
+}
+
+export async function retireOrganizationLogoAction(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  if (!organizationId) redirect(brandingStatusUrl("error"));
+  const result = await retireActiveOrganizationLogo(organizationId);
+  if (!result.ok) redirect(brandingStatusUrl("error"));
+  revalidatePath(settingsPath);
+  revalidatePath("/documents/modeles", "layout");
+  redirect(brandingStatusUrl("removed"));
 }
 
 function animalPricesStatusUrl(outcome: "success" | "error") {

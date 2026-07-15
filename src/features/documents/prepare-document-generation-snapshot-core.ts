@@ -11,6 +11,7 @@ import {
   resolveEffectiveReservationDocumentTaxonomy,
 } from "./reservation-document-template-compatibility";
 import { readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
+import { readActiveOrganizationLogo } from "@/features/settings/organization-logo-service";
 import type { Database } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
@@ -35,6 +36,7 @@ export type PrepareDocumentGenerationSnapshotErrorCode =
   | "invalid_template"
   | "template_mismatch"
   | "incomplete_source_data"
+  | "branding_inconsistent"
   | "database_error";
 
 export type PrepareDocumentGenerationSnapshotResult =
@@ -45,6 +47,8 @@ export type PrepareDocumentGenerationSnapshotResult =
       templateContent: string;
       templateId: string;
       templateVersion: number;
+      logoBytes: Buffer | null;
+      logoDataUri: string | null;
     }
   | {
       outcome: "error";
@@ -126,6 +130,16 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   const organizationId = reservation.organization_id;
   const contactId = reservation.contact_id;
   if (!organizationId || !contactId) return fail("incomplete_source_data");
+
+  const activeLogoResult = await readActiveOrganizationLogo(organizationId, supabase);
+  if (!activeLogoResult.ok) {
+    return fail(
+      activeLogoResult.code === "inconsistent" || activeLogoResult.code === "not_found"
+        ? "branding_inconsistent"
+        : "database_error",
+    );
+  }
+  const activeLogo = activeLogoResult.logo;
 
   const [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult, templateResult] = await Promise.all([
     supabase.from("organizations").select("id, name, legal_name, legal_form, siret, email, phone, website_url, address_line1, address_line2, postal_code, city, country").eq("id", organizationId).is("deleted_at", null).maybeSingle(),
@@ -331,6 +345,16 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       choiceRank: reservation.rank_active,
     },
     signature: { defaultCity: settings?.signature_city_default },
+    branding: {
+      logo: activeLogo ? {
+        assetId: activeLogo.asset.id,
+        fileSha256: activeLogo.asset.file_sha256,
+        fileSizeBytes: activeLogo.asset.file_size_bytes,
+        mimeType: activeLogo.asset.mime_type as "image/png" | "image/jpeg",
+        widthPx: activeLogo.asset.width_px,
+        heightPx: activeLogo.asset.height_px,
+      } : null,
+    },
     mediator: input.documentType === "reservation_contract" ? { name: settings?.mediator_name, contact: settings?.mediator_contact, website: settings?.mediator_website_url } : undefined,
     financials,
   });
@@ -346,5 +370,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     templateContent: template.template_content!,
     templateId: template.id,
     templateVersion: template.version,
+    logoBytes: activeLogo?.bytes ?? null,
+    logoDataUri: activeLogo?.dataUri ?? null,
   };
 }

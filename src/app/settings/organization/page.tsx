@@ -10,6 +10,7 @@ import {
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
 import { brevoTransactionalTemplateConfigs } from "@/features/settings/brevo-template-registry";
+import { OrganizationLogoSettings } from "@/features/settings/organization-logo-settings";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
@@ -238,6 +239,7 @@ export default async function OrganizationSettingsPage({
     document_settings_status?: StatusValue;
     brevo_templates_status?: StatusValue;
     brevo_status?: BrevoStatusValue;
+    branding_status?: "success" | "removed" | "error";
   }>;
 }) {
   const query = await searchParams;
@@ -320,6 +322,14 @@ export default async function OrganizationSettingsPage({
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
+    .maybeSingle();
+
+  const { data: activeLogo } = await supabase
+    .from("organization_brand_assets")
+    .select("id, created_at, width_px, height_px")
+    .eq("organization_id", membership.organization_id)
+    .eq("asset_type", "logo")
+    .is("retired_at", null)
     .maybeSingle();
 
   const { data: emailDeliveryAttempts } = await supabase
@@ -442,6 +452,11 @@ export default async function OrganizationSettingsPage({
           error="Impossible de mettre à jour le modèle transactionnel Brevo."
         />
         <BrevoStatusMessage value={query.brevo_status} />
+        <StatusMessage
+          value={query.branding_status === "removed" ? "success" : query.branding_status}
+          success={query.branding_status === "removed" ? "Le logo actif a été retiré. Les versions précédentes et les PDF existants sont conservés." : "Le logo de l’organisation a bien été importé."}
+          error="Impossible de modifier le logo. Vérifiez le format, les dimensions et la taille du fichier, puis réessayez."
+        />
       </div>
 
       {diagnostics.length > 0 ? (
@@ -456,6 +471,17 @@ export default async function OrganizationSettingsPage({
           </ul>
         </section>
       ) : null}
+
+      <OrganizationLogoSettings
+        organizationId={organization.id}
+        canEdit={canEdit}
+        logo={activeLogo ? {
+          id: activeLogo.id,
+          createdAt: activeLogo.created_at,
+          widthPx: activeLogo.width_px,
+          heightPx: activeLogo.height_px,
+        } : null}
+      />
 
       <form
         id="animal-prices"
