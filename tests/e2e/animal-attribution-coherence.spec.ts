@@ -513,68 +513,40 @@ test("keeps reservation and animal statuses coherent when assigning and unassign
   }
 });
 
-test("initializes reservation price from animal sex defaults during attribution", async ({
+test("preserves null and existing reservation prices during attribution", async ({
   page,
 }) => {
   test.setTimeout(120_000);
 
   const supabase = await createAuthenticatedSupabaseClient();
-  const createdLitterIds: string[] = [];
-  const createdContactIds: string[] = [];
-  const createdReservationIds: string[] = [];
-  const createdAnimalIds: string[] = [];
-
-  const originalSettings = expectSupabaseData(
-    await supabase
-      .from("organization_settings")
-      .select(
-        "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
-      )
-      .eq("organization_id", organizationId)
-      .single(),
-    "read original price settings",
-  );
-
-  async function updatePriceSettings({
-    male,
-    female,
-    fallback,
-  }: {
-    male: number | null;
-    female: number | null;
-    fallback: number | null;
-  }) {
-    const { error } = await supabase
-      .from("organization_settings")
-      .update({
-        default_male_puppy_price_cents: male,
-        default_female_puppy_price_cents: female,
-        default_puppy_price_cents: fallback,
-      })
-      .eq("organization_id", organizationId);
-
-    expect(error).toBeNull();
-  }
+  const fixtures = [
+    {
+      label: "null",
+      litterId: "31000000-0000-4000-8000-000000000001",
+      contactId: "32000000-0000-4000-8000-000000000001",
+      reservationId: "33000000-0000-4000-8000-000000000001",
+      animalId: "34000000-0000-4000-8000-000000000001",
+      initialPriceCents: null,
+    },
+    {
+      label: "existing",
+      litterId: "31000000-0000-4000-8000-000000000002",
+      contactId: "32000000-0000-4000-8000-000000000002",
+      reservationId: "33000000-0000-4000-8000-000000000002",
+      animalId: "34000000-0000-4000-8000-000000000002",
+      initialPriceCents: 199000,
+    },
+  ] as const;
 
   async function createAttributionFixture({
     label,
-    animalSex,
-    initialPriceCents = null,
-  }: {
-    label: string;
-    animalSex: "male" | "female" | "unknown";
-    initialPriceCents?: number | null;
-  }) {
-    const suffix = `${label}-${randomUUID().slice(0, 8)}`;
-    const litterId = randomUUID();
-    const contactId = randomUUID();
-    const reservationId = randomUUID();
-    const animalId = randomUUID();
-
-    createdLitterIds.push(litterId);
-    createdContactIds.push(contactId);
-    createdReservationIds.push(reservationId);
-    createdAnimalIds.push(animalId);
+    litterId,
+    contactId,
+    reservationId,
+    animalId,
+    initialPriceCents,
+  }: (typeof fixtures)[number]) {
+    const suffix = `readonly-${label}`;
 
     const { error: litterError } = await supabase.from("litters").insert({
       id: litterId,
@@ -613,8 +585,7 @@ test("initializes reservation price from animal sex defaults during attribution"
         species: "dog",
         breed: "Golden Retriever",
         litter_id: litterId,
-        reserved_sex_preference:
-          animalSex === "male" ? "female_only" : "male_only",
+        reserved_sex_preference: "no_preference",
         status: "draft",
         price_cents: initialPriceCents,
         created_by: ownerId,
@@ -629,7 +600,7 @@ test("initializes reservation price from animal sex defaults during attribution"
       call_name: `Animal prix ${suffix}`,
       species: "dog",
       breed: "Golden Retriever",
-      sex: animalSex,
+      sex: "male",
       status: "available",
       ownership_status: "produced",
       is_breeder: false,
@@ -639,15 +610,13 @@ test("initializes reservation price from animal sex defaults during attribution"
       updated_by: ownerId,
     });
     expect(animalError).toBeNull();
-
-    return { reservationId, animalId };
   }
 
-  async function assignAndExpectPrice(
-    fixture: { reservationId: string; animalId: string },
-    expectedPriceCents: number | null,
-  ) {
+  async function assignAndExpectPrice(fixture: (typeof fixtures)[number]) {
     await page.goto(`/reservations/${fixture.reservationId}`);
+    await expect(page.getByText("Prix convenu actuel")).toBeVisible();
+    await expect(page.getByText("Tarif paramétré proposé")).toBeVisible();
+    await expect(page.getByText("Tarif générique paramétré")).toBeVisible();
     await page.getByLabel("Attribuer un animal").selectOption(fixture.animalId);
     await page.getByRole("button", { name: "Attribuer l’animal" }).click();
     await expect(page).toHaveURL(/animal_assign_status=success/, {
@@ -667,7 +636,7 @@ test("initializes reservation price from animal sex defaults during attribution"
       id: fixture.reservationId,
       animal_id: fixture.animalId,
       status: "animal_assigned",
-      price_cents: expectedPriceCents,
+      price_cents: fixture.initialPriceCents,
     });
 
     const { count, error: paymentsError } = await supabase
@@ -682,64 +651,17 @@ test("initializes reservation price from animal sex defaults during attribution"
   try {
     await loginOwner(page);
 
-    await updatePriceSettings({
-      male: 181000,
-      female: 202000,
-      fallback: 190000,
-    });
-    await assignAndExpectPrice(
-      await createAttributionFixture({ label: "male", animalSex: "male" }),
-      181000,
-    );
-    await assignAndExpectPrice(
-      await createAttributionFixture({ label: "female", animalSex: "female" }),
-      202000,
-    );
-
-    await updatePriceSettings({
-      male: null,
-      female: 202000,
-      fallback: 190000,
-    });
-    await assignAndExpectPrice(
-      await createAttributionFixture({
-        label: "male-fallback",
-        animalSex: "male",
-      }),
-      190000,
-    );
-
-    await updatePriceSettings({
-      male: null,
-      female: null,
-      fallback: null,
-    });
-    await assignAndExpectPrice(
-      await createAttributionFixture({ label: "no-price", animalSex: "unknown" }),
-      null,
-    );
-
-    await updatePriceSettings({
-      male: 181000,
-      female: 202000,
-      fallback: 190000,
-    });
-    await assignAndExpectPrice(
-      await createAttributionFixture({
-        label: "existing-price",
-        animalSex: "male",
-        initialPriceCents: 199000,
-      }),
-      199000,
-    );
+    for (const fixture of fixtures) {
+      await createAttributionFixture(fixture);
+      await assignAndExpectPrice(fixture);
+    }
   } finally {
     await runFixtureCleanupWithSql({
-      label: "animal attribution prices",
-      contactIds: createdContactIds,
-      reservationIds: createdReservationIds,
-      animalIds: createdAnimalIds,
-      litterIds: createdLitterIds,
-      restorePriceSettings: originalSettings,
+      label: "animal attribution readonly prices",
+      contactIds: fixtures.map((fixture) => fixture.contactId),
+      reservationIds: fixtures.map((fixture) => fixture.reservationId),
+      animalIds: fixtures.map((fixture) => fixture.animalId),
+      litterIds: fixtures.map((fixture) => fixture.litterId),
     });
   }
 });
