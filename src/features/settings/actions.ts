@@ -8,6 +8,8 @@ import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 
 const settingsPath = "/settings/organization";
+const postgresIntegerMax = BigInt("2147483647");
+const centsPerEuro = BigInt(100);
 const legalForms = new Set(["individual", "earl", "company", "association", "other"]);
 const brevoStatuses = new Set([
   "success",
@@ -17,8 +19,16 @@ const brevoStatuses = new Set([
   "error",
 ]);
 
-function statusUrl(key: string, outcome: "success" | "error") {
-  return `${settingsPath}?${key}=${outcome}`;
+function statusUrl(
+  key: string,
+  outcome: "success" | "error",
+  anchor?: string,
+) {
+  return `${settingsPath}?${key}=${outcome}${anchor ? `#${anchor}` : ""}`;
+}
+
+function animalPricesStatusUrl(outcome: "success" | "error") {
+  return statusUrl("animal_prices_status", outcome, "animal-prices");
 }
 
 function brevoStatusUrl(outcome: string) {
@@ -82,6 +92,31 @@ function parseOptionalPositiveInteger(value: FormDataEntryValue | null) {
   return { ok: true as const, value: numericValue };
 }
 
+function parseOptionalEuroCents(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") {
+    return { ok: false as const };
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return { ok: true as const, value: null };
+  }
+
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(trimmedValue)) {
+    return { ok: false as const };
+  }
+
+  const [euros, decimals = ""] = trimmedValue.replace(",", ".").split(".");
+  const cents =
+    BigInt(euros) * centsPerEuro + BigInt(decimals.padEnd(2, "0"));
+
+  if (cents > postgresIntegerMax) {
+    return { ok: false as const };
+  }
+
+  return { ok: true as const, value: Number(cents) };
+}
+
 function buildDisplayName({
   requestedDisplayName,
   firstName,
@@ -95,7 +130,11 @@ function buildDisplayName({
   return requestedDisplayName || fullName || null;
 }
 
-async function requireAdminOrganization(organizationId: string, errorKey: string) {
+async function requireAdminOrganization(
+  organizationId: string,
+  errorKey: string,
+  errorAnchor?: string,
+) {
   const supabase = await createClient();
   const {
     data: { user },
@@ -119,10 +158,53 @@ async function requireAdminOrganization(organizationId: string, errorKey: string
     !membership ||
     (membership.role !== "owner" && membership.role !== "admin")
   ) {
-    redirect(statusUrl(errorKey, "error"));
+    redirect(statusUrl(errorKey, "error", errorAnchor));
   }
 
   return { supabase, userId: user.id, organizationId: membership.organization_id };
+}
+
+export async function updateOrganizationAnimalPrices(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const malePrice = parseOptionalEuroCents(formData.get("male_price"));
+  const femalePrice = parseOptionalEuroCents(formData.get("female_price"));
+  const genericPrice = parseOptionalEuroCents(formData.get("generic_price"));
+
+  if (
+    !organizationId ||
+    !malePrice.ok ||
+    !femalePrice.ok ||
+    !genericPrice.ok
+  ) {
+    redirect(animalPricesStatusUrl("error"));
+  }
+
+  const { supabase, userId } = await requireAdminOrganization(
+    organizationId,
+    "animal_prices_status",
+    "animal-prices",
+  );
+
+  const { data: updatedSettings, error } = await supabase
+    .from("organization_settings")
+    .update({
+      default_male_puppy_price_cents: malePrice.value,
+      default_female_puppy_price_cents: femalePrice.value,
+      default_puppy_price_cents: genericPrice.value,
+      updated_by: userId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("organization_id", organizationId)
+    .is("deleted_at", null)
+    .select("organization_id")
+    .maybeSingle();
+
+  if (error || !updatedSettings) {
+    redirect(animalPricesStatusUrl("error"));
+  }
+
+  revalidatePath(settingsPath);
+  redirect(animalPricesStatusUrl("success"));
 }
 
 async function requireCurrentAdminOrganization(errorOutcome: string) {

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import {
   testOrganizationBrevoConnection,
   updateBrevoTransactionalTemplateId,
+  updateOrganizationAnimalPrices,
   updateOrganizationDocumentSettings,
   updateOrganizationIdentity,
   upsertDefaultRepresentative,
@@ -103,6 +104,7 @@ function Field({
   disabled,
   type = "text",
   autoComplete,
+  inputMode,
 }: {
   id: string;
   label: string;
@@ -111,6 +113,7 @@ function Field({
   disabled?: boolean;
   type?: string;
   autoComplete?: string;
+  inputMode?: "decimal" | "numeric" | "text";
 }) {
   return (
     <div>
@@ -125,6 +128,7 @@ function Field({
         name={name}
         type={type}
         autoComplete={autoComplete}
+        inputMode={inputMode}
         defaultValue={defaultValue ?? ""}
         disabled={disabled}
         className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
@@ -207,6 +211,12 @@ function formatDateTime(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatEuroInputValue(valueCents: number | null | undefined) {
+  return valueCents === null || valueCents === undefined
+    ? ""
+    : (valueCents / 100).toFixed(2);
+}
+
 function formatAttemptStatus(status: string) {
   const labels: Record<string, string> = {
     pending: "En attente",
@@ -223,6 +233,7 @@ export default async function OrganizationSettingsPage({
 }: {
   searchParams: Promise<{
     identity_status?: StatusValue;
+    animal_prices_status?: StatusValue;
     representative_status?: StatusValue;
     document_settings_status?: StatusValue;
     brevo_templates_status?: StatusValue;
@@ -297,6 +308,15 @@ export default async function OrganizationSettingsPage({
     .from("organization_document_settings")
     .select(
       "mediator_name, mediator_contact, mediator_website_url, deposit_terms, refund_terms, postponement_terms, credit_terms, withholding_terms, reservation_contract_terms, commitment_certificate_text, legal_mentions, signature_city_default",
+    )
+    .eq("organization_id", membership.organization_id)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  const { data: animalPriceSettings } = await supabase
+    .from("organization_settings")
+    .select(
+      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
@@ -407,6 +427,11 @@ export default async function OrganizationSettingsPage({
           error="Impossible d’enregistrer le représentant signataire."
         />
         <StatusMessage
+          value={query.animal_prices_status}
+          success="Les tarifs des animaux ont bien été mis à jour."
+          error="Impossible de mettre à jour les tarifs des animaux. Vérifiez les montants saisis."
+        />
+        <StatusMessage
           value={query.document_settings_status}
           success="Les paramètres documentaires ont bien été mis à jour."
           error="Impossible de mettre à jour les paramètres documentaires."
@@ -431,6 +456,70 @@ export default async function OrganizationSettingsPage({
           </ul>
         </section>
       ) : null}
+
+      <form
+        id="animal-prices"
+        action={updateOrganizationAnimalPrices}
+        className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
+      >
+        <input type="hidden" name="organization_id" value={organization.id} />
+        <h2 className="text-xl font-semibold">Tarifs des animaux</h2>
+        <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
+          Les tarifs mâle et femelle alimentent les propositions selon le sexe
+          de l’animal ou la préférence du futur adoptant. Le tarif générique
+          sert lorsqu’aucune préférence n’est exploitable ou lorsque le tarif
+          sexué attendu manque.
+        </p>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+          Ces paramètres actualisent uniquement les propositions informatives :
+          ils ne modifient jamais automatiquement un prix convenu, un snapshot
+          ou un PDF existant.
+        </p>
+        <div className="mt-6 grid gap-5 sm:grid-cols-3">
+          <Field
+            id="animal-male-price"
+            label="Tarif mâle"
+            name="male_price"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={formatEuroInputValue(
+              animalPriceSettings?.default_male_puppy_price_cents,
+            )}
+            disabled={!canEdit}
+          />
+          <Field
+            id="animal-female-price"
+            label="Tarif femelle"
+            name="female_price"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={formatEuroInputValue(
+              animalPriceSettings?.default_female_puppy_price_cents,
+            )}
+            disabled={!canEdit}
+          />
+          <Field
+            id="animal-generic-price"
+            label="Tarif générique de secours"
+            name="generic_price"
+            inputMode="decimal"
+            autoComplete="off"
+            defaultValue={formatEuroInputValue(
+              animalPriceSettings?.default_puppy_price_cents,
+            )}
+            disabled={!canEdit}
+          />
+        </div>
+        <p className="mt-4 text-xs leading-5 text-muted">
+          Montants en euros, avec au maximum deux décimales. Un champ vide
+          retire le tarif correspondant.
+        </p>
+        <SubmitRow
+          cancelHref="#animal-prices"
+          disabled={!canEdit}
+          label="Enregistrer les tarifs"
+        />
+      </form>
 
       <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
