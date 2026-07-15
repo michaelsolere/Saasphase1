@@ -1,10 +1,12 @@
 import {
   DOCUMENT_TEMPLATE_LOCALE,
   DOCUMENT_TEMPLATE_SCHEMA_VERSION,
+  FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
   type CommitmentCertificateTemplateDefinition,
   type DocumentTemplateDefinition,
   type DocumentTemplateType,
   type ReservationContractTemplateDefinition,
+  type FreeReservationContractTemplateDefinition,
 } from "./document-template-definitions";
 
 type JsonObject = Record<string, unknown>;
@@ -89,6 +91,18 @@ function decodeReservationContract(
   };
 }
 
+function decodeFreeReservationContract(
+  stored: JsonObject,
+): FreeReservationContractTemplateDefinition {
+  return {
+    schemaVersion: FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
+    locale: DOCUMENT_TEMPLATE_LOCALE,
+    documentType: "reservation_contract",
+    title: asString(stored.title),
+    body: asString(stored.body),
+  };
+}
+
 export function decodeDocumentTemplateDraft({
   documentType,
   templateContent,
@@ -100,5 +114,7 @@ export function decodeDocumentTemplateDraft({
 
   return documentType === "commitment_certificate"
     ? decodeCommitmentCertificate(stored)
-    : decodeReservationContract(stored);
+    : stored.schemaVersion === FREE_RESERVATION_CONTRACT_SCHEMA_VERSION
+      ? decodeFreeReservationContract(stored)
+      : decodeReservationContract(stored);
 }

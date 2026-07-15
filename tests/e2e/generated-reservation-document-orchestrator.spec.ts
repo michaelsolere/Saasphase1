@@ -45,6 +45,12 @@ const ids = {
   viewerDocument: "7e150000-0000-4000-8000-000000000028",
   mother: "7e150000-0000-4000-8000-000000000029",
   father: "7e150000-0000-4000-8000-000000000030",
+  v2ValidFamily: "7e150000-0000-4000-8000-000000000031",
+  v2ValidTemplate: "7e150000-0000-4000-8000-000000000032",
+  v2MissingFamily: "7e150000-0000-4000-8000-000000000033",
+  v2MissingTemplate: "7e150000-0000-4000-8000-000000000034",
+  v2ValidDocument: "7e150000-0000-4000-8000-000000000035",
+  v2MissingDocument: "7e150000-0000-4000-8000-000000000036",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -86,6 +92,20 @@ const certificateDefinition = {
   },
   acknowledgmentText: ["Reconnaissance."],
   signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+};
+
+const validV2Definition = {
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat libre V2 — [[animal.nom]]",
+  body: "Adoptant : [[adoptant.nom_complet]]\nRace : [[projet.race]]\nRobe : [[animal.couleur]]\nPrix : [[reservation.prix_formate]]\nDate : [[document.date_generation]]",
+};
+
+const missingV2Definition = {
+  ...validV2Definition,
+  title: "Contrat libre V2 incomplet",
+  body: "Téléphone : [[adoptant.telephone]]",
 };
 
 function q(value: string) {
@@ -161,8 +181,8 @@ function seed() {
            (${q(ids.father)}, ${q(ids.organization)}, 'Père QA officiel', 'Père QA', 'dog', 'Golden Retriever', 'male', '250269000000030', 'LOF-PERE-QA');
     insert into public.litters (id, organization_id, litter_group_id, name, species, breed, actual_birth_date, available_from, mother_id, father_id)
     values (${q(ids.litter)}, ${q(ids.organization)}, ${q(ids.group)}, 'Portée QA', 'dog', 'Golden Retriever', '2026-06-01', '2026-08-01', ${q(ids.mother)}, ${q(ids.father)});
-    insert into public.animals (id, organization_id, litter_id, official_name, call_name, species, breed, sex, birth_date, identification_number)
-    values (${q(ids.animal)}, ${q(ids.organization)}, ${q(ids.litter)}, 'NOVA QA', 'Nova', 'dog', 'Golden Retriever', 'female', '2026-06-01', '250269000000009');
+    insert into public.animals (id, organization_id, litter_id, official_name, call_name, species, breed, sex, birth_date, identification_number, coat_color, color)
+    values (${q(ids.animal)}, ${q(ids.organization)}, ${q(ids.litter)}, 'NOVA QA', 'Nova', 'dog', 'Golden Retriever', 'female', '2026-06-01', '250269000000009', 'Crème prioritaire', 'Doré secondaire');
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, litter_id, rank_active, status, reserved_sex_preference, price_cents, currency, created_at)
     values (${q(ids.contractReservation)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.group)}, ${q(ids.litter)}, 3, 'active', 'female_only', 250000, 'EUR', '2026-07-01T09:00:00Z');
     insert into public.reservations (id, organization_id, contact_id, application_id, litter_group_id, litter_id, animal_id, status, reserved_sex_preference, price_cents, currency, created_at)
@@ -175,11 +195,15 @@ function seed() {
       (id, organization_id, name, document_type, species, breed)
     values
       (${q(ids.contractTemplate)}, ${q(ids.organization)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever'),
-      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever');
+      (${q(ids.certificateTemplate)}, ${q(ids.organization)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever'),
+      (${q(ids.v2ValidFamily)}, ${q(ids.organization)}, 'Contrat libre V2 QA', 'reservation_contract', 'dog', 'Golden Retriever'),
+      (${q(ids.v2MissingFamily)}, ${q(ids.organization)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever');
     insert into public.document_templates
       (id, organization_id, family_id, name, document_type, species, breed, template_format, template_content, version, lifecycle_status, is_active, published_at, published_by)
     values (${q(ids.contractTemplate)}, ${q(ids.organization)}, ${q(ids.contractTemplate)}, 'Contrat QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 4, 'published', true, now(), ${q(ownerId)}),
-           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 6, 'published', true, now(), ${q(ownerId)});
+           (${q(ids.certificateTemplate)}, ${q(ids.organization)}, ${q(ids.certificateTemplate)}, 'Certificat QA', 'commitment_certificate', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(certificateDefinition))}, 6, 'published', true, now(), ${q(ownerId)}),
+           (${q(ids.v2ValidTemplate)}, ${q(ids.organization)}, ${q(ids.v2ValidFamily)}, 'Contrat libre V2 QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(validV2Definition))}, 1, 'published', true, now(), ${q(ownerId)}),
+           (${q(ids.v2MissingTemplate)}, ${q(ids.organization)}, ${q(ids.v2MissingFamily)}, 'Contrat libre V2 incomplet QA', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(missingV2Definition))}, 1, 'published', true, now(), ${q(ownerId)});
     insert into public.payments (id, organization_id, contact_id, reservation_id, amount_cents, payment_type, status)
     values (${q(ids.payment)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.contractReservation)}, 75000, 'arrhes', 'paid');
     insert into public.documents (id, organization_id, contact_id, application_id, reservation_id, litter_id, document_type, status, title, signature_required)
@@ -209,6 +233,16 @@ function certificateInput(documentId: string) {
     reservationId: ids.certificateReservation,
     documentType: "commitment_certificate" as const,
     templateId: ids.certificateTemplate,
+    capturedAt,
+  };
+}
+
+function v2Input(documentId: string, missing = false) {
+  return {
+    documentId,
+    reservationId: missing ? ids.contractReservation : ids.certificateReservation,
+    documentType: "reservation_contract" as const,
+    templateId: missing ? ids.v2MissingTemplate : ids.v2ValidTemplate,
     capturedAt,
   };
 }
@@ -369,6 +403,42 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
       templateVersion: 6,
       replacesDocumentId: null,
     });
+
+    const rowsBeforeMissingV2 = count("documents");
+    const pathsBeforeMissingV2 = await storagePaths();
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        v2Input(ids.v2MissingDocument, true),
+        supabase,
+      ),
+    ).toEqual({
+      outcome: "error",
+      error: { stage: "render", code: "missing_template_variables" },
+    });
+    expect(count("documents")).toBe(rowsBeforeMissingV2);
+    expect(await storagePaths()).toEqual(pathsBeforeMissingV2);
+
+    const validV2 = await generateAndStoreReservationDocumentPdfCore(
+      v2Input(ids.v2ValidDocument),
+      supabase,
+    );
+    expect(validV2).toMatchObject({
+      outcome: "created",
+      documentId: ids.v2ValidDocument,
+      title: "Contrat libre V2 — Nova",
+      templateId: ids.v2ValidTemplate,
+      templateVersion: 1,
+      replacesDocumentId: null,
+    });
+    const storedV2 = await readDocumentPdfCore(ids.organization, ids.v2ValidDocument, supabase);
+    expect(storedV2.outcome).toBe("success");
+    if (storedV2.outcome !== "success") throw new Error("V2 contract read failed");
+    expect(storedV2.document.generation_data).toMatchObject({
+      adoptionProject: { animal: { color: "Crème prioritaire" } },
+      template: { templateId: ids.v2ValidTemplate, templateVersion: 1 },
+      capturedAt,
+    });
+    expect(JSON.stringify(storedV2.document.generation_data)).not.toContain("Doré secondaire");
 
     const contractV2 = await generateAndStoreReservationDocumentPdfCore(
       contractInput(ids.contractV2, laterCapturedAt),

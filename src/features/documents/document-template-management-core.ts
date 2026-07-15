@@ -283,6 +283,7 @@ function mapVersion(
 
 export function getDocumentTemplateValidationMessage(
   error: Extract<ParseDocumentTemplateDefinitionResult, { success: false }>["error"],
+  variableIssues: Extract<ParseDocumentTemplateDefinitionResult, { success: false }>["variableIssues"] = undefined,
 ) {
   switch (error) {
     case "invalid_format":
@@ -295,6 +296,10 @@ export function getDocumentTemplateValidationMessage(
       return "Le type de document du contenu ne correspond pas à celui de la famille.";
     case "invalid_template_content":
       return "Le contenu du brouillon ne respecte pas le schéma documentaire attendu.";
+    case "invalid_template_variables":
+      return variableIssues?.length
+        ? `Corrigez les variables du modèle : ${variableIssues.map((issue) => issue.message).join(" ")}`
+        : "Les variables du modèle sont inconnues ou mal écrites.";
   }
 }
 
@@ -303,7 +308,7 @@ function invalidTemplate(
 ) {
   return failure(
     "invalid_template",
-    getDocumentTemplateValidationMessage(parsed.error),
+    getDocumentTemplateValidationMessage(parsed.error, parsed.variableIssues),
   );
 }
 

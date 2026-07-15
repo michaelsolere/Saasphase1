@@ -893,6 +893,13 @@ function ReservationStatusMessages({
       message: "Cette demande avait déjà été traitée. Aucun doublon n’a été créé.",
     },
     {
+      when: query.document_generation_status === "missing_data",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le document ne peut pas être généré : certaines données utilisées dans le modèle sont manquantes.",
+    },
+    {
       when: query.document_generation_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,

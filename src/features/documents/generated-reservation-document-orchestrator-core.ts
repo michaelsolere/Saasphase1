@@ -22,6 +22,7 @@ import {
   type PrepareDocumentGenerationSnapshotResult,
 } from "./prepare-document-generation-snapshot-core";
 import type { Database } from "@/types/database.types";
+import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
 
 type Supabase = SupabaseClient<Database>;
 type SupportedDocumentType =
@@ -263,6 +264,26 @@ export async function generateAndStoreReservationDocumentPdfCore(
     return fail("render", rendered.error.code);
   }
 
+  let documentTitle = prepared.templateDefinition.title;
+  if (
+    prepared.templateDefinition.schemaVersion === 2 &&
+    prepared.snapshot.documentType === "reservation_contract"
+  ) {
+    const resolvedDefinition = resolveFreeReservationContractDefinition({
+      definition: prepared.templateDefinition,
+      snapshot: prepared.snapshot,
+    });
+    if (!resolvedDefinition.success) {
+      return fail(
+        "render",
+        resolvedDefinition.error === "missing_template_variables"
+          ? "missing_template_variables"
+          : "invalid_template",
+      );
+    }
+    documentTitle = resolvedDefinition.title;
+  }
+
   const currentDocument = await supabase
     .from("documents")
     .select("id, replaces_document_id")
@@ -289,7 +310,7 @@ export async function generateAndStoreReservationDocumentPdfCore(
       replacesDocumentId,
       bytes: rendered.bytes,
       documentType: input.documentType,
-      title: prepared.templateDefinition.title,
+      title: documentTitle,
       templateId: prepared.templateId,
       generatedFromTemplate: true,
       generatedAt: prepared.snapshot.capturedAt,
@@ -326,7 +347,7 @@ export async function generateAndStoreReservationDocumentPdfCore(
     outcome: stored.outcome,
     documentId: stored.documentId,
     documentType: input.documentType,
-    title: prepared.templateDefinition.title,
+    title: documentTitle,
     fileName: rendered.fileName,
     filePath: stored.filePath,
     fileSha256: stored.fileSha256,

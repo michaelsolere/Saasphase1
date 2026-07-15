@@ -112,6 +112,7 @@ const commonSnapshot = {
       birthDate: "2026-05-02",
       identification: "250000000000003",
       lofNumber: "LOF FICTIF 300/30",
+      color: "Sable doré fictif",
     },
   },
   reservation: {

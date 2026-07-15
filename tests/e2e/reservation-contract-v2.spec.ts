@@ -1,0 +1,159 @@
+import { createHash } from "node:crypto";
+
+import { expect, test } from "@playwright/test";
+
+import { createInitialDocumentTemplateDefinition, INITIAL_FREE_RESERVATION_CONTRACT_BODY } from "../../src/features/documents/create-initial-document-template-definition";
+import { insertTemplateVariableAtSelection } from "../../src/features/documents/insert-template-variable";
+import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
+import { renderDocumentPdfCore } from "../../src/features/documents/document-pdf-renderer-core";
+import { createDocumentTemplatePreviewSnapshot } from "../../src/features/documents/document-template-preview-snapshot";
+import { parseDocumentTemplateDefinition } from "../../src/features/documents/parse-document-template-definition";
+import { parseDocumentGenerationSnapshot } from "../../src/features/documents/parse-document-generation-snapshot";
+import {
+  formatFrenchDate,
+  formatFrenchMoney,
+  formatFrenchMoneyInWords,
+  parseReservationContractVariables,
+  resolveReservationContractText,
+} from "../../src/features/documents/reservation-contract-template-variables";
+import { resolveAnimalSnapshotColor } from "../../src/features/documents/resolve-animal-snapshot-color";
+import type { FreeReservationContractTemplateDefinition, ReservationContractTemplateDefinition } from "../../src/features/documents/document-template-definitions";
+
+const v1: ReservationContractTemplateDefinition = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat V1",
+  preamble: ["Préambule"],
+  clauses: {
+    reservationPurpose: ["Objet"], priceAndPayments: ["Prix"], deposit: ["Arrhes"],
+    cancellationAndRefund: ["Annulation"], postponementAndCredit: ["Report"],
+    potentialWithholding: ["Retenue"], finalConditions: ["Final"],
+  },
+  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+};
+
+const v2: FreeReservationContractTemplateDefinition = {
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat de [[projet.race]]",
+  body: "Adoptant : [[adoptant.nom_complet]]\nPrix : [[reservation.prix_formate]]\nEn lettres : [[reservation.prix_en_lettres]]",
+};
+
+function parse(definition: unknown) {
+  return parseDocumentTemplateDefinition({
+    templateFormat: "json",
+    documentType: "reservation_contract",
+    templateContent: JSON.stringify(definition),
+  });
+}
+
+test("parse les V1 sans changement et valide strictement les variables V2", () => {
+  expect(parse(v1)).toEqual({ success: true, definition: v1 });
+  expect(parse(v2)).toEqual({ success: true, definition: v2 });
+
+  const unknown = parse({ ...v2, body: "[[adoptant.telephonne]]" });
+  expect(unknown).toMatchObject({ success: false, error: "invalid_template_variables" });
+  if (unknown.success) throw new Error("Variable inconnue acceptée");
+  expect(unknown.variableIssues?.[0]).toMatchObject({ code: "unknown_variable", token: "[[adoptant.telephonne]]" });
+
+  expect(parseReservationContractVariables("Texte [[adoptant.email]")).toMatchObject({
+    success: false,
+    issues: [{ code: "unclosed_variable" }],
+  });
+  expect(parseReservationContractVariables("[[adoptant email]]")).toMatchObject({
+    success: false,
+    issues: [{ code: "forbidden_characters" }],
+  });
+  expect(parseReservationContractVariables("[[adoptant]]")).toMatchObject({
+    success: false,
+    issues: [{ code: "invalid_syntax" }],
+  });
+  expect(parse({ ...v2, body: "x".repeat(30_001) })).toEqual({
+    success: false,
+    error: "invalid_template_content",
+  });
+});
+
+test("résout une seule passe avec les formats français et les règles métier", () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  snapshot.financials.priceCents = 160_000;
+  snapshot.reservation.choiceRank = 3;
+  expect(formatFrenchMoney(160_000)).toBe("1 600 €");
+  expect(formatFrenchMoneyInWords(160_000)).toBe("mille six cents euros");
+  expect(formatFrenchDate("2026-07-15")).toBe("15/07/2026");
+
+  const resolved = resolveReservationContractText({
+    text: "[[reservation.rang_choix]] | [[reservation.prix_formate]] | [[reservation.prix_en_lettres]] | [[projet.sexe]] | [[projet.date_naissance]] | [[animal.couleur]]",
+    snapshot,
+  });
+  expect(resolved).toEqual({
+    success: true,
+    text: "3 | 1 600 € | mille six cents euros | Femelle | 02/05/2026 | Sable doré fictif",
+    missingVariables: [],
+  });
+
+  snapshot.adopter.displayName = "[[animal.nom]]";
+  const singlePass = resolveReservationContractText({ text: "[[adoptant.nom_complet]]", snapshot });
+  expect(singlePass).toMatchObject({ success: true, text: "[[animal.nom]]" });
+});
+
+test("rend les absences visibles en aperçu et les bloque par défaut", async () => {
+  const snapshot = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  snapshot.adopter.phone = null;
+  const definition: FreeReservationContractTemplateDefinition = {
+    ...v2,
+    title: "Contrat",
+    body: "Téléphone : [[adoptant.telephone]]",
+  };
+  snapshot.template.templateContentSha256 = createHash("sha256").update(JSON.stringify(definition)).digest("hex");
+
+  const preview = buildDocumentPdfPresentation(snapshot, definition, { allowMissingTemplateVariables: true });
+  expect(preview?.freeBody).toBe("Téléphone : [Donnée manquante : téléphone de l’adoptant]");
+  expect(preview?.freeBody).not.toContain("[[");
+
+  expect(await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+  })).toEqual({ outcome: "error", error: { code: "missing_template_variables" } });
+
+  const previewPdf = await renderDocumentPdfCore({
+    documentType: "reservation_contract",
+    snapshot,
+    templateContent: JSON.stringify(definition),
+    allowMissingTemplateVariables: true,
+  });
+  expect(previewPdf.outcome).toBe("success");
+});
+
+test("insère au curseur, remplace une sélection et initialise les nouveaux contrats en V2", () => {
+  expect(insertTemplateVariableAtSelection({ value: "Bonjour monde", variable: "adoptant.prenom", selectionStart: 8, selectionEnd: 8 })).toEqual({
+    value: "Bonjour [[adoptant.prenom]]monde",
+    cursor: 27,
+  });
+  expect(insertTemplateVariableAtSelection({ value: "Bonjour monde", variable: "animal.nom", selectionStart: 8, selectionEnd: 13 })).toEqual({
+    value: "Bonjour [[animal.nom]]",
+    cursor: 22,
+  });
+  expect(createInitialDocumentTemplateDefinition("reservation_contract")).toEqual({
+    schemaVersion: 2,
+    locale: "fr-FR",
+    documentType: "reservation_contract",
+    title: "Contrat de réservation",
+    body: INITIAL_FREE_RESERVATION_CONTRACT_BODY,
+  });
+});
+
+test("fige la couleur selon coat_color puis color et accepte un ancien snapshot sans couleur", () => {
+  expect(resolveAnimalSnapshotColor("Crème", "Doré")).toBe("Crème");
+  expect(resolveAnimalSnapshotColor("", "Doré")).toBe("Doré");
+
+  const historical = createDocumentTemplatePreviewSnapshot("reservation_contract");
+  delete historical.adoptionProject.animal?.color;
+  expect(parseDocumentGenerationSnapshot({
+    documentType: "reservation_contract",
+    generationData: historical,
+  }).success).toBe(true);
+});

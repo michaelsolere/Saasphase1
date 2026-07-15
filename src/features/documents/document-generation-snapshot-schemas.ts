@@ -135,6 +135,7 @@ const animalSchema = z
     birthDate: nullableDateSchema,
     identification: nullableTextSchema,
     lofNumber: nullableTextSchema,
+    color: nullableTextSchema.optional(),
   })
   .strict();
 
