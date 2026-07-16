@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 
 export type BirthDocumentsDepositCandidate = {
   id: string; contactName: string; contactEmail: string | null; eligible: boolean; reason: string | null;
+  documents: Array<{ documentType: "commitment_certificate" | "reservation_contract"; version: number }>;
   variables: Record<string, string>;
 };
 
@@ -27,9 +28,9 @@ export function BirthDocumentsDepositCampaignConfirmDialog({ action, litterId, c
     {open ? <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4 py-8"><div className="max-h-full w-full max-w-3xl overflow-y-auto rounded-2xl border bg-background p-6 shadow-xl">
       <h3 className="text-lg font-semibold">Confirmer Contrat + certificat</h3><p className="mt-2 text-sm text-muted">Une seule confirmation créera ou réutilisera le complément d’arrhes puis déclenchera le modèle Brevo.</p>
       <div className="mt-4 rounded-xl border p-4 text-sm"><p><b>Modèle :</b> {template?.title} (#{template?.brevoTemplateId})</p><p><b>Dossiers :</b> {selected.length}</p></div>
-      <div className="mt-4 space-y-3">{selected.map((candidate) => <details key={candidate.id} className="rounded-xl border p-3"><summary className="cursor-pointer font-semibold">{candidate.contactName} — variables prévisualisées</summary><dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">{Object.entries(candidate.variables).map(([key, value]) => <div key={key}><dt className="font-semibold">{key}</dt><dd className="break-words text-muted">{value || "(vide)"}</dd></div>)}</dl></details>)}</div>
+      <p className="mt-4 text-sm font-medium">Les deux PDF exacts affichés seront joints à l’e-mail Brevo.</p>
+      <div className="mt-4 space-y-3">{selected.map((candidate) => <details key={candidate.id} className="min-w-0 rounded-xl border p-3"><summary className="cursor-pointer font-semibold">{candidate.contactName} — variables prévisualisées</summary><div className="mt-3 space-y-1 text-sm">{candidate.documents.map((document) => <p key={document.documentType}>{document.documentType === "commitment_certificate" ? "Certificat d’engagement" : "Contrat de réservation"} — version {document.version}</p>)}</div><dl className="mt-3 grid min-w-0 gap-2 text-xs sm:grid-cols-2">{Object.entries(candidate.variables).map(([key, value]) => <div key={key} className="min-w-0"><dt className="font-semibold">{key}</dt><dd className="break-words text-muted">{value || "(vide)"}</dd></div>)}</dl></details>)}</div>
       <div className="mt-6 flex gap-3"><button type="button" onClick={() => setOpen(false)} className="rounded-xl border px-4 py-2 text-sm">Annuler</button><button type="button" disabled={selected.length === 0} onClick={() => { if (confirmationRef.current && formRef.current) { confirmationRef.current.value = "confirmed"; formRef.current.requestSubmit(); } }} className="rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white disabled:bg-muted">Confirmer l’envoi</button></div>
     </div></div> : null}
   </>;
 }
-

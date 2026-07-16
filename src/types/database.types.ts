@@ -4025,6 +4025,22 @@ export type Database = {
         Args: { value: Json }
         Returns: boolean
       }
+      mark_birth_documents_deposit_documents_sent: {
+        Args: {
+          p_commitment_document_id: string
+          p_commitment_file_sha256: string
+          p_commitment_file_size_bytes: number
+          p_commitment_version: number
+          p_contract_document_id: string
+          p_contract_file_sha256: string
+          p_contract_file_size_bytes: number
+          p_contract_version: number
+          p_organization_id: string
+          p_reservation_id: string
+          p_sent_at: string
+        }
+        Returns: string
+      }
       mark_pre_reservation_payment_paid: {
         Args: {
           p_paid_at?: string

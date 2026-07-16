@@ -20,6 +20,9 @@ export type BirthDocumentsDepositCampaignResult = {
   emailsMissingCount: number;
   missingTemplateCount: number;
   brevoNotConfiguredCount: number;
+  missingDocumentsCount: number;
+  incoherentDocumentsCount: number;
+  documentsNotSendableCount: number;
   errorCount: number;
 };
 
@@ -29,7 +32,8 @@ const emptyResult = (): BirthDocumentsDepositCampaignResult => ({
   paymentsReusedCount: 0, paymentsCompensatedCount: 0, completeCount: 0,
   preReservationUnpaidCount: 0, incompatibleRequestCount: 0,
   emailsMissingCount: 0, missingTemplateCount: 0,
-  brevoNotConfiguredCount: 0, errorCount: 0,
+  brevoNotConfiguredCount: 0, missingDocumentsCount: 0,
+  incoherentDocumentsCount: 0, documentsNotSendableCount: 0, errorCount: 0,
 });
 
 export async function runBirthDocumentsDepositCampaign(input: {
@@ -60,13 +64,18 @@ export async function runBirthDocumentsDepositCampaign(input: {
     else if (sent.status === "missing_email") result.emailsMissingCount++;
     else if (sent.status === "missing_template") result.missingTemplateCount++;
     else if (sent.status === "brevo_not_configured") result.brevoNotConfiguredCount++;
+    else if (sent.status === "missing_documents") result.missingDocumentsCount++;
+    else if (sent.status === "incoherent_documents") result.incoherentDocumentsCount++;
+    else if (sent.status === "documents_not_sendable") result.documentsNotSendableCount++;
     else result.errorCount++;
   }
   const delivered = result.emailsSentCount + result.emailsAlreadySentCount;
   const pending = result.emailsInProgressCount + result.uncertainCount;
   const rejected = result.completeCount + result.preReservationUnpaidCount +
     result.incompatibleRequestCount + result.emailsMissingCount +
-    result.missingTemplateCount + result.brevoNotConfiguredCount + result.errorCount;
+    result.missingTemplateCount + result.brevoNotConfiguredCount +
+    result.missingDocumentsCount + result.incoherentDocumentsCount +
+    result.documentsNotSendableCount + result.errorCount;
   result.status = delivered === 0 ? (pending > 0 ? "partial" : "error") :
     pending + rejected > 0 ? "partial" : "success";
   return result;
