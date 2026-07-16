@@ -2,6 +2,12 @@ import {
   isDocumentPdfMetadataCoherent,
   parseDocumentPdfPath,
 } from "@/features/documents/document-pdf-storage-core";
+import { parseDocumentGenerationSnapshot } from "@/features/documents/parse-document-generation-snapshot";
+
+export type DocumentVersionSourceKind =
+  | "common"
+  | "reservation_variant"
+  | null;
 
 export type DocumentVersionSource = {
   id: string;
@@ -13,6 +19,11 @@ export type DocumentVersionSource = {
   replaces_document_id: string | null;
   superseded_at: string | null;
   generated_at: string | null;
+  generation_data: unknown;
+  reservation_document_variant_version_id: string | null;
+  reservation_document_variant_version: number | null;
+  template_id: string | null;
+  template_label: string | null;
   source_template_version: number | null;
   file_path: string | null;
   file_sha256: string | null;
@@ -45,7 +56,10 @@ export type DocumentVersionHistoryEntry = {
   position: "current" | "historical";
   version: number | null;
   generatedAt: string | null;
+  sourceKind: DocumentVersionSourceKind;
+  reservationDocumentVariantVersion: number | null;
   sourceTemplateVersion: number | null;
+  templateLabel: string | null;
   artifacts: DocumentVersionArtifact[];
 };
 
@@ -59,6 +73,71 @@ export type ReconstructDocumentVersionChainResult =
   | { outcome: "success"; history: DocumentVersionHistory }
   | { outcome: "error" };
 
+export type DocumentVersionSourceMetadata = Pick<
+  DocumentVersionHistoryEntry,
+  | "sourceKind"
+  | "reservationDocumentVariantVersion"
+  | "sourceTemplateVersion"
+  | "templateLabel"
+>;
+
+export function deriveDocumentVersionSourceMetadata(
+  document: Pick<
+    DocumentVersionSource,
+    | "document_type"
+    | "generation_data"
+    | "reservation_document_variant_version_id"
+    | "reservation_document_variant_version"
+    | "template_id"
+    | "source_template_version"
+    | "template_label"
+  >,
+): DocumentVersionSourceMetadata {
+  const parsed = parseDocumentGenerationSnapshot({
+    documentType: document.document_type,
+    generationData: document.generation_data,
+  });
+
+  if (parsed.success) {
+    const { snapshot } = parsed;
+    if (snapshot.snapshotVersion === 2) {
+      return {
+        sourceKind: snapshot.template.sourceKind,
+        reservationDocumentVariantVersion:
+          snapshot.template.sourceKind === "reservation_variant"
+            ? snapshot.template.reservationDocumentVariantVersion
+            : null,
+        sourceTemplateVersion: snapshot.template.templateVersion,
+        templateLabel: document.template_label,
+      };
+    }
+
+    return {
+      sourceKind: "common",
+      reservationDocumentVariantVersion: null,
+      sourceTemplateVersion: snapshot.template.templateVersion,
+      templateLabel: document.template_label,
+    };
+  }
+
+  const isReservationVariant =
+    document.reservation_document_variant_version_id !== null;
+  const hasCommonSource =
+    document.template_id !== null || document.source_template_version !== null;
+  return {
+    sourceKind: isReservationVariant
+      ? "reservation_variant"
+      : hasCommonSource
+        ? "common"
+        : null,
+    reservationDocumentVariantVersion: isReservationVariant
+      ? document.reservation_document_variant_version
+      : null,
+    sourceTemplateVersion: document.source_template_version,
+    templateLabel: document.template_label,
+  };
+}
+
 function toHistoryEntry(
   document: DocumentVersionSource,
   currentDocumentId: string,
@@ -68,6 +147,7 @@ function toHistoryEntry(
     ? parseDocumentPdfPath(document.file_path!)
     : null;
   const version = parsedPath?.version ?? null;
+  const source = deriveDocumentVersionSourceMetadata(document);
 
   return {
     documentId: document.id,
@@ -78,7 +158,7 @@ function toHistoryEntry(
     position: document.id === currentDocumentId ? "current" : "historical",
     version,
     generatedAt: document.generated_at,
-    sourceTemplateVersion: document.source_template_version,
+    ...source,
     artifacts:
       version === null ? [] : [{ kind: "original_pdf", version }],
   };

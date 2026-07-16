@@ -33,6 +33,8 @@ const ids = {
   contractVariant: "7e160000-0000-4000-8000-000000000017",
   contractVariantVersion: "7e160000-0000-4000-8000-000000000018",
   concurrentVariantDocument: "7e160000-0000-4000-8000-000000000019",
+  invalidVariant: "7e160000-0000-4000-8000-000000000020",
+  invalidVariantVersion: "7e160000-0000-4000-8000-000000000021",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -269,6 +271,60 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
     await expect(
       contractCard.getByRole("option", { name: /Contrat incompatible UI E2E/ }),
     ).toHaveCount(0);
+    await expect(
+      contractCard.getByRole("option", {
+        name: "Contrat alternatif UI E2E — version 2 · modèle de référence",
+      }),
+    ).toBeEnabled();
+    await expect(
+      contractCard.getByRole("option", {
+        name: "Contrat compatible UI E2E — version 3 · variante personnalisée v1",
+      }),
+    ).toBeEnabled();
+    await expect(contractCard).toContainText(
+      "Le modèle de référence publié sera utilisé.",
+    );
+    await contractCard
+      .getByLabel("Modèle compatible")
+      .selectOption(ids.contractTemplate);
+    await expect(contractCard).toContainText(
+      "La variante personnalisée publiée de cette réservation sera utilisée automatiquement.",
+    );
+    await contractCard
+      .getByLabel("Modèle compatible")
+      .selectOption(ids.alternateContractTemplate);
+
+    sql(`
+      insert into public.reservation_document_variants
+        (id, organization_id, reservation_id, template_family_id, document_type, species, breed)
+      values
+        (${q(ids.invalidVariant)}, ${q(ids.organization)}, ${q(ids.reservation)}, ${q(ids.alternateContractTemplate)}, 'reservation_contract', 'dog', 'Golden Retriever');
+      insert into public.reservation_document_variant_versions
+        (id, organization_id, variant_id, version, source_template_id,
+         source_template_version, template_format, template_content,
+         lifecycle_status, published_at, published_by)
+      values
+        (${q(ids.invalidVariantVersion)}, ${q(ids.organization)}, ${q(ids.invalidVariant)}, 4,
+         ${q(ids.alternateContractTemplate)}, 2, 'html', '<p>Publication invalide E2E</p>',
+         'published', now(), ${q(ownerId)});
+    `);
+    await page.reload();
+    const invalidContractCard = page
+      .locator("article")
+      .filter({ hasText: "Contrat de réservation" });
+    const invalidOption = invalidContractCard.getByRole("option", {
+      name: "Contrat alternatif UI E2E — version 2 · source personnalisée à corriger",
+    });
+    await expect(invalidOption).toBeDisabled();
+    await expect(invalidContractCard).not.toContainText(
+      "Contrat alternatif UI E2E — version 2 · modèle de référence",
+    );
+    await expect(page.getByText(/Supabase|database_error/i)).toHaveCount(0);
+    sql(`
+      delete from public.reservation_document_variant_versions where id = ${q(ids.invalidVariantVersion)}::uuid;
+      delete from public.reservation_document_variants where id = ${q(ids.invalidVariant)}::uuid;
+    `);
+    await page.reload();
 
     const previewStateBefore = {
       documents: organizationCount("documents"),
@@ -359,6 +415,11 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       .getByLabel("Modèle compatible")
       .selectOption(ids.alternateContractTemplate);
     await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
     const contractPreviewResponse = page.waitForResponse(
       (response) =>
         response.url().includes("documentType=reservation_contract") &&
@@ -551,6 +612,25 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
     await expect(page.getByRole("status")).toContainText(
       "Le PDF a bien été généré et enregistré.",
     );
+    const generatedContractCard = page
+      .locator("article")
+      .filter({ hasText: "Contrat de réservation" });
+    await expect(generatedContractCard).toContainText("Source utilisée");
+    await expect(generatedContractCard).toContainText(
+      "Variante personnalisée — version 1",
+    );
+    await expect(generatedContractCard).toContainText("Origine commune");
+    await expect(generatedContractCard).toContainText(
+      "Contrat compatible UI E2E — version 3",
+    );
+    const visibleTextAfterVariantGeneration =
+      (await generatedContractCard.textContent()) ?? "";
+    expect(visibleTextAfterVariantGeneration).not.toContain(
+      ids.contractVariant,
+    );
+    expect(visibleTextAfterVariantGeneration).not.toContain(
+      ids.contractVariantVersion,
+    );
 
     const v1Id = sql(
       `select id::text from public.documents where reservation_id = ${q(ids.reservation)}::uuid and document_type = 'reservation_contract' and deleted_at is null and superseded_at is null;`,
@@ -618,6 +698,70 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
     await expect(page).toHaveURL(/document_generation_status=created/, {
       timeout: 30_000,
     });
+    const commonCurrentCard = page
+      .locator("article")
+      .filter({ hasText: "Contrat de réservation" });
+    await expect(commonCurrentCard).toContainText("Source utilisée");
+    await expect(commonCurrentCard).toContainText("Modèle de référence");
+    await expect(commonCurrentCard).toContainText(
+      "Origine communeContrat alternatif UI E2E — version 2",
+    );
+    const historicalVariantRow = commonCurrentCard
+      .locator("li")
+      .filter({ hasText: "Version historique remplacée" });
+    await expect(historicalVariantRow).toContainText(
+      "Source : variante personnalisée — version 1",
+    );
+    await expect(historicalVariantRow).toContainText(
+      "Origine commune : Contrat compatible UI E2E — version 3",
+    );
+    const currentCommonRow = commonCurrentCard
+      .locator("li")
+      .filter({ hasText: "Version courante" });
+    await expect(currentCommonRow).toContainText(
+      "Source : modèle de référence",
+    );
+    await expect(currentCommonRow).toContainText(
+      "Modèle : Contrat alternatif UI E2E — version 2",
+    );
+
+    sql(`update public.documents set generation_data = '{"snapshotVersion": 0}'::jsonb where id = ${q(v1Id)}::uuid;`);
+    await page.reload();
+    const unreadableHistoricalVariant = page
+      .locator("article")
+      .filter({ hasText: "Contrat de réservation" })
+      .locator("li")
+      .filter({ hasText: "Version historique remplacée" });
+    await expect(unreadableHistoricalVariant).toContainText(
+      "Source : variante personnalisée — version 1",
+    );
+    await expect(unreadableHistoricalVariant).toContainText(
+      "Origine commune : Contrat compatible UI E2E — version 3",
+    );
+
+    const currentCommonId = sql(
+      `select id::text from public.documents where reservation_id = ${q(ids.reservation)}::uuid and document_type = 'reservation_contract' and superseded_at is null;`,
+    );
+    sql(`
+      update public.documents
+      set generation_data = jsonb_set(
+        jsonb_set(generation_data, '{snapshotVersion}', '1'::jsonb),
+        '{template}',
+        jsonb_build_object(
+          'templateId', generation_data->'template'->>'templateId',
+          'templateVersion', (generation_data->'template'->>'templateVersion')::integer,
+          'templateContentSha256', generation_data->'template'->>'templateContentSha256'
+        )
+      )
+      where id = ${q(currentCommonId)}::uuid;
+    `);
+    await page.reload();
+    const historicalV1Card = page
+      .locator("article")
+      .filter({ hasText: "Contrat de réservation" });
+    await expect(
+      historicalV1Card.locator("li").filter({ hasText: "Version courante" }),
+    ).toContainText("Source : modèle de référence");
 
     expect(
       Number(

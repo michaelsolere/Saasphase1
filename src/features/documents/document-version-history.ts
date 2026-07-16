@@ -13,7 +13,45 @@ import type { Database } from "@/types/database.types";
 type Supabase = SupabaseClient<Database>;
 
 const versionFields =
-  "id, organization_id, title, document_type, status, sent_at, replaces_document_id, superseded_at, generated_at, source_template_version, file_path, file_sha256, file_size_bytes, mime_type";
+  "id, organization_id, title, document_type, status, sent_at, replaces_document_id, superseded_at, generated_at, generation_data, template_id, reservation_document_variant_version_id, source_template_version, file_path, file_sha256, file_size_bytes, mime_type";
+
+type DocumentVersionRow = Omit<
+  DocumentVersionSource,
+  "reservation_document_variant_version" | "template_label"
+>;
+
+async function hydrateDocumentVersionSource(
+  row: DocumentVersionRow,
+  supabase: Supabase,
+): Promise<DocumentVersionSource | null> {
+  const [template, variantVersion] = await Promise.all([
+    row.template_id && row.source_template_version
+      ? supabase
+          .from("document_templates")
+          .select("name")
+          .eq("organization_id", row.organization_id)
+          .eq("id", row.template_id)
+          .eq("version", row.source_template_version)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    row.reservation_document_variant_version_id
+      ? supabase
+          .from("reservation_document_variant_versions")
+          .select("version")
+          .eq("organization_id", row.organization_id)
+          .eq("id", row.reservation_document_variant_version_id)
+          .maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (template.error || variantVersion.error) return null;
+
+  return {
+    ...row,
+    template_label: template.data?.name ?? null,
+    reservation_document_variant_version: variantVersion.data?.version ?? null,
+  };
+}
 
 export type ReadDocumentVersionHistoryResult =
   | { outcome: "success"; history: DocumentVersionHistory }
@@ -39,7 +77,12 @@ async function findCurrentDocument(
       .limit(2);
 
     if (successor.error || successor.data.length !== 1) return null;
-    candidate = successor.data[0] as DocumentVersionSource;
+    const hydrated = await hydrateDocumentVersionSource(
+      successor.data[0] as DocumentVersionRow,
+      supabase,
+    );
+    if (!hydrated) return null;
+    candidate = hydrated;
   }
 
   return candidate;
@@ -58,10 +101,12 @@ export async function readDocumentVersionHistory(
     .maybeSingle();
 
   if (selected.error || !selected.data) return { outcome: "error" };
-  const currentDocument = await findCurrentDocument(
-    selected.data as DocumentVersionSource,
+  const hydratedSelected = await hydrateDocumentVersionSource(
+    selected.data as DocumentVersionRow,
     supabase,
   );
+  if (!hydratedSelected) return { outcome: "error" };
+  const currentDocument = await findCurrentDocument(hydratedSelected, supabase);
   if (!currentDocument) return { outcome: "error" };
 
   const reconstructed = await reconstructDocumentVersionChainFromCurrent(
@@ -75,9 +120,11 @@ export async function readDocumentVersionHistory(
         .is("deleted_at", null)
         .maybeSingle();
 
-      return previous.error || !previous.data
-        ? null
-        : (previous.data as DocumentVersionSource);
+      if (previous.error || !previous.data) return null;
+      return hydrateDocumentVersionSource(
+        previous.data as DocumentVersionRow,
+        supabase,
+      );
     },
   );
   if (reconstructed.outcome !== "success") return reconstructed;

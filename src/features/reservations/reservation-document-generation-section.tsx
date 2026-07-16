@@ -6,10 +6,10 @@ import {
 } from "@/features/documents/document-pdf-storage-core";
 import { getDocumentStatusLabel } from "@/features/documents/formatters";
 import { readDocumentVersionHistory } from "@/features/documents/document-version-history";
+import { resolveReservationDocumentGenerationSourceCore } from "@/features/documents/resolve-reservation-document-generation-source-core";
 import {
   isReservationDocumentTemplateCompatible,
   resolveEffectiveReservationDocumentTaxonomy,
-  type ReservationDocumentType,
 } from "@/features/documents/reservation-document-template-compatibility";
 import {
   ReservationDocumentGenerationPanel,
@@ -156,12 +156,66 @@ export async function ReservationDocumentGenerationSection({
   );
   const historyByDocumentId = new Map(historyResults);
 
-  const cards: ReservationDocumentGenerationCard[] = (
-    [
-      ["commitment_certificate", "Certificat d’engagement et de connaissance"],
-      ["reservation_contract", "Contrat de réservation"],
-    ] as const
-  ).map(([documentType, label]) => {
+  const documentDefinitions = [
+    ["commitment_certificate", "Certificat d’engagement et de connaissance"],
+    ["reservation_contract", "Contrat de réservation"],
+  ] as const;
+  const compatibleTemplatesByDocumentType = new Map(
+    documentDefinitions.map(([documentType]) => [
+      documentType,
+      taxonomy
+        ? templates.filter((template) =>
+            isReservationDocumentTemplateCompatible({
+              template,
+              documentType,
+              taxonomy,
+            }),
+          )
+        : [],
+    ]),
+  );
+  const sourceResults = taxonomy
+    ? await Promise.all(
+        documentDefinitions.flatMap(([documentType]) =>
+          (compatibleTemplatesByDocumentType.get(documentType) ?? []).map(
+            async (template) => ({
+              documentType,
+              templateId: template.id,
+              result: await resolveReservationDocumentGenerationSourceCore({
+                organizationId: reservation.organization_id,
+                reservationId,
+                documentType,
+                selectedTemplateId: template.id,
+                taxonomy,
+                supabase,
+              }),
+            }),
+          ),
+        ),
+      )
+    : [];
+
+  if (
+    sourceResults.some(
+      ({ result }) =>
+        result.outcome === "error" && result.error.code === "database_error",
+    )
+  ) {
+    return (
+      <p role="alert" className="mb-4 text-sm text-amber-800">
+        La génération documentaire n’est pas disponible pour le moment.
+      </p>
+    );
+  }
+
+  const sourceResultByTemplate = new Map(
+    sourceResults.map(({ documentType, templateId, result }) => [
+      `${documentType}:${templateId}`,
+      result,
+    ]),
+  );
+
+  const cards: ReservationDocumentGenerationCard[] = documentDefinitions.map(([documentType, label]) => {
     const currentDocument = documents.find(
       (document) => document.document_type === documentType,
     );
@@ -173,21 +227,17 @@ export async function ReservationDocumentGenerationSection({
         parsedPdfPath &&
         isDocumentPdfMetadataCoherent(currentDocument),
     );
-    const currentTemplate = currentDocument?.template_id
-      ? templates.find((template) => template.id === currentDocument.template_id)
-      : null;
     const historyResult = currentDocument
       ? historyByDocumentId.get(currentDocument.id)
       : null;
-    const compatibleTemplates = taxonomy
-      ? templates.filter((template) =>
-          isReservationDocumentTemplateCompatible({
-            template,
-            documentType: documentType as ReservationDocumentType,
-            taxonomy,
-          }),
-        )
-      : [];
+    const currentHistoryEntry =
+      historyResult?.outcome === "success"
+        ? historyResult.history.entries.find(
+            (entry) => entry.documentId === currentDocument?.id,
+          ) ?? null
+        : null;
+    const compatibleTemplates =
+      compatibleTemplatesByDocumentType.get(documentType) ?? [];
 
     return {
       documentType,
@@ -207,8 +257,13 @@ export async function ReservationDocumentGenerationSection({
             ),
             hasPdf,
             version: hasPdf ? parsedPdfPath?.version ?? null : null,
-            templateLabel: currentTemplate?.name ?? null,
-            templateVersion: currentDocument.source_template_version,
+            sourceKind: currentHistoryEntry?.sourceKind ?? null,
+            reservationDocumentVariantVersion:
+              currentHistoryEntry?.reservationDocumentVariantVersion ?? null,
+            templateLabel: currentHistoryEntry?.templateLabel ?? null,
+            templateVersion:
+              currentHistoryEntry?.sourceTemplateVersion ??
+              currentDocument.source_template_version,
             generatedAtLabel: currentDocument.generated_at
               ? formatGeneratedAt(currentDocument.generated_at)
               : null,
@@ -218,11 +273,35 @@ export async function ReservationDocumentGenerationSection({
                 : null,
           }
         : null,
-      templates: compatibleTemplates.map((template) => ({
-        id: template.id,
-        name: template.name,
-        version: template.version,
-      })),
+      templates: compatibleTemplates.map((template) => {
+        const source = sourceResultByTemplate.get(
+          `${documentType}:${template.id}`,
+        );
+        if (source?.outcome === "success") {
+          return {
+            id: template.id,
+            name: template.name,
+            version: template.version,
+            available: true,
+            sourceKind: source.sourceKind,
+            reservationDocumentVariantVersion:
+              source.reservationDocumentVariantVersion,
+          };
+        }
+
+        return {
+          id: template.id,
+          name: template.name,
+          version: template.version,
+          available: false,
+          sourceKind:
+            source?.outcome === "error" &&
+            source.error.code === "invalid_template"
+              ? "invalid_custom_source" as const
+              : "unavailable" as const,
+          reservationDocumentVariantVersion: null,
+        };
+      }),
     };
   });
 

@@ -380,6 +380,20 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
     await expect(page.getByText("Statut métier : Envoyé", { exact: true })).toBeVisible();
     await expect(page.getByText("Statut métier : Reçu signé", { exact: true })).toBeVisible();
     await expect(
+      page.getByText("Source : modèle de référence", { exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      page.getByText("Source : non renseignée", { exact: true }),
+    ).toHaveCount(1);
+    await expect(
+      page.getByText("Modèle : Non renseigné", { exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByText("Modèle : Contrat historique E2E — version 7", {
+        exact: true,
+      }),
+    ).toHaveCount(2);
+    await expect(
       page.getByText(
         "Le statut “Reçu signé” correspond actuellement au suivi manuel du dossier.",
         { exact: false },
@@ -387,7 +401,13 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
     ).toBeVisible();
     await expect(page.getByRole("link", { name: /PDF signé/i })).toHaveCount(0);
     html = await page.content();
-    for (const secret of [...paths, ...hashes, "/storage/v1/", "token="]) {
+    for (const secret of [
+      ...paths,
+      ...hashes,
+      ids.template,
+      "/storage/v1/",
+      "token=",
+    ]) {
       expect(html).not.toContain(secret);
     }
 
@@ -396,7 +416,19 @@ test("sert les PDF privés et affiche la chaîne réelle sans mutation", async (
       .locator("li")
       .filter({ hasText: "Fiche consultée" });
     await expect(selectedLegacy).toContainText("Aucun PDF cohérent");
+    await expect(selectedLegacy).toContainText("Source : non renseignée");
+    await expect(selectedLegacy).not.toContainText("Modèle : Non renseigné");
     await expect(selectedLegacy.locator("a")).toHaveCount(0);
+    html = await page.content();
+    for (const secret of [
+      ...paths,
+      ...hashes,
+      ids.template,
+      "/storage/v1/",
+      "token=",
+    ]) {
+      expect(html).not.toContain(secret);
+    }
 
     expect(immutableState()).toBe(stateBefore);
   } finally {

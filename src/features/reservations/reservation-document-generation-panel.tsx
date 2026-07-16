@@ -31,6 +31,8 @@ export type ReservationDocumentGenerationCard = {
     statusLabel: string;
     hasPdf: boolean;
     version: number | null;
+    sourceKind: "common" | "reservation_variant" | null;
+    reservationDocumentVariantVersion: number | null;
     templateLabel: string | null;
     templateVersion: number | null;
     generatedAtLabel: string | null;
@@ -40,13 +42,36 @@ export type ReservationDocumentGenerationCard = {
     id: string;
     name: string;
     version: number;
+    available: boolean;
+    sourceKind:
+      | "common"
+      | "reservation_variant"
+      | "invalid_custom_source"
+      | "unavailable";
+    reservationDocumentVariantVersion: number | null;
   }>;
 };
 
 function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
   const action = generateReservationDocumentPdf.bind(null, card.intention);
   const hasPdf = card.currentDocument?.hasPdf ?? false;
-  const [templateId, setTemplateId] = useState(card.templates[0]?.id ?? "");
+  const [templateId, setTemplateId] = useState(
+    card.templates.find((template) => template.available)?.id ??
+      card.templates[0]?.id ??
+      "",
+  );
+  const selectedTemplate = card.templates.find(
+    (template) => template.id === templateId,
+  );
+  const canUseSelectedTemplate = selectedTemplate?.available ?? false;
+  const sourceMessage =
+    selectedTemplate?.sourceKind === "reservation_variant"
+      ? "La variante personnalisée publiée de cette réservation sera utilisée automatiquement."
+      : selectedTemplate?.sourceKind === "common"
+        ? "Le modèle de référence publié sera utilisé."
+        : selectedTemplate?.sourceKind === "invalid_custom_source"
+          ? "La source personnalisée publiée doit être corrigée avant la génération."
+          : "La source documentaire n’est pas disponible pour le moment.";
   const templateSelector = (
     <>
       <label
@@ -68,12 +93,27 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
           <option value="">Aucun modèle compatible disponible</option>
         ) : (
           card.templates.map((template) => (
-            <option key={template.id} value={template.id}>
-              {template.name} — version {template.version}
+            <option
+              key={template.id}
+              value={template.id}
+              disabled={!template.available}
+            >
+              {template.name} — version {template.version} · {template.sourceKind === "reservation_variant"
+                ? `variante personnalisée v${template.reservationDocumentVariantVersion}`
+                : template.sourceKind === "common"
+                  ? "modèle de référence"
+                  : template.sourceKind === "invalid_custom_source"
+                    ? "source personnalisée à corriger"
+                    : "source indisponible"}
             </option>
           ))
         )}
       </select>
+      {card.templates.length > 0 ? (
+        <p className="text-xs leading-5 text-muted" aria-live="polite">
+          {sourceMessage}
+        </p>
+      ) : null}
     </>
   );
   const preview = (
@@ -82,7 +122,7 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
       documentType={card.documentType}
       documentLabel={card.label}
       templateId={templateId}
-      disabled={card.templates.length === 0}
+      disabled={!canUseSelectedTemplate}
     />
   );
 
@@ -92,7 +132,7 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
         {templateSelector}
         <Button
           type="submit"
-          disabled={card.templates.length === 0}
+          disabled={!canUseSelectedTemplate}
           className="w-full"
         >
           Générer le PDF
@@ -109,7 +149,7 @@ function GenerationForm({ card }: { card: ReservationDocumentGenerationCard }) {
         <AlertDialogTrigger asChild>
           <Button
             type="button"
-            disabled={card.templates.length === 0}
+            disabled={!canUseSelectedTemplate}
             className="w-full"
           >
             Créer une nouvelle version
@@ -174,7 +214,21 @@ function GenerationCard({ card }: { card: ReservationDocumentGenerationCard }) {
           </dd>
         </div>
         <div>
-          <dt className="text-xs text-muted">Modèle</dt>
+          <dt className="text-xs text-muted">Source utilisée</dt>
+          <dd className="mt-1 text-foreground">
+            {current?.sourceKind
+              ? current.sourceKind === "reservation_variant"
+                ? `Variante personnalisée${
+                    current.reservationDocumentVariantVersion
+                      ? ` — version ${current.reservationDocumentVariantVersion}`
+                      : ""
+                  }`
+                : "Modèle de référence"
+              : "—"}
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted">Origine commune</dt>
           <dd className="mt-1 text-foreground">
             {current?.templateLabel && current.templateVersion
               ? `${current.templateLabel} — version ${current.templateVersion}`
