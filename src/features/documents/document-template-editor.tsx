@@ -33,7 +33,8 @@ import type {
   ReservationContractTemplateDefinition,
 } from "@/features/documents/document-template-definitions";
 import { insertTemplateVariableAtSelection } from "@/features/documents/insert-template-variable";
-import { insertTemplateBoldAtSelection } from "@/features/documents/insert-template-bold";
+import { toggleTemplateBoldAtSelection } from "@/features/documents/insert-template-bold";
+import { parseDocumentTemplateDefinition } from "@/features/documents/parse-document-template-definition";
 import { RESERVATION_CONTRACT_VARIABLE_CATALOG } from "@/features/documents/reservation-contract-template-variables";
 
 const DocumentTemplatePdfPreview = dynamic(
@@ -94,6 +95,18 @@ function fingerprintStoredContent(templateContent: string | null) {
   } catch {
     return fingerprintValue(templateContent);
   }
+}
+
+function previewValidationError(definition: DocumentTemplateDefinition) {
+  if (definition.documentType !== "reservation_contract" || definition.schemaVersion !== 2) {
+    return null;
+  }
+  const parsed = parseDocumentTemplateDefinition({
+    templateFormat: "json",
+    documentType: definition.documentType,
+    templateContent: JSON.stringify(definition),
+  });
+  return parsed.success ? null : parsed.error;
 }
 
 function ParagraphList({
@@ -403,6 +416,7 @@ function FreeReservationContractEditor({
   const [selectedVariable, setSelectedVariable] = useState(
     RESERVATION_CONTRACT_VARIABLE_CATALOG[0].key,
   );
+  const [boldMessage, setBoldMessage] = useState<string | null>(null);
 
   useLayoutEffect(() => {
     const pending = pendingBodySelectionRef.current;
@@ -449,18 +463,22 @@ function FreeReservationContractEditor({
     const textarea = bodyRef.current;
     if (!textarea || readOnly) return;
     const selection = currentBodySelection(textarea);
-    const inserted = insertTemplateBoldAtSelection({
+    const inserted = toggleTemplateBoldAtSelection({
       value: definition.body,
       selectionStart: selection.start,
       selectionEnd: selection.end,
     });
     if (inserted.changed) {
+      setBoldMessage(null);
       pendingBodySelectionRef.current = {
         start: inserted.selectionStart,
         end: inserted.selectionEnd,
       };
       onChange({ ...definition, body: inserted.value });
     } else {
+      setBoldMessage(inserted.reason === "overlap"
+        ? "La sélection chevauche une zone déjà en gras. Sélectionnez une seule zone complète."
+        : null);
       textarea.focus();
       textarea.setSelectionRange(inserted.selectionStart, inserted.selectionEnd);
       bodySelectionRef.current = {
@@ -525,6 +543,11 @@ function FreeReservationContractEditor({
         <p className="mt-2 text-sm text-muted">
           Utilisez **texte** pour afficher un passage en gras. Les données entre doubles crochets seront remplacées lors de l’aperçu ou de la génération.
         </p>
+        {boldMessage ? (
+          <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            {boldMessage}
+          </p>
+        ) : null}
       </div>
       <div className="rounded-xl border bg-surface p-4">
         <label htmlFor={`${editorId}-template-variable`} className="text-sm font-semibold">
@@ -635,7 +658,17 @@ export function DocumentTemplateEditor({
   );
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
   const [result, setResult] = useState<DocumentTemplateActionResult | null>(null);
-  const [previewDefinition, setPreviewDefinition] = useState(initialDefinition);
+  const initialPreviewError = previewValidationError(initialDefinition);
+  const [previewDefinition, setPreviewDefinition] = useState<DocumentTemplateDefinition | null>(
+    initialPreviewError ? null : initialDefinition,
+  );
+  const [previewFallbackReason, setPreviewFallbackReason] = useState<"bold" | "invalid" | null>(
+    initialPreviewError === "invalid_template_formatting"
+      ? "bold"
+      : initialPreviewError
+        ? "invalid"
+        : null,
+  );
   const [mobileView, setMobileView] = useState<"edit" | "preview">("edit");
   const [isPending, startTransition] = useTransition();
   const configuration = documentTemplateEditorConfigurations[definition.documentType];
@@ -646,7 +679,13 @@ export function DocumentTemplateEditor({
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
+      const validationError = previewValidationError(definition);
+      if (validationError) {
+        setPreviewFallbackReason(validationError === "invalid_template_formatting" ? "bold" : "invalid");
+        return;
+      }
       setPreviewDefinition(definition);
+      setPreviewFallbackReason(null);
     }, 400);
     return () => window.clearTimeout(timeout);
   }, [definition]);
@@ -836,11 +875,24 @@ export function DocumentTemplateEditor({
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
             Aperçu avec données fictives et identité visuelle actuelle — aucune réservation ni aucun document n’est créé ou modifié.
           </p>
-          <DocumentTemplatePdfPreview
-            definition={previewDefinition}
-            logo={previewLogo}
-            brandingUnavailable={previewBrandingUnavailable}
-          />
+          {previewFallbackReason ? (
+            <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {previewFallbackReason === "bold"
+                ? previewDefinition
+                  ? "L’aperçu affiche la dernière version valide. Terminez ou corrigez la mise en forme en gras."
+                  : "L’aperçu sera disponible après correction de la mise en forme en gras."
+                : previewDefinition
+                  ? "L’aperçu affiche la dernière version valide. Corrigez les erreurs du modèle pour l’actualiser."
+                  : "L’aperçu sera disponible après correction des erreurs du modèle."}
+            </p>
+          ) : null}
+          {previewDefinition ? (
+            <DocumentTemplatePdfPreview
+              definition={previewDefinition}
+              logo={previewLogo}
+              brandingUnavailable={previewBrandingUnavailable}
+            />
+          ) : null}
         </aside>
       </div>
     </div>

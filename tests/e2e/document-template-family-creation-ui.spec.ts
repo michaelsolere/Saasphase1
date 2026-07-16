@@ -206,6 +206,60 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
       start: (element as HTMLTextAreaElement).selectionStart,
       end: (element as HTMLTextAreaElement).selectionEnd,
     }))).toEqual({ start: 2, end: 12 });
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("Le vendeur");
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => ({
+      start: (element as HTMLTextAreaElement).selectionStart,
+      end: (element as HTMLTextAreaElement).selectionEnd,
+    }))).toEqual({ start: 0, end: 10 });
+
+    await body.press(`${primaryModifier}+b`);
+    await expect(body).toHaveValue("**Le vendeur**");
+    await body.press(`${primaryModifier}+b`);
+    await expect(body).toHaveValue("Le vendeur");
+    await expect(body).toBeFocused();
+
+    await body.fill("[[animal.nom]]");
+    await body.press(`${primaryModifier}+a`);
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("**[[animal.nom]]**");
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("[[animal.nom]]");
+
+    await body.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(6, 6);
+    });
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("**[[animal.nom]]**");
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(8);
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("[[animal.nom]]");
+    expect(await body.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(6);
+
+    await body.fill(" Le vendeur ");
+    await body.press(`${primaryModifier}+a`);
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue(" **Le vendeur** ");
+    await expect(body).toBeFocused();
+
+    await body.fill("**Le vendeur** et le prix");
+    await body.evaluate((element) => {
+      const textarea = element as HTMLTextAreaElement;
+      textarea.focus();
+      textarea.setSelectionRange(4, 20);
+    });
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("**Le vendeur** et le prix");
+    await expect(page.getByText("La sélection chevauche une zone déjà en gras. Sélectionnez une seule zone complète.", { exact: true })).toBeVisible();
+    await expect(body).toBeFocused();
+    expect(await body.evaluate((element) => ({
+      start: (element as HTMLTextAreaElement).selectionStart,
+      end: (element as HTMLTextAreaElement).selectionEnd,
+    }))).toEqual({ start: 4, end: 20 });
 
     await body.fill("Bonjour");
     await body.evaluate((element) => {
@@ -225,6 +279,37 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await expect(body).toBeFocused();
     expect(await body.evaluate((element) => (element as HTMLTextAreaElement).selectionStart)).toBe(6);
 
+    const preview = page.locator('[data-template-preview-pane]');
+    const previewFrame = preview.locator('iframe[data-document-pdf-preview="ready"]');
+    await expect(previewFrame).toBeVisible({ timeout: 20_000 });
+    const previousPreviewUrl = await previewFrame.getAttribute("src");
+    await body.fill("**[[adoptant.nom_complet]]**");
+    await expect.poll(() => previewFrame.getAttribute("src"), { timeout: 20_000 }).not.toBe(previousPreviewUrl);
+    const validPreviewUrl = await previewFrame.getAttribute("src");
+
+    await body.fill("Aperçu stable");
+    await body.press("End");
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("Aperçu stable****");
+    await expect(preview.getByText("L’aperçu affiche la dernière version valide. Terminez ou corrigez la mise en forme en gras.", { exact: true })).toBeVisible();
+    await expect(previewFrame).toBeVisible();
+    await expect(previewFrame).toHaveAttribute("src", validPreviewUrl ?? "");
+    await body.type("corrigé");
+    await expect(body).toHaveValue("Aperçu stable**corrigé**");
+    await expect(preview.getByText("L’aperçu affiche la dernière version valide. Terminez ou corrigez la mise en forme en gras.", { exact: true })).toHaveCount(0);
+    await expect(previewFrame).toBeVisible({ timeout: 20_000 });
+    await expect.poll(() => previewFrame.getAttribute("src"), { timeout: 20_000 }).not.toBe(validPreviewUrl);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await body.fill("Mobile");
+    await body.press(`${primaryModifier}+a`);
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("**Mobile**");
+    await page.getByRole("button", { name: "Gras", exact: true }).click();
+    await expect(body).toHaveValue("Mobile");
+    await expect(body).toBeFocused();
+    await page.setViewportSize({ width: 1280, height: 900 });
+
     await body.fill("Variable erronée : [[adoptant.telephonne]]");
     await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
     await expect(page.getByText("Le brouillon a été enregistré.", { exact: true })).toBeVisible();
@@ -233,7 +318,8 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     expect(sql(`select count(*) from public.document_templates template join public.document_template_families family on family.id = template.family_id where family.name = ${q(contractName)} and template.lifecycle_status = 'published';`)).toBe("0");
 
     await body.fill("Texte **non refermé");
-    await expect(page.getByText("Aperçu indisponible.", { exact: true })).toBeVisible();
+    await expect(page.getByText("L’aperçu affiche la dernière version valide. Terminez ou corrigez la mise en forme en gras.", { exact: true })).toBeVisible();
+    await expect(page.locator('iframe[data-document-pdf-preview="ready"]')).toBeVisible();
     await page.getByRole("button", { name: "Enregistrer le brouillon" }).click();
     await expect(page.getByText("Le brouillon a été enregistré.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Valider le brouillon" }).click();

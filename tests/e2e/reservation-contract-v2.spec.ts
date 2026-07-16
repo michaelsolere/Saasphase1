@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import { createInitialDocumentTemplateDefinition, INITIAL_FREE_RESERVATION_CONTRACT_BODY } from "../../src/features/documents/create-initial-document-template-definition";
 import { insertTemplateVariableAtSelection } from "../../src/features/documents/insert-template-variable";
-import { insertTemplateBoldAtSelection } from "../../src/features/documents/insert-template-bold";
+import { toggleTemplateBoldAtSelection } from "../../src/features/documents/insert-template-bold";
 import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
 import { renderDocumentPdfCore } from "../../src/features/documents/document-pdf-renderer-core";
 import { createDocumentTemplatePreviewSnapshot } from "../../src/features/documents/document-template-preview-snapshot";
@@ -241,6 +241,30 @@ test("parse, présente et rend uniquement le gras provenant du modèle source", 
     snapshot,
     templateContent: JSON.stringify(definition),
   })).outcome).toBe("success");
+
+  snapshot.adopter.displayName = "Camille Démonstration";
+  for (const body of [
+    "**[[adoptant.nom_complet]]**",
+    "L’acquéreur : **[[adoptant.nom_complet]]**",
+    "Le prix est fixé à **[[reservation.prix_formate]]**.",
+    "**Texte et [[animal.nom]] dans la même zone**",
+  ]) {
+    const candidate = { ...definition, body };
+    snapshot.template.templateContentSha256 = createHash("sha256")
+      .update(JSON.stringify(candidate))
+      .digest("hex");
+    const candidatePresentation = buildDocumentPdfPresentation(snapshot, candidate, {
+      allowMissingTemplateVariables: true,
+    });
+    expect(candidatePresentation).not.toBeNull();
+    expect(candidatePresentation?.freeBody).not.toContain("**");
+    expect((await renderDocumentPdfCore({
+      documentType: "reservation_contract",
+      snapshot,
+      templateContent: JSON.stringify(candidate),
+      allowMissingTemplateVariables: true,
+    })).outcome).toBe("success");
+  }
 });
 
 test("refuse les délimitations de gras invalides dans le corps et le titre", async () => {
@@ -384,7 +408,7 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     value: "Bonjour [[animal.nom]]",
     cursor: 22,
   });
-  expect(insertTemplateBoldAtSelection({
+  expect(toggleTemplateBoldAtSelection({
     value: "Le vendeur",
     selectionStart: 0,
     selectionEnd: 10,
@@ -394,7 +418,7 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     selectionEnd: 12,
     changed: true,
   });
-  expect(insertTemplateBoldAtSelection({
+  expect(toggleTemplateBoldAtSelection({
     value: "Le vendeur",
     selectionStart: 3,
     selectionEnd: 3,
@@ -404,7 +428,7 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     selectionEnd: 5,
     changed: true,
   });
-  expect(insertTemplateBoldAtSelection({
+  expect(toggleTemplateBoldAtSelection({
     value: "x".repeat(30_000),
     selectionStart: 0,
     selectionEnd: 1,
@@ -419,6 +443,142 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
   expect(INITIAL_FREE_RESERVATION_CONTRACT_BODY).toContain(
     "Né le : [[projet.date_naissance]]\nSexe : [[projet.sexe]]\nRang du choix : [[reservation.rang_choix]]\nCouleur : [[animal.couleur]]",
   );
+});
+
+test("bascule le gras sans imbriquer les marqueurs et conserve les positions logiques", () => {
+  expect(toggleTemplateBoldAtSelection({
+    value: "**Le vendeur**",
+    selectionStart: 2,
+    selectionEnd: 12,
+  })).toEqual({ value: "Le vendeur", selectionStart: 0, selectionEnd: 10, changed: true });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "**Le vendeur**",
+    selectionStart: 0,
+    selectionEnd: 14,
+  })).toEqual({ value: "Le vendeur", selectionStart: 0, selectionEnd: 10, changed: true });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "[[vendeur.identite_complete]]",
+    selectionStart: 0,
+    selectionEnd: 29,
+  })).toEqual({
+    value: "**[[vendeur.identite_complete]]**",
+    selectionStart: 2,
+    selectionEnd: 31,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "**[[vendeur.identite_complete]]**",
+    selectionStart: 2,
+    selectionEnd: 31,
+  })).toEqual({
+    value: "[[vendeur.identite_complete]]",
+    selectionStart: 0,
+    selectionEnd: 29,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "[[animal.nom]]",
+    selectionStart: 6,
+    selectionEnd: 6,
+  })).toEqual({
+    value: "**[[animal.nom]]**",
+    selectionStart: 8,
+    selectionEnd: 8,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "**[[animal.nom]]**",
+    selectionStart: 8,
+    selectionEnd: 8,
+  })).toEqual({
+    value: "[[animal.nom]]",
+    selectionStart: 6,
+    selectionEnd: 6,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "**Le vendeur**",
+    selectionStart: 7,
+    selectionEnd: 7,
+  })).toEqual({ value: "Le vendeur", selectionStart: 5, selectionEnd: 5, changed: true });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: " Le vendeur ",
+    selectionStart: 0,
+    selectionEnd: 12,
+  })).toEqual({
+    value: " **Le vendeur** ",
+    selectionStart: 3,
+    selectionEnd: 13,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: " [[animal.nom]] ",
+    selectionStart: 0,
+    selectionEnd: 16,
+  })).toEqual({
+    value: " **[[animal.nom]]** ",
+    selectionStart: 3,
+    selectionEnd: 17,
+    changed: true,
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "   ",
+    selectionStart: 0,
+    selectionEnd: 3,
+  })).toEqual({
+    value: "   ",
+    selectionStart: 0,
+    selectionEnd: 3,
+    changed: false,
+    reason: "empty_selection",
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "**Le vendeur** et le prix",
+    selectionStart: 4,
+    selectionEnd: 20,
+  })).toEqual({
+    value: "**Le vendeur** et le prix",
+    selectionStart: 4,
+    selectionEnd: 20,
+    changed: false,
+    reason: "overlap",
+  });
+
+  const mixed = toggleTemplateBoldAtSelection({
+    value: "Avant **animal** après",
+    selectionStart: 0,
+    selectionEnd: 24,
+  });
+  expect(mixed).toMatchObject({ value: "Avant **animal** après", changed: false, reason: "overlap" });
+  expect(mixed.value).not.toContain("****animal****");
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "****",
+    selectionStart: 2,
+    selectionEnd: 2,
+  })).toEqual({
+    value: "****",
+    selectionStart: 2,
+    selectionEnd: 2,
+    changed: false,
+    reason: "overlap",
+  });
+
+  expect(toggleTemplateBoldAtSelection({
+    value: "x".repeat(29_999),
+    selectionStart: 0,
+    selectionEnd: 1,
+  })).toMatchObject({ value: "x".repeat(29_999), changed: false, reason: "max_length" });
 });
 
 test("fige la couleur selon coat_color puis color et accepte un ancien snapshot sans couleur", () => {
