@@ -1101,6 +1101,7 @@ export type Database = {
           payment_id: string | null
           received_at: string | null
           replaces_document_id: string | null
+          reservation_document_variant_version_id: string | null
           reservation_id: string | null
           sent_at: string | null
           signature_required: boolean
@@ -1139,6 +1140,7 @@ export type Database = {
           payment_id?: string | null
           received_at?: string | null
           replaces_document_id?: string | null
+          reservation_document_variant_version_id?: string | null
           reservation_id?: string | null
           sent_at?: string | null
           signature_required?: boolean
@@ -1177,6 +1179,7 @@ export type Database = {
           payment_id?: string | null
           received_at?: string | null
           replaces_document_id?: string | null
+          reservation_document_variant_version_id?: string | null
           reservation_id?: string | null
           sent_at?: string | null
           signature_required?: boolean
@@ -1272,6 +1275,16 @@ export type Database = {
             columns: ["organization_id", "replaces_document_id"]
             isOneToOne: false
             referencedRelation: "documents"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "documents_reservation_document_variant_version_organization_fk"
+            columns: [
+              "organization_id",
+              "reservation_document_variant_version_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "reservation_document_variant_versions"
             referencedColumns: ["organization_id", "id"]
           },
           {
@@ -4089,6 +4102,7 @@ export type Database = {
           p_organization_id: string
           p_payment_id?: string | null
           p_replaces_document_id: string | null
+          p_reservation_document_variant_version_id?: string | null
           p_reservation_id?: string | null
           p_signature_required?: boolean
           p_source_template_version?: number | null
