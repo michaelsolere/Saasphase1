@@ -99,8 +99,9 @@ export async function sendBirthDocumentsDepositEmailForReservation(
   } | null = null;
 
   const result = await runTransactionalCampaignDelivery({
-    campaignKey: CAMPAIGN_KEY,
-    operationVersion: OPERATION_VERSION,
+      campaignKey: CAMPAIGN_KEY,
+      operationVersion: OPERATION_VERSION,
+      prepareClaimedOperationAfterTemplate: true,
     transport: options.transport,
     prepareOperation: async ({ supabase, organizationId }) => {
       const { data: reservation } = await supabase.from("reservations")

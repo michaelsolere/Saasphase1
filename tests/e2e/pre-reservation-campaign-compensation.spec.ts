@@ -96,6 +96,7 @@ test("success creates one request, uses real values, and attaches the attempt la
     expect(attachedReservationId).toBe(reservationId);
     expect(t.sends[0].params.montant_pre_reservation).toBe("250,00 €");
     expect(t.sends[0].params.echeance_pre_reservation).toContain(new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(new Date(dueDate)));
+    expect(t.sends[0]).not.toHaveProperty("attachments");
     expect(amount).toBe("25000");
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });

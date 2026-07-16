@@ -497,6 +497,7 @@ test("mating confirmation sends once, snapshots variables, and creates no busine
       },
       tags: ["saas_elevage", "mating_confirmation"],
     });
+    expect(sendEmailCalls[0]).not.toHaveProperty("attachments");
 
     const secondResult = await sendMatingConfirmationEmailForApplication(
       {
