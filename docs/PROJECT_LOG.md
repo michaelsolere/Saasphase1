@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #282. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #286. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `6a27e64a71e1fc2b1a7f1596b0dc1719e896312b`.
-- Dernière PR incluse : **#282 — Interface des variantes documentaires par réservation**.
-- Les migrations locales sont appliquées jusqu’à `202607160001`.
+- SHA de `main` documenté : `9236876ac8ba3c6174559a7349a4bc026ca743a9`.
+- Dernière PR incluse : **#286 — Affichage de la source réelle des PDF documentaires**.
+- Les migrations locales sont appliquées jusqu’à `202607160002`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -111,6 +111,8 @@ Campagnes transactionnelles disponibles :
 
 - `reservation_document_variants` porte l’identité stable d’une variante par organisation, réservation et famille de modèle. Il ne peut exister qu’une variante active pour cette combinaison ; deux réservations d’une même portée peuvent donc conserver deux contrats individualisés distincts.
 - `reservation_document_variant_versions` conserve les versions complètes `draft`, `published` et `retired`, avec un seul brouillon et une seule publication courante par variante. Chaque version garde l’identifiant et le numéro exacts du modèle commun d’origine.
+- `documents.reservation_document_variant_version_id` relie un document à la version exacte de variante utilisée. La base contrôle la cohérence de l’organisation, de la réservation, du type documentaire et de l’origine commune ; `documents.template_id` et `documents.source_template_version` conservent cette origine exacte.
+- Une version de variante utilisée reste définitivement protégée, y compris lorsque le document devient historique ou est supprimé logiquement. Les anciens documents sans variante restent compatibles avec une valeur `null`.
 - La création initiale sélectionne côté serveur la publication commune active exacte et en copie le format et le contenu. Une publication ultérieure du modèle commun ne rattache ni ne modifie une variante existante ; la version suivante clone la publication précédente de la variante et conserve son origine.
 - La sauvegarde ne modifie que le contenu du brouillon et utilise un verrou optimiste sur `updated_at`. La publication est atomique et vérifie l’horodatage, le format et le contenu exacts relus et validés afin de refuser toute modification concurrente.
 - L’identité, la taxonomie et les audits sont immuables, comme les versions publiées ou retirées.
@@ -142,14 +144,16 @@ Campagnes transactionnelles disponibles :
 - L’éditeur propose un aperçu fictif, ouvrable en grand. Depuis une Réservation, un aperçu réel est disponible lorsqu’un modèle publié compatible existe.
 - Un aperçu ne crée ni ligne de document ni objet Storage. Les données manquantes y restent visibles.
 - Pendant une syntaxe de gras temporairement incomplète, l’éditeur conserve le dernier aperçu valide. La validation, la publication et la génération définitive restent strictes.
-- L’aperçu d’une variante utilise uniquement des données fictives : il ne constitue pas encore un aperçu réel du dossier adoptant. Créer ou éditer une variante ne crée aucune ligne dans `documents`, n’écrit rien dans `documents.generation_data` et ne produit aucun PDF réel ni objet Storage.
-- La génération actuelle continue à sélectionner uniquement les modèles de référence publiés ; aucune variante n’est encore utilisée par les snapshots ou le moteur PDF.
+- Dans l’éditeur de variante, l’aperçu utilise des données fictives. Créer ou éditer une variante ne crée aucune ligne dans `documents`, n’écrit rien dans `documents.generation_data` et ne produit aucun PDF réel ni objet Storage.
+- Depuis la fiche Réservation, l’aperçu utilise les données réelles du dossier et la source effective. Il partage la même préparation serveur que la génération persistante.
 
 ### Modèles et snapshots
 
 - Les modèles documentaires sont définis par des schémas JSON versionnés et validés avec Zod.
 - Chaque génération prépare depuis Supabase un snapshot métier complet, typé et validé : organisation/vendeur, contact, candidature, réservation, portée, animal, paiements et modèle selon le document.
-- Le snapshot contient la version exacte du modèle et l’instant de capture. Il est conservé dans `documents.generation_data` et devient immuable avec le document généré.
+- Les nouveaux snapshots sont en version 2. Ils conservent la sélection initiale, l’origine commune exacte, la nature de la source et, le cas échéant, la version exacte de variante. Ils sont conservés dans `documents.generation_data` et deviennent immuables avec le document généré.
+- Les snapshots V1 historiques restent lus et rendus sans conversion. Les versions inconnues et les combinaisons incohérentes sont refusées.
+- Le rejeu idempotent V2 vérifie la sélection initiale, l’origine commune et la variante exacte.
 
 ### Rendu, stockage et génération
 
@@ -159,12 +163,18 @@ Campagnes transactionnelles disponibles :
 - Une nouvelle génération crée une nouvelle ligne et une chaîne `replaces_document_id` ; la version précédente est marquée historique plutôt qu’écrasée.
 - Le titre résolu est conservé avec le document. Une nouvelle génération ne modifie jamais l’ancienne ligne, son snapshot ni son PDF historique.
 - La génération individuelle se lance actuellement depuis la fiche Réservation, séparément pour le contrat et le certificat, avec contrôle de compatibilité du modèle.
+- La famille reste choisie par le modèle commun publié sélectionné dans l’interface. Le serveur utilise la variante publiée de cette réservation et de cette famille, sinon le modèle commun sélectionné ; aucun identifiant de variante n’est accepté depuis le client et les brouillons ne sont jamais utilisés.
+- Une variante publiée invalide bloque la source au lieu de provoquer un fallback silencieux. La génération stocke l’origine commune exacte, la version de variante exacte éventuelle et le snapshot immuable.
+- Un retrait concurrent de la publication empêche le stockage d’un document incohérent et déclenche la compensation de l’objet Storage.
 
 ### Consultation sécurisée
 
 - La fiche Document et la fiche Réservation exposent le document courant et son historique de versions.
 - Une route serveur authentifiée vérifie l’organisation, les droits et la cohérence des métadonnées avant de diffuser le PDF privé.
 - Les versions courantes et historiques restent consultables ; aucun lien Storage public permanent n’est exposé.
+- Avant génération, chaque option précise si elle utilisera le modèle de référence ou une variante personnalisée ; une source personnalisée invalide est désactivée avec un message neutre.
+- La carte du document courant sépare la source utilisée de son origine commune. L’historique partagé conserve ces informations par version : une ancienne version reste identifiée comme personnalisée après retrait de la variante ou retour au modèle commun sur une version suivante.
+- Les documents legacy sans origine identifiable affichent une source non renseignée. Aucun UUID, chemin Storage ou jeton n’est exposé.
 
 ## Retours signés
 
@@ -179,17 +189,13 @@ Campagnes transactionnelles disponibles :
 
 Restent à concevoir ou implémenter :
 
-- le raccordement d’une version publiée de variante à `documents` ;
-- l’utilisation des variantes dans les snapshots et leur sélection explicite dans la génération PDF ;
 - la génération PDF groupée depuis une portée ou un groupe de portées ;
 - l’envoi des PDF exacts en pièces jointes Brevo ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
-La fonction SQL de détection de l’utilisation d’une version de variante reste provisoire tant que les versions de variantes ne sont pas raccordées à `documents`. Les variantes ne sont encore utilisées ni par les snapshots, ni par la génération PDF, ni par Storage ou Brevo.
-
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **auditer et concevoir le raccordement d’une publication de variante à la préparation du snapshot et à la génération PDF, avec une règle de sélection explicite entre variante publiée et modèle commun, conservation de la version source exacte, immutabilité après génération et compatibilité des documents historiques.**
+La prochaine étape est : **auditer puis raccorder les PDF contractuels exacts à la campagne Brevo `birth_documents_deposit`, avec sélection autoritaire des documents courants, vérification de leur réservation, type, version et intégrité, comportement explicite lorsqu’un PDF manque, et préservation de l’idempotence des envois.**
 
 ## Environnement E2E et règles de validation
 
