@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #280. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #282. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `bac40e13b7bd1b4000f52dcc58de7572df01246b`.
-- Dernière PR incluse : **#280 — Service serveur des variantes documentaires**.
+- SHA de `main` documenté : `6a27e64a71e1fc2b1a7f1596b0dc1719e896312b`.
+- Dernière PR incluse : **#282 — Interface des variantes documentaires par réservation**.
 - Les migrations locales sont appliquées jusqu’à `202607160001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -115,6 +115,10 @@ Campagnes transactionnelles disponibles :
 - La sauvegarde ne modifie que le contenu du brouillon et utilise un verrou optimiste sur `updated_at`. La publication est atomique et vérifie l’horodatage, le format et le contenu exacts relus et validés afin de refuser toute modification concurrente.
 - L’identité, la taxonomie et les audits sont immuables, comme les versions publiées ou retirées.
 - Le service TypeScript serveur permet de lister les variantes d’une réservation et leur brouillon/publication courants, de lire leur historique ordonné, de créer le premier brouillon, de sauvegarder son contenu, de le valider avec l’unique parseur Zod documentaire existant, de créer la version suivante et de publier. Il retourne des erreurs typées sans exposer les erreurs Supabase ou SQL.
+- La fiche Réservation contient une section autonome **Variantes documentaires personnalisées**. Elle affiche les familles prises en charge, leur compatibilité, l’état de leur variante et l’origine exacte du modèle commun. La création exige une action explicite et ne se produit jamais au simple affichage de la page.
+- Une page dédiée présente la publication courante en lecture seule, le brouillon éventuel et l’historique complet. Selon son rôle, l’éleveur peut créer, modifier, sauvegarder, valider, versionner et publier la variante.
+- Les Server Actions retrouvent la réservation, en déduisent l’organisation côté serveur, vérifient que la variante appartient à cette réservation et utilisent exclusivement le service serveur de gestion des variantes.
+- L’éditeur documentaire commun est réutilisé par injection d’actions, sans duplication des champs structurés. Les contrats V2, variables, gras, modifications non enregistrées, publications en lecture seule et aperçu responsive restent pris en charge. Une publication V2 sans brouillon n’affiche pas le contenu automatique legacy.
 - Les permissions sont : `viewer` pour la lecture et la validation ; `member` pour la lecture, la validation, la création, la sauvegarde et la version suivante ; `admin` et `owner` pour toutes les opérations, dont la publication. Le contrôle d’adhésion documentaire est partagé entre le service des modèles et celui des variantes, sans changement de comportement.
 
 ### Contrat de réservation V2
@@ -138,6 +142,8 @@ Campagnes transactionnelles disponibles :
 - L’éditeur propose un aperçu fictif, ouvrable en grand. Depuis une Réservation, un aperçu réel est disponible lorsqu’un modèle publié compatible existe.
 - Un aperçu ne crée ni ligne de document ni objet Storage. Les données manquantes y restent visibles.
 - Pendant une syntaxe de gras temporairement incomplète, l’éditeur conserve le dernier aperçu valide. La validation, la publication et la génération définitive restent strictes.
+- L’aperçu d’une variante utilise uniquement des données fictives : il ne constitue pas encore un aperçu réel du dossier adoptant. Créer ou éditer une variante ne crée aucune ligne dans `documents`, n’écrit rien dans `documents.generation_data` et ne produit aucun PDF réel ni objet Storage.
+- La génération actuelle continue à sélectionner uniquement les modèles de référence publiés ; aucune variante n’est encore utilisée par les snapshots ou le moteur PDF.
 
 ### Modèles et snapshots
 
@@ -173,10 +179,8 @@ Campagnes transactionnelles disponibles :
 
 Restent à concevoir ou implémenter :
 
-- l’interface et les Server Actions des variantes documentaires ;
-- l’éditeur de variante depuis la fiche Réservation ;
-- le lien entre une version de variante et `documents` ;
-- l’usage des variantes dans les snapshots et la génération PDF ;
+- le raccordement d’une version publiée de variante à `documents` ;
+- l’utilisation des variantes dans les snapshots et leur sélection explicite dans la génération PDF ;
 - la génération PDF groupée depuis une portée ou un groupe de portées ;
 - l’envoi des PDF exacts en pièces jointes Brevo ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
@@ -185,7 +189,7 @@ La fonction SQL de détection de l’utilisation d’une version de variante res
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **ajouter l’interface et les Server Actions permettant de créer, modifier, valider, versionner et publier une variante documentaire depuis la fiche Réservation, sans encore la raccorder à la génération PDF.**
+La prochaine étape est : **auditer et concevoir le raccordement d’une publication de variante à la préparation du snapshot et à la génération PDF, avec une règle de sélection explicite entre variante publiée et modèle commun, conservation de la version source exacte, immutabilité après génération et compatibilité des documents historiques.**
 
 ## Environnement E2E et règles de validation
 
