@@ -22,7 +22,6 @@ import {
   publishDocumentTemplateDraftAction,
   saveDocumentTemplateDraftAction,
   validateDocumentTemplateDraftAction,
-  type DocumentTemplateActionResult,
 } from "@/features/documents/document-template-management-actions";
 import { documentTemplateTypePresentations } from "@/features/documents/document-template-editor-config";
 import type {
@@ -67,6 +66,23 @@ type StructuredEditorConfiguration = {
     readOnly: boolean;
     onChange: (definition: DocumentTemplateDefinition) => void;
   }) => ReactNode;
+};
+
+export type DocumentDefinitionEditorActionResult = {
+  outcome: "success" | "error";
+  message: string;
+  updatedAt?: string;
+};
+
+export type DocumentDefinitionEditorActions = {
+  save: (input: {
+    templateContent: string;
+    expectedUpdatedAt: string;
+  }) => Promise<DocumentDefinitionEditorActionResult>;
+  validate: () => Promise<DocumentDefinitionEditorActionResult>;
+  publish: (input: {
+    expectedUpdatedAt: string;
+  }) => Promise<DocumentDefinitionEditorActionResult>;
 };
 
 const fieldClassName =
@@ -606,7 +622,7 @@ export const documentTemplateEditorConfigurations: Record<
   },
 };
 
-function StatusMessage({ result }: { result: DocumentTemplateActionResult | null }) {
+function StatusMessage({ result }: { result: DocumentDefinitionEditorActionResult | null }) {
   if (!result) return null;
   return (
     <div
@@ -633,6 +649,8 @@ export function DocumentTemplateEditor({
   destructiveAction,
   previewLogo = null,
   previewBrandingUnavailable = false,
+  actions,
+  previewNotice = "Aperçu avec données fictives et identité visuelle actuelle — aucune réservation ni aucun document n’est créé ou modifié.",
 }: {
   templateId: string;
   version: number;
@@ -650,6 +668,8 @@ export function DocumentTemplateEditor({
   };
   previewLogo?: { dataUri: string; widthPx: number; heightPx: number } | null;
   previewBrandingUnavailable?: boolean;
+  actions?: DocumentDefinitionEditorActions;
+  previewNotice?: string;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState(initialDefinition);
@@ -657,7 +677,7 @@ export function DocumentTemplateEditor({
     () => fingerprintStoredContent(initialSavedContent),
   );
   const [updatedAt, setUpdatedAt] = useState(initialUpdatedAt);
-  const [result, setResult] = useState<DocumentTemplateActionResult | null>(null);
+  const [result, setResult] = useState<DocumentDefinitionEditorActionResult | null>(null);
   const initialPreviewError = previewValidationError(initialDefinition);
   const [previewDefinition, setPreviewDefinition] = useState<DocumentTemplateDefinition | null>(
     initialPreviewError ? null : initialDefinition,
@@ -691,7 +711,7 @@ export function DocumentTemplateEditor({
   }, [definition]);
 
   function runAction(
-    action: () => Promise<DocumentTemplateActionResult>,
+    action: () => Promise<DocumentDefinitionEditorActionResult>,
     options?: {
       refreshAfterSuccess?: boolean;
       onSuccess?: () => void;
@@ -803,11 +823,13 @@ export function DocumentTemplateEditor({
                         type="button"
                         variant="outline"
                         disabled={isPending}
-                        onClick={() => runAction(() => saveDocumentTemplateDraftAction({
-                          templateId,
-                          templateContent,
-                          expectedUpdatedAt: updatedAt,
-                        }), {
+                        onClick={() => runAction(() => actions
+                          ? actions.save({ templateContent, expectedUpdatedAt: updatedAt })
+                          : saveDocumentTemplateDraftAction({
+                              templateId,
+                              templateContent,
+                              expectedUpdatedAt: updatedAt,
+                            }), {
                           onSuccess: () => setSavedContentFingerprint(
                             fingerprintStoredContent(templateContent),
                           ),
@@ -821,9 +843,9 @@ export function DocumentTemplateEditor({
                         type="button"
                         variant="secondary"
                         disabled={isPending}
-                        onClick={() => runAction(() => validateDocumentTemplateDraftAction({
-                          templateId,
-                        }))}
+                        onClick={() => runAction(() => actions
+                          ? actions.validate()
+                          : validateDocumentTemplateDraftAction({ templateId }))}
                       >
                         Valider le brouillon
                       </Button>
@@ -849,9 +871,11 @@ export function DocumentTemplateEditor({
                           <AlertDialogFooter>
                             <AlertDialogCancel>Annuler</AlertDialogCancel>
                             <AlertDialogAction
-                              onClick={() => runAction(() => publishDocumentTemplateDraftAction({
-                                templateId,
-                              }), { refreshAfterSuccess: true })}
+                              onClick={() => runAction(() => actions
+                                ? actions.publish({ expectedUpdatedAt: updatedAt })
+                                : publishDocumentTemplateDraftAction({ templateId }), {
+                                  refreshAfterSuccess: true,
+                                })}
                             >
                               Confirmer la publication
                             </AlertDialogAction>
@@ -873,7 +897,7 @@ export function DocumentTemplateEditor({
             : "hidden space-y-3 lg:sticky lg:top-5 lg:block"}
         >
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
-            Aperçu avec données fictives et identité visuelle actuelle — aucune réservation ni aucun document n’est créé ou modifié.
+            {previewNotice}
           </p>
           {previewFallbackReason ? (
             <p role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
