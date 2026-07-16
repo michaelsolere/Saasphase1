@@ -48,6 +48,7 @@ export type StoreDocumentPdfInput = DocumentPdfScope & {
   generatedFromTemplate?: boolean;
   generatedAt?: string | null;
   sourceTemplateVersion?: number | null;
+  reservationDocumentVariantVersionId?: NullableUuid;
   generationData?: Json;
   signatureRequired?: boolean;
 };
@@ -262,6 +263,7 @@ function normalizeStoreInput(input: StoreDocumentPdfInput) {
     input.animalId,
     input.paymentId,
     input.templateId,
+    input.reservationDocumentVariantVersionId,
   ];
   if (
     !organizationId ||
@@ -313,6 +315,8 @@ function normalizeStoreInput(input: StoreDocumentPdfInput) {
     generatedFromTemplate,
     generatedAt: input.generatedAt ?? null,
     sourceTemplateVersion: input.sourceTemplateVersion ?? null,
+    reservationDocumentVariantVersionId:
+      normalizeOptionalUuid(input.reservationDocumentVariantVersionId),
     generationData: input.generationData ?? {},
     signatureRequired: input.signatureRequired ?? false,
     ...scopeEntries,
@@ -457,6 +461,8 @@ export async function storeDocumentPdfCore(
       p_source_template_version: normalized.sourceTemplateVersion,
       p_generation_data: normalized.generationData,
       p_signature_required: normalized.signatureRequired,
+      p_reservation_document_variant_version_id:
+        normalized.reservationDocumentVariantVersionId,
     });
   } catch (rpcError) {
     return error(

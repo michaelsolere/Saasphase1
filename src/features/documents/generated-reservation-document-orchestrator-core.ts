@@ -146,7 +146,6 @@ function replayResult(
   if (
     document.reservation_id !== input.reservationId ||
     document.document_type !== input.documentType ||
-    document.template_id !== input.templateId ||
     !document.generated_from_template ||
     document.deleted_at !== null ||
     !["generated", "sent", "signed"].includes(document.status) ||
@@ -166,6 +165,17 @@ function replayResult(
 
   const snapshot = parsedSnapshot.snapshot;
   const parsedPath = parseDocumentPdfPath(document.file_path!);
+  const templateMatches =
+    snapshot.snapshotVersion === 1
+      ? snapshot.template.templateId === input.templateId &&
+        snapshot.template.templateId === document.template_id &&
+        snapshot.template.templateVersion === document.source_template_version &&
+        document.reservation_document_variant_version_id === null
+      : snapshot.template.selectedTemplateId === input.templateId &&
+        snapshot.template.templateId === document.template_id &&
+        snapshot.template.templateVersion === document.source_template_version &&
+        snapshot.template.reservationDocumentVariantVersionId ===
+          document.reservation_document_variant_version_id;
   if (
     !parsedPath ||
     snapshot.sources.organizationId !== document.organization_id ||
@@ -176,8 +186,7 @@ function replayResult(
     snapshot.sources.animalId !== document.animal_id ||
     document.litter_group_id !== null ||
     snapshot.documentType !== document.document_type ||
-    snapshot.template.templateId !== document.template_id ||
-    snapshot.template.templateVersion !== document.source_template_version ||
+    !templateMatches ||
     !sameInstant(document.generated_at, snapshot.capturedAt) ||
     snapshot.capturedAt !== input.capturedAt
   ) {
@@ -319,6 +328,8 @@ export async function generateAndStoreReservationDocumentPdfCore(
       generatedFromTemplate: true,
       generatedAt: prepared.snapshot.capturedAt,
       sourceTemplateVersion: prepared.templateVersion,
+      reservationDocumentVariantVersionId:
+        prepared.reservationDocumentVariantVersionId,
       generationData: prepared.snapshot,
       signatureRequired: true,
       contactId: prepared.snapshot.sources.contactId,

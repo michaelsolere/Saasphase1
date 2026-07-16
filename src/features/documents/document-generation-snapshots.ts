@@ -7,12 +7,19 @@ export {
 
 export {
   DOCUMENT_GENERATION_SNAPSHOT_LOCALE,
+  DOCUMENT_GENERATION_SNAPSHOT_V1_VERSION,
   DOCUMENT_GENERATION_SNAPSHOT_VERSION,
   commitmentCertificateGenerationSnapshotSchema,
+  commitmentCertificateGenerationSnapshotV1Schema,
   documentGenerationSnapshotSchema,
+  documentGenerationSnapshotV1Schema,
+  documentGenerationSnapshotV2Schema,
   reservationContractGenerationSnapshotSchema,
+  reservationContractGenerationSnapshotV1Schema,
   type CommitmentCertificateGenerationSnapshot,
   type DocumentGenerationSnapshot,
+  type DocumentGenerationSnapshotV1,
+  type DocumentGenerationSnapshotV2,
   type DocumentGenerationSnapshotType,
   type ReservationContractGenerationSnapshot,
 } from "./document-generation-snapshot-schemas";

@@ -1,6 +1,8 @@
 import {
+  DOCUMENT_GENERATION_SNAPSHOT_V1_VERSION,
   DOCUMENT_GENERATION_SNAPSHOT_VERSION,
-  documentGenerationSnapshotSchema,
+  documentGenerationSnapshotV1Schema,
+  documentGenerationSnapshotV2Schema,
   type DocumentGenerationSnapshot,
   type DocumentGenerationSnapshotType,
 } from "./document-generation-snapshot-schemas";
@@ -42,7 +44,7 @@ export function parseDocumentGenerationSnapshot({
   }
 
   if (
-    "snapshotVersion" in generationData &&
+    generationData.snapshotVersion !== DOCUMENT_GENERATION_SNAPSHOT_V1_VERSION &&
     generationData.snapshotVersion !== DOCUMENT_GENERATION_SNAPSHOT_VERSION
   ) {
     return { success: false, error: "unsupported_snapshot_version" };
@@ -55,7 +57,11 @@ export function parseDocumentGenerationSnapshot({
     return { success: false, error: "document_type_mismatch" };
   }
 
-  const parsedSnapshot = documentGenerationSnapshotSchema.safeParse(generationData);
+  const parsedSnapshot = (
+    generationData.snapshotVersion === DOCUMENT_GENERATION_SNAPSHOT_V1_VERSION
+      ? documentGenerationSnapshotV1Schema
+      : documentGenerationSnapshotV2Schema
+  ).safeParse(generationData);
   if (!parsedSnapshot.success) {
     return { success: false, error: "invalid_snapshot" };
   }

@@ -6,10 +6,8 @@ import type {
   DocumentGenerationSnapshot,
   DocumentGenerationSnapshotType,
 } from "./document-generation-snapshot-schemas";
-import {
-  isReservationDocumentTemplateCompatible,
-  resolveEffectiveReservationDocumentTaxonomy,
-} from "./reservation-document-template-compatibility";
+import { resolveEffectiveReservationDocumentTaxonomy } from "./reservation-document-template-compatibility";
+import { resolveReservationDocumentGenerationSourceCore } from "./resolve-reservation-document-generation-source-core";
 import { readDepositSettingsForOrganization } from "@/features/payments/deposit-thresholds";
 import { readActiveOrganizationLogo } from "@/features/settings/organization-logo-service";
 import type { Database } from "@/types/database.types";
@@ -47,8 +45,11 @@ export type PrepareDocumentGenerationSnapshotResult =
       snapshot: DocumentGenerationSnapshot;
       templateDefinition: DocumentTemplateDefinition;
       templateContent: string;
+      selectedTemplateId: string;
       templateId: string;
       templateVersion: number;
+      reservationDocumentVariantVersionId: string | null;
+      sourceKind: "common" | "reservation_variant";
       logoBytes: Buffer | null;
       logoDataUri: string | null;
     }
@@ -143,7 +144,7 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   }
   const activeLogo = activeLogoResult.logo;
 
-  const [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult, templateResult] = await Promise.all([
+  const [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult] = await Promise.all([
     supabase.from("organizations").select("id, name, legal_name, legal_form, siret, email, phone, website_url, address_line1, address_line2, postal_code, city, country").eq("id", organizationId).is("deleted_at", null).maybeSingle(),
     supabase.from("contacts").select("id, display_name, first_name, last_name, email, phone, address_line1, address_line2, postal_code, city, country").eq("organization_id", organizationId).eq("id", contactId).is("deleted_at", null).maybeSingle(),
     reservation.application_id
@@ -157,10 +158,9 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
       : Promise.resolve({ data: null, error: null }),
     supabase.from("organization_representatives").select("display_name, first_name, last_name, representative_role, email, phone").eq("organization_id", organizationId).eq("is_default_signatory", true).eq("is_active", true).is("deleted_at", null).maybeSingle(),
     supabase.from("organization_document_settings").select("mediator_name, mediator_contact, mediator_website_url, signature_city_default").eq("organization_id", organizationId).is("deleted_at", null).maybeSingle(),
-    supabase.from("document_templates").select("id, document_type, species, breed, template_format, template_content, version, is_active, deleted_at").eq("organization_id", organizationId).eq("id", templateId).maybeSingle(),
   ]);
 
-  const reads = [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult, templateResult];
+  const reads = [organizationResult, contactResult, applicationResult, litterResult, animalResult, signerResult, documentSettingsResult];
   const readError = reads.find((result) => result.error)?.error;
   if (readError) return databaseFailure("document_snapshot_source_read_failed", readError);
 
@@ -169,7 +169,6 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   const application = applicationResult.data;
   const litter = litterResult.data;
   const animal = animalResult.data;
-  const template = templateResult.data;
 
   if (
     (reservation.application_id && !application) ||
@@ -234,8 +233,6 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     return fail("incomplete_source_data");
   }
 
-  if (!template || !template.is_active || template.deleted_at !== null) return fail("template_not_found");
-
   const taxonomy = resolveEffectiveReservationDocumentTaxonomy({
     animal,
     litter,
@@ -255,15 +252,15 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
   ) {
     return fail("incomplete_source_data");
   }
-  if (
-    !isReservationDocumentTemplateCompatible({
-      template,
-      documentType: input.documentType,
-      taxonomy,
-    })
-  ) {
-    return fail("template_mismatch");
-  }
+  const source = await resolveReservationDocumentGenerationSourceCore({
+    organizationId,
+    reservationId,
+    documentType: input.documentType,
+    selectedTemplateId: templateId,
+    taxonomy,
+    supabase,
+  });
+  if (source.outcome === "error") return fail(source.error.code);
 
   let financials;
   if (input.documentType === "reservation_contract") {
@@ -288,11 +285,17 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     documentType: input.documentType,
     capturedAt: input.capturedAt,
     template: {
-      id: template.id,
-      version: template.version,
-      format: template.template_format,
-      documentType: template.document_type,
-      content: template.template_content,
+      selectedId: source.selectedTemplateId,
+      id: source.effectiveTemplateId,
+      version: source.effectiveTemplateVersion,
+      format: source.templateFormat,
+      documentType: input.documentType,
+      content: source.templateContent,
+      sourceKind: source.sourceKind,
+      reservationDocumentVariantVersionId:
+        source.reservationDocumentVariantVersionId,
+      reservationDocumentVariantVersion:
+        source.reservationDocumentVariantVersion,
     },
     sources: {
       organizationId,
@@ -375,9 +378,13 @@ export async function prepareDocumentGenerationSnapshotForReservationCore(
     outcome: "success",
     snapshot: built.snapshot,
     templateDefinition: built.templateDefinition,
-    templateContent: template.template_content!,
-    templateId: template.id,
-    templateVersion: template.version,
+    templateContent: source.templateContent!,
+    selectedTemplateId: source.selectedTemplateId,
+    templateId: source.effectiveTemplateId,
+    templateVersion: source.effectiveTemplateVersion,
+    reservationDocumentVariantVersionId:
+      source.reservationDocumentVariantVersionId,
+    sourceKind: source.sourceKind,
     logoBytes: activeLogo?.bytes ?? null,
     logoDataUri: activeLogo?.dataUri ?? null,
   };

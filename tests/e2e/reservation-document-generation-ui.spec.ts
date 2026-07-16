@@ -2,7 +2,10 @@ import { createHash } from "node:crypto";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { generateAndStoreReservationDocumentPdfCore } from "../../src/features/documents/generated-reservation-document-orchestrator-core";
+import {
+  generateAndStoreReservationDocumentPdfCore,
+  type GenerateAndStoreReservationDocumentPdfDependencies,
+} from "../../src/features/documents/generated-reservation-document-orchestrator-core";
 import {
   createAuthenticatedSupabaseClient,
   E2E_OWNER_EMAIL,
@@ -27,6 +30,9 @@ const ids = {
   foreignContact: "7e160000-0000-4000-8000-000000000014",
   foreignReservation: "7e160000-0000-4000-8000-000000000015",
   foreignTemplate: "7e160000-0000-4000-8000-000000000016",
+  contractVariant: "7e160000-0000-4000-8000-000000000017",
+  contractVariantVersion: "7e160000-0000-4000-8000-000000000018",
+  concurrentVariantDocument: "7e160000-0000-4000-8000-000000000019",
 } as const;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -59,6 +65,12 @@ const certificateDefinition = {
 const alternateContractDefinition = {
   ...contractDefinition,
   title: "Contrat alternatif sélectionné UI E2E",
+};
+
+const variantContractDefinition = {
+  ...contractDefinition,
+  title: "Contrat personnalisé réservation UI E2E",
+  body: "Texte personnalisé variante UI E2E pour [[adoptant.nom_complet]].",
 };
 
 function q(value: string) {
@@ -97,6 +109,8 @@ async function removeStorageObjects(
 function cleanupRows() {
   sql(`
     delete from public.documents where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.reservation_document_variant_versions where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.reservation_document_variants where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
     delete from public.email_delivery_attempts where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
     delete from public.payments where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
     delete from public.reservations where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
@@ -165,6 +179,18 @@ function seed() {
       (${q(ids.incompatibleTemplate)}, ${q(ids.organization)}, ${q(ids.incompatibleTemplate)}, 'Contrat incompatible UI E2E', 'reservation_contract', 'cat', 'Maine Coon', 'json', ${q(JSON.stringify(contractDefinition))}, 9, 'published', true, now(), ${q(ownerId)}),
       (${q(ids.alternateContractTemplate)}, ${q(ids.organization)}, ${q(ids.alternateContractTemplate)}, 'Contrat alternatif UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(alternateContractDefinition))}, 2, 'published', true, now(), ${q(ownerId)}),
       (${q(ids.foreignTemplate)}, ${q(ids.foreignOrganization)}, ${q(ids.foreignTemplate)}, 'Contrat étranger UI E2E', 'reservation_contract', 'dog', 'Golden Retriever', 'json', ${q(JSON.stringify(contractDefinition))}, 1, 'published', true, now(), ${q(ownerId)});
+    insert into public.reservation_document_variants
+      (id, organization_id, reservation_id, template_family_id, document_type, species, breed)
+    values
+      (${q(ids.contractVariant)}, ${q(ids.organization)}, ${q(ids.reservation)}, ${q(ids.contractTemplate)}, 'reservation_contract', 'dog', 'Golden Retriever');
+    insert into public.reservation_document_variant_versions
+      (id, organization_id, variant_id, version, source_template_id,
+       source_template_version, template_format, template_content,
+       lifecycle_status, published_at, published_by)
+    values
+      (${q(ids.contractVariantVersion)}, ${q(ids.organization)}, ${q(ids.contractVariant)}, 1,
+       ${q(ids.contractTemplate)}, 3, 'json', ${q(JSON.stringify(variantContractDefinition))},
+       'published', now(), ${q(ownerId)});
   `);
 }
 
@@ -399,6 +425,25 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
     expect(createHash("sha256").update(mainBytes).digest("hex")).not.toBe(
       createHash("sha256").update(alternateBytes).digest("hex"),
     );
+    sql(`delete from public.reservation_document_variant_versions where id = ${q(ids.contractVariantVersion)}::uuid;`);
+    const fallbackPdf = await page.request.get(
+      previewUrl(ids.reservation, "reservation_contract", ids.contractTemplate),
+    );
+    expect(fallbackPdf.status()).toBe(200);
+    const fallbackBytes = Buffer.from(await fallbackPdf.body());
+    expect(createHash("sha256").update(fallbackBytes).digest("hex")).not.toBe(
+      createHash("sha256").update(mainBytes).digest("hex"),
+    );
+    sql(`
+      insert into public.reservation_document_variant_versions
+        (id, organization_id, variant_id, version, source_template_id,
+         source_template_version, template_format, template_content,
+         lifecycle_status, published_at, published_by)
+      values
+        (${q(ids.contractVariantVersion)}, ${q(ids.organization)}, ${q(ids.contractVariant)}, 1,
+         ${q(ids.contractTemplate)}, 3, 'json', ${q(JSON.stringify(variantContractDefinition))},
+         'published', now(), ${q(ownerId)});
+    `);
 
     const missingReservation = await page.request.get(
       previewUrl(
@@ -456,6 +501,45 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       previewStateBefore.emails,
     );
 
+    const beforeRetiredRaceRows = organizationCount("documents");
+    const beforeRetiredRacePaths = storagePaths();
+    const preparation = await import(
+      "../../src/features/documents/prepare-document-generation-snapshot-core"
+    );
+    const renderer = await import(
+      "../../src/features/documents/document-pdf-renderer-core"
+    );
+    const storage = await import(
+      "../../src/features/documents/document-pdf-storage-core"
+    );
+    const retiredRaceDependencies: GenerateAndStoreReservationDocumentPdfDependencies = {
+      prepare: preparation.prepareDocumentGenerationSnapshotForReservationCore,
+      render: renderer.renderDocumentPdfCore,
+      store: async (input, client) => {
+        sql(`update public.reservation_document_variant_versions set lifecycle_status = 'retired' where id = ${q(ids.contractVariantVersion)}::uuid;`);
+        return storage.storeDocumentPdfCore(input, client);
+      },
+    };
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        {
+          documentId: ids.concurrentVariantDocument,
+          reservationId: ids.reservation,
+          documentType: "reservation_contract",
+          templateId: ids.contractTemplate,
+          capturedAt: "2026-07-13T17:30:00.000+02:00",
+        },
+        supabase,
+        retiredRaceDependencies,
+      ),
+    ).toEqual({
+      outcome: "error",
+      error: { stage: "store", code: "database_error" },
+    });
+    expect(organizationCount("documents")).toBe(beforeRetiredRaceRows);
+    expect(storagePaths()).toEqual(beforeRetiredRacePaths);
+    sql(`update public.reservation_document_variant_versions set lifecycle_status = 'published' where id = ${q(ids.contractVariantVersion)}::uuid;`);
+
     await contractCard
       .getByLabel("Modèle compatible")
       .selectOption(ids.contractTemplate);
@@ -475,6 +559,15 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       `select generation_data->>'capturedAt' from public.documents where id = ${q(v1Id)}::uuid;`,
     );
     expect(
+      sql(`select template_id::text || '|' || source_template_version::text || '|' || reservation_document_variant_version_id::text from public.documents where id = ${q(v1Id)}::uuid;`),
+    ).toBe(`${ids.contractTemplate}|3|${ids.contractVariantVersion}`);
+    expect(
+      sql(`select (generation_data->>'snapshotVersion') || '|' || (generation_data->'template'->>'selectedTemplateId') || '|' || (generation_data->'template'->>'sourceKind') || '|' || (generation_data->'template'->>'reservationDocumentVariantVersionId') from public.documents where id = ${q(v1Id)}::uuid;`),
+    ).toBe(`2|${ids.contractTemplate}|reservation_variant|${ids.contractVariantVersion}`);
+    expect(
+      sql(`select title from public.documents where id = ${q(v1Id)}::uuid;`),
+    ).toBe("Contrat personnalisé réservation UI E2E");
+    expect(
       sql(`select file_path ~ '/v1/' from public.documents where id = ${q(v1Id)}::uuid;`),
     ).toBe("t");
 
@@ -491,8 +584,25 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       supabase,
     );
     expect(replay).toMatchObject({ outcome: "existing", documentId: v1Id, version: 1 });
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        {
+          documentId: v1Id,
+          reservationId: ids.reservation,
+          documentType: "reservation_contract",
+          templateId: ids.alternateContractTemplate,
+          capturedAt,
+        },
+        supabase,
+      ),
+    ).toEqual({
+      outcome: "error",
+      error: { stage: "input", code: "document_id_conflict" },
+    });
     expect(organizationCount("documents")).toBe(rowsBeforeReplay);
     expect(storagePaths()).toEqual(pathsBeforeReplay);
+
+    sql(`update public.reservation_document_variant_versions set lifecycle_status = 'retired' where id = ${q(ids.contractVariantVersion)}::uuid;`);
 
     await page.goto(`/reservations/${ids.reservation}#documents`);
     const versionedContractCard = page
@@ -528,6 +638,12 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
         `select file_path ~ '/v2/' from public.documents where reservation_id = ${q(ids.reservation)}::uuid and document_type = 'reservation_contract' and deleted_at is null and superseded_at is null;`,
       ),
     ).toBe("t");
+    expect(
+      sql(`select reservation_document_variant_version_id is null from public.documents where reservation_id = ${q(ids.reservation)}::uuid and document_type = 'reservation_contract' and superseded_at is null;`),
+    ).toBe("t");
+    expect(
+      sql(`select reservation_document_variant_version_id::text from public.documents where id = ${q(v1Id)}::uuid;`),
+    ).toBe(ids.contractVariantVersion);
 
     const beforeIncompatible = organizationCount("documents");
     const pathsBeforeIncompatible = storagePaths();
@@ -564,6 +680,8 @@ test("génère et versionne les PDF depuis la fiche réservation sans effet anne
       "documents",
       "email_delivery_attempts",
       "payments",
+      "reservation_document_variant_versions",
+      "reservation_document_variants",
       "reservations",
       "document_templates",
       "document_template_families",
