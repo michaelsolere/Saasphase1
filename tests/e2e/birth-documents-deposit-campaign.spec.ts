@@ -145,7 +145,7 @@ test("compensation failure and markSent failure preserve payment and sending att
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });
 
-test("template retrieval failure compensates the claimed payment mutation", async () => {
+test("template retrieval failure is certain and happens before payment mutation", async () => {
   const supabase = await createAuthenticatedSupabaseClient(); fixture();
   try {
     const t = transport();
@@ -154,9 +154,10 @@ test("template retrieval failure compensates the claimed payment mutation", asyn
       { reservationId: ids.reservation, litterId: ids.litter },
       { supabase, transport: t.value },
     );
-    expect(result).toMatchObject({ deliveryState: "not_sent", compensated: true, paymentAction: "created" });
-    expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and payment_type='arrhes';`))).toBe(1);
-    expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and payment_type='arrhes' and deleted_at is null;`))).toBe(0);
+    expect(result).toMatchObject({ deliveryState: "not_sent" });
+    expect(result.paymentAction).toBeUndefined();
+    expect(result.compensated ?? false).toBe(false);
+    expect(Number(sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)} and payment_type='arrhes';`))).toBe(0);
     expect(sql(`select status from public.email_delivery_attempts where reservation_id=${q(ids.reservation)};`)).toBe("failed");
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });

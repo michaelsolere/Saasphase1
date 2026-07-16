@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   runTransactionalCampaignDelivery,
+  type ClaimedPreparationPhase,
   type TransactionalEmailTransport,
 } from "../../src/features/communications/transactional-campaign-core";
 import {
@@ -167,12 +168,15 @@ async function deliver(input: {
   attachments?: TransactionalEmailAttachment[];
   transport: TransactionalEmailTransport;
   compensate?: () => Promise<{ ok: true }>;
+  claimedPreparationPhase?: ClaimedPreparationPhase;
 }) {
   const supabase = await createAuthenticatedSupabaseClient();
   return runTransactionalCampaignDelivery(
     {
       campaignKey,
       operationVersion: input.operationVersion,
+      claimedPreparationPhase:
+        input.claimedPreparationPhase ?? "before_provider",
       transport: input.transport,
       prepareOperation: async () => ({
         ok: true,
@@ -419,6 +423,41 @@ test("validation failure compensates before provider and uncertain send stays se
     expect(
       sql(`select jsonb_array_length(attachments_snapshot) from public.email_delivery_attempts where id=${quote(uncertain.attemptId!)}::uuid;`),
     ).toBe("2");
+  } finally {
+    cleanup();
+    expect(remaining()).toBe(0);
+  }
+});
+
+test("after-template preparation rejects attachments and compensates before send", async () => {
+  createFixture();
+  try {
+    let compensationCount = 0;
+    const rejectedTransport = transport();
+    const failed = await deliver({
+      operationVersion: "after-template-attachments",
+      claimedPreparationPhase: "after_template",
+      attachments: [certificate(), contract()],
+      transport: rejectedTransport.value,
+      compensate: async () => {
+        compensationCount += 1;
+        return { ok: true };
+      },
+    });
+
+    expect(failed).toMatchObject({
+      outcome: "failed",
+      errorCode: "attachments_require_pre_provider_preparation",
+      compensated: true,
+    });
+    expect(compensationCount).toBe(1);
+    expect(rejectedTransport.templateCalls).toHaveLength(1);
+    expect(rejectedTransport.sends).toHaveLength(0);
+    expect(
+      sql(`select attachments_snapshot::text from public.email_delivery_attempts where id=${quote(failed.attemptId!)}::uuid;`),
+    ).toBe("[]");
+    expect(JSON.stringify(failed)).not.toContain(certificate().content);
+    expect(JSON.stringify(failed)).not.toContain(contract().content);
   } finally {
     cleanup();
     expect(remaining()).toBe(0);

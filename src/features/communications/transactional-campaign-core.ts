@@ -32,6 +32,8 @@ export type TransactionalProviderErrorReason =
 
 export type TransactionalEmailIdentity = { email: string; name?: string };
 
+export type ClaimedPreparationPhase = "after_template" | "before_provider";
+
 export type TransactionalEmailTransport = {
   isConfigured: () => boolean;
   getTemplate: (templateId: number) => Promise<
@@ -191,6 +193,7 @@ export async function runTransactionalCampaignDelivery(
   input: {
     campaignKey: string;
     operationVersion: string;
+    claimedPreparationPhase?: ClaimedPreparationPhase;
     transport?: TransactionalEmailTransport;
     prepareOperation: (context: {
       supabase: Supabase;
@@ -294,38 +297,6 @@ export async function runTransactionalCampaignDelivery(
 
   let finalOperation = operation;
   let claimedResource: ClaimedOperation = {};
-  if (input.prepareClaimedOperation) {
-    let claimedPreparation;
-    try {
-      claimedPreparation = await input.prepareClaimedOperation({
-        supabase: options.supabase,
-        ...context,
-        attemptId: claim.attempt.id,
-        attempt: claim.attempt,
-        operation,
-      });
-    } catch {
-      return {
-        outcome: "uncertain",
-        attemptId: claim.attempt.id,
-        errorCode: "claimed_operation_exception",
-      };
-    }
-    if (!claimedPreparation.ok) {
-      const transition = await recordCertainFailure({
-        supabase: options.supabase,
-        ...context,
-        attemptId: claim.attempt.id,
-        errorCode: claimedPreparation.errorCode,
-      });
-      return transition.outcome === "updated"
-        ? { outcome: "failed", attemptId: claim.attempt.id, errorCode: claimedPreparation.errorCode }
-        : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code };
-    }
-    claimedResource = claimedPreparation.claimed;
-    finalOperation = claimedResource.operation ?? operation;
-  }
-
   const failCertainly = async (errorCode: string): Promise<TransactionalCampaignResult> => {
     let compensated = false;
     if (claimedResource.compensate) {
@@ -363,6 +334,43 @@ export async function runTransactionalCampaignDelivery(
       : { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: transition.error.code, resourceAction: claimedResource.resourceAction, compensated, metadata: claimedResource.metadata };
   };
 
+  const claimedPreparationPhase =
+    input.claimedPreparationPhase ?? "after_template";
+  let providerTemplate;
+  if (claimedPreparationPhase === "after_template") {
+    try {
+      const result = await input.transport.getTemplate(template.brevoTemplateId);
+      if (!result.ok) return failCertainly(result.reason);
+      providerTemplate = result.template;
+    } catch {
+      return failCertainly("provider_exception");
+    }
+  }
+
+  if (input.prepareClaimedOperation) {
+    let claimedPreparation;
+    try {
+      claimedPreparation = await input.prepareClaimedOperation({
+        supabase: options.supabase,
+        ...context,
+        attemptId: claim.attempt.id,
+        attempt: claim.attempt,
+        operation,
+      });
+    } catch {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: "claimed_operation_exception",
+      };
+    }
+    if (!claimedPreparation.ok) {
+      return failCertainly(claimedPreparation.errorCode);
+    }
+    claimedResource = claimedPreparation.claimed;
+    finalOperation = claimedResource.operation ?? operation;
+  }
+
   if (claimedResource.preSendErrorCode) {
     return failCertainly(claimedResource.preSendErrorCode);
   }
@@ -376,24 +384,36 @@ export async function runTransactionalCampaignDelivery(
   const preparedAttachmentsSnapshot = validatedAttachments.attachments.map(
     (attachment) => attachment.snapshot,
   );
-  const attachmentSnapshot = await snapshotEmailDeliveryAttemptAttachments(
-    {
-      organizationId: context.organizationId,
-      attemptId: claim.attempt.id,
-      attachmentsSnapshot: preparedAttachmentsSnapshot,
-    },
-    options.supabase,
-  );
-  if (attachmentSnapshot.outcome === "error") {
-    return failCertainly(attachmentSnapshot.error.code);
+  if (
+    claimedPreparationPhase === "after_template" &&
+    validatedAttachments.attachments.length > 0
+  ) {
+    return failCertainly("attachments_require_pre_provider_preparation");
   }
 
-  let providerTemplate;
-  try {
-    const result = await input.transport.getTemplate(template.brevoTemplateId);
-    if (!result.ok) return failCertainly(result.reason);
-    providerTemplate = result.template;
-  } catch {
+  if (claimedPreparationPhase === "before_provider") {
+    const attachmentSnapshot = await snapshotEmailDeliveryAttemptAttachments(
+      {
+        organizationId: context.organizationId,
+        attemptId: claim.attempt.id,
+        attachmentsSnapshot: preparedAttachmentsSnapshot,
+      },
+      options.supabase,
+    );
+    if (attachmentSnapshot.outcome === "error") {
+      return failCertainly(attachmentSnapshot.error.code);
+    }
+
+    try {
+      const result = await input.transport.getTemplate(template.brevoTemplateId);
+      if (!result.ok) return failCertainly(result.reason);
+      providerTemplate = result.template;
+    } catch {
+      return failCertainly("provider_exception");
+    }
+  }
+
+  if (!providerTemplate) {
     return failCertainly("provider_exception");
   }
 

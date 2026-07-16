@@ -129,6 +129,23 @@ test("certain failure compensates created resources, fails attempt, and can retr
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });
 
+test("template retrieval failure happens before reservation and payment creation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    t.value.getTemplate = async () => ({ ok: false, reason: "provider_unavailable" });
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(result).toMatchObject({
+      deliveryState: "not_sent",
+      reservationPrepared: false,
+      paymentCreated: false,
+      compensated: false,
+    });
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)};`))).toBe(0);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)};`))).toBe(0);
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("failed");
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
 test("reused resources are never compensated on certain failure", async () => {
   fixture(); const supabase = await createAuthenticatedSupabaseClient();
   try {
