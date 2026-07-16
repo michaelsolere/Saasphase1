@@ -115,7 +115,7 @@ Campagnes transactionnelles disponibles :
 
 ### Variables et mise en forme minimale
 
-- Les variables utilisent la syntaxe `[[groupe.variable]]`. Un catalogue centralisé, classé par catégories, permet de les insérer à la position du curseur dans le titre ou le corps.
+- Les variables utilisent la syntaxe `[[groupe.variable]]`. Un catalogue centralisé, classé par catégories, permet de les insérer à la position du curseur dans le corps du contrat. Elles peuvent également être utilisées dans le titre lorsqu’elles y sont saisies manuellement.
 - Le catalogue couvre le vendeur, l’adoptant, le projet, l’animal, la réservation, les finances, la portée, les parents, le groupe de portées et le document. Il comprend notamment `[[groupe_portees.nom]]` et `[[projet.portee_ou_groupe]]`, qui privilégie la portée nommée puis se replie sur le groupe.
 - La résolution s’effectue en une seule passe : une valeur métier ressemblant elle-même à une variable n’est jamais réinterprétée.
 - Les aperçus rendent les données manquantes explicites. La génération définitive est bloquée avant tout stockage si une donnée effectivement utilisée est absente ou invalide.
