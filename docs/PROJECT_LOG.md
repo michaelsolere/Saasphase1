@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #286. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #289. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `9236876ac8ba3c6174559a7349a4bc026ca743a9`.
-- Dernière PR incluse : **#286 — Affichage de la source réelle des PDF documentaires**.
-- Les migrations locales sont appliquées jusqu’à `202607160002`.
+- SHA de `main` documenté : `dc8b8df4eb5cf82abe92cd01a5a111aec7e772a4`.
+- Dernière PR incluse : **#289 — Joindre les PDF exacts à la campagne post-naissance**.
+- Les migrations locales sont appliquées jusqu’à `202607170001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -84,11 +84,23 @@ Brevo est intégré côté serveur pour les campagnes transactionnelles. Le socl
 
 `sending` représente une tentative réclamée ; un résultat fournisseur incertain peut rester `sending` afin d’empêcher un nouvel envoi potentiellement doublonné, tandis que les tentatives `failed` peuvent être reprises selon les garde-fous existants.
 
+### Pièces jointes transactionnelles
+
+- `email_delivery_attempts.attachments_snapshot` conserve un manifeste immuable composé uniquement de l’identifiant, du type, du nom, de la version, de la taille et du SHA-256 de chaque pièce jointe ; aucun contenu Base64 n’est enregistré en PostgreSQL.
+- Une tentative est créée avec un manifeste vide. Un manifeste non vide ne peut être photographié que pendant l’état `sending`, puis devient immuable ; toute reprise doit présenter exactement le même manifeste.
+- Avant l’envoi, le socle valide le Base64, la signature PDF, la sûreté du nom, la taille, le SHA-256, l’ordre et les limites des pièces jointes.
+- Les campagnes sans pièce jointe conservent leur séquençage historique. Celles avec pièces jointes utilisent la phase `before_provider`, qui photographie le manifeste avant l’appel fournisseur.
+- Une issue incertaine laisse la tentative en `sending` pour empêcher un doublon potentiel.
+
 Campagnes transactionnelles disponibles :
 
 1. **Confirmation de saillie** (`mating_confirmation`) : envoi aux candidatures sélectionnées et éligibles depuis la portée.
 2. **Pré-réservation** (`pre_reservation`) : envoi de la demande de pré-réservation, avec création ou réutilisation cohérente de la réservation et de la première demande de paiement.
-3. **Contrat + certificat avec complément d’arrhes** (`birth_documents_deposit`) : envoi de l’e-mail post-naissance et création, réactivation ou réutilisation sûre de la demande de complément d’arrhes.
+3. **Contrat + certificat avec complément d’arrhes** (`birth_documents_deposit`) : la campagne sélectionne autoritairement côté serveur le certificat d’engagement et le contrat de réservation, sans recevoir d’identifiant documentaire du client. À la première exécution, elle exige exactement un document courant de chaque type et refuse le dossier si un PDF manque, est incohérent ou n’est pas envoyable. Les métadonnées et les octets privés sont validés avant toute mutation du complément d’arrhes ; un document issu d’un modèle commun ou d’une variante personnalisée publiée est traité de la même façon.
+
+Les deux PDF sont joints dans l’ordre certificat puis contrat, avec des noms déterministes portant leur version, et sont photographiés dans le manifeste de la tentative. Une reprise recharge exclusivement ces versions exactes, même si de nouvelles versions ont depuis été générées. Après acceptation par Brevo, les deux documents exacts passent atomiquement à `sent`. Une issue incertaine post-envoi conserve le paiement, le manifeste et la tentative en `sending` ; un ancien envoi déjà `sent` n’est jamais renvoyé automatiquement, y compris lorsque son manifeste historique est vide.
+
+Dans l’interface Portée, l’éligibilité d’un dossier tient compte des deux PDF. Les motifs d’exclusion distinguent un document manquant, un PDF incohérent et un document déjà envoyé ou non envoyable. La confirmation affiche les deux types de documents et leur version, sans exposer d’UUID, de chemin Storage ni de SHA-256.
 
 ## Moteur PDF et versionnement documentaire
 
@@ -190,12 +202,11 @@ Campagnes transactionnelles disponibles :
 Restent à concevoir ou implémenter :
 
 - la génération PDF groupée depuis une portée ou un groupe de portées ;
-- l’envoi des PDF exacts en pièces jointes Brevo ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **auditer puis raccorder les PDF contractuels exacts à la campagne Brevo `birth_documents_deposit`, avec sélection autoritaire des documents courants, vérification de leur réservation, type, version et intégrité, comportement explicite lorsqu’un PDF manque, et préservation de l’idempotence des envois.**
+La prochaine étape est : **Auditer puis concevoir la génération groupée du certificat d’engagement et du contrat de réservation depuis une portée ou un groupe de portées, en réutilisant pour chaque réservation la sélection serveur du modèle commun ou de sa variante publiée, l’orchestrateur PDF existant, le versionnement et l’idempotence, avec résultats détaillés par dossier et sans compromettre les documents déjà envoyés ou signés.**
 
 ## Environnement E2E et règles de validation
 
