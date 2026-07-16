@@ -96,6 +96,7 @@ test("success creates one request, uses real values, and attaches the attempt la
     expect(attachedReservationId).toBe(reservationId);
     expect(t.sends[0].params.montant_pre_reservation).toBe("250,00 €");
     expect(t.sends[0].params.echeance_pre_reservation).toContain(new Intl.DateTimeFormat("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }).format(new Date(dueDate)));
+    expect(t.sends[0]).not.toHaveProperty("attachments");
     expect(amount).toBe("25000");
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });
@@ -125,6 +126,23 @@ test("certain failure compensates created resources, fails attempt, and can retr
     expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)} and deleted_at is null;`))).toBe(0);
     const retried = await sendPreReservationEmailForApplication(input, { supabase, transport: transport().value });
     expect(retried.status).toBe("success");
+  } finally { cleanup(); expect(remaining()).toBe(0); }
+});
+
+test("template retrieval failure happens before reservation and payment creation", async () => {
+  fixture(); const supabase = await createAuthenticatedSupabaseClient(); const t = transport();
+  try {
+    t.value.getTemplate = async () => ({ ok: false, reason: "provider_unavailable" });
+    const result = await sendPreReservationEmailForApplication(input, { supabase, transport: t.value });
+    expect(result).toMatchObject({
+      deliveryState: "not_sent",
+      reservationPrepared: false,
+      paymentCreated: false,
+      compensated: false,
+    });
+    expect(Number(sql(`select count(*) from public.reservations where application_id=${q(ids.application)};`))).toBe(0);
+    expect(Number(sql(`select count(*) from public.payments where contact_id=${q(ids.contact)};`))).toBe(0);
+    expect(sql(`select status from public.email_delivery_attempts where contact_id=${q(ids.contact)};`)).toBe("failed");
   } finally { cleanup(); expect(remaining()).toBe(0); }
 });
 

@@ -1323,6 +1323,7 @@ export type Database = {
       }
       email_delivery_attempts: {
         Row: {
+          attachments_snapshot: Json
           attempt_count: number
           brevo_message_id: string | null
           brevo_template_id: number | null
@@ -1352,6 +1353,7 @@ export type Database = {
           variables_snapshot: Json
         }
         Insert: {
+          attachments_snapshot?: Json
           attempt_count?: number
           brevo_message_id?: string | null
           brevo_template_id?: number | null
@@ -1381,6 +1383,7 @@ export type Database = {
           variables_snapshot?: Json
         }
         Update: {
+          attachments_snapshot?: Json
           attempt_count?: number
           brevo_message_id?: string | null
           brevo_template_id?: number | null
@@ -4018,6 +4021,10 @@ export type Database = {
         Returns: boolean
       }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
+      is_valid_transactional_email_attachment_snapshot: {
+        Args: { value: Json }
+        Returns: boolean
+      }
       mark_pre_reservation_payment_paid: {
         Args: {
           p_paid_at?: string

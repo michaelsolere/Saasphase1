@@ -1,5 +1,16 @@
 import "server-only";
 
+import {
+  buildBrevoTransactionalEmailPayload,
+  type BrevoEmailIdentity,
+  type SendBrevoTransactionalEmailInput,
+} from "@/lib/brevo/transactional-email-payload";
+
+export type {
+  BrevoEmailIdentity,
+  SendBrevoTransactionalEmailInput,
+} from "@/lib/brevo/transactional-email-payload";
+
 const DEFAULT_BREVO_API_BASE_URL = "https://api.brevo.com/v3";
 const BREVO_REQUEST_TIMEOUT_MS = 8_000;
 
@@ -60,11 +71,6 @@ type BrevoTransactionalEmailResponse = {
   messageId?: unknown;
 };
 
-export type BrevoEmailIdentity = {
-  email: string;
-  name?: string;
-};
-
 export type BrevoTransactionalTemplate = {
   id: number;
   name: string;
@@ -84,14 +90,6 @@ export type BrevoTransactionalTemplateResult =
       ok: false;
       reason: BrevoApiErrorReason;
     };
-
-export type SendBrevoTransactionalEmailInput = {
-  templateId: number;
-  to: BrevoEmailIdentity;
-  params: Record<string, string>;
-  idempotencyKey: string;
-  tags?: string[];
-};
 
 export type SendBrevoTransactionalEmailResult =
   | {
@@ -310,6 +308,7 @@ export async function sendBrevoTransactionalEmail({
   params,
   idempotencyKey,
   tags = ["saas_elevage", "pre_reservation"],
+  attachments,
 }: SendBrevoTransactionalEmailInput): Promise<SendBrevoTransactionalEmailResult> {
   if (
     !Number.isSafeInteger(templateId) ||
@@ -321,26 +320,10 @@ export async function sendBrevoTransactionalEmail({
   }
 
   const configuration = getBrevoConfigurationStatus();
-  const payload: Record<string, unknown> = {
-    templateId,
-    to: [{ email: to.email, ...(to.name ? { name: to.name } : {}) }],
-    params,
-    headers: {
-      "Idempotency-Key": idempotencyKey,
-    },
-    tags,
-  };
-
-  if (configuration.senderEmail) {
-    payload.sender = {
-      email: configuration.senderEmail,
-      ...(configuration.senderName ? { name: configuration.senderName } : {}),
-    };
-  }
-
-  if (configuration.replyToEmail) {
-    payload.replyTo = { email: configuration.replyToEmail };
-  }
+  const payload = buildBrevoTransactionalEmailPayload(
+    { templateId, to, params, idempotencyKey, tags, attachments },
+    configuration,
+  );
 
   const result = await brevoRequest<BrevoTransactionalEmailResponse>(
     "/smtp/email",
