@@ -5,10 +5,14 @@ import {
   type DocumentTemplateDefinition,
   type ParseDocumentTemplateDefinitionResult,
 } from "./document-template-definitions";
+import {
+  authorizeDocumentOrganization,
+  type DocumentOrganizationRole,
+} from "./document-management-authorization";
 import type { Database } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
-type OrganizationRole = "owner" | "admin" | "member" | "viewer";
+type OrganizationRole = DocumentOrganizationRole;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -222,48 +226,33 @@ function validTimestamp(value: unknown): value is string {
   );
 }
 
-function isOrganizationRole(value: string): value is OrganizationRole {
-  return ["owner", "admin", "member", "viewer"].includes(value);
-}
-
 async function authorizeOrganization(
   supabase: Supabase,
   organizationId: string,
   allowedRoles?: OrganizationRole[],
 ): Promise<AuthorizationResult> {
-  const auth = await supabase.auth.getUser();
-  if (auth.error || !auth.data.user) {
+  const authorization = await authorizeDocumentOrganization(
+    supabase,
+    organizationId,
+    allowedRoles,
+  );
+  if (authorization.outcome === "unauthenticated") {
     return failure("unauthenticated", "Vous devez être connecté pour continuer.");
   }
-
-  const membership = await supabase
-    .from("memberships")
-    .select("role")
-    .eq("organization_id", organizationId)
-    .eq("profile_id", auth.data.user.id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (membership.error) {
+  if (authorization.outcome === "database_error") {
     return databaseFailure(
       "document_template_membership_read_failed",
-      membership.error,
+      authorization.details,
     );
   }
-
-  if (
-    !membership.data ||
-    !isOrganizationRole(membership.data.role) ||
-    (allowedRoles && !allowedRoles.includes(membership.data.role))
-  ) {
+  if (authorization.outcome === "forbidden") {
     return failure(
       "forbidden",
       "Vous n’avez pas les droits nécessaires pour cette opération.",
     );
   }
 
-  return { userId: auth.data.user.id, role: membership.data.role };
+  return { userId: authorization.userId, role: authorization.role };
 }
 
 function mapVersion(
