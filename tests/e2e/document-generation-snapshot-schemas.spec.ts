@@ -158,6 +158,7 @@ function assertNoUndefined(value: unknown): void {
 
 test("builds and parses immutable document generation snapshots", () => {
   const contract = expectSuccessfulBuild(contractInput());
+  expect(contract.snapshot.snapshotVersion).toBe(2);
   expect(contract.snapshot.documentType).toBe("reservation_contract");
   if (contract.snapshot.documentType !== "reservation_contract") {
     throw new Error("Expected a reservation contract snapshot");
@@ -183,6 +184,14 @@ test("builds and parses immutable document generation snapshots", () => {
   expect(contract.snapshot.template.templateContentSha256).toBe(
     "a1dca62c1bdf23e2062035fee2396161ba447530d97f2bd58257987249943364",
   );
+  expect(contract.snapshot.template).toMatchObject({
+    selectedTemplateId: contractInput().template.id,
+    templateId: contractInput().template.id,
+    templateVersion: 3,
+    sourceKind: "common",
+    reservationDocumentVariantVersionId: null,
+    reservationDocumentVariantVersion: null,
+  });
   expect(contract.snapshot.template.templateContentSha256).toBe(
     expectSuccessfulBuild(contractInput()).snapshot.template
       .templateContentSha256,
@@ -294,7 +303,7 @@ test("builds and parses immutable document generation snapshots", () => {
   expect(
     parseDocumentGenerationSnapshot({
       documentType: "reservation_contract",
-      generationData: { ...contract.snapshot, snapshotVersion: 2 },
+      generationData: { ...contract.snapshot, snapshotVersion: 3 },
     }),
   ).toEqual({ success: false, error: "unsupported_snapshot_version" });
 
@@ -314,6 +323,60 @@ test("builds and parses immutable document generation snapshots", () => {
     success: true,
     snapshot: contract.snapshot,
   });
+});
+
+test("accepts historical V1 snapshots and enforces coherent V2 sources", () => {
+  const built = expectSuccessfulBuild(contractInput()).snapshot;
+  const historicalV1 = {
+    ...built,
+    snapshotVersion: 1,
+    template: {
+      templateId: built.template.templateId,
+      templateVersion: built.template.templateVersion,
+      templateContentSha256: built.template.templateContentSha256,
+    },
+  };
+  expect(
+    parseDocumentGenerationSnapshot({
+      documentType: "reservation_contract",
+      generationData: historicalV1,
+    }),
+  ).toEqual({ success: true, snapshot: historicalV1 });
+
+  const variantInput = contractInput();
+  variantInput.template.sourceKind = "reservation_variant";
+  variantInput.template.reservationDocumentVariantVersionId =
+    "99999999-9999-4999-8999-999999999999";
+  variantInput.template.reservationDocumentVariantVersion = 4;
+  const variant = expectSuccessfulBuild(variantInput).snapshot;
+  expect(variant.template).toMatchObject({
+    sourceKind: "reservation_variant",
+    reservationDocumentVariantVersionId:
+      "99999999-9999-4999-8999-999999999999",
+    reservationDocumentVariantVersion: 4,
+  });
+
+  for (const template of [
+    {
+      ...variant.template,
+      sourceKind: "common",
+    },
+    {
+      ...variant.template,
+      reservationDocumentVariantVersionId: null,
+    },
+    {
+      ...variant.template,
+      reservationDocumentVariantVersion: 0,
+    },
+  ]) {
+    expect(
+      parseDocumentGenerationSnapshot({
+        documentType: "reservation_contract",
+        generationData: { ...variant, template },
+      }),
+    ).toEqual({ success: false, error: "invalid_snapshot" });
+  }
 });
 
 test("snapshot schema rejects invalid stored scalar values", () => {

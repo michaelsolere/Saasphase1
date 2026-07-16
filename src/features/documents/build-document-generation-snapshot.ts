@@ -34,11 +34,15 @@ export type BuildDocumentGenerationSnapshotInput = {
   documentType: string;
   capturedAt: string;
   template: {
+    selectedId?: string;
     id: string;
     version: number;
     format: string;
     documentType: string;
     content: string | null;
+    sourceKind?: "common" | "reservation_variant";
+    reservationDocumentVariantVersionId?: string | null;
+    reservationDocumentVariantVersion?: number | null;
   };
   sources: {
     organizationId: string;
@@ -237,11 +241,19 @@ export function buildDocumentGenerationSnapshot(
       documentType: input.documentType,
       capturedAt: normalizeRequiredText(input.capturedAt),
       template: {
+        selectedTemplateId: normalizeRequiredText(
+          input.template.selectedId ?? input.template.id,
+        ),
         templateId: normalizeRequiredText(input.template.id),
         templateVersion: input.template.version,
         templateContentSha256: createHash("sha256")
           .update(templateContent)
           .digest("hex"),
+        sourceKind: input.template.sourceKind ?? "common",
+        reservationDocumentVariantVersionId:
+          input.template.reservationDocumentVariantVersionId ?? null,
+        reservationDocumentVariantVersion:
+          input.template.reservationDocumentVariantVersion ?? null,
       },
       sources: {
         organizationId: normalizeRequiredText(input.sources.organizationId),

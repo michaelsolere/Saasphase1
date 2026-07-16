@@ -362,6 +362,28 @@ test("orchestrates generated reservation PDFs idempotently and cleans every fixt
     expect(immutableContract.document.generation_data).toEqual(archivedGenerationData);
     expect(createHash("sha256").update(immutableContract.bytes).digest("hex")).toBe(contractV1.fileSha256);
     sql(`
+      update public.documents
+      set generation_data = jsonb_set(
+        jsonb_set(generation_data, '{snapshotVersion}', '1'::jsonb),
+        '{template}',
+        jsonb_build_object(
+          'templateId', generation_data->'template'->>'templateId',
+          'templateVersion', (generation_data->'template'->>'templateVersion')::integer,
+          'templateContentSha256', generation_data->'template'->>'templateContentSha256'
+        )
+      )
+      where id = ${q(ids.contractV1)}::uuid;
+    `);
+    expect(
+      await generateAndStoreReservationDocumentPdfCore(
+        contractInput(ids.contractV1),
+        supabase,
+      ),
+    ).toEqual({ ...contractV1, outcome: "existing" });
+    expect(
+      sql(`select generation_data->>'snapshotVersion' from public.documents where id = ${q(ids.contractV1)}::uuid;`),
+    ).toBe("1");
+    sql(`
       update public.litters set available_from = '2026-08-01' where id = ${q(ids.litter)}::uuid;
       update public.animals set identification_number = case id
         when ${q(ids.mother)}::uuid then '250269000000029'
