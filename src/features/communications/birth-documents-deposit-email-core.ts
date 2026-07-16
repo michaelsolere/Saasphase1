@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { loadBirthDocumentsDepositAttachments } from "@/features/communications/birth-documents-deposit-attachments";
 import {
   runTransactionalCampaignDelivery,
   type TransactionalEmailTransport,
@@ -22,7 +23,7 @@ type Payment = Pick<Database["public"]["Tables"]["payments"]["Row"],
 export type BirthDocumentsDepositEmailTransport = TransactionalEmailTransport;
 export type BirthDocumentsDepositDeliveryState = "sent" | "not_sent" | "in_progress" | "uncertain";
 export type SendBirthDocumentsDepositEmailResult = {
-  status: "success" | "already_sent" | "in_progress" | "failed" | "not_eligible" | "missing_email" | "missing_payment" | "missing_template" | "brevo_not_configured" | "deposit_complete" | "pre_reservation_unpaid" | "incompatible_request";
+  status: "success" | "already_sent" | "in_progress" | "failed" | "not_eligible" | "missing_email" | "missing_payment" | "missing_template" | "brevo_not_configured" | "deposit_complete" | "pre_reservation_unpaid" | "incompatible_request" | "missing_documents" | "incoherent_documents" | "documents_not_sendable";
   deliveryState: BirthDocumentsDepositDeliveryState;
   attemptId?: string;
   errorCode?: string;
@@ -78,7 +79,7 @@ function mapResult(result: Awaited<ReturnType<typeof runTransactionalCampaignDel
   if (result.outcome === "already_sent") return { status: "already_sent", deliveryState: "sent", ...base };
   if (result.outcome === "in_progress") return { status: "in_progress", deliveryState: "in_progress", ...base };
   if (result.outcome === "uncertain") return { status: "failed", deliveryState: "uncertain", ...base };
-  const mapped = new Set(["not_eligible", "missing_email", "missing_payment", "deposit_complete", "pre_reservation_unpaid", "incompatible_request"]);
+  const mapped = new Set(["not_eligible", "missing_email", "missing_payment", "deposit_complete", "pre_reservation_unpaid", "incompatible_request", "missing_documents", "incoherent_documents", "documents_not_sendable"]);
   const status = mapped.has(result.errorCode ?? "") ? result.errorCode as SendBirthDocumentsDepositEmailResult["status"] :
     ["missing_template", "invalid_request", "template_not_found", "template_inactive"].includes(result.errorCode ?? "") ? "missing_template" :
     ["brevo_not_configured", "not_configured"].includes(result.errorCode ?? "") ? "brevo_not_configured" : "failed";
@@ -87,7 +88,18 @@ function mapResult(result: Awaited<ReturnType<typeof runTransactionalCampaignDel
 
 export async function sendBirthDocumentsDepositEmailForReservation(
   input: { reservationId: string; litterId: string },
-  options: { supabase: Supabase; transport?: BirthDocumentsDepositEmailTransport; transitions?: Parameters<typeof runTransactionalCampaignDelivery>[1]["transitions"] },
+  options: {
+    supabase: Supabase;
+    transport?: BirthDocumentsDepositEmailTransport;
+    transitions?: Parameters<typeof runTransactionalCampaignDelivery>[1]["transitions"];
+    documentDelivery?: (input: {
+      organizationId: string;
+      reservationId: string;
+      commitmentDocumentId: string;
+      contractDocumentId: string;
+      sentAt: string;
+    }) => Promise<{ ok: true } | { ok: false; errorCode: string }>;
+  },
 ): Promise<SendBirthDocumentsDepositEmailResult> {
   let preparedData: {
     reservation: { id: string; contact_id: string; application_id: string; litter_id: string; litter_group_id: string | null; organization_id: string };
@@ -101,6 +113,7 @@ export async function sendBirthDocumentsDepositEmailForReservation(
   const result = await runTransactionalCampaignDelivery({
     campaignKey: CAMPAIGN_KEY,
     operationVersion: OPERATION_VERSION,
+    claimedPreparationPhase: "before_provider",
     transport: options.transport,
     prepareOperation: async ({ supabase, organizationId }) => {
       const { data: reservation } = await supabase.from("reservations")
@@ -142,8 +155,15 @@ export async function sendBirthDocumentsDepositEmailForReservation(
       const variables = buildBirthDocumentsDepositVariables({ firstName: contact.first_name, lastName: contact.last_name, fullName, litterName: litter.name, litterGroupName: overviewResult.data?.litter_group_name ?? null, motherName: overviewResult.data?.mother_display_name ?? null, fatherName: overviewResult.data?.father_display_name ?? null, birthDate: litter.actual_birth_date, desiredSexPreference: preparedData.desiredSex, paidArrhesCents: paid, complementAmountCents: settings.completeDepositCents - paid, complementDueDate: addDaysAsIsoDate(settings.preReservationResponseDelayDays), completeDepositCents: settings.completeDepositCents, organizationName });
       return { ok: true, operation: { dossierId: reservation.id, contactId: contact.id, reservationId: reservation.id, recipientEmail: contact.email!.trim().toLowerCase(), recipientName: fullName || contact.display_name, litterId: litter.id, litterGroupId: reservation.litter_group_id, variables, variablesSnapshot: { ...variables, reservation_id: reservation.id } } };
     },
-    prepareClaimedOperation: async ({ supabase, organizationId, userId, operation }) => {
+    prepareClaimedOperation: async ({ supabase, organizationId, userId, operation, attempt }) => {
       if (!preparedData) return { ok: false, errorCode: "not_eligible" };
+      const loadedAttachments = await loadBirthDocumentsDepositAttachments({
+        organizationId,
+        reservationId: input.reservationId,
+        attachmentsSnapshot: attempt.attachments_snapshot,
+        supabase,
+      });
+      if (!loadedAttachments.ok) return loadedAttachments;
       const settings = await readDepositSettingsForOrganization({ supabase, organizationId });
       const { data: payments, error } = await supabase.from("payments").select("id, amount_cents, payment_type, status, due_date, notes, deleted_at").eq("organization_id", organizationId).eq("reservation_id", input.reservationId);
       if (error || !payments) return { ok: false, errorCode: "payment_read_failed" };
@@ -191,7 +211,48 @@ export async function sendBirthDocumentsDepositEmailForReservation(
         const { count, error: verifyError } = await supabase.from("payments").select("id", { count: "exact", head: true }).eq("id", payment!.id).is("deleted_at", null);
         return !verifyError && count === 0 ? { ok: true as const } : { ok: false as const, errorCode: "payment_compensation_verification_failed" };
       };
-      return { ok: true, claimed: { operation: { ...operation, variables, variablesSnapshot: { ...variables, reservation_id: input.reservationId } }, resourceAction: action, compensate } };
+      const [commitment, contract] = loadedAttachments.manifest;
+      const afterProviderSuccess = async () => {
+        const sentAt = new Date().toISOString();
+        if (options.documentDelivery) {
+          return options.documentDelivery({
+            organizationId,
+            reservationId: input.reservationId,
+            commitmentDocumentId: commitment.document_id,
+            contractDocumentId: contract.document_id,
+            sentAt,
+          });
+        }
+        const { data, error: deliveryError } = await supabase.rpc(
+          "mark_birth_documents_deposit_documents_sent",
+          {
+            p_organization_id: organizationId,
+            p_reservation_id: input.reservationId,
+            p_commitment_document_id: commitment.document_id,
+            p_contract_document_id: contract.document_id,
+            p_commitment_file_sha256: commitment.file_sha256,
+            p_contract_file_sha256: contract.file_sha256,
+            p_commitment_file_size_bytes: commitment.file_size_bytes,
+            p_contract_file_size_bytes: contract.file_size_bytes,
+            p_commitment_version: commitment.version,
+            p_contract_version: contract.version,
+            p_sent_at: sentAt,
+          },
+        );
+        return !deliveryError && data === "sent"
+          ? { ok: true as const }
+          : { ok: false as const, errorCode: "document_delivery_failed" };
+      };
+      return {
+        ok: true,
+        claimed: {
+          operation: { ...operation, variables, variablesSnapshot: { ...variables, reservation_id: input.reservationId } },
+          attachments: loadedAttachments.attachments,
+          resourceAction: action,
+          compensate,
+          afterProviderSuccess,
+        },
+      };
     },
   }, { supabase: options.supabase, transitions: options.transitions });
   return mapResult(result);

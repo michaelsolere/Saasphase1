@@ -22,6 +22,7 @@ import {
   formatPreReservationEuros,
   formatPreReservationParisDate,
 } from "@/features/communications/pre-reservation-email-core";
+import { assessBirthDocumentsDepositDocumentRows } from "@/features/communications/birth-documents-deposit-attachments";
 import {
   getCampaignEmailTemplateOptions,
   isCampaignEmailTemplateCategory,
@@ -201,7 +202,24 @@ type RelatedEvent = Pick<
 >;
 type ChoiceCampaignDocument = Pick<
   Database["public"]["Tables"]["documents"]["Row"],
-  "reservation_id" | "document_type" | "status" | "received_at" | "signed_at"
+  | "id"
+  | "organization_id"
+  | "reservation_id"
+  | "document_type"
+  | "status"
+  | "received_at"
+  | "signed_at"
+  | "deleted_at"
+  | "superseded_at"
+  | "file_path"
+  | "file_sha256"
+  | "file_size_bytes"
+  | "mime_type"
+  | "generated_from_template"
+  | "generated_at"
+  | "template_id"
+  | "source_template_version"
+  | "generation_data"
 >;
 type ChoiceCampaignAppointment = Pick<
   Database["public"]["Tables"]["events"]["Row"],
@@ -1467,6 +1485,9 @@ export default async function LitterDetailPage({
     birth_documents_deposit_missing_email_count?: string;
     birth_documents_deposit_missing_template_count?: string;
     birth_documents_deposit_brevo_not_configured_count?: string;
+    birth_documents_deposit_missing_documents_count?: string;
+    birth_documents_deposit_incoherent_documents_count?: string;
+    birth_documents_deposit_documents_not_sendable_count?: string;
     birth_documents_deposit_uncertain_count?: string;
     birth_documents_deposit_compensated_count?: string;
     birth_documents_deposit_error_count?: string;
@@ -1541,6 +1562,9 @@ export default async function LitterDetailPage({
     birth_documents_deposit_missing_email_count,
     birth_documents_deposit_missing_template_count,
     birth_documents_deposit_brevo_not_configured_count,
+    birth_documents_deposit_missing_documents_count,
+    birth_documents_deposit_incoherent_documents_count,
+    birth_documents_deposit_documents_not_sendable_count,
     birth_documents_deposit_uncertain_count,
     birth_documents_deposit_compensated_count,
     birth_documents_deposit_error_count,
@@ -1874,7 +1898,7 @@ export default async function LitterDetailPage({
     choiceCampaignReservationIds.length > 0 && litter?.organization_id
       ? await supabase
           .from("documents")
-          .select("reservation_id, document_type, status, received_at, signed_at")
+          .select("id, organization_id, reservation_id, document_type, status, received_at, signed_at, deleted_at, superseded_at, file_path, file_sha256, file_size_bytes, mime_type, generated_from_template, generated_at, template_id, source_template_version, generation_data")
           .eq("organization_id", litter.organization_id)
           .in("reservation_id", choiceCampaignReservationIds)
           .in("document_type", ["commitment_certificate", "reservation_contract"])
@@ -1986,6 +2010,25 @@ export default async function LitterDetailPage({
           payment.amount_cents === complementCents &&
           (payment.notes ?? "").includes("Demande 2/2"),
       );
+      const reservationDocuments = choiceCampaignDocuments.filter(
+        (document) => document.reservation_id === reservation.id,
+      );
+      const currentReservationDocuments = reservationDocuments.filter(
+        (document) => document.superseded_at === null,
+      );
+      const commitmentDocuments = currentReservationDocuments.filter(
+        (document) => document.document_type === "commitment_certificate",
+      );
+      const contractDocuments = currentReservationDocuments.filter(
+        (document) => document.document_type === "reservation_contract",
+      );
+      const documentEligibility = litter?.organization_id
+        ? assessBirthDocumentsDepositDocumentRows({
+            organizationId: litter.organization_id,
+            reservationId: reservation.id,
+            documents: reservationDocuments,
+          })
+        : { ok: false as const, errorCode: "incoherent_documents" as const };
       let reason: string | null = null;
       if (!reservation.contact_id || !contact) reason = "contact introuvable";
       else if (!contact.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) reason = "e-mail manquant ou invalide";
@@ -1993,6 +2036,10 @@ export default async function LitterDetailPage({
       else if (paidCents >= depositSettings.completeDepositCents) reason = "arrhes déjà complètes";
       else if (reservation.status !== "pre_reservation_paid" || paidCents < depositSettings.preReservationDepositCents) reason = "première pré-réservation non réglée";
       else if (activeArrhes.length > 0 && !matchingRequest) reason = "demande active incompatible";
+      else if (commitmentDocuments.length === 0) reason = "certificat d’engagement manquant";
+      else if (contractDocuments.length === 0) reason = "contrat de réservation manquant";
+      else if (!documentEligibility.ok && documentEligibility.errorCode === "documents_not_sendable") reason = "documents déjà envoyés ou non envoyables";
+      else if (!documentEligibility.ok) reason = "PDF documentaire incohérent";
       const contactName = contact
         ? formatPreReservationContactFullName(contact) || "Contact inconnu"
         : "Contact inconnu";
@@ -2002,6 +2049,7 @@ export default async function LitterDetailPage({
         contactEmail: contact?.email ?? null,
         eligible: !reason,
         reason,
+        documents: documentEligibility.ok ? documentEligibility.documents : [],
         variables: buildBirthDocumentsDepositVariables({
           firstName: contact?.first_name ?? null,
           lastName: contact?.last_name ?? null,
@@ -2605,7 +2653,7 @@ export default async function LitterDetailPage({
               >
                 Contrat + certificat — {birth_documents_deposit_email_sent_count ?? "0"} envoyé(s), {birth_documents_deposit_email_already_sent_count ?? "0"} déjà envoyé(s), {birth_documents_deposit_payment_created_count ?? "0"} demande(s) créée(s), {birth_documents_deposit_payment_reused_count ?? "0"} réutilisée(s).
                 <span className="mt-2 block">
-                  Arrhes complètes : {birth_documents_deposit_complete_count ?? "0"} · pré-réservation non réglée : {birth_documents_deposit_unpaid_count ?? "0"} · demande incompatible : {birth_documents_deposit_incompatible_count ?? "0"} · e-mail manquant : {birth_documents_deposit_missing_email_count ?? "0"} · modèle absent : {birth_documents_deposit_missing_template_count ?? "0"} · Brevo non configuré : {birth_documents_deposit_brevo_not_configured_count ?? "0"} · en cours/incertain : {birth_documents_deposit_uncertain_count ?? "0"} · compensations : {birth_documents_deposit_compensated_count ?? "0"} · erreurs : {birth_documents_deposit_error_count ?? "0"}.
+                  Arrhes complètes : {birth_documents_deposit_complete_count ?? "0"} · pré-réservation non réglée : {birth_documents_deposit_unpaid_count ?? "0"} · demande incompatible : {birth_documents_deposit_incompatible_count ?? "0"} · e-mail manquant : {birth_documents_deposit_missing_email_count ?? "0"} · documents manquants : {birth_documents_deposit_missing_documents_count ?? "0"} · PDF incohérents : {birth_documents_deposit_incoherent_documents_count ?? "0"} · documents non envoyables : {birth_documents_deposit_documents_not_sendable_count ?? "0"} · modèle absent : {birth_documents_deposit_missing_template_count ?? "0"} · Brevo non configuré : {birth_documents_deposit_brevo_not_configured_count ?? "0"} · en cours/incertain : {birth_documents_deposit_uncertain_count ?? "0"} · compensations : {birth_documents_deposit_compensated_count ?? "0"} · erreurs : {birth_documents_deposit_error_count ?? "0"}.
                 </span>
               </div>
             )}

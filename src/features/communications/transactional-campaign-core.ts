@@ -84,6 +84,9 @@ export type ClaimedOperation = {
   metadata?: Record<string, boolean | string | number | null>;
   preSendErrorCode?: string;
   compensate?: () => Promise<{ ok: true } | { ok: false; errorCode: string }>;
+  afterProviderSuccess?: () => Promise<
+    { ok: true } | { ok: false; errorCode: string }
+  >;
 };
 
 export type TransactionalCampaignResult = {
@@ -470,6 +473,30 @@ export async function runTransactionalCampaignDelivery(
       return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sendResult.reason, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
     }
     return failCertainly(sendResult.reason);
+  }
+
+  if (claimedResource.afterProviderSuccess) {
+    let callbackResult;
+    try {
+      callbackResult = await claimedResource.afterProviderSuccess();
+    } catch {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: "after_provider_success_exception",
+        resourceAction: claimedResource.resourceAction,
+        metadata: claimedResource.metadata,
+      };
+    }
+    if (!callbackResult.ok) {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: callbackResult.errorCode,
+        resourceAction: claimedResource.resourceAction,
+        metadata: claimedResource.metadata,
+      };
+    }
   }
 
   const markSent = options.transitions?.markSent ?? markEmailDeliveryAttemptSent;
