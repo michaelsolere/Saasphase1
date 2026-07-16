@@ -73,6 +73,7 @@ import {
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
+import { ReservationDocumentVariantsSection } from "@/features/reservations/reservation-document-variants-section";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -4405,6 +4406,7 @@ export default async function ReservationDetailPage({
                   </h2>
 
                   <ReservationDocumentGenerationSection reservationId={id} />
+                  <ReservationDocumentVariantsSection reservationId={id} />
 
                   <div className="mb-6 rounded-xl border bg-background p-4">
                     <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
