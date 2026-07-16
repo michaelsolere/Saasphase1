@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #277. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #280. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `438aa4202b05b2f76885d865ba5723452f6d2c38`.
-- Dernière PR incluse : **#277 — Corriger la bascule du gras et stabiliser l’aperçu**.
-- Les migrations locales sont appliquées jusqu’à `202607140002`.
+- SHA de `main` documenté : `bac40e13b7bd1b4000f52dcc58de7572df01246b`.
+- Dernière PR incluse : **#280 — Service serveur des variantes documentaires**.
+- Les migrations locales sont appliquées jusqu’à `202607160001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -107,6 +107,16 @@ Campagnes transactionnelles disponibles :
 - La validation métier reste centralisée dans les schémas Zod. La publication vérifie la version exacte validée afin de refuser un brouillon modifié entre la validation et l’écriture ; les erreurs exposées à l’interface restent typées.
 - Les rôles `viewer` peuvent lire et valider, les `member` peuvent aussi créer et sauvegarder des brouillons, et seuls `owner` et `admin` peuvent créer une famille ou publier.
 
+### Variantes individuelles par réservation
+
+- `reservation_document_variants` porte l’identité stable d’une variante par organisation, réservation et famille de modèle. Il ne peut exister qu’une variante active pour cette combinaison ; deux réservations d’une même portée peuvent donc conserver deux contrats individualisés distincts.
+- `reservation_document_variant_versions` conserve les versions complètes `draft`, `published` et `retired`, avec un seul brouillon et une seule publication courante par variante. Chaque version garde l’identifiant et le numéro exacts du modèle commun d’origine.
+- La création initiale sélectionne côté serveur la publication commune active exacte et en copie le format et le contenu. Une publication ultérieure du modèle commun ne rattache ni ne modifie une variante existante ; la version suivante clone la publication précédente de la variante et conserve son origine.
+- La sauvegarde ne modifie que le contenu du brouillon et utilise un verrou optimiste sur `updated_at`. La publication est atomique et vérifie l’horodatage, le format et le contenu exacts relus et validés afin de refuser toute modification concurrente.
+- L’identité, la taxonomie et les audits sont immuables, comme les versions publiées ou retirées.
+- Le service TypeScript serveur permet de lister les variantes d’une réservation et leur brouillon/publication courants, de lire leur historique ordonné, de créer le premier brouillon, de sauvegarder son contenu, de le valider avec l’unique parseur Zod documentaire existant, de créer la version suivante et de publier. Il retourne des erreurs typées sans exposer les erreurs Supabase ou SQL.
+- Les permissions sont : `viewer` pour la lecture et la validation ; `member` pour la lecture, la validation, la création, la sauvegarde et la version suivante ; `admin` et `owner` pour toutes les opérations, dont la publication. Le contrôle d’adhésion documentaire est partagé entre le service des modèles et celui des variantes, sans changement de comportement.
+
 ### Contrat de réservation V2
 
 - Les nouveaux contrats de réservation utilisent un contenu libre de schéma V2 : `schemaVersion: 2`, `locale: "fr-FR"`, `documentType: "reservation_contract"`, avec un `title` et un `body` textuels.
@@ -163,16 +173,19 @@ Campagnes transactionnelles disponibles :
 
 Restent à concevoir ou implémenter :
 
-- les variantes individuelles liées à une réservation ou à un adoptant ;
+- l’interface et les Server Actions des variantes documentaires ;
+- l’éditeur de variante depuis la fiche Réservation ;
+- le lien entre une version de variante et `documents` ;
+- l’usage des variantes dans les snapshots et la génération PDF ;
 - la génération PDF groupée depuis une portée ou un groupe de portées ;
 - l’envoi des PDF exacts en pièces jointes Brevo ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
+La fonction SQL de détection de l’utilisation d’une version de variante reste provisoire tant que les versions de variantes ne sont pas raccordées à `documents`. Les variantes ne sont encore utilisées ni par les snapshots, ni par la génération PDF, ni par Storage ou Brevo.
+
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **concevoir le socle serveur et le modèle de données des variantes individuelles de documents liées à une réservation, sans encore implémenter leur interface.**
-
-Ce chantier doit préserver le modèle de référence publié, l’origine de la variante, son versionnement, son immutabilité après génération et l’historique des documents.
+La prochaine étape est : **ajouter l’interface et les Server Actions permettant de créer, modifier, valider, versionner et publier une variante documentaire depuis la fiche Réservation, sans encore la raccorder à la génération PDF.**
 
 ## Environnement E2E et règles de validation
 
