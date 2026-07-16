@@ -22,6 +22,12 @@ const ownerId = "10000000-0000-4000-8000-000000000001";
 const contactId = "a1600003-0000-4000-8000-000000000001";
 const templateId = "a1600003-0000-4000-8000-000000000002";
 const historicalAttemptId = "a1600003-0000-4000-8000-000000000003";
+const directInsertAttemptIds = [
+  "a1600003-0000-4000-8000-000000000031",
+  "a1600003-0000-4000-8000-000000000032",
+  "a1600003-0000-4000-8000-000000000033",
+  "a1600003-0000-4000-8000-000000000034",
+] as const;
 const campaignKey = "transactional_attachment_qa";
 const fixturePrefix = `${campaignKey}:`;
 
@@ -310,43 +316,64 @@ test("sends two PDFs, snapshots metadata only, retries identically and rejects d
       sql(`select attachments_snapshot::text from public.email_delivery_attempts where id=${quote(plain.attemptId!)}::uuid;`),
     ).toBe("[]");
 
-    const failedTransport = transport("certain");
-    const firstFailure = await deliver({
-      operationVersion: "same-retry",
-      attachments: [certificate(), contract()],
-      transport: failedTransport.value,
-    });
-    expect(firstFailure.outcome).toBe("failed");
-    const retryTransport = transport();
-    const retry = await deliver({
-      operationVersion: "same-retry",
-      attachments: [certificate(), contract()],
-      transport: retryTransport.value,
-    });
-    expect(retry.outcome).toBe("success");
-    expect(retryTransport.sends).toHaveLength(1);
-
     const driftFirst = transport("certain");
     await deliver({
       operationVersion: "mismatch-retry",
       attachments: [certificate(), contract()],
       transport: driftFirst.value,
     });
-    const changedContract = contract();
-    changedContract.snapshot.version = 3;
-    const driftRetry = transport();
-    const mismatch = await deliver({
+    const changedVersion = contract();
+    changedVersion.snapshot.version = 3;
+    const changedHash = attachment(
+      contract().snapshot.documentId,
+      "reservation_contract",
+      contract().name,
+      "%PDF-1.7\nQB contract attachment\n%%EOF",
+      2,
+    );
+    const changedSize = attachment(
+      contract().snapshot.documentId,
+      "reservation_contract",
+      contract().name,
+      "%PDF-1.7\nQA contract attachment extended\n%%EOF",
+      2,
+    );
+    const changedName = contract();
+    changedName.name = changedName.snapshot.fileName = "contrat-modifie.pdf";
+    const changedDocument = contract();
+    changedDocument.snapshot.documentId =
+      "a1600003-0000-4000-8000-000000000099";
+
+    for (const changedContract of [
+      changedVersion,
+      changedHash,
+      changedSize,
+      changedName,
+      changedDocument,
+    ]) {
+      const driftRetry = transport();
+      const mismatch = await deliver({
+        operationVersion: "mismatch-retry",
+        attachments: [certificate(), changedContract],
+        transport: driftRetry.value,
+      });
+      expect(mismatch).toMatchObject({
+        outcome: "failed",
+        errorCode: "attachment_snapshot_mismatch",
+      });
+      expect(driftRetry.templateCalls).toHaveLength(0);
+      expect(driftRetry.sends).toHaveLength(0);
+      expect(JSON.stringify(mismatch)).not.toContain(changedContract.content);
+    }
+
+    const retryTransport = transport();
+    const retry = await deliver({
       operationVersion: "mismatch-retry",
-      attachments: [certificate(), changedContract],
-      transport: driftRetry.value,
+      attachments: [certificate(), contract()],
+      transport: retryTransport.value,
     });
-    expect(mismatch).toMatchObject({
-      outcome: "failed",
-      errorCode: "attachment_snapshot_mismatch",
-    });
-    expect(driftRetry.templateCalls).toHaveLength(0);
-    expect(driftRetry.sends).toHaveLength(0);
-    expect(JSON.stringify(mismatch)).not.toContain(changedContract.content);
+    expect(retry.outcome).toBe("success");
+    expect(retryTransport.sends).toHaveLength(1);
   } finally {
     cleanup();
     expect(remaining()).toBe(0);
@@ -392,6 +419,66 @@ test("validation failure compensates before provider and uncertain send stays se
     expect(
       sql(`select jsonb_array_length(attachments_snapshot) from public.email_delivery_attempts where id=${quote(uncertain.attemptId!)}::uuid;`),
     ).toBe("2");
+  } finally {
+    cleanup();
+    expect(remaining()).toBe(0);
+  }
+});
+
+test("snapshots before template failure, compensates, and retries the same PDFs", async () => {
+  createFixture();
+  try {
+    let compensationCount = 0;
+    const templateFailure = transport();
+    templateFailure.value.getTemplate = async (id) => {
+      templateFailure.templateCalls.push(id);
+      return { ok: false, reason: "invalid_request" };
+    };
+    const failed = await deliver({
+      operationVersion: "template-failure-retry",
+      attachments: [certificate(), contract()],
+      transport: templateFailure.value,
+      compensate: async () => {
+        compensationCount += 1;
+        return { ok: true };
+      },
+    });
+    expect(failed).toMatchObject({
+      outcome: "failed",
+      errorCode: "invalid_request",
+      compensated: true,
+    });
+    expect(compensationCount).toBe(1);
+    expect(templateFailure.templateCalls).toHaveLength(1);
+    expect(templateFailure.sends).toHaveLength(0);
+
+    const persisted = sql(`
+      select jsonb_build_object(
+        'status', status,
+        'manifest', attachments_snapshot,
+        'variables', variables_snapshot,
+        'error', last_error_code
+      )::text
+      from public.email_delivery_attempts
+      where id = ${quote(failed.attemptId!)}::uuid;
+    `);
+    expect(persisted).toContain('"status": "failed"');
+    expect(persisted).toContain('"document_type": "commitment_certificate"');
+    expect(persisted).toContain('"document_type": "reservation_contract"');
+    expect(persisted).not.toContain(certificate().content);
+    expect(persisted).not.toContain(contract().content);
+    expect(JSON.stringify(failed)).not.toContain(certificate().content);
+    expect(JSON.stringify(failed)).not.toContain(contract().content);
+
+    const retryTransport = transport();
+    const retried = await deliver({
+      operationVersion: "template-failure-retry",
+      attachments: [certificate(), contract()],
+      transport: retryTransport.value,
+    });
+    expect(retried.outcome).toBe("success");
+    expect(retryTransport.templateCalls).toHaveLength(1);
+    expect(retryTransport.sends).toHaveLength(1);
   } finally {
     cleanup();
     expect(remaining()).toBe(0);
@@ -449,6 +536,37 @@ test("SQL accepts historical empty snapshots and protects a non-empty manifest",
         version: 1,
       },
     ];
+
+    for (const [index, status] of [
+      "pending",
+      "sending",
+      "failed",
+      "sent",
+    ].entries()) {
+      const directInsert = await supabase.from("email_delivery_attempts").insert({
+        id: directInsertAttemptIds[index],
+        organization_id: organizationId,
+        contact_id: contactId,
+        email_template_id: templateId,
+        message_type: campaignKey,
+        recipient_email: `direct-manifest-${status}@example.invalid`,
+        idempotency_key: `${fixturePrefix}direct-manifest-${status}`,
+        status,
+        attachments_snapshot: modifiedManifest,
+        created_by: ownerId,
+        updated_by: ownerId,
+      });
+      expect(directInsert.error?.code).toBe("23514");
+    }
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.email_delivery_attempts
+          where id in (${directInsertAttemptIds.map((id) => `${quote(id)}::uuid`).join(",")});
+        `),
+      ),
+    ).toBe(0);
+
     const modify = await supabase
       .from("email_delivery_attempts")
       .update({ attachments_snapshot: modifiedManifest })

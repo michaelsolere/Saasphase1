@@ -7,12 +7,11 @@ import {
   markEmailDeliveryAttemptFailed,
   markEmailDeliveryAttemptSent,
   prepareEmailDeliveryAttempt,
+  snapshotEmailDeliveryAttemptAttachments,
   snapshotEmailDeliveryAttemptBrevoTemplate,
   type EmailDeliveryAttemptTransitionResult,
 } from "@/features/communications/email-delivery-attempts-core";
 import {
-  attachmentSnapshotsEqual,
-  normalizeTransactionalEmailAttachmentSnapshotJson,
   validateTransactionalEmailAttachments,
   type TransactionalEmailAttachment,
 } from "@/features/communications/transactional-email-attachments";
@@ -192,8 +191,6 @@ export async function runTransactionalCampaignDelivery(
   input: {
     campaignKey: string;
     operationVersion: string;
-    // Compatibility path for existing attachment-free campaigns with business mutations.
-    prepareClaimedOperationAfterTemplate?: boolean;
     transport?: TransactionalEmailTransport;
     prepareOperation: (context: {
       supabase: Supabase;
@@ -297,50 +294,6 @@ export async function runTransactionalCampaignDelivery(
 
   let finalOperation = operation;
   let claimedResource: ClaimedOperation = {};
-  let providerTemplate;
-  if (input.prepareClaimedOperationAfterTemplate) {
-    try {
-      const result = await input.transport.getTemplate(template.brevoTemplateId);
-      if (!result.ok) {
-        const transition = await recordCertainFailure({
-          supabase: options.supabase,
-          ...context,
-          attemptId: claim.attempt.id,
-          errorCode: result.reason,
-        });
-        return transition.outcome === "updated"
-          ? {
-              outcome: "failed",
-              attemptId: claim.attempt.id,
-              errorCode: result.reason,
-            }
-          : {
-              outcome: "uncertain",
-              attemptId: claim.attempt.id,
-              errorCode: transition.error.code,
-            };
-      }
-      providerTemplate = result.template;
-    } catch {
-      const transition = await recordCertainFailure({
-        supabase: options.supabase,
-        ...context,
-        attemptId: claim.attempt.id,
-        errorCode: "provider_exception",
-      });
-      return transition.outcome === "updated"
-        ? {
-            outcome: "failed",
-            attemptId: claim.attempt.id,
-            errorCode: "provider_exception",
-          }
-        : {
-            outcome: "uncertain",
-            attemptId: claim.attempt.id,
-            errorCode: transition.error.code,
-          };
-    }
-  }
   if (input.prepareClaimedOperation) {
     let claimedPreparation;
     try {
@@ -420,41 +373,28 @@ export async function runTransactionalCampaignDelivery(
   if (!validatedAttachments.ok) {
     return failCertainly(validatedAttachments.errorCode);
   }
-  if (
-    input.prepareClaimedOperationAfterTemplate &&
-    validatedAttachments.attachments.length > 0
-  ) {
-    return failCertainly("attachments_require_pre_provider_preparation");
-  }
-
-  const storedAttachmentsSnapshot =
-    normalizeTransactionalEmailAttachmentSnapshotJson(
-      claim.attempt.attachments_snapshot,
-    );
-  if (!storedAttachmentsSnapshot) {
-    return failCertainly("database_error");
-  }
   const preparedAttachmentsSnapshot = validatedAttachments.attachments.map(
     (attachment) => attachment.snapshot,
   );
-  if (
-    storedAttachmentsSnapshot.length > 0 &&
-    !attachmentSnapshotsEqual(
-      storedAttachmentsSnapshot,
-      preparedAttachmentsSnapshot,
-    )
-  ) {
-    return failCertainly("attachment_snapshot_mismatch");
+  const attachmentSnapshot = await snapshotEmailDeliveryAttemptAttachments(
+    {
+      organizationId: context.organizationId,
+      attemptId: claim.attempt.id,
+      attachmentsSnapshot: preparedAttachmentsSnapshot,
+    },
+    options.supabase,
+  );
+  if (attachmentSnapshot.outcome === "error") {
+    return failCertainly(attachmentSnapshot.error.code);
   }
 
-  if (!providerTemplate) {
-    try {
-      const result = await input.transport.getTemplate(template.brevoTemplateId);
-      if (!result.ok) return failCertainly(result.reason);
-      providerTemplate = result.template;
-    } catch {
-      return failCertainly("provider_exception");
-    }
+  let providerTemplate;
+  try {
+    const result = await input.transport.getTemplate(template.brevoTemplateId);
+    if (!result.ok) return failCertainly(result.reason);
+    providerTemplate = result.template;
+  } catch {
+    return failCertainly("provider_exception");
   }
 
   const finalVariablesSnapshot =

@@ -85,6 +85,15 @@ language plpgsql
 set search_path = ''
 as $$
 begin
+  if tg_op = 'INSERT' then
+    if new.attachments_snapshot is distinct from '[]'::jsonb then
+      raise exception 'email delivery attachment snapshot must be empty on insert'
+        using errcode = '23514';
+    end if;
+
+    return new;
+  end if;
+
   if new.attachments_snapshot is not distinct from old.attachments_snapshot then
     return new;
   end if;
@@ -102,6 +111,10 @@ begin
   return new;
 end;
 $$;
+
+create trigger email_delivery_attempts_require_empty_attachments_snapshot
+before insert on public.email_delivery_attempts
+for each row execute function public.protect_email_delivery_attempt_attachments_snapshot();
 
 create trigger email_delivery_attempts_protect_attachments_snapshot
 before update of attachments_snapshot on public.email_delivery_attempts

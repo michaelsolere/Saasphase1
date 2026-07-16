@@ -8,6 +8,7 @@ import {
   markEmailDeliveryAttemptFailed as markEmailDeliveryAttemptFailedCore,
   markEmailDeliveryAttemptSent as markEmailDeliveryAttemptSentCore,
   prepareEmailDeliveryAttempt as prepareEmailDeliveryAttemptCore,
+  snapshotEmailDeliveryAttemptAttachments as snapshotEmailDeliveryAttemptAttachmentsCore,
   snapshotEmailDeliveryAttemptBrevoTemplate as snapshotEmailDeliveryAttemptBrevoTemplateCore,
   type BuildEmailDeliveryIdempotencyKeyInput,
   type ClaimEmailDeliveryAttemptForSendResult,
@@ -59,6 +60,16 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
   supabaseClient?: Supabase,
 ): Promise<EmailDeliveryAttemptSnapshotResult> {
   return snapshotEmailDeliveryAttemptBrevoTemplateCore(
+    input,
+    await resolveSupabase(supabaseClient),
+  );
+}
+
+export async function snapshotEmailDeliveryAttemptAttachments(
+  input: Parameters<typeof snapshotEmailDeliveryAttemptAttachmentsCore>[0],
+  supabaseClient?: Supabase,
+): Promise<EmailDeliveryAttemptSnapshotResult> {
+  return snapshotEmailDeliveryAttemptAttachmentsCore(
     input,
     await resolveSupabase(supabaseClient),
   );

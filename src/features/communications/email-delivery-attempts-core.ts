@@ -790,3 +790,110 @@ export async function snapshotEmailDeliveryAttemptBrevoTemplate(
 
   return { outcome: "updated", attempt: data };
 }
+
+export async function snapshotEmailDeliveryAttemptAttachments(
+  input: {
+    organizationId: string;
+    attemptId: string;
+    attachmentsSnapshot: unknown;
+  },
+  supabaseClient: Supabase,
+): Promise<EmailDeliveryAttemptSnapshotResult> {
+  const organizationId = normalizeRequiredText(input.organizationId, 64);
+  const attemptId = normalizeRequiredText(input.attemptId, 64);
+  const attachmentsSnapshot = normalizeTransactionalEmailAttachmentSnapshotJson(
+    input.attachmentsSnapshot,
+  );
+
+  if (!organizationId || !attemptId || !attachmentsSnapshot) {
+    return snapshotErrorResult(
+      "invalid_input",
+      "Invalid attachment snapshot input.",
+    );
+  }
+
+  const currentAttempt = await readAttemptForTransition(
+    supabaseClient,
+    organizationId,
+    attemptId,
+  );
+  if (!currentAttempt || currentAttempt.status !== "sending") {
+    return snapshotErrorResult(
+      "not_found",
+      "Sending attempt not found for attachment snapshot.",
+    );
+  }
+
+  const existingAttachmentsSnapshot =
+    normalizeTransactionalEmailAttachmentSnapshotJson(
+      currentAttempt.attachments_snapshot,
+    );
+  if (!existingAttachmentsSnapshot) {
+    return snapshotErrorResult(
+      "database_error",
+      "Stored attachment snapshot is invalid.",
+    );
+  }
+  if (existingAttachmentsSnapshot.length > 0) {
+    return attachmentSnapshotsEqual(
+      existingAttachmentsSnapshot,
+      attachmentsSnapshot,
+    )
+      ? { outcome: "updated", attempt: currentAttempt }
+      : snapshotErrorResult(
+          "attachment_snapshot_mismatch",
+          "Attachment snapshot does not match the stored manifest.",
+        );
+  }
+  if (attachmentsSnapshot.length === 0) {
+    return { outcome: "updated", attempt: currentAttempt };
+  }
+
+  const { data, error } = await supabaseClient
+    .from("email_delivery_attempts")
+    .update({
+      attachments_snapshot: toAttachmentSnapshotJson(attachmentsSnapshot),
+    })
+    .eq("organization_id", organizationId)
+    .eq("id", attemptId)
+    .is("deleted_at", null)
+    .eq("status", "sending")
+    .select("*")
+    .maybeSingle();
+
+  if (!error && data) {
+    return { outcome: "updated", attempt: data };
+  }
+
+  const refreshedAttempt = await readAttemptForTransition(
+    supabaseClient,
+    organizationId,
+    attemptId,
+  );
+  const refreshedAttachmentsSnapshot = refreshedAttempt
+    ? normalizeTransactionalEmailAttachmentSnapshotJson(
+        refreshedAttempt.attachments_snapshot,
+      )
+    : null;
+  if (
+    refreshedAttempt?.status === "sending" &&
+    refreshedAttachmentsSnapshot?.length &&
+    attachmentSnapshotsEqual(
+      refreshedAttachmentsSnapshot,
+      attachmentsSnapshot,
+    )
+  ) {
+    return { outcome: "updated", attempt: refreshedAttempt };
+  }
+  if (refreshedAttachmentsSnapshot?.length) {
+    return snapshotErrorResult(
+      "attachment_snapshot_mismatch",
+      "Attachment snapshot does not match the stored manifest.",
+    );
+  }
+
+  return snapshotErrorResult(
+    error ? "database_error" : "not_found",
+    "Unable to snapshot email attachments.",
+  );
+}

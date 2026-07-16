@@ -430,7 +430,6 @@ export async function sendPreReservationEmailForApplication(
     {
       campaignKey: PRE_RESERVATION_MESSAGE_TYPE,
       operationVersion: PRE_RESERVATION_OPERATION_VERSION,
-      prepareClaimedOperationAfterTemplate: true,
       transport: options.transport as TransactionalEmailTransport | undefined,
       prepareOperation: async ({ supabase, organizationId }) => {
         const { data: application, error } = await supabase
