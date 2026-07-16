@@ -3217,6 +3217,210 @@ export type Database = {
           },
         ]
       }
+      reservation_document_variant_versions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          id: string
+          lifecycle_status: string
+          organization_id: string
+          published_at: string | null
+          published_by: string | null
+          source_template_id: string
+          source_template_version: number
+          template_content: string | null
+          template_format: string
+          updated_at: string
+          updated_by: string | null
+          variant_id: string
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          lifecycle_status?: string
+          organization_id: string
+          published_at?: string | null
+          published_by?: string | null
+          source_template_id: string
+          source_template_version: number
+          template_content?: string | null
+          template_format: string
+          updated_at?: string
+          updated_by?: string | null
+          variant_id: string
+          version: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          id?: string
+          lifecycle_status?: string
+          organization_id?: string
+          published_at?: string | null
+          published_by?: string | null
+          source_template_id?: string
+          source_template_version?: number
+          template_content?: string | null
+          template_format?: string
+          updated_at?: string
+          updated_by?: string | null
+          variant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_document_variant_versions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variant_versions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variant_versions_published_by_fkey"
+            columns: ["published_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variant_versions_source_exact_fk"
+            columns: [
+              "organization_id",
+              "source_template_id",
+              "source_template_version",
+            ]
+            isOneToOne: false
+            referencedRelation: "document_templates"
+            referencedColumns: ["organization_id", "id", "version"]
+          },
+          {
+            foreignKeyName: "reservation_document_variant_versions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variant_versions_variant_organization_fk"
+            columns: ["organization_id", "variant_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_document_variants"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      reservation_document_variants: {
+        Row: {
+          breed: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          document_type: string
+          id: string
+          organization_id: string
+          reservation_id: string
+          species: string
+          template_family_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_type: string
+          id?: string
+          organization_id: string
+          reservation_id: string
+          species?: string
+          template_family_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_type?: string
+          id?: string
+          organization_id?: string
+          reservation_id?: string
+          species?: string
+          template_family_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reservation_document_variants_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variants_family_taxonomy_fk"
+            columns: [
+              "organization_id",
+              "template_family_id",
+              "document_type",
+              "species",
+              "breed",
+            ]
+            isOneToOne: false
+            referencedRelation: "document_template_families"
+            referencedColumns: [
+              "organization_id",
+              "id",
+              "document_type",
+              "species",
+              "breed",
+            ]
+          },
+          {
+            foreignKeyName: "reservation_document_variants_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variants_reservation_organization_fk"
+            columns: ["organization_id", "reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservation_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variants_reservation_organization_fk"
+            columns: ["organization_id", "reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reservation_document_variants_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reservations: {
         Row: {
           adoption_completed_at: string | null
@@ -3755,6 +3959,36 @@ export type Database = {
           reservation_id: string
         }[]
       }
+      create_reservation_document_variant_draft: {
+        Args: {
+          p_breed: string
+          p_document_type: string
+          p_organization_id: string
+          p_reservation_id: string
+          p_source_template_id: string
+          p_source_template_version: number
+          p_species: string
+          p_template_family_id: string
+          p_variant_id?: string | null
+          p_version_id?: string | null
+        }
+        Returns: {
+          variant_id: string
+          version: number
+          version_id: string
+        }[]
+      }
+      create_reservation_document_variant_version: {
+        Args: {
+          p_organization_id: string
+          p_variant_id: string
+          p_version_id?: string | null
+        }
+        Returns: {
+          version: number
+          version_id: string
+        }[]
+      }
       discard_document_template_draft: {
         Args: {
           p_expected_updated_at: string
@@ -3796,6 +4030,21 @@ export type Database = {
           p_template_id: string
         }
         Returns: string
+      }
+      publish_reservation_document_variant_version: {
+        Args: {
+          p_expected_template_content: string | null
+          p_expected_template_format: string
+          p_expected_updated_at: string
+          p_organization_id: string
+          p_variant_id: string
+          p_version_id: string
+        }
+        Returns: string
+      }
+      reservation_document_variant_version_is_used: {
+        Args: { p_organization_id: string; p_version_id: string }
+        Returns: boolean
       }
       resolve_suspect_form_submission_existing_contact: {
         Args: { p_contact_id: string; p_form_submission_id: string }

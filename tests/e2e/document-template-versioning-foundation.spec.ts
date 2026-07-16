@@ -562,7 +562,9 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .update({ deleted_at: new Date().toISOString() })
       .eq("family_id", ids.family)
       .eq("version", 1);
-    expect(retiredSoftDelete.error?.message).toMatch(/cannot be soft-deleted/);
+    expect(retiredSoftDelete.error?.message).toMatch(
+      /cannot be soft-deleted|deletion state requires a lifecycle function/,
+    );
 
     const concurrentDrafts = await Promise.all([
       owner.rpc("create_document_template_draft", {
@@ -705,7 +707,9 @@ test("versions document templates atomically, enforces permissions and cleans fi
       .from("document_templates")
       .update({ deleted_at: new Date().toISOString() })
       .eq("id", version4Id);
-    expect(usedDraftSoftDelete.error?.message).toMatch(/cannot be soft-deleted/);
+    expect(usedDraftSoftDelete.error?.message).toMatch(
+      /cannot be soft-deleted|deletion state requires a lifecycle function/,
+    );
 
     const publishedDelete = await owner
       .from("document_templates")
