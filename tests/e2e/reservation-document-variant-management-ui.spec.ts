@@ -268,6 +268,9 @@ test("gère le parcours UI complet des variantes sans raccorder documents ni Sto
 
     setRole("member");
     await page.reload();
+    expect(Number(sql(`select count(*) from public.reservation_document_variant_versions where variant_id = ${q(createdVariantId)}::uuid and lifecycle_status = 'draft';`))).toBe(0);
+    await expect(page.getByRole("heading", { name: "Contenu automatiquement ajouté au document" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Créer la version suivante" })).toBeVisible();
     await page.getByRole("button", { name: "Créer la version suivante" }).click();
     await expect(draftSection(page).getByText("Version 2", { exact: false }).first()).toBeVisible();
     createdVersionIds.push(sql(`select id::text from public.reservation_document_variant_versions where variant_id = ${q(createdVariantId)}::uuid and version = 2;`));

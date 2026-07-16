@@ -85,6 +85,9 @@ export default async function ReservationDocumentVariantPage({
         templateContent: draft.templateContent,
       })
     : null;
+  const activeDefinition = draftDefinition ?? (
+    publicationDefinition?.success ? publicationDefinition.definition : null
+  );
   const canSave = listed.role !== "viewer";
   const canPublish = listed.role === "admin" || listed.role === "owner";
   const logo = activeLogo.ok && activeLogo.logo ? {
@@ -130,7 +133,7 @@ export default async function ReservationDocumentVariantPage({
           ) : <p className="mt-3 text-sm text-muted">Aucune version publiée.</p>}
         </section>
 
-        {draftDefinition?.schemaVersion !== 2 ? (
+        {activeDefinition && activeDefinition.schemaVersion !== 2 ? (
           <DocumentTemplateAutomaticContent documentType={listed.variant.documentType as DocumentTemplateType} />
         ) : null}
 
