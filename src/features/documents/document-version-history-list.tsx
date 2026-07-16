@@ -21,6 +21,32 @@ function formatFileSize(value: number) {
   })} Mio`;
 }
 
+function VersionSource({ entry }: { entry: DocumentVersionHistoryEntry }) {
+  const origin =
+    entry.templateLabel && entry.sourceTemplateVersion
+      ? `${entry.templateLabel} — version ${entry.sourceTemplateVersion}`
+      : "Non renseigné";
+
+  return (
+    <div className="mt-2 space-y-1 text-xs text-muted">
+      <p>
+        Source : {entry.sourceKind === "reservation_variant"
+          ? `variante personnalisée${
+              entry.reservationDocumentVariantVersion
+                ? ` — version ${entry.reservationDocumentVariantVersion}`
+                : ""
+            }`
+          : "modèle de référence"}
+      </p>
+      <p>
+        {entry.sourceKind === "reservation_variant"
+          ? `Origine commune : ${origin}`
+          : `Modèle : ${origin}`}
+      </p>
+    </div>
+  );
+}
+
 function VersionActions({
   entry,
   canArchiveSignedReturns,
@@ -149,6 +175,7 @@ function VersionRow({
           <p className="mt-1 text-xs text-muted">
             {formatGeneratedAt(entry.generatedAt)}
           </p>
+          <VersionSource entry={entry} />
         </div>
         <VersionActions
           entry={entry}
