@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #261. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #277. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `ca925ca702207f96cdfde975f4c6747e253c3d81`.
-- Dernière PR incluse : **#261 — Ajouter le service serveur de gestion des modèles documentaires**.
+- SHA de `main` documenté : `438aa4202b05b2f76885d865ba5723452f6d2c38`.
+- Dernière PR incluse : **#277 — Corriger la bascule du gras et stabiliser l’aperçu**.
 - Les migrations locales sont appliquées jusqu’à `202607140002`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -95,21 +95,39 @@ Campagnes transactionnelles disponibles :
 ### Familles et versions de modèles
 
 - `document_template_families` porte l’identité stable d’un modèle de référence ; chaque ligne de `document_templates` représente une version de cette famille.
+- L’interface `/documents/modeles`, reliée aux actions serveur de gestion, permet de gérer les familles et leurs versions, d’éditer les brouillons, de publier ou retirer une version et de créer la version suivante.
 - Une version suit l’un des états `draft`, `published` ou `retired`. Une famille ne peut avoir qu’un seul brouillon et qu’une seule version publiée à la fois.
 - La création du prochain brouillon est sûre face aux accès concurrents et attribue la version suivante sans doublon.
-- La publication est atomique et réservée aux rôles owner/admin. Les membres autorisés peuvent modifier uniquement les brouillons.
-- Une version publiée, retirée ou déjà utilisée par un document est immuable.
+- La sauvegarde d’un brouillon utilise un verrou optimiste pour signaler les écritures concurrentes. La publication est atomique et réservée aux rôles autorisés.
+- Une version publiée, retirée ou déjà utilisée par un document est immuable ; l’éditeur affiche une version publiée en lecture seule.
+- La suppression d’une famille est logique et protégée selon son état et ses usages documentaires.
 - Le lien entre un document et son modèle identifie la version exacte au moyen de `documents.template_id` et `documents.source_template_version`.
 - La reprise des modèles legacy conserve chaque modèle comme une famille distincte, sans regroupement ni renumérotation.
 - La synchronisation du nom et de la description d’une famille vers ses versions conserve les audits propres aux versions.
+- La validation métier reste centralisée dans les schémas Zod. La publication vérifie la version exacte validée afin de refuser un brouillon modifié entre la validation et l’écriture ; les erreurs exposées à l’interface restent typées.
+- Les rôles `viewer` peuvent lire et valider, les `member` peuvent aussi créer et sauvegarder des brouillons, et seuls `owner` et `admin` peuvent créer une famille ou publier.
 
-### Service serveur de gestion
+### Contrat de réservation V2
 
-- Le service liste les familles avec leur brouillon et leur publication courants, crée atomiquement une famille et son premier brouillon, et modifie le nom ou la description d’une famille.
-- Il clone le prochain brouillon et sauvegarde son contenu avec un verrou optimiste afin de signaler les écritures concurrentes.
-- La validation métier réutilise exclusivement le parseur Zod existant. La publication impose ensuite une précondition SQL sur la version exacte validée pour empêcher la publication d’un brouillon modifié entre-temps.
-- Les résultats et erreurs sont typés pour l’interface, sans exposer de messages SQL bruts.
-- Un `viewer` peut lire et valider. Un `member` peut aussi créer et sauvegarder des brouillons. Les rôles `owner` et `admin` disposent de toutes les opérations, dont la création d’une famille et la publication.
+- Les nouveaux contrats de réservation utilisent un contenu libre de schéma V2 : `schemaVersion: 2`, `locale: "fr-FR"`, `documentType: "reservation_contract"`, avec un `title` et un `body` textuels.
+- Le titre et le corps peuvent être réorganisés librement. Les retours à la ligne et paragraphes vides sont conservés, et aucun contenu automatique legacy n’est ajouté.
+- Les contrats V1 restent pris en charge sans conversion automatique ; leur rendu et leurs snapshots historiques ne sont pas modifiés.
+
+### Variables et mise en forme minimale
+
+- Les variables utilisent la syntaxe `[[groupe.variable]]`. Un catalogue centralisé, classé par catégories, permet de les insérer à la position du curseur dans le titre ou le corps.
+- Le catalogue couvre le vendeur, l’adoptant, le projet, l’animal, la réservation, les finances, la portée, les parents, le groupe de portées et le document. Il comprend notamment `[[groupe_portees.nom]]` et `[[projet.portee_ou_groupe]]`, qui privilégie la portée nommée puis se replie sur le groupe.
+- La résolution s’effectue en une seule passe : une valeur métier ressemblant elle-même à une variable n’est jamais réinterprétée.
+- Les aperçus rendent les données manquantes explicites. La génération définitive est bloquée avant tout stockage si une donnée effectivement utilisée est absente ou invalide.
+- La seule mise en forme textuelle prise en charge est le gras avec `**texte**`. Le bouton **Gras** et les raccourcis `Cmd+B` / `Ctrl+B` assurent une vraie bascule ajout/retrait à la sélection ou au curseur.
+- La bascule reconnaît les variables complètes, exclut les espaces périphériques du gras et refuse les chevauchements ambigus. Le PDF rend le texte concerné en Helvetica-Bold.
+- Il ne s’agit pas d’un moteur Markdown ou HTML général.
+
+### Aperçus
+
+- L’éditeur propose un aperçu fictif, ouvrable en grand. Depuis une Réservation, un aperçu réel est disponible lorsqu’un modèle publié compatible existe.
+- Un aperçu ne crée ni ligne de document ni objet Storage. Les données manquantes y restent visibles.
+- Pendant une syntaxe de gras temporairement incomplète, l’éditeur conserve le dernier aperçu valide. La validation, la publication et la génération définitive restent strictes.
 
 ### Modèles et snapshots
 
@@ -120,10 +138,11 @@ Campagnes transactionnelles disponibles :
 ### Rendu, stockage et génération
 
 - Le rendu PDF réel utilise `@react-pdf/renderer` et produit un contrat de réservation ou un certificat d’engagement à partir du snapshot.
-- L’orchestrateur enchaîne préparation, validation, rendu, calcul SHA-256, stockage et écriture des métadonnées de façon idempotente.
+- L’orchestrateur enchaîne préparation du snapshot métier, validation, rendu avant stockage, calcul SHA-256, stockage et écriture des métadonnées de façon idempotente.
 - Les PDF sont stockés dans le bucket privé `documents`, sous un chemin isolé par organisation et document, avec un numéro de version et le hash du fichier.
 - Une nouvelle génération crée une nouvelle ligne et une chaîne `replaces_document_id` ; la version précédente est marquée historique plutôt qu’écrasée.
-- La génération se lance depuis la fiche Réservation, séparément pour le contrat et le certificat, avec contrôle de compatibilité du modèle.
+- Le titre résolu est conservé avec le document. Une nouvelle génération ne modifie jamais l’ancienne ligne, son snapshot ni son PDF historique.
+- La génération individuelle se lance actuellement depuis la fiche Réservation, séparément pour le contrat et le certificat, avec contrôle de compatibilité du modèle.
 
 ### Consultation sécurisée
 
@@ -142,22 +161,18 @@ Campagnes transactionnelles disponibles :
 
 ## Limites actuelles et feuille de route immédiate
 
-Il n’existe pas encore :
+Restent à concevoir ou implémenter :
 
-- d’interface de gestion ou d’édition des modèles dans `/documents` ;
-- de server action React branchée sur le service de gestion ;
-- de variantes personnalisées par adoptant ;
-- de génération PDF groupée ;
-- de pièces jointes PDF Brevo.
+- les variantes individuelles liées à une réservation ou à un adoptant ;
+- la génération PDF groupée depuis une portée ou un groupe de portées ;
+- l’envoi des PDF exacts en pièces jointes Brevo ;
+- une éventuelle mise en forme avancée, sans priorité immédiate.
 
-La feuille de route immédiate est, dans cet ordre :
+Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-1. gestion et éditeur des modèles documentaires de référence ;
-2. variantes individuelles liées aux adoptants ;
-3. génération PDF groupée depuis une portée ou un groupe de portées ;
-4. envoi des PDF exacts en pièces jointes Brevo.
+La prochaine étape est : **concevoir le socle serveur et le modèle de données des variantes individuelles de documents liées à une réservation, sans encore implémenter leur interface.**
 
-La prochaine étape est : **implémenter l’interface de gestion et l’éditeur des modèles documentaires de référence dans `/documents`, en s’appuyant exclusivement sur le service serveur existant.**
+Ce chantier doit préserver le modèle de référence publié, l’origine de la variante, son versionnement, son immutabilité après génération et l’historique des documents.
 
 ## Environnement E2E et règles de validation
 
