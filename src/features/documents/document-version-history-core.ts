@@ -4,7 +4,10 @@ import {
 } from "@/features/documents/document-pdf-storage-core";
 import { parseDocumentGenerationSnapshot } from "@/features/documents/parse-document-generation-snapshot";
 
-export type DocumentVersionSourceKind = "common" | "reservation_variant";
+export type DocumentVersionSourceKind =
+  | "common"
+  | "reservation_variant"
+  | null;
 
 export type DocumentVersionSource = {
   id: string;
@@ -19,6 +22,7 @@ export type DocumentVersionSource = {
   generation_data: unknown;
   reservation_document_variant_version_id: string | null;
   reservation_document_variant_version: number | null;
+  template_id: string | null;
   template_label: string | null;
   source_template_version: number | null;
   file_path: string | null;
@@ -84,6 +88,7 @@ export function deriveDocumentVersionSourceMetadata(
     | "generation_data"
     | "reservation_document_variant_version_id"
     | "reservation_document_variant_version"
+    | "template_id"
     | "source_template_version"
     | "template_label"
   >,
@@ -117,8 +122,14 @@ export function deriveDocumentVersionSourceMetadata(
 
   const isReservationVariant =
     document.reservation_document_variant_version_id !== null;
+  const hasCommonSource =
+    document.template_id !== null || document.source_template_version !== null;
   return {
-    sourceKind: isReservationVariant ? "reservation_variant" : "common",
+    sourceKind: isReservationVariant
+      ? "reservation_variant"
+      : hasCommonSource
+        ? "common"
+        : null,
     reservationDocumentVariantVersion: isReservationVariant
       ? document.reservation_document_variant_version
       : null,

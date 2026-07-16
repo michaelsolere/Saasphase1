@@ -22,6 +22,14 @@ function formatFileSize(value: number) {
 }
 
 function VersionSource({ entry }: { entry: DocumentVersionHistoryEntry }) {
+  if (entry.sourceKind === null) {
+    return (
+      <div className="mt-2 text-xs text-muted">
+        <p>Source : non renseignée</p>
+      </div>
+    );
+  }
+
   const origin =
     entry.templateLabel && entry.sourceTemplateVersion
       ? `${entry.templateLabel} — version ${entry.sourceTemplateVersion}`

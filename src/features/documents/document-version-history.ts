@@ -18,7 +18,7 @@ const versionFields =
 type DocumentVersionRow = Omit<
   DocumentVersionSource,
   "reservation_document_variant_version" | "template_label"
-> & { template_id: string | null };
+>;
 
 async function hydrateDocumentVersionSource(
   row: DocumentVersionRow,
