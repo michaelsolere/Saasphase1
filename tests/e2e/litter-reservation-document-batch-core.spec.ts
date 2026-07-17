@@ -431,9 +431,25 @@ test("generates litter reservation documents safely, idempotently and without fi
       reservationId: ids.reservationVariant,
       documentType: "reservation_contract",
     });
+    const deterministicCommitmentId = deriveLitterReservationDocumentId({
+      organizationId: ids.organization,
+      operationId: "operation-concurrent",
+      reservationId: ids.reservationVariant,
+      documentType: "commitment_certificate",
+    });
+    const concurrentPaths = storagePaths().filter(
+      (path) =>
+        path.includes(`/documents/${deterministicCommitmentId}/`) ||
+        path.includes(`/documents/${deterministicContractId}/`),
+    );
+    expect(concurrentPaths).toHaveLength(2);
+    expect(concurrentPaths.every((path) => path.includes("/v1/"))).toBe(true);
     expect(
       sql(`select id::text || '|' || (generation_data->>'capturedAt') from public.documents where id = ${q(deterministicContractId)}::uuid;`),
     ).toBe(`${deterministicContractId}|${capturedAt}`);
+    expect(
+      sql(`select count(*) from public.documents where id in (${q(deterministicCommitmentId)}::uuid, ${q(deterministicContractId)}::uuid) and generation_data->>'capturedAt' = ${q(capturedAt)};`),
+    ).toBe("2");
 
     const prevalidationRows = documentCount(ids.reservationPrevalidation);
     const prevalidationPaths = storagePaths().length;
