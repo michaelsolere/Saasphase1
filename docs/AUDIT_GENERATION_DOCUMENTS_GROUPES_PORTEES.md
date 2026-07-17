@@ -16,7 +16,7 @@ L’audit porte notamment sur :
 
 - la fiche Groupe `src/app/litter-groups/[id]/page.tsx` ;
 - les tables `litter_groups`, `litters`, `applications`, `reservations` et `documents` dans les migrations métier et documentaires ;
-- `updateLitterGroupAssignment`, `attachReservationToScope`, `attachReservationToPreciseLitter` et `syncReservationScopeFromApplication` ;
+- `updateLitterGroupAssignment`, `attachReservationToScope` et `syncReservationScopeFromApplication` ;
 - `litter-reservation-document-batch-core.ts` et son enveloppe serveur ;
 - l’action compatible `useActionState` et son intention liée ;
 - la section et le panneau actuels de `/litters/[id]` ;
