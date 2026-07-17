@@ -621,3 +621,145 @@ test("membre : génération réelle et idempotence sur intention verrouillée", 
     assertCleanup();
   }
 });
+
+test("membre : résultat partiel puis rejeu exact", async ({ page }) => {
+  test.setTimeout(180_000);
+  const supabase = await createAuthenticatedSupabaseClient();
+  await removeStorage(supabase);
+  try {
+    seedGeneration();
+    await login(page);
+    await page.goto(`/litter-groups/${ids.group}`);
+    const section = page.locator("#generation-documents-groupes");
+    await section.getByRole("button", { name: "Tout désélectionner" }).click();
+    await section.getByLabel("Sélectionner Dossier Golden éligible").check();
+    await section.getByLabel("Sélectionner Dossier Labrador").check();
+    await expect(section).toContainText("2 dossier(s) sélectionné(s) sur 30");
+
+    sql(
+      `update public.reservations set status = 'active' where id = ${q(ids.labReservation)}::uuid;`,
+    );
+    expect(
+      sql(`select status from public.reservations where id = ${q(ids.labReservation)}::uuid;`),
+    ).toBe("active");
+
+    await section.getByRole("button", { name: "Générer les documents sélectionnés" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("2");
+    await page.getByRole("button", { name: "Confirmer la génération" }).click();
+    await expect(section).toContainText("Génération partiellement terminée", { timeout: 90_000 });
+    await expect(section.locator("article").filter({ hasText: "Dossier Golden éligible" })).toContainText(
+      "Généré",
+    );
+    await expect(section.locator("article").filter({ hasText: "Dossier Labrador" })).toContainText(
+      "Ce dossier ne remplit pas les conditions préalables.",
+    );
+    expect(count("documents")).toBe(2);
+    expect(storagePaths()).toHaveLength(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from storage.objects
+          where bucket_id = 'documents'
+            and name like 'organizations/${ids.organization}/%'
+            and coalesce((metadata->>'size')::int, 0) > 0;
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      sql(`
+        select string_agg(document_type, ',' order by document_type)
+        from public.documents
+        where reservation_id = ${q(ids.goldenReservation)}::uuid
+          and deleted_at is null and superseded_at is null;
+      `),
+    ).toBe("commitment_certificate,reservation_contract");
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where reservation_id = ${q(ids.labReservation)}::uuid
+            and deleted_at is null and superseded_at is null;
+        `),
+      ),
+    ).toBe(0);
+    const replayButton = section.getByRole("button", { name: "Rejouer exactement cette opération" });
+    await expect(replayButton).toBeVisible();
+    await expect(section.getByRole("button", { name: "Générer les documents sélectionnés" })).toHaveCount(0);
+
+    const fingerprintGolden = documentFingerprint(ids.goldenReservation);
+    const pathsAfterPartial = storagePaths();
+    const reservationIdsLocked = await section
+      .locator('input[name="reservation_ids[]"]')
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value).sort());
+    const taxonomySelectionsLocked = await section
+      .locator('input[name="taxonomy_template_selections[]"]')
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value).sort());
+    expect(reservationIdsLocked).toEqual([ids.goldenReservation, ids.labReservation].sort());
+    expect(taxonomySelectionsLocked.length).toBe(2);
+
+    sql(
+      `update public.reservations set status = 'pre_reservation_paid' where id = ${q(ids.labReservation)}::uuid;`,
+    );
+    expect(
+      sql(`select status from public.reservations where id = ${q(ids.labReservation)}::uuid;`),
+    ).toBe("pre_reservation_paid");
+
+    await replayButton.click();
+    await expect(section).toContainText("Génération terminée", { timeout: 90_000 });
+    await expect(section.locator("article").filter({ hasText: "Dossier Golden éligible" })).toContainText(
+      "Déjà généré par cette opération",
+    );
+    await expect(section.locator("article").filter({ hasText: "Dossier Labrador" })).toContainText("Généré");
+    expect(count("documents")).toBe(4);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.goldenReservation)}::uuid;
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.labReservation)}::uuid;
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from storage.objects
+          where bucket_id = 'documents'
+            and name like 'organizations/${ids.organization}/%'
+            and coalesce((metadata->>'size')::int, 0) > 0;
+        `),
+      ),
+    ).toBe(4);
+    expect(documentFingerprint(ids.goldenReservation)).toBe(fingerprintGolden);
+    for (const path of pathsAfterPartial) {
+      expect(storagePaths()).toContain(path);
+    }
+    expect(
+      await section
+        .locator('input[name="reservation_ids[]"]')
+        .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value).sort()),
+    ).toEqual(reservationIdsLocked);
+    expect(
+      await section
+        .locator('input[name="taxonomy_template_selections[]"]')
+        .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value).sort()),
+    ).toEqual(taxonomySelectionsLocked);
+    expect(count("payments")).toBe(0);
+    expect(count("email_delivery_attempts")).toBe(0);
+  } finally {
+    await removeStorage(supabase);
+    cleanup();
+    assertCleanup();
+  }
+});
