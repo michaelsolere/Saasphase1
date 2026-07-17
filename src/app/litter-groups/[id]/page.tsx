@@ -43,6 +43,7 @@ import {
   PreReservationCampaignConfirmDialog,
 } from "@/features/reservations/pre-reservation-campaign-confirm-dialog";
 import { updateLitterGroupDetails } from "@/features/litters/actions";
+import { LitterGroupReservationDocumentBatchSection } from "@/features/litters/litter-group-reservation-document-batch-section";
 import {
   launchGroupDepartureBalanceCampaign,
   launchGroupPreReservationBalanceCampaign,
@@ -924,7 +925,7 @@ export default async function LitterGroupDetailPage({
               </div>
             )}
 
-            <div className="space-y-6 py-8">
+            <div className="flex flex-col gap-6 py-8">
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Informations</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -1209,7 +1210,7 @@ export default async function LitterGroupDetailPage({
                 }
               />
 
-              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+              <section className="order-5 rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
                   Campagnes d’e-mails
                 </h2>
@@ -1429,7 +1430,7 @@ export default async function LitterGroupDetailPage({
 
               <section
                 id="reservations-liees"
-                className="rounded-2xl border bg-surface p-6 sm:p-8"
+                className="order-3 rounded-2xl border bg-surface p-6 sm:p-8"
               >
                 <h2 className="text-xl font-semibold">
                   Réservations liées à ce groupe
@@ -1542,6 +1543,12 @@ export default async function LitterGroupDetailPage({
                   reservations={attachableReservations}
                 />
               </section>
+
+              <div className="order-4">
+                <LitterGroupReservationDocumentBatchSection
+                  litterGroupId={group.id}
+                />
+              </div>
             </div>
           </>
         )}
