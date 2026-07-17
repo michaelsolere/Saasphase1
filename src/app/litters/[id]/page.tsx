@@ -43,6 +43,7 @@ import {
   LitterFields,
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
+import { LitterReservationDocumentBatchSection } from "@/features/litters/litter-reservation-document-batch-section";
 import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
 import {
@@ -2903,6 +2904,8 @@ export default async function LitterDetailPage({
                 hasError={Boolean(reservationsError || reservationPaymentsError)}
                 sectionId="reservations-liees"
               />
+
+              <LitterReservationDocumentBatchSection litterId={litter.id} />
 
               <CollapsibleSection id="campagnes-emails" title="Campagnes d’e-mails">
                 <div>
