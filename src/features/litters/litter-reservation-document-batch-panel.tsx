@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState } from "react";
 
 import {
   AlertDialog,
@@ -204,8 +204,15 @@ export function LitterReservationDocumentBatchPanel({
   const [commitmentTemplateId, setCommitmentTemplateId] = useState(commitmentTemplates[0]?.id ?? "");
   const [contractTemplateId, setContractTemplateId] = useState(contractTemplates[0]?.id ?? "");
   const [submitted, setSubmitted] = useState<SubmittedConfiguration | null>(null);
+  // Garde l’intention de l’opération malgré les revalidations serveur.
+  const operationActionRef = useRef(action);
+  const operationAction = useCallback(
+    (previousState: LitterReservationDocumentBatchActionState, formData: FormData) =>
+      operationActionRef.current(previousState, formData),
+    [],
+  );
   const [state, formAction, isPending] = useActionState(
-    action,
+    operationAction,
     initialLitterReservationDocumentBatchActionState,
   );
   const formRef = useRef<HTMLFormElement>(null);

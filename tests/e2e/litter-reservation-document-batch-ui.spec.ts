@@ -397,15 +397,40 @@ test("pilote la génération groupée depuis la portée sans fuite ni effet anne
     await expect(partialSection).toContainText("Génération partiellement terminée", { timeout: 45_000 });
     await expect(partialSection).toContainText("Source invalide");
     await expect(partialSection).toContainText("Déjà présent");
-    await expect(partialSection).toContainText("Généré");
+    const eligibleResult = partialSection.locator("article").filter({
+      hasText: "Dossier éligible 01",
+    });
+    await expect(eligibleResult).toContainText("Généré");
     await expect(partialSection.getByRole("button", { name: "Rejouer cette opération" })).toBeVisible();
     expect(organizationCount("documents")).toBe(4);
     const rowsBeforeReplay = organizationCount("documents");
     const pathsBeforeReplay = storagePaths();
+    const reservationIdsBeforeReplay = await partialSection
+      .locator('input[name="reservation_ids[]"]')
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value));
+    const commitmentTemplateBeforeReplay = await partialSection
+      .locator('input[name="commitment_template_id"]')
+      .inputValue();
+    const contractTemplateBeforeReplay = await partialSection
+      .locator('input[name="contract_template_id"]')
+      .inputValue();
     await partialSection.getByRole("button", { name: "Rejouer cette opération" }).click();
     await expect(partialSection).toContainText("Génération partiellement terminée", { timeout: 45_000 });
+    await expect(eligibleResult).toContainText("Déjà généré par cette opération");
+    await expect(eligibleResult).not.toContainText("Déjà présent");
     expect(organizationCount("documents")).toBe(rowsBeforeReplay);
     expect(storagePaths()).toEqual(pathsBeforeReplay);
+    expect(
+      await partialSection
+        .locator('input[name="reservation_ids[]"]')
+        .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+    ).toEqual(reservationIdsBeforeReplay);
+    expect(await partialSection.locator('input[name="commitment_template_id"]').inputValue()).toBe(
+      commitmentTemplateBeforeReplay,
+    );
+    expect(await partialSection.locator('input[name="contract_template_id"]').inputValue()).toBe(
+      contractTemplateBeforeReplay,
+    );
     const partialText = (await partialSection.textContent()) ?? "";
     expect(partialText).not.toContain(ids.invalidVariantReservation);
     expect(partialText).not.toMatch(/storage|sha|reasonCode|database_error|snapshot/i);
