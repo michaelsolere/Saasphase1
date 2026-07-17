@@ -45,31 +45,19 @@ const viewerEmail = "snapshot-viewer@saasphase1.invalid";
 const viewerPassword = "SnapshotViewer-2026!";
 
 const contractDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat QA",
-  preamble: ["Préambule."],
-  clauses: {
-    reservationPurpose: ["Objet."], priceAndPayments: ["Prix."], deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation."], postponementAndCredit: ["Report."],
-    potentialWithholding: ["Retenue."], finalConditions: ["Final."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat QA",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."], health: ["Santé."], educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."], holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function q(value: string) {

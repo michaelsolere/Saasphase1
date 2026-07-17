@@ -27,18 +27,11 @@ const rejectedAssets = {
 const previewFamilyId = "9f150002-0000-4000-8000-000000000010";
 const previewTemplateId = "9f150002-0000-4000-8000-000000000011";
 const previewDefinition = JSON.stringify({
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat aperçu branding E2E",
-  preamble: ["Préambule E2E."],
-  clauses: {
-    reservationPurpose: ["Objet E2E."], priceAndPayments: ["Prix E2E."],
-    deposit: ["Arrhes E2E."], cancellationAndRefund: ["Annulation E2E."],
-    postponementAndCredit: ["Report E2E."], potentialWithholding: ["Retenue E2E."],
-    finalConditions: ["Conditions E2E."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 });
 
 function sqlQuote(value: string) {

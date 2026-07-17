@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Bold, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { Bold } from "lucide-react";
 
 import {
   AlertDialog,
@@ -25,16 +25,13 @@ import {
 } from "@/features/documents/document-template-management-actions";
 import { documentTemplateTypePresentations } from "@/features/documents/document-template-editor-config";
 import type {
-  CommitmentCertificateTemplateDefinition,
   DocumentTemplateDefinition,
   DocumentTemplateType,
-  FreeReservationContractTemplateDefinition,
-  ReservationContractTemplateDefinition,
 } from "@/features/documents/document-template-definitions";
 import { insertTemplateVariableAtSelection } from "@/features/documents/insert-template-variable";
 import { toggleTemplateBoldAtSelection } from "@/features/documents/insert-template-bold";
 import { parseDocumentTemplateDefinition } from "@/features/documents/parse-document-template-definition";
-import { RESERVATION_CONTRACT_VARIABLE_CATALOG } from "@/features/documents/reservation-contract-template-variables";
+import { getDocumentTemplateVariableCatalog } from "@/features/documents/reservation-contract-template-variables";
 
 const DocumentTemplatePdfPreview = dynamic(
   () => import("@/features/documents/document-template-pdf-preview")
@@ -61,6 +58,9 @@ type DefinitionEditorProps<TDefinition extends DocumentTemplateDefinition> = {
 type StructuredEditorConfiguration = {
   label: string;
   description: string;
+  editorHeading: string;
+  editorDescription: string;
+  bodyLabel: string;
   renderEditor: (props: {
     definition: DocumentTemplateDefinition;
     readOnly: boolean;
@@ -114,119 +114,12 @@ function fingerprintStoredContent(templateContent: string | null) {
 }
 
 function previewValidationError(definition: DocumentTemplateDefinition) {
-  if (definition.documentType !== "reservation_contract" || definition.schemaVersion !== 2) {
-    return null;
-  }
   const parsed = parseDocumentTemplateDefinition({
     templateFormat: "json",
     documentType: definition.documentType,
     templateContent: JSON.stringify(definition),
   });
   return parsed.success ? null : parsed.error;
-}
-
-function ParagraphList({
-  id,
-  label,
-  paragraphs,
-  readOnly,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  paragraphs: string[];
-  readOnly: boolean;
-  onChange: (paragraphs: string[]) => void;
-}) {
-  function update(index: number, value: string) {
-    onChange(paragraphs.map((paragraph, itemIndex) =>
-      itemIndex === index ? value : paragraph,
-    ));
-  }
-
-  function move(index: number, direction: -1 | 1) {
-    const destination = index + direction;
-    if (destination < 0 || destination >= paragraphs.length) return;
-    const next = [...paragraphs];
-    [next[index], next[destination]] = [next[destination], next[index]];
-    onChange(next);
-  }
-
-  return (
-    <fieldset className="rounded-xl border bg-surface p-4" data-paragraph-list={id}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <legend className="text-sm font-semibold">{label}</legend>
-        {!readOnly ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => onChange([...paragraphs, ""])}
-          >
-            <Plus aria-hidden="true" />
-            Ajouter un paragraphe
-          </Button>
-        ) : null}
-      </div>
-
-      {paragraphs.length === 0 ? (
-        <p className="mt-4 rounded-lg border border-dashed px-4 py-5 text-sm text-muted">
-          Aucun paragraphe. Le schéma documentaire peut exiger au moins un élément.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-3">
-          {paragraphs.map((paragraph, index) => (
-            <div key={`${id}-${index}`} className="rounded-lg border bg-background p-3">
-              <label htmlFor={`${id}-${index}`} className="text-xs font-semibold text-muted">
-                Paragraphe {index + 1}
-              </label>
-              <textarea
-                id={`${id}-${index}`}
-                rows={3}
-                value={paragraph}
-                disabled={readOnly}
-                onChange={(event) => update(index, event.target.value)}
-                className={fieldClassName}
-              />
-              {!readOnly ? (
-                <div className="mt-2 flex items-center justify-end gap-2">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    disabled={index === 0}
-                    aria-label={`Monter le paragraphe ${index + 1}`}
-                    onClick={() => move(index, -1)}
-                  >
-                    <ChevronUp aria-hidden="true" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    disabled={index === paragraphs.length - 1}
-                    aria-label={`Descendre le paragraphe ${index + 1}`}
-                    onClick={() => move(index, 1)}
-                  >
-                    <ChevronDown aria-hidden="true" />
-                  </Button>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={`Supprimer le paragraphe ${index + 1}`}
-                    onClick={() => onChange(paragraphs.filter((_, itemIndex) => itemIndex !== index))}
-                  >
-                    <Trash2 aria-hidden="true" />
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      )}
-    </fieldset>
-  );
 }
 
 function TextField({
@@ -257,159 +150,6 @@ function TextField({
   );
 }
 
-const commitmentSections: Array<{
-  key: keyof CommitmentCertificateTemplateDefinition["sections"];
-  label: string;
-}> = [
-  { key: "animalNeeds", label: "Besoins de l’animal" },
-  { key: "health", label: "Santé" },
-  { key: "educationAndBehavior", label: "Éducation et comportement" },
-  { key: "costsAndConstraints", label: "Coûts et contraintes" },
-  { key: "holderObligations", label: "Obligations du détenteur" },
-];
-
-function CommitmentCertificateEditor({
-  definition,
-  readOnly,
-  onChange,
-}: DefinitionEditorProps<CommitmentCertificateTemplateDefinition>) {
-  const editorId = useId();
-  return (
-    <div className="space-y-5">
-      <TextField
-        id={`${editorId}-template-title`}
-        label="Titre"
-        value={definition.title}
-        readOnly={readOnly}
-        onChange={(title) => onChange({ ...definition, title })}
-      />
-      <ParagraphList
-        id={`${editorId}-introduction`}
-        label="Introduction"
-        paragraphs={definition.introduction}
-        readOnly={readOnly}
-        onChange={(introduction) => onChange({ ...definition, introduction })}
-      />
-      {commitmentSections.map((section) => (
-        <ParagraphList
-          key={section.key}
-          id={`${editorId}-section-${section.key}`}
-          label={section.label}
-          paragraphs={definition.sections[section.key]}
-          readOnly={readOnly}
-          onChange={(paragraphs) => onChange({
-            ...definition,
-            sections: { ...definition.sections, [section.key]: paragraphs },
-          })}
-        />
-      ))}
-      <ParagraphList
-        id={`${editorId}-acknowledgment`}
-        label="Texte de reconnaissance"
-        paragraphs={definition.acknowledgmentText}
-        readOnly={readOnly}
-        onChange={(acknowledgmentText) => onChange({ ...definition, acknowledgmentText })}
-      />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${editorId}-signature-holder`}
-          label="Signature du détenteur"
-          value={definition.signatureLabels.holder}
-          readOnly={readOnly}
-          onChange={(holder) => onChange({
-            ...definition,
-            signatureLabels: { ...definition.signatureLabels, holder },
-          })}
-        />
-        <TextField
-          id={`${editorId}-signature-issuer`}
-          label="Signature de l’émetteur"
-          value={definition.signatureLabels.issuer}
-          readOnly={readOnly}
-          onChange={(issuer) => onChange({
-            ...definition,
-            signatureLabels: { ...definition.signatureLabels, issuer },
-          })}
-        />
-      </div>
-    </div>
-  );
-}
-
-const reservationClauses: Array<{
-  key: keyof ReservationContractTemplateDefinition["clauses"];
-  label: string;
-}> = [
-  { key: "reservationPurpose", label: "Objet de la réservation" },
-  { key: "priceAndPayments", label: "Prix et paiements" },
-  { key: "deposit", label: "Arrhes" },
-  { key: "cancellationAndRefund", label: "Annulation et remboursement" },
-  { key: "postponementAndCredit", label: "Report et avoir" },
-  { key: "potentialWithholding", label: "Retenue éventuelle" },
-  { key: "finalConditions", label: "Conditions finales" },
-];
-
-function ReservationContractEditor({
-  definition,
-  readOnly,
-  onChange,
-}: DefinitionEditorProps<ReservationContractTemplateDefinition>) {
-  const editorId = useId();
-  return (
-    <div className="space-y-5">
-      <TextField
-        id={`${editorId}-template-title`}
-        label="Titre"
-        value={definition.title}
-        readOnly={readOnly}
-        onChange={(title) => onChange({ ...definition, title })}
-      />
-      <ParagraphList
-        id={`${editorId}-preamble`}
-        label="Préambule"
-        paragraphs={definition.preamble}
-        readOnly={readOnly}
-        onChange={(preamble) => onChange({ ...definition, preamble })}
-      />
-      {reservationClauses.map((clause) => (
-        <ParagraphList
-          key={clause.key}
-          id={`${editorId}-clause-${clause.key}`}
-          label={clause.label}
-          paragraphs={definition.clauses[clause.key]}
-          readOnly={readOnly}
-          onChange={(paragraphs) => onChange({
-            ...definition,
-            clauses: { ...definition.clauses, [clause.key]: paragraphs },
-          })}
-        />
-      ))}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          id={`${editorId}-signature-breeder`}
-          label="Signature de l’éleveur"
-          value={definition.signatureLabels.breeder}
-          readOnly={readOnly}
-          onChange={(breeder) => onChange({
-            ...definition,
-            signatureLabels: { ...definition.signatureLabels, breeder },
-          })}
-        />
-        <TextField
-          id={`${editorId}-signature-reserving-party`}
-          label="Signature du réservant"
-          value={definition.signatureLabels.reservingParty}
-          readOnly={readOnly}
-          onChange={(reservingParty) => onChange({
-            ...definition,
-            signatureLabels: { ...definition.signatureLabels, reservingParty },
-          })}
-        />
-      </div>
-    </div>
-  );
-}
-
 const variableCategories = [
   "Vendeur",
   "Adoptant",
@@ -420,18 +160,18 @@ const variableCategories = [
   "Document",
 ] as const;
 
-function FreeReservationContractEditor({
+function FreeDocumentTemplateEditor({
   definition,
   readOnly,
   onChange,
-}: DefinitionEditorProps<FreeReservationContractTemplateDefinition>) {
+}: DefinitionEditorProps<DocumentTemplateDefinition>) {
   const editorId = useId();
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const bodySelectionRef = useRef({ start: 0, end: 0 });
   const pendingBodySelectionRef = useRef<{ start: number; end: number } | null>(null);
-  const [selectedVariable, setSelectedVariable] = useState(
-    RESERVATION_CONTRACT_VARIABLE_CATALOG[0].key,
-  );
+  const catalog = getDocumentTemplateVariableCatalog(definition.documentType);
+  const bodyLabel = documentTemplateTypePresentations[definition.documentType].bodyLabel;
+  const [selectedVariable, setSelectedVariable] = useState(catalog[0].key);
   const [boldMessage, setBoldMessage] = useState<string | null>(null);
 
   useLayoutEffect(() => {
@@ -516,7 +256,7 @@ function FreeReservationContractEditor({
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label htmlFor={`${editorId}-template-body`} className="text-sm font-semibold">
-            Contenu du contrat
+            {bodyLabel}
           </label>
           <Button
             type="button"
@@ -577,17 +317,19 @@ function FreeReservationContractEditor({
             onChange={(event) => setSelectedVariable(event.target.value)}
             className="min-h-10 min-w-0 flex-1 rounded-md border bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-1 focus:ring-accent disabled:cursor-not-allowed disabled:bg-muted-soft"
           >
-            {variableCategories.map((category) => (
-              <optgroup key={category} label={category}>
-                {RESERVATION_CONTRACT_VARIABLE_CATALOG
-                  .filter((item) => item.category === category)
-                  .map((item) => (
+            {variableCategories.map((category) => {
+              const items = catalog.filter((item) => item.category === category);
+              if (items.length === 0) return null;
+              return (
+                <optgroup key={category} label={category}>
+                  {items.map((item) => (
                     <option key={item.key} value={item.key}>
                       {item.label} — [[{item.key}]]
                     </option>
                   ))}
-              </optgroup>
-            ))}
+                </optgroup>
+              );
+            })}
           </select>
           <Button type="button" disabled={readOnly} onClick={insertVariable}>
             Insérer
@@ -604,21 +346,11 @@ export const documentTemplateEditorConfigurations: Record<
 > = {
   commitment_certificate: {
     ...documentTemplateTypePresentations.commitment_certificate,
-    renderEditor: ({ definition, ...props }) =>
-      definition.documentType === "commitment_certificate" ? (
-        <CommitmentCertificateEditor definition={definition} {...props} />
-      ) : null,
+    renderEditor: (props) => <FreeDocumentTemplateEditor {...props} />,
   },
   reservation_contract: {
     ...documentTemplateTypePresentations.reservation_contract,
-    renderEditor: ({ definition, ...props }) =>
-      definition.documentType === "reservation_contract" ? (
-        definition.schemaVersion === 2 ? (
-          <FreeReservationContractEditor definition={definition} {...props} />
-        ) : (
-          <ReservationContractEditor definition={definition} {...props} />
-        )
-      ) : null,
+    renderEditor: (props) => <FreeDocumentTemplateEditor {...props} />,
   },
 };
 
@@ -774,14 +506,8 @@ export function DocumentTemplateEditor({
           className={mobileView === "edit" ? "space-y-5" : "hidden space-y-5 lg:block"}
         >
           <div>
-            <h3 className="text-xl font-semibold">
-              {definition.schemaVersion === 2 ? "Contrat libre" : "Clauses communes à rédiger"}
-            </h3>
-            <p className="mt-2 text-sm text-muted">
-              {definition.schemaVersion === 2
-                ? "Composez librement le contrat et insérez les données à l’endroit souhaité."
-                : "Les textes ci-dessous sont communs aux documents utilisant cette version du modèle."}
-            </p>
+            <h3 className="text-xl font-semibold">{configuration.editorHeading}</h3>
+            <p className="mt-2 text-sm text-muted">{configuration.editorDescription}</p>
           </div>
 
           {configuration.renderEditor({ definition, readOnly, onChange: setDefinition })}

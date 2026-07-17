@@ -67,24 +67,11 @@ const users = {
 } as const;
 
 const baseDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat E2E",
-  preamble: ["Préambule E2E."],
-  clauses: {
-    reservationPurpose: ["Objet de la réservation."],
-    priceAndPayments: ["Prix et paiements."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation et remboursement."],
-    postponementAndCredit: ["Report et avoir."],
-    potentialWithholding: ["Retenue éventuelle."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: {
-    breeder: "L’éleveur",
-    reservingParty: "Le réservant",
-  },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 type Supabase = SupabaseClient<Database>;

@@ -6,7 +6,7 @@ import { DocumentPdfDocument } from "./document-pdf-document";
 import { buildDocumentPdfPresentation } from "./document-pdf-presentation";
 import { parseDocumentGenerationSnapshot } from "./parse-document-generation-snapshot";
 import { parseDocumentTemplateDefinition } from "./parse-document-template-definition";
-import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
+import { resolveFreeDocumentTemplateDefinition } from "./reservation-contract-template-variables";
 import { validateOrganizationLogoBytes } from "@/features/settings/organization-logo-image";
 
 export type RenderDocumentPdfInput = {
@@ -87,11 +87,8 @@ export async function renderDocumentPdfCore(
     return fail("template_hash_mismatch");
   }
 
-  if (
-    parsedTemplate.definition.schemaVersion === 2 &&
-    parsedSnapshot.snapshot.documentType === "reservation_contract"
-  ) {
-    const resolved = resolveFreeReservationContractDefinition({
+  {
+    const resolved = resolveFreeDocumentTemplateDefinition({
       definition: parsedTemplate.definition,
       snapshot: parsedSnapshot.snapshot,
       allowMissingTemplateVariables: input.allowMissingTemplateVariables ?? false,

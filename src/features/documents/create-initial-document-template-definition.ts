@@ -1,11 +1,10 @@
 import {
   DOCUMENT_TEMPLATE_LOCALE,
   DOCUMENT_TEMPLATE_SCHEMA_VERSION,
-  FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
   type CommitmentCertificateTemplateDefinition,
   type DocumentTemplateDefinition,
   type DocumentTemplateType,
-  type FreeReservationContractTemplateDefinition,
+  type ReservationContractTemplateDefinition,
 } from "./document-template-definitions";
 
 export const INITIAL_FREE_RESERVATION_CONTRACT_BODY = `Il a été convenu ce qui suit entre les parties :
@@ -56,22 +55,41 @@ Lu et approuvé, signature :
 L’acquéreur :
 Lu et approuvé, signature :`;
 
+export const INITIAL_FREE_COMMITMENT_CERTIFICATE_BODY = `Je soussigné(e) [[adoptant.nom_complet]], demeurant [[adoptant.adresse_complete]],
+
+reconnais avoir pris connaissance des besoins et responsabilités liés à l’accueil d’un [[projet.espece]] de race [[projet.race]].
+
+Animal concerné :
+Nom : [[animal.nom]]
+Sexe : [[projet.sexe]]
+Né le : [[projet.date_naissance]]
+Identification : [[animal.identification]]
+
+Éleveur / vendeur :
+[[vendeur.identite_complete]]
+[[vendeur.adresse_complete]]
+
+Je m’engage à assurer les soins, l’éducation, la santé et le bien-être de l’animal, et à respecter les obligations légales applicables.
+
+Fait à [[document.lieu_signature]], le [[document.date_generation]].
+
+Signature de l’adoptant :
+
+Signature de l’émetteur :`;
+
 function createCommitmentCertificateDefinition(): CommitmentCertificateTemplateDefinition {
   return {
     schemaVersion: DOCUMENT_TEMPLATE_SCHEMA_VERSION,
     locale: DOCUMENT_TEMPLATE_LOCALE,
     documentType: "commitment_certificate",
-    title: "",
-    introduction: [],
-    sections: { animalNeeds: [], health: [], educationAndBehavior: [], costsAndConstraints: [], holderObligations: [] },
-    acknowledgmentText: [],
-    signatureLabels: { holder: "", issuer: "" },
+    title: "Certificat d’engagement et de connaissance",
+    body: INITIAL_FREE_COMMITMENT_CERTIFICATE_BODY,
   };
 }
 
-function createReservationContractDefinition(): FreeReservationContractTemplateDefinition {
+function createReservationContractDefinition(): ReservationContractTemplateDefinition {
   return {
-    schemaVersion: FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
+    schemaVersion: DOCUMENT_TEMPLATE_SCHEMA_VERSION,
     locale: DOCUMENT_TEMPLATE_LOCALE,
     documentType: "reservation_contract",
     title: "Contrat de réservation",
@@ -84,7 +102,9 @@ export function createInitialDocumentTemplateDefinition(
   documentType: DocumentTemplateType,
 ): DocumentTemplateDefinition {
   switch (documentType) {
-    case "commitment_certificate": return createCommitmentCertificateDefinition();
-    case "reservation_contract": return createReservationContractDefinition();
+    case "commitment_certificate":
+      return createCommitmentCertificateDefinition();
+    case "reservation_contract":
+      return createReservationContractDefinition();
   }
 }

@@ -143,17 +143,23 @@ test("crée des familles structurées selon le rôle sans publication automatiqu
     await expect(page.getByText("Aucune version publiée")).toBeVisible();
     await expect(page.getByText("Ce brouillon est à compléter avant validation et publication.")).toBeVisible();
     await expect(page.getByLabel("Titre")).toBeEditable();
-    await expect(page.getByText("Introduction", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("Signature du détenteur")).toBeEditable();
+    await expect(page.getByLabel("Contenu du certificat")).toContainText("Je soussigné(e) [[adoptant.nom_complet]]");
+    await expect(page.getByLabel("Contenu du certificat")).toContainText("[[projet.race]]");
+    await expect(page.getByText("Introduction", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Signature du détenteur")).toHaveCount(0);
     expect(sql(`
       select count(*) from public.document_templates template
       join public.document_template_families family on family.id = template.family_id
       where family.name = ${q(certificateName)}
         and template.lifecycle_status = 'draft'
+        and template.template_content::jsonb->>'schemaVersion' = '2'
         and template.template_content::jsonb ?& array[
-          'schemaVersion', 'locale', 'documentType', 'title', 'introduction',
-          'sections', 'acknowledgmentText', 'signatureLabels'
-        ];
+          'schemaVersion', 'locale', 'documentType', 'title', 'body'
+        ]
+        and not (template.template_content::jsonb ?| array[
+          'introduction', 'sections', 'acknowledgmentText', 'signatureLabels',
+          'preamble', 'clauses'
+        ]);
     `)).toBe("1");
 
     await page.goto("/documents/modeles");

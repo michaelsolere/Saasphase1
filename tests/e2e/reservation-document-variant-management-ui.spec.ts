@@ -43,20 +43,11 @@ const contractDefinition = {
 };
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat commun compatible",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."],
-    health: ["Santé."],
-    educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."],
-    holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function q(value: string) {

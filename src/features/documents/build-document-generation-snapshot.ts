@@ -389,9 +389,7 @@ export function buildDocumentGenerationSnapshot(
                 lofNumber: normalizeNullableText(
                   input.adoptionProject.animal.lofNumber,
                 ),
-                ...(parsedTemplate.definition.schemaVersion === 2
-                  ? { color: normalizeNullableText(input.adoptionProject.animal.color) }
-                  : {}),
+                color: normalizeNullableText(input.adoptionProject.animal.color),
               },
       },
       reservation: {

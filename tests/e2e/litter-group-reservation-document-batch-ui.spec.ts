@@ -121,20 +121,11 @@ function assertCleanup() {
 }
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat groupe UI QA",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."],
-    health: ["Santé."],
-    educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."],
-    holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const contractDefinition = {
@@ -223,20 +214,11 @@ function seed() {
     )
     .join(",");
   const cert = JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     locale: "fr-FR",
     documentType: "commitment_certificate",
     title: "Certificat",
-    introduction: ["x"],
-    sections: {
-      animalNeeds: ["x"],
-      health: ["x"],
-      educationAndBehavior: ["x"],
-      costsAndConstraints: ["x"],
-      holderObligations: ["x"],
-    },
-    acknowledgmentText: ["x"],
-    signatureLabels: { holder: "x", issuer: "x" },
+    body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
   });
   const contract = JSON.stringify({
     schemaVersion: 2,

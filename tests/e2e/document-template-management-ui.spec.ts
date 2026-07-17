@@ -33,44 +33,19 @@ const familyIds = [
 ];
 
 const reservationDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat UI E2E publié",
-  preamble: ["Préambule du contrat UI E2E."],
-  clauses: {
-    reservationPurpose: ["Objet de la réservation."],
-    priceAndPayments: ["Prix et paiements."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation et remboursement."],
-    postponementAndCredit: ["Report et avoir."],
-    potentialWithholding: ["Retenue éventuelle."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: {
-    breeder: "L’éleveur",
-    reservingParty: "Le réservant",
-  },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]\nPréambule du contrat UI E2E.",
 };
 
 const commitmentDefinition: CommitmentCertificateTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat UI E2E",
-  introduction: ["Introduction du certificat UI E2E."],
-  sections: {
-    animalNeeds: ["Besoins de l’animal."],
-    health: ["Santé de l’animal."],
-    educationAndBehavior: ["Éducation et comportement."],
-    costsAndConstraints: ["Coûts et contraintes."],
-    holderObligations: ["Obligations du détenteur."],
-  },
-  acknowledgmentText: ["Je reconnais avoir pris connaissance de ces informations."],
-  signatureLabels: {
-    holder: "Le détenteur",
-    issuer: "L’émetteur",
-  },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]\nIntroduction du certificat UI E2E.",
 };
 
 function q(value: string) {
@@ -183,27 +158,22 @@ test("reconstruit une forme éditable sans valider le brouillon", () => {
     templateContent: JSON.stringify({
       documentType: "commitment_certificate",
       title: "",
-      introduction: [],
-      sections: { health: ["Santé conservée."] },
+      body: "Santé conservée.",
     }),
   });
   expect(commitment.documentType).toBe("commitment_certificate");
-  if (commitment.documentType !== "commitment_certificate") return;
+  expect(commitment.schemaVersion).toBe(2);
   expect(commitment.title).toBe("");
-  expect(commitment.introduction).toEqual([]);
-  expect(commitment.sections.health).toEqual(["Santé conservée."]);
-  expect(commitment.sections.animalNeeds).toEqual([]);
-  expect(commitment.signatureLabels).toEqual({ holder: "", issuer: "" });
+  expect(commitment.body).toBe("Santé conservée.");
 
   const reservation = decodeDocumentTemplateDraft({
     documentType: "reservation_contract",
     templateContent: "{}",
   });
   expect(reservation.documentType).toBe("reservation_contract");
-  if (reservation.documentType !== "reservation_contract" || reservation.schemaVersion !== 1) return;
-  expect(reservation.preamble).toEqual([]);
-  expect(reservation.clauses.finalConditions).toEqual([]);
-  expect(reservation.signatureLabels).toEqual({ breeder: "", reservingParty: "" });
+  expect(reservation.schemaVersion).toBe(2);
+  expect(reservation.title).toBe("");
+  expect(reservation.body).toBe("");
 });
 
 test("gère les modèles documentaires avec permissions, validation et concurrence", async ({ page }) => {
@@ -255,7 +225,7 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     await expect(viewerDraft.getByRole("button", { name: "Publier" })).toHaveCount(0);
     await expect(viewerDraft.getByLabel("Titre")).toBeDisabled();
     await viewerDraft.getByRole("button", { name: "Valider le brouillon" }).click();
-    await expect(viewerDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+    await expect(viewerDraft.locator(".sticky").getByRole("status")).toContainText("respecte le schéma documentaire");
 
     setRole("member");
     await page.reload();
@@ -265,7 +235,7 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     await expect(memberDraft.getByRole("button", { name: "Publier" })).toHaveCount(0);
     await memberDraft.getByLabel("Titre").fill("Certificat UI E2E modifié par membre");
     await memberDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
-    await expect(memberDraft.getByRole("status")).toContainText("a été enregistré");
+    await expect(memberDraft.locator(".sticky").getByRole("status")).toContainText("a été enregistré");
     expect(sql(`select template_content::jsonb->>'title' from public.document_templates where id = ${q(ids.commitmentDraft)}::uuid;`))
       .toBe("Certificat UI E2E modifié par membre");
 
@@ -280,36 +250,36 @@ test("gère les modèles documentaires avec permissions, validation et concurren
     let reservationDraft = draftSection(page);
     await reservationDraft.getByLabel("Titre").fill("Contrat UI E2E sauvegardé");
     await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("a été enregistré");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("a été enregistré");
     await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("respecte le schéma documentaire");
 
     sql(`select pg_sleep(0.05); update public.document_templates set template_content = jsonb_set(template_content::jsonb, '{title}', '"Contrat UI E2E concurrent"')::text where id = ${q(reservationDraftId)}::uuid;`);
     await reservationDraft.getByLabel("Titre").fill("Écrasement UI E2E refusé");
     await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("Rechargez-le avant de réessayer");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("Rechargez-le avant de réessayer");
     await expect(reservationDraft.getByText("Modifications non enregistrées")).toBeVisible();
 
     await page.reload();
     reservationDraft = draftSection(page);
-    const preamble = reservationDraft.locator('[data-paragraph-list$="preamble"]');
-    await preamble.getByRole("button", { name: "Supprimer le paragraphe 1" }).click();
+    const bodyField = reservationDraft.getByLabel("Contenu du contrat");
+    await bodyField.fill("   ");
     await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
-    await expect.poll(() => sql(`select jsonb_array_length(template_content::jsonb->'preamble') from public.document_templates where id = ${q(reservationDraftId)}::uuid;`)).toBe("0");
+    await expect.poll(() => Number(sql(
+      `select length(template_content::jsonb->>'body') from public.document_templates where id = ${q(reservationDraftId)}::uuid;`,
+    ))).toBe(3);
     await page.reload();
     reservationDraft = draftSection(page);
     await expect(reservationDraft.getByLabel("Titre")).toBeVisible();
-    const emptyPreamble = reservationDraft.locator('[data-paragraph-list$="preamble"]');
-    await expect(emptyPreamble.getByText("Aucun paragraphe")).toBeVisible();
+    await expect(reservationDraft.getByLabel("Contenu du contrat")).toHaveValue("   ");
     await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("ne respecte pas le schéma documentaire attendu");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("ne respecte pas le schéma documentaire attendu");
 
-    await emptyPreamble.getByRole("button", { name: "Ajouter un paragraphe" }).click();
-    await emptyPreamble.getByRole("textbox", { name: "Paragraphe 1" }).fill("Préambule UI E2E réparé.");
+    await reservationDraft.getByLabel("Contenu du contrat").fill("Préambule UI E2E réparé.\nAdoptant : [[adoptant.nom_complet]]");
     await reservationDraft.getByRole("button", { name: "Enregistrer le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("a été enregistré");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("a été enregistré");
     await reservationDraft.getByRole("button", { name: "Valider le brouillon" }).click();
-    await expect(reservationDraft.getByRole("status")).toContainText("respecte le schéma documentaire");
+    await expect(reservationDraft.locator(".sticky").getByRole("status")).toContainText("respecte le schéma documentaire");
 
     setRole("admin");
     await page.reload();
@@ -369,7 +339,7 @@ test("gère les modèles documentaires avec permissions, validation et concurren
       };
     }, localDraftBlobUrl!);
     expect(localPdf).toMatchObject({ prefix: "%PDF-", containsLocalTitle: true });
-    expect(localPdf.size).toBeGreaterThan(4_000);
+    expect(localPdf.size).toBeGreaterThan(1_500);
     const popupPromise = page.waitForEvent("popup");
     await fullSizeLink.click();
     const popup = await popupPromise;

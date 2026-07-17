@@ -36,21 +36,11 @@ const pdfV1 = Buffer.from("%PDF-1.4\n% secure history E2E v1\n%%EOF\n");
 const pdfV2 = Buffer.from("%PDF-1.4\n% secure history E2E v2\n%%EOF\n");
 
 const templateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat historique sécurisé E2E",
-  preamble: ["Préambule."],
-  clauses: {
-    reservationPurpose: ["Objet."],
-    priceAndPayments: ["Prix."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation."],
-    postponementAndCredit: ["Report."],
-    potentialWithholding: ["Retenue."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function q(value: string) {

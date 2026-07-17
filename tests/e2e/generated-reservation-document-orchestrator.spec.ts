@@ -65,38 +65,19 @@ const viewerEmail = "orchestrator-viewer@saasphase1.invalid";
 const viewerPassword = "OrchestratorViewer-2026!";
 
 const contractDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat orchestré QA",
-  preamble: ["Préambule."],
-  clauses: {
-    reservationPurpose: ["Objet."],
-    priceAndPayments: ["Prix."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation."],
-    postponementAndCredit: ["Report."],
-    potentialWithholding: ["Retenue."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat orchestré QA",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."],
-    health: ["Santé."],
-    educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."],
-    holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const validV2Definition = {
