@@ -17,7 +17,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
+    command:
+      "NEXT_DEV_DIR=${NEXT_DEV_DIR:-.next-playwright} node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
     timeout: 120_000,

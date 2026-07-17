@@ -925,7 +925,7 @@ export default async function LitterGroupDetailPage({
               </div>
             )}
 
-            <div className="flex flex-col gap-6 py-8">
+            <div className="space-y-6 py-8">
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Informations</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">
@@ -1210,7 +1210,129 @@ export default async function LitterGroupDetailPage({
                 }
               />
 
-              <section className="order-5 rounded-2xl border bg-surface p-6 sm:p-8">
+              <section
+                id="reservations-liees"
+                className="rounded-2xl border bg-surface p-6 sm:p-8"
+              >
+                <h2 className="text-xl font-semibold">
+                  Réservations liées à ce groupe
+                </h2>
+
+                {reservationAttachBanner}
+
+                {reservationsError ? (
+                  <p role="alert" className="mt-5 text-sm text-amber-800">
+                    Impossible de charger les réservations liées.
+                  </p>
+                ) : !groupReservations || groupReservations.length === 0 ? (
+                  <p className="mt-5 text-sm text-muted">
+                    Aucune réservation rattachée à ce groupe.
+                  </p>
+                ) : (
+                  <div className="mt-6 divide-y divide-border">
+                    {groupReservations.map((reservation, index) => {
+                      const preReservationDepositState =
+                        getPreReservationDepositStateFromStatus(
+                          reservation.status,
+                        );
+
+                      return (
+                      <div
+                        key={reservation.id ?? `${reservation.contact_id}-${index}`}
+                        className="py-5 first:pt-0 last:pb-0"
+                      >
+                        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="text-sm font-semibold text-foreground">
+                                {reservation.contact_id ? (
+                                  <Link
+                                    href={`/contacts/${reservation.contact_id}`}
+                                    className="text-accent hover:underline"
+                                  >
+                                    {reservation.contact_display_name ??
+                                      "Contact non renseigné"}
+                                  </Link>
+                                ) : (
+                                  reservation.contact_display_name ??
+                                  "Contact non renseigné"
+                                )}
+                              </span>
+                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                {getReservationStatusLabel(reservation.status)}
+                              </span>
+                              <span
+                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
+                                  preReservationDepositState,
+                                )}`}
+                              >
+                                {getPreReservationDepositLabel(
+                                  preReservationDepositState,
+                                )}
+                              </span>
+                              {reservation.id ? (
+                                <Link
+                                  href={`/reservations/${reservation.id}`}
+                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                >
+                                  Fiche
+                                </Link>
+                              ) : null}
+                            </div>
+                            <p className="text-xs text-muted">
+                              Portée :{" "}
+                              {reservation.litter_id ? (
+                                <Link
+                                  href={`/litters/${reservation.litter_id}`}
+                                  className="font-medium text-accent hover:underline"
+                                >
+                                  {reservation.litter_name ?? "Portée"}
+                                </Link>
+                              ) : (
+                                "Aucune portée précise"
+                              )}
+                            </p>
+                            <p className="text-xs text-muted">
+                              Animal :{" "}
+                              {reservation.animal_id ? (
+                                <Link
+                                  href={`/animals/${reservation.animal_id}`}
+                                  className="font-medium text-accent hover:underline"
+                                >
+                                  {reservation.animal_display_name}
+                                </Link>
+                              ) : (
+                                (reservation.animal_display_name ??
+                                "Non attribué")
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <AttachReservationForm
+                  scope={{
+                    kind: "group",
+                    groupId: group.id,
+                    label: "Rattacher une réservation existante à ce groupe",
+                    warning:
+                      "Cette action modifiera le rattachement de la réservation vers ce groupe et retirera toute portée précise.",
+                  }}
+                  reservations={attachableReservations}
+                />
+              </section>
+
+              <div>
+                <LitterGroupReservationDocumentBatchSection
+                  litterGroupId={group.id}
+                />
+              </div>
+
+              <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">
                   Campagnes d’e-mails
                 </h2>
@@ -1428,127 +1550,6 @@ export default async function LitterGroupDetailPage({
                 </div>
               </section>
 
-              <section
-                id="reservations-liees"
-                className="order-3 rounded-2xl border bg-surface p-6 sm:p-8"
-              >
-                <h2 className="text-xl font-semibold">
-                  Réservations liées à ce groupe
-                </h2>
-
-                {reservationAttachBanner}
-
-                {reservationsError ? (
-                  <p role="alert" className="mt-5 text-sm text-amber-800">
-                    Impossible de charger les réservations liées.
-                  </p>
-                ) : !groupReservations || groupReservations.length === 0 ? (
-                  <p className="mt-5 text-sm text-muted">
-                    Aucune réservation rattachée à ce groupe.
-                  </p>
-                ) : (
-                  <div className="mt-6 divide-y divide-border">
-                    {groupReservations.map((reservation, index) => {
-                      const preReservationDepositState =
-                        getPreReservationDepositStateFromStatus(
-                          reservation.status,
-                        );
-
-                      return (
-                      <div
-                        key={reservation.id ?? `${reservation.contact_id}-${index}`}
-                        className="py-5 first:pt-0 last:pb-0"
-                      >
-                        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                          <div className="space-y-1">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <span className="text-sm font-semibold text-foreground">
-                                {reservation.contact_id ? (
-                                  <Link
-                                    href={`/contacts/${reservation.contact_id}`}
-                                    className="text-accent hover:underline"
-                                  >
-                                    {reservation.contact_display_name ??
-                                      "Contact non renseigné"}
-                                  </Link>
-                                ) : (
-                                  reservation.contact_display_name ??
-                                  "Contact non renseigné"
-                                )}
-                              </span>
-                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                {getReservationStatusLabel(reservation.status)}
-                              </span>
-                              <span
-                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${getPreReservationDepositBadgeClassName(
-                                  preReservationDepositState,
-                                )}`}
-                              >
-                                {getPreReservationDepositLabel(
-                                  preReservationDepositState,
-                                )}
-                              </span>
-                              {reservation.id ? (
-                                <Link
-                                  href={`/reservations/${reservation.id}`}
-                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
-                                >
-                                  Fiche
-                                </Link>
-                              ) : null}
-                            </div>
-                            <p className="text-xs text-muted">
-                              Portée :{" "}
-                              {reservation.litter_id ? (
-                                <Link
-                                  href={`/litters/${reservation.litter_id}`}
-                                  className="font-medium text-accent hover:underline"
-                                >
-                                  {reservation.litter_name ?? "Portée"}
-                                </Link>
-                              ) : (
-                                "Aucune portée précise"
-                              )}
-                            </p>
-                            <p className="text-xs text-muted">
-                              Animal :{" "}
-                              {reservation.animal_id ? (
-                                <Link
-                                  href={`/animals/${reservation.animal_id}`}
-                                  className="font-medium text-accent hover:underline"
-                                >
-                                  {reservation.animal_display_name}
-                                </Link>
-                              ) : (
-                                (reservation.animal_display_name ??
-                                "Non attribué")
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <AttachReservationForm
-                  scope={{
-                    kind: "group",
-                    groupId: group.id,
-                    label: "Rattacher une réservation existante à ce groupe",
-                    warning:
-                      "Cette action modifiera le rattachement de la réservation vers ce groupe et retirera toute portée précise.",
-                  }}
-                  reservations={attachableReservations}
-                />
-              </section>
-
-              <div className="order-4">
-                <LitterGroupReservationDocumentBatchSection
-                  litterGroupId={group.id}
-                />
-              </div>
             </div>
           </>
         )}

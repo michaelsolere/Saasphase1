@@ -91,6 +91,32 @@ export async function LitterGroupReservationDocumentBatchSection({
         .order("id", { ascending: true });
   if (reservationsResult.error) return shell(<UnavailableMessage />);
   const reservations = [...new Map((reservationsResult.data ?? []).map((reservation) => [reservation.id, reservation])).values()];
+  const reservationLitterIds = [
+    ...new Set(
+      reservations
+        .map((reservation) => reservation.litter_id)
+        .filter((litterId): litterId is string => Boolean(litterId)),
+    ),
+  ];
+  // Une réservation encore rattachée au groupe peut pointer vers une portée
+  // déplacée ou supprimée. Il faut la relire elle aussi pour que le core puisse
+  // produire la classe neutre correcte, sans jamais sortir de l'organisation.
+  const exactLittersResult = reservationLitterIds.length
+    ? await supabase
+        .from("litters")
+        .select("id, organization_id, litter_group_id, species, breed, deleted_at, name")
+        .eq("organization_id", group.organization_id)
+        .in("id", reservationLitterIds)
+    : { data: [], error: null };
+  if (exactLittersResult.error) return shell(<UnavailableMessage />);
+  const classificationLitters = [
+    ...new Map(
+      [...litters, ...(exactLittersResult.data ?? [])].map((litter) => [
+        litter.id,
+        litter,
+      ]),
+    ).values(),
+  ];
   const contactIds = [...new Set(reservations.map((item) => item.contact_id).filter((id): id is string => Boolean(id)))];
   const applicationIds = [...new Set(reservations.map((item) => item.application_id).filter((id): id is string => Boolean(id)))];
   const animalIds = [...new Set(reservations.map((item) => item.animal_id).filter((id): id is string => Boolean(id)))];
@@ -109,7 +135,7 @@ export async function LitterGroupReservationDocumentBatchSection({
   const animals = new Map((animalsResult.data ?? []).map((item) => [item.id, item]));
   const classifications = classifyLitterGroupDocumentBatchReservations({
     group: { id: group.id, organizationId: group.organization_id, deletedAt: null },
-    litters: litters.map((item) => ({ id: item.id, organizationId: item.organization_id, litterGroupId: item.litter_group_id, species: item.species, breed: item.breed, deletedAt: item.deleted_at })),
+    litters: classificationLitters.map((item) => ({ id: item.id, organizationId: item.organization_id, litterGroupId: item.litter_group_id, species: item.species, breed: item.breed, deletedAt: item.deleted_at })),
     reservations: reservations.map((item) => {
       const application = item.application_id ? applications.get(item.application_id) : null;
       const animal = item.animal_id ? animals.get(item.animal_id) : null;
@@ -132,7 +158,7 @@ export async function LitterGroupReservationDocumentBatchSection({
     });
   }
   const contactNames = new Map((contactsResult.data ?? []).map((item) => [item.id, item.display_name || "Contact non renseigné"]));
-  const litterNames = new Map(litters.map((item) => [item.id, item.name || "Portée"]));
+  const litterNames = new Map(classificationLitters.map((item) => [item.id, item.name || "Portée"]));
   const currentDocuments = documentsResult.data ?? [];
   const panelReservations = reservations.map((reservation) => {
     const classification = classificationsById.get(reservation.id);

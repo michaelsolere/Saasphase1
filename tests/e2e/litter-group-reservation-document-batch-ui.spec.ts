@@ -8,11 +8,20 @@ const page = readFileSync(resolve(root, "src/app/litter-groups/[id]/page.tsx"), 
 const section = readFileSync(resolve(root, "src/features/litters/litter-group-reservation-document-batch-section.tsx"), "utf8");
 const panel = readFileSync(resolve(root, "src/features/litters/litter-group-reservation-document-batch-panel.tsx"), "utf8");
 
-test("contrat UI groupe : placement, périmètre, lecture seule et formulaire sans autorité", () => {
-  expect(page.indexOf('id="reservations-liees"')).toBeLessThan(page.indexOf('className="order-4"'));
-  expect(page).toContain('className="order-5 rounded-2xl border bg-surface p-6 sm:p-8"');
+test("garde-fou provisoire : ordre JSX et périmètre serveur du groupe", () => {
+  const reservations = page.indexOf('id="reservations-liees"');
+  const generation = page.lastIndexOf("LitterGroupReservationDocumentBatchSection");
+  const campaigns = page.indexOf("Campagnes d’e-mails");
+  expect(reservations).toBeGreaterThan(-1);
+  expect(reservations).toBeLessThan(generation);
+  expect(generation).toBeLessThan(campaigns);
+  expect(page).not.toMatch(/\border-[345]\b/);
   expect(section).toContain("classifyLitterGroupDocumentBatchReservations");
   expect(section).toContain("litter_group_id.eq.${group.id},litter_id.in.");
+  expect(section).toContain("const reservationLitterIds");
+  expect(section).toContain("exactLittersResult");
+  expect(section).toContain("classificationLitters");
+  expect(section).toContain(".eq(\"organization_id\", group.organization_id)");
   expect(section).toContain('.order("created_at", { ascending: true })');
   expect(section).toContain('.order("id", { ascending: true })');
   expect(section).toContain('WRITABLE_ROLES.has(membershipResult.data.role)');
