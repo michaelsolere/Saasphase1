@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #294. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #301. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `97475fde3232e5f2d728ade0ef80ad03249ecf90`.
-- Dernière PR incluse : **#294 — Ajouter l’interface de génération groupée par portée**.
+- SHA de `main` documenté : `ef03000ea5ad7861e69746a5a5e9b35728d900c2`.
+- Dernière PR incluse : **#301 — Ajouter un mode E2E réutilisable**.
 - Les migrations locales sont appliquées jusqu’à `202607170001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -191,6 +191,15 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 - Une confirmation explicite précède la génération, qui ne crée aucun e-mail ni paiement. Les résultats globaux, les compteurs et les résultats par dossier sont présentés en français, sans afficher d’UUID ni de détail Storage.
 - Après soumission, la sélection et les modèles sont verrouillés. Un rejeu conserve exactement la même intention et la même configuration ; une nouvelle opération exige un rechargement explicite de la page. Aucun document courant n’est remplacé et aucune nouvelle version n’est créée automatiquement.
 
+### Génération groupée depuis un groupe de portées
+
+- Un core de planification classe les réservations du groupe : seules celles qui ont une portée exacte non supprimée, appartenant actuellement au groupe, dans la même organisation, avec un rattachement cohérent `reservation.litter_group_id = litter.litter_group_id`, sont éligibles. Les dossiers encore liés au groupe seul ou incohérents restent visibles et désactivés, avec un motif neutre.
+- L’orchestrateur de groupe appelle séquentiellement le noyau par portée exacte pour chaque partition `(portée, taxonomie)`, avec une limite globale de 30 dossiers, une déduplication amont et le même `operationId` / `capturedAt` pour tous les sous-appels. La politique `create_only`, l’idempotence et les protections documentaires du noyau par portée sont conservées.
+- Les modèles communs publiés du certificat et du contrat sont choisis par taxonomie effective normalisée `species + breed` ; les variantes publiées propres à chaque réservation restent résolues automatiquement côté serveur. Aucun identifiant de document ou de variante n’est accepté depuis le client.
+- La PR #299 ajoute une Server Action compatible avec `useActionState`, liée à une intention serveur authentifiée contenant `litterGroupId`, `operationId` et `capturedAt`. L’interface transmet uniquement la confirmation explicite, les réservations sélectionnées et les sélections de modèles par taxonomie.
+- La PR #300 expose l’interface sur `/litter-groups/[id]` en écriture pour `owner`, `admin` et `member`, et en lecture seule pour `viewer`. Une confirmation explicite précède la génération, qui ne crée aucun e-mail ni paiement. Les résultats globaux, par portée et par dossier sont présentés en français, sans UUID ni détail Storage.
+- Après soumission, la sélection et la configuration sont verrouillées. Un rejeu conserve exactement la même intention et la même configuration ; une nouvelle opération exige un rechargement explicite de la page.
+
 ### Consultation sécurisée
 
 - La fiche Document et la fiche Réservation exposent le document courant et son historique de versions.
@@ -211,15 +220,11 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 ## Limites actuelles et feuille de route immédiate
 
-Restent à concevoir ou implémenter :
+Reste à concevoir ou implémenter :
 
-- la génération groupée depuis un groupe de portées, qui n’est pas encore prise en charge ;
-- une interface de génération groupée sur `/litter-groups/[id]`, qui n’existe pas ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
-
-La prochaine étape est : **auditer puis concevoir l’extension de la génération groupée aux groupes de portées, en déterminant comment sélectionner les portées et réservations exactes, résoudre les modèles communs compatibles lorsque plusieurs taxonomies sont présentes, préserver l’idempotence par dossier et ne jamais générer pour une réservation encore rattachée seulement au groupe sans portée exacte exploitable.**
 
 ## Environnement E2E et règles de validation
 
@@ -232,7 +237,12 @@ La stack E2E est isolée de la stack locale de développement :
 - conteneurs et volumes dédiés, avec garde-fous refusant la stack de développement ;
 - arrêt et nettoyage limités aux ressources `saasphase1-e2e`.
 
-`pnpm test:e2e` ne doit donc ni réinitialiser ni arrêter la stack `saasphase1`, et doit préserver un éventuel `pnpm dev` en cours sur le port `3000`. Le développement courant continue avec `pnpm dev` et la stack locale habituelle.
+`pnpm test:e2e` conserve le mode complet isolé : démarrage frais de la stack `saasphase1-e2e`, exécution, puis arrêt et nettoyage. Il ne doit donc ni réinitialiser ni arrêter la stack `saasphase1`, et doit préserver un éventuel `pnpm dev` en cours sur le port `3000`. Le développement courant continue avec `pnpm dev` et la stack locale habituelle.
+
+La PR #301 ajoute deux commandes complémentaires :
+
+- `pnpm test:e2e:reuse -- <specs>` : réutilise une stack E2E déjà démarrée pour accélérer les itérations ciblées, sans redémarrage ni reset systématique tant que la session de réutilisation est valide ;
+- `pnpm test:e2e:stop` : arrête explicitement la stack `saasphase1-e2e` et nettoie ses volumes ainsi que le workdir `.supabase-e2e`.
 
 Avant livraison d’un lot, exécuter au minimum :
 
