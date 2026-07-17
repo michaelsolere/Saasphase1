@@ -208,7 +208,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent à concevoir ou implémenter :
 
-- l’intention serveur publique et l’interface permettant de déclencher le noyau groupé depuis la fiche d’une portée exacte ; aucun bouton, composant ou Server Action publique n’existe encore ;
+- l’intention serveur authentifiée liée à l’interface permettant de déclencher le noyau groupé depuis la fiche d’une portée exacte ; aucun bouton, composant ou Server Action publique n’existe encore ;
 - la génération groupée depuis un groupe de portées, qui n’est pas encore prise en charge ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
