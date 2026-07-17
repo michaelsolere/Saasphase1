@@ -38,6 +38,13 @@ const ids = {
   viewerUser: id(50),
   viewerIdentity: id(51),
   viewerMembership: id(52),
+  documentSettings: id(53),
+  goldenContact: id(60),
+  goldenApplication: id(61),
+  goldenReservation: id(62),
+  labContact: id(63),
+  labApplication: id(64),
+  labReservation: id(65),
 };
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const sql = (statement: string) => runE2eSqlSync(statement);
@@ -51,6 +58,20 @@ const eligible = Array.from({ length: 31 }, (_, index) => ({
 const viewerEmail = "groupe-ui-viewer@saasphase1.invalid";
 const viewerPassword = "GroupeUiViewer-2026!";
 
+function storagePaths() {
+  const raw = sql(
+    `select name from storage.objects where bucket_id='documents' and name like 'organizations/${ids.organization}/%' order by name;`,
+  );
+  return raw ? raw.split("\n").filter(Boolean) : [];
+}
+
+async function removeStorage(supabase: Awaited<ReturnType<typeof createAuthenticatedSupabaseClient>>) {
+  const paths = storagePaths();
+  if (paths.length === 0) return;
+  const removed = await supabase.storage.from("documents").remove(paths);
+  expect(removed.error, "Storage cleanup must succeed").toBeNull();
+}
+
 function cleanup() {
   sql(`
     delete from public.documents where organization_id=${q(ids.organization)}::uuid;
@@ -59,6 +80,7 @@ function cleanup() {
     delete from public.reservations where organization_id=${q(ids.organization)}::uuid;
     delete from public.document_templates where organization_id=${q(ids.organization)}::uuid;
     delete from public.document_template_families where organization_id=${q(ids.organization)}::uuid;
+    delete from public.organization_document_settings where organization_id=${q(ids.organization)}::uuid;
     delete from public.litters where organization_id=${q(ids.organization)}::uuid;
     delete from public.litter_groups where organization_id=${q(ids.organization)}::uuid;
     delete from public.applications where organization_id=${q(ids.organization)}::uuid;
@@ -84,6 +106,7 @@ function assertCleanup() {
     "litter_groups",
     "document_templates",
     "document_template_families",
+    "organization_document_settings",
     "memberships",
   ]) {
     expect(fixtureCount(table), `${table} cleanup`).toBe(0);
@@ -94,13 +117,90 @@ function assertCleanup() {
   expect(Number(sql(`select count(*) from public.organizations where id::text like ${q(`${prefix}-%`)};`))).toBe(0);
   expect(Number(sql(`select count(*) from auth.identities where user_id=${q(ids.viewerUser)}::uuid;`))).toBe(0);
   expect(Number(sql(`select count(*) from auth.users where id=${q(ids.viewerUser)}::uuid;`))).toBe(0);
-  expect(
-    Number(
-      sql(
-        `select count(*) from storage.objects where bucket_id='documents' and name like 'organizations/${ids.organization}/%'`,
-      ),
-    ),
-  ).toBe(0);
+  expect(storagePaths()).toEqual([]);
+}
+
+const certificateDefinition = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat groupe UI QA",
+  introduction: ["Introduction."],
+  sections: {
+    animalNeeds: ["Besoins."],
+    health: ["Santé."],
+    educationAndBehavior: ["Éducation."],
+    costsAndConstraints: ["Contraintes."],
+    holderObligations: ["Obligations."],
+  },
+  acknowledgmentText: ["Reconnaissance."],
+  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+};
+
+const contractDefinition = {
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat groupe UI QA",
+  body: "Adoptant : [[adoptant.nom_complet]]\nRace : [[projet.race]]\nPrix : [[reservation.prix_formate]]\nFait à [[document.lieu_signature]] le [[document.date_generation]].",
+};
+
+function seedGeneration() {
+  cleanup();
+  const cert = JSON.stringify(certificateDefinition);
+  const contract = JSON.stringify(contractDefinition);
+  sql(`
+    insert into public.organizations(id,name,legal_name,legal_form,slug,email,address_line1,postal_code,city,country)
+    values(${q(ids.organization)},'Élevage Groupe UI','Élevage Groupe UI','company','groupe-ui-qa','groupe-ui@invalid.test','1 rue QA','75001','Paris','FR');
+    insert into public.memberships(id,organization_id,profile_id,role,status)
+    values(${q(ids.member)},${q(ids.organization)},${q(ownerId)},'member','active');
+    insert into public.organization_document_settings(id,organization_id,signature_city_default)
+    values(${q(ids.documentSettings)},${q(ids.organization)},'Paris');
+    insert into public.litter_groups(id,organization_id,name,species,status)
+    values(${q(ids.group)},${q(ids.organization)},'Groupe UI QA','dog','born');
+    insert into public.litters(id,organization_id,litter_group_id,name,species,breed,actual_birth_date,available_from,deleted_at)
+    values
+      (${q(ids.litterA)},${q(ids.organization)},${q(ids.group)},'Portée A','dog','Golden Retriever','2026-06-01','2026-08-01',null),
+      (${q(ids.labLitter)},${q(ids.organization)},${q(ids.group)},'Portée Labrador','dog','Labrador Retriever','2026-06-05','2026-08-05',null);
+    insert into public.contacts(id,organization_id,display_name,first_name,last_name,email,address_line1,postal_code,city,country)
+    values
+      (${q(ids.goldenContact)},${q(ids.organization)},'Dossier Golden éligible','Golden','Éligible','golden-gen@invalid.test','1 rue QA','75001','Paris','FR'),
+      (${q(ids.labContact)},${q(ids.organization)},'Dossier Labrador','QA','QA','labrador-gen@invalid.test','1 rue QA','75001','Paris','FR');
+    insert into public.applications(id,organization_id,contact_id,species,breed,desired_sex_preference,status)
+    values
+      (${q(ids.goldenApplication)},${q(ids.organization)},${q(ids.goldenContact)},'dog','Golden Retriever','no_preference','qualified'),
+      (${q(ids.labApplication)},${q(ids.organization)},${q(ids.labContact)},'dog','Labrador Retriever','no_preference','qualified');
+    insert into public.reservations(id,organization_id,contact_id,application_id,litter_id,litter_group_id,status,price_cents,currency,created_at)
+    values
+      (${q(ids.goldenReservation)},${q(ids.organization)},${q(ids.goldenContact)},${q(ids.goldenApplication)},${q(ids.litterA)},${q(ids.group)},'pre_reservation_paid',250000,'EUR','2026-07-17T09:00:00Z'),
+      (${q(ids.labReservation)},${q(ids.organization)},${q(ids.labContact)},${q(ids.labApplication)},${q(ids.labLitter)},${q(ids.group)},'pre_reservation_paid',250000,'EUR','2026-07-17T09:01:00Z');
+    insert into public.document_template_families(id,organization_id,name,document_type,species,breed)
+    values
+      (${q(ids.goldenCertificateFamily)},${q(ids.organization)},'Certificat Golden','commitment_certificate','dog','Golden Retriever'),
+      (${q(ids.goldenContractFamily)},${q(ids.organization)},'Contrat Golden','reservation_contract','dog','Golden Retriever'),
+      (${q(ids.labCertificateFamily)},${q(ids.organization)},'Certificat Labrador','commitment_certificate','dog','Labrador Retriever'),
+      (${q(ids.labContractFamily)},${q(ids.organization)},'Contrat Labrador','reservation_contract','dog','Labrador Retriever');
+    insert into public.document_templates(id,organization_id,family_id,name,document_type,species,breed,template_format,template_content,version,lifecycle_status,is_active,published_at,published_by)
+    values
+      (${q(ids.goldenCertificate)},${q(ids.organization)},${q(ids.goldenCertificateFamily)},'Certificat Golden','commitment_certificate','dog','Golden Retriever','json',${q(cert)},1,'published',true,now(),${q(ownerId)}),
+      (${q(ids.goldenContract)},${q(ids.organization)},${q(ids.goldenContractFamily)},'Contrat Golden','reservation_contract','dog','Golden Retriever','json',${q(contract)},1,'published',true,now(),${q(ownerId)}),
+      (${q(ids.labCertificate)},${q(ids.organization)},${q(ids.labCertificateFamily)},'Certificat Labrador','commitment_certificate','dog','Labrador Retriever','json',${q(cert)},1,'published',true,now(),${q(ownerId)}),
+      (${q(ids.labContract)},${q(ids.organization)},${q(ids.labContractFamily)},'Contrat Labrador','reservation_contract','dog','Labrador Retriever','json',${q(contract)},1,'published',true,now(),${q(ownerId)});
+  `);
+}
+
+function documentFingerprint(reservationId: string) {
+  return sql(`
+    select string_agg(
+      id::text || '|' || document_type || '|' || coalesce(file_path, '') || '|' || coalesce(file_sha256, '') || '|' || coalesce(generation_data::text, ''),
+      E'\\n' order by document_type, created_at, id
+    )
+    from public.documents
+    where organization_id = ${q(ids.organization)}::uuid
+      and reservation_id = ${q(reservationId)}::uuid
+      and deleted_at is null
+      and superseded_at is null;
+  `);
 }
 function seed() {
   cleanup();
@@ -340,6 +440,183 @@ test("viewer : lecture seule sans mutation ni contrôles d’action", async ({ p
     expect(count("payments")).toBe(0);
     expect(count("email_delivery_attempts")).toBe(0);
   } finally {
+    cleanup();
+    assertCleanup();
+  }
+});
+
+test("membre : génération réelle et idempotence sur intention verrouillée", async ({ page }) => {
+  test.setTimeout(180_000);
+  const supabase = await createAuthenticatedSupabaseClient();
+  await removeStorage(supabase);
+  try {
+    seedGeneration();
+    await login(page);
+    await page.goto(`/litter-groups/${ids.group}`);
+    const section = page.locator("#generation-documents-groupes");
+    await section.getByRole("button", { name: "Tout désélectionner" }).click();
+    await section.getByLabel("Sélectionner Dossier Golden éligible").check();
+    await section.getByLabel("Sélectionner Dossier Labrador").check();
+    await expect(section).toContainText("2 dossier(s) sélectionné(s) sur 30");
+    await section.getByRole("button", { name: "Générer les documents sélectionnés" }).click();
+    await expect(page.getByRole("alertdialog")).toContainText("2");
+    await expect(page.getByRole("alertdialog")).toContainText("Golden Retriever");
+    await expect(page.getByRole("alertdialog")).toContainText("Labrador Retriever");
+    await page.getByRole("button", { name: "Confirmer la génération" }).click();
+    await expect(section).toContainText("Génération terminée", { timeout: 90_000 });
+    await expect(section).toContainText("Générés");
+    await expect(section.locator("dd").filter({ hasText: /^4$/ }).first()).toBeVisible();
+    await expect(section).toContainText("Dossiers planifiés");
+    await expect(section).toContainText("2");
+    await expect(section.getByRole("link", { name: "Portée concernée" })).toHaveCount(2);
+    await expect(section.locator("article").filter({ hasText: "Dossier Golden éligible" })).toContainText("Généré");
+    await expect(section.locator("article").filter({ hasText: "Dossier Labrador" })).toContainText("Généré");
+    expect(count("documents")).toBe(4);
+    expect(count("payments")).toBe(0);
+    expect(count("email_delivery_attempts")).toBe(0);
+    const pathsAfterCreate = storagePaths();
+    expect(pathsAfterCreate).toHaveLength(4);
+    expect(
+      Number(
+        sql(`
+          select count(*) from storage.objects
+          where bucket_id = 'documents'
+            and name like 'organizations/${ids.organization}/%'
+            and coalesce((metadata->>'size')::int, 0) > 0;
+        `),
+      ),
+    ).toBe(4);
+    expect(
+      sql(`
+        select string_agg(document_type, ',' order by document_type)
+        from public.documents
+        where reservation_id = ${q(ids.goldenReservation)}::uuid
+          and deleted_at is null and superseded_at is null;
+      `),
+    ).toBe("commitment_certificate,reservation_contract");
+    expect(
+      sql(`
+        select string_agg(document_type, ',' order by document_type)
+        from public.documents
+        where reservation_id = ${q(ids.labReservation)}::uuid
+          and deleted_at is null and superseded_at is null;
+      `),
+    ).toBe("commitment_certificate,reservation_contract");
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.goldenReservation)}::uuid
+            and contact_id = ${q(ids.goldenContact)}::uuid
+            and application_id = ${q(ids.goldenApplication)}::uuid
+            and litter_id = ${q(ids.litterA)}::uuid
+            and litter_group_id is null
+            and (
+              (document_type = 'commitment_certificate' and template_id = ${q(ids.goldenCertificate)}::uuid)
+              or (document_type = 'reservation_contract' and template_id = ${q(ids.goldenContract)}::uuid)
+            );
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.labReservation)}::uuid
+            and contact_id = ${q(ids.labContact)}::uuid
+            and application_id = ${q(ids.labApplication)}::uuid
+            and litter_id = ${q(ids.labLitter)}::uuid
+            and litter_group_id is null
+            and (
+              (document_type = 'commitment_certificate' and template_id = ${q(ids.labCertificate)}::uuid)
+              or (document_type = 'reservation_contract' and template_id = ${q(ids.labContract)}::uuid)
+            );
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.goldenReservation)}::uuid
+            and generation_data #>> '{sources,reservationId}' = ${q(ids.goldenReservation)}
+            and generation_data #>> '{sources,contactId}' = ${q(ids.goldenContact)}
+            and generation_data #>> '{sources,applicationId}' = ${q(ids.goldenApplication)}
+            and generation_data #>> '{sources,litterId}' = ${q(ids.litterA)}
+            and generation_data #>> '{template,templateId}' in (${q(ids.goldenCertificate)}, ${q(ids.goldenContract)});
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and reservation_id = ${q(ids.labReservation)}::uuid
+            and generation_data #>> '{sources,reservationId}' = ${q(ids.labReservation)}
+            and generation_data #>> '{sources,contactId}' = ${q(ids.labContact)}
+            and generation_data #>> '{sources,applicationId}' = ${q(ids.labApplication)}
+            and generation_data #>> '{sources,litterId}' = ${q(ids.labLitter)}
+            and generation_data #>> '{template,templateId}' in (${q(ids.labCertificate)}, ${q(ids.labContract)});
+        `),
+      ),
+    ).toBe(2);
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.documents
+          where organization_id = ${q(ids.organization)}::uuid
+            and deleted_at is null and superseded_at is null
+            and generation_data ? 'snapshotVersion'
+            and generation_data ? 'template'
+            and coalesce(file_path, '') <> ''
+            and coalesce(file_sha256, '') ~ '^[0-9a-f]{64}$';
+        `),
+      ),
+    ).toBe(4);
+    await expect(section.getByLabel("Sélectionner Dossier Golden éligible")).toBeDisabled();
+    await expect(section.getByLabel("Sélectionner Dossier Labrador")).toBeDisabled();
+    await expect(section.getByLabel("Certificat d’engagement").first()).toBeDisabled();
+    await expect(section.getByLabel("Contrat de réservation").first()).toBeDisabled();
+    await expect(section.getByRole("button", { name: "Générer les documents sélectionnés" })).toHaveCount(0);
+    await expect(section.getByRole("link", { name: "Nouvelle opération" })).toBeVisible();
+    await expect(section.getByRole("button", { name: "Rejouer exactement cette opération" })).toHaveCount(0);
+
+    const fingerprintGolden = documentFingerprint(ids.goldenReservation);
+    const fingerprintLab = documentFingerprint(ids.labReservation);
+    const reservationIdsLocked = await section
+      .locator('input[name="reservation_ids[]"]')
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value).sort());
+    expect(reservationIdsLocked).toEqual([ids.goldenReservation, ids.labReservation].sort());
+
+    await section.locator("form").evaluate((form) => {
+      const confirmation = form.querySelector('input[name="batch_confirmation"]') as HTMLInputElement | null;
+      if (confirmation) confirmation.value = "confirmed";
+      (form as HTMLFormElement).requestSubmit();
+    });
+    await expect(section).toContainText("Génération terminée", { timeout: 90_000 });
+    await expect(section).toContainText("Déjà générés");
+    await expect(section.locator("article").filter({ hasText: "Dossier Golden éligible" })).toContainText(
+      "Déjà généré par cette opération",
+    );
+    await expect(section.locator("article").filter({ hasText: "Dossier Labrador" })).toContainText(
+      "Déjà généré par cette opération",
+    );
+    expect(count("documents")).toBe(4);
+    expect(storagePaths()).toEqual(pathsAfterCreate);
+    expect(documentFingerprint(ids.goldenReservation)).toBe(fingerprintGolden);
+    expect(documentFingerprint(ids.labReservation)).toBe(fingerprintLab);
+    expect(count("payments")).toBe(0);
+    expect(count("email_delivery_attempts")).toBe(0);
+  } finally {
+    await removeStorage(supabase);
     cleanup();
     assertCleanup();
   }
