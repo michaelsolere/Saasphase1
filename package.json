@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:e2e": "node scripts/e2e/run.mjs"
+    "test:e2e": "node scripts/e2e/run.mjs",
+    "test:e2e:reuse": "node scripts/e2e/run.mjs --reuse",
+    "test:e2e:stop": "node scripts/e2e/run.mjs --stop"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",
