@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #291. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #294. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `82a7f6df51ab475033af92f045938676c260fcbe`.
-- Dernière PR incluse : **#291 — Ajouter le noyau de génération groupée des documents par portée**.
+- SHA de `main` documenté : `97475fde3232e5f2d728ade0ef80ad03249ecf90`.
+- Dernière PR incluse : **#294 — Ajouter l’interface de génération groupée par portée**.
 - Les migrations locales sont appliquées jusqu’à `202607170001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -185,6 +185,11 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 - Les identifiants documentaires sont déterministes par organisation, opération, réservation et type, et un rejeu conserve le même `capturedAt`. Lorsque les deux documents manquent, leur préparation et leur rendu sont prévalidés avant le premier stockage. Le noyau réutilise sans duplication la préparation métier, la résolution du modèle commun ou de la variante publiée, le renderer, le stockage PDF et ses compensations.
 - Les documents déjà présents ne sont pas régénérés, les documents `sent` ou `signed` sont protégés et les états ou PDF incohérents sont signalés. Aucune nouvelle version n’est créée automatiquement. Les rejeux et appels concurrents d’une même opération restent idempotents ; les résultats détaillés et leurs compteurs n’exposent ni identifiant documentaire ou de variante, ni chemin Storage, hash, snapshot ou autre donnée technique.
 - L’orchestrateur individuel conserve la politique interne `replace` par défaut et donc son comportement historique de versionnement. Le noyau groupé utilise `create_only` afin d’interdire tout remplacement ou création automatique d’une nouvelle version lorsqu’un autre document courant existe.
+- La PR #293 ajoute une Server Action compatible avec `useActionState`, liée à une intention serveur authentifiée contenant `litterId`, `operationId` et `capturedAt`. Aucune de ces valeurs n’est lue depuis le formulaire : l’interface transmet uniquement la confirmation explicite, les réservations sélectionnées et les modèles communs choisis pour le certificat et le contrat. Aucun identifiant de document ou de variante n’est accepté.
+- Le résultat détaillé est retourné directement, sans redirection ni paramètre d’URL. La PR #294 expose l’interface sur `/litters/[id]` en écriture pour `owner`, `admin` et `member`, et en lecture seule pour `viewer`.
+- Toutes les réservations de la portée exacte sont affichées, mais seules les réservations pré-éligibles sont sélectionnables, dans la limite de 30 dossiers. Le modèle commun du certificat et celui du contrat sont sélectionnés séparément ; la variante publiée propre à chaque réservation est résolue automatiquement côté serveur.
+- Une confirmation explicite précède la génération, qui ne crée aucun e-mail ni paiement. Les résultats globaux, les compteurs et les résultats par dossier sont présentés en français, sans afficher d’UUID ni de détail Storage.
+- Après soumission, la sélection et les modèles sont verrouillés. Un rejeu conserve exactement la même intention et la même configuration ; une nouvelle opération exige un rechargement explicite de la page. Aucun document courant n’est remplacé et aucune nouvelle version n’est créée automatiquement.
 
 ### Consultation sécurisée
 
@@ -208,15 +213,13 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent à concevoir ou implémenter :
 
-- l’intention serveur authentifiée liée à l’interface permettant de déclencher le noyau groupé depuis la fiche d’une portée exacte ; aucun bouton, composant ou Server Action publique n’existe encore ;
 - la génération groupée depuis un groupe de portées, qui n’est pas encore prise en charge ;
+- une interface de génération groupée sur `/litter-groups/[id]`, qui n’existe pas ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
-
-Le noyau serveur privé de génération groupée pour une portée exacte existe désormais, sans interface publique pour l’invoquer.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **concevoir puis raccorder l’intention serveur et l’interface de génération groupée depuis la fiche d’une portée exacte, en sélectionnant les réservations et modèles sans accepter d’identifiant de variante ou de document depuis le client, avant tout support des groupes de portées.**
+La prochaine étape est : **auditer puis concevoir l’extension de la génération groupée aux groupes de portées, en déterminant comment sélectionner les portées et réservations exactes, résoudre les modèles communs compatibles lorsque plusieurs taxonomies sont présentes, préserver l’idempotence par dossier et ne jamais générer pour une réservation encore rattachée seulement au groupe sans portée exacte exploitable.**
 
 ## Environnement E2E et règles de validation
 
