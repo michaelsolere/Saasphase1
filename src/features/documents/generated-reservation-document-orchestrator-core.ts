@@ -38,6 +38,7 @@ export type GenerateAndStoreReservationDocumentPdfInput = {
   documentType: SupportedDocumentType;
   templateId: string;
   capturedAt: string;
+  currentDocumentPolicy?: "replace" | "create_only";
 };
 
 export type GenerateAndStoreReservationDocumentPdfErrorStage =
@@ -50,6 +51,7 @@ export type GenerateAndStoreReservationDocumentPdfErrorStage =
 export type GenerateAndStoreReservationDocumentPdfErrorCode =
   | "invalid_input"
   | "document_id_conflict"
+  | "current_document_conflict"
   | PrepareDocumentGenerationSnapshotErrorCode
   | RenderDocumentPdfErrorCode
   | DocumentPdfErrorCode;
@@ -299,7 +301,7 @@ export async function generateAndStoreReservationDocumentPdfCore(
 
   const currentDocument = await supabase
     .from("documents")
-    .select("id, replaces_document_id")
+    .select("*")
     .eq("organization_id", prepared.snapshot.sources.organizationId)
     .eq("reservation_id", reservationId)
     .eq("document_type", input.documentType)
@@ -309,6 +311,19 @@ export async function generateAndStoreReservationDocumentPdfCore(
   if (currentDocument.error) {
     console.error("generated_document_current_read_failed", currentDocument.error);
     return fail("current_document", "database_error");
+  }
+
+  if (
+    currentDocument.data &&
+    input.currentDocumentPolicy === "create_only"
+  ) {
+    if (currentDocument.data.id === documentId) {
+      return (
+        replayResult(currentDocument.data, input) ??
+        fail("input", "document_id_conflict")
+      );
+    }
+    return fail("current_document", "current_document_conflict");
   }
 
   const replacesDocumentId = currentDocument.data
