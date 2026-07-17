@@ -48,6 +48,7 @@ const ids = {
   invalidVariant: id(25),
   invalidVariantVersion: id(26),
   settings: id(27),
+  animalMismatch: id(28),
   reservationGenerate: id(101),
   reservationVariant: id(102),
   reservationOneMissing: id(103),
@@ -169,6 +170,7 @@ function cleanupRows() {
     delete from public.document_template_families where id::text like ${q(`${prefix}-%`)};
     delete from public.organization_document_settings where id::text like ${q(`${prefix}-%`)};
     delete from public.organization_settings where organization_id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
+    delete from public.animals where id::text like ${q(`${prefix}-%`)};
     delete from public.litters where id::text like ${q(`${prefix}-%`)};
     delete from public.applications where id::text like ${q(`${prefix}-%`)};
     delete from public.contacts where id::text like ${q(`${prefix}-%`)};
@@ -176,6 +178,11 @@ function cleanupRows() {
     delete from public.organizations where id in (${q(ids.organization)}::uuid, ${q(ids.foreignOrganization)}::uuid);
     delete from auth.identities where user_id = ${q(ids.viewerUser)}::uuid;
     delete from auth.users where id = ${q(ids.viewerUser)}::uuid;
+    create unique index if not exists documents_current_commitment_certificate_idx
+      on public.documents (organization_id, reservation_id)
+      where document_type = 'commitment_certificate'
+        and deleted_at is null
+        and superseded_at is null;
   `);
 }
 
@@ -202,6 +209,8 @@ function seed() {
       (${q(ids.otherLitter)}, ${q(ids.organization)}, 'Autre portée QA', 'dog', 'Golden Retriever', '2026-06-02', '2026-08-02', null),
       (${q(ids.deletedLitter)}, ${q(ids.organization)}, 'Portée supprimée QA', 'dog', 'Golden Retriever', '2026-06-03', '2026-08-03', now()),
       (${q(ids.foreignLitter)}, ${q(ids.foreignOrganization)}, 'Portée étrangère QA', 'dog', 'Golden Retriever', '2026-06-04', '2026-08-04', null);
+    insert into public.animals (id, organization_id, litter_id, official_name, call_name, species, breed, sex, birth_date)
+    values (${q(ids.animalMismatch)}, ${q(ids.organization)}, ${q(ids.litter)}, 'Animal contradiction QA', 'Contradiction', 'dog', 'Golden Retriever', 'female', '2026-06-01');
     insert into public.organization_document_settings (id, organization_id, signature_city_default)
     values (${q(ids.settings)}, ${q(ids.organization)}, 'Paris');
     insert into public.document_template_families (id, organization_id, name, document_type, species, breed)
@@ -576,6 +585,55 @@ test("generates litter reservation documents safely, idempotently and without fi
     expect(documentCount(ids.reservationMultiple)).toBe(0);
     expect(documentCount(ids.reservationAfterError)).toBe(2);
 
+    await generateLitterReservationDocumentsBatchCore(
+      input([ids.reservationMultiple], "multiple-current-initial"),
+      supabase,
+    );
+    sql(`
+      drop index public.documents_current_commitment_certificate_idx;
+      insert into public.documents
+        (id, organization_id, contact_id, application_id, reservation_id, litter_id, document_type, status, title, signature_required)
+      values
+        (${q(ids.forcedDuplicate)}, ${q(ids.organization)}, ${q(ids.contact)}, ${q(ids.application)}, ${q(ids.reservationMultiple)}, ${q(ids.litter)}, 'commitment_certificate', 'uploaded', 'Doublon courant QA', true);
+    `);
+    expect(
+      Number(
+        sql(`select count(*) from public.documents where organization_id = ${q(ids.organization)}::uuid and reservation_id = ${q(ids.reservationMultiple)}::uuid and document_type = 'commitment_certificate' and deleted_at is null and superseded_at is null;`),
+      ),
+    ).toBe(2);
+    const multipleCurrent = await generateLitterReservationDocumentsBatchCore(
+      input([ids.reservationMultiple], "multiple-current-check"),
+      supabase,
+    );
+    expect(multipleCurrent.reservations[0].commitment).toEqual({
+      outcome: "incoherent_current_document",
+      reasonCode: "multiple_current_documents",
+    });
+    sql(`
+      delete from public.documents where id = ${q(ids.forcedDuplicate)}::uuid;
+      create unique index documents_current_commitment_certificate_idx
+        on public.documents (organization_id, reservation_id)
+        where document_type = 'commitment_certificate'
+          and deleted_at is null
+          and superseded_at is null;
+    `);
+    expect(
+      Number(sql(`select count(*) from public.documents where id = ${q(ids.forcedDuplicate)}::uuid;`)),
+    ).toBe(0);
+
+    sql(`update public.documents set animal_id = ${q(ids.animalMismatch)}::uuid where reservation_id = ${q(ids.reservationMultiple)}::uuid and document_type = 'reservation_contract';`);
+    expect(
+      sql(`select animal_id::text || '|' || coalesce(generation_data->'sources'->>'animalId', 'null') from public.documents where reservation_id = ${q(ids.reservationMultiple)}::uuid and document_type = 'reservation_contract';`),
+    ).toBe(`${ids.animalMismatch}|null`);
+    const animalMismatch = await generateLitterReservationDocumentsBatchCore(
+      input([ids.reservationMultiple], "animal-mismatch-check"),
+      supabase,
+    );
+    expect(animalMismatch.reservations[0].contract).toEqual({
+      outcome: "incoherent_current_document",
+      reasonCode: "current_document_incoherent",
+    });
+
     const ordered = await generateLitterReservationDocumentsBatchCore(
       input(
         [
@@ -591,7 +649,18 @@ test("generates litter reservation documents safely, idempotently and without fi
       ids.reservationWrongStatus,
       ids.reservationAfterError,
     ]);
-    expect(ordered.counts).toMatchObject({ alreadyPresent: 2, ineligible: 2 });
+    expect(ordered.counts).toEqual({
+      created: 0,
+      existing: 0,
+      alreadyPresent: 2,
+      protected: 0,
+      ineligible: 2,
+      missingData: 0,
+      invalidData: 0,
+      invalidSource: 0,
+      incoherent: 0,
+      errors: 0,
+    });
     assertNoSensitiveData(ordered);
 
     const beforeNoReplacementRows = documentCount(ids.reservationAfterError);
@@ -622,6 +691,7 @@ test("generates litter reservation documents safely, idempotently and without fi
       "document_templates",
       "document_template_families",
       "organization_document_settings",
+      "animals",
       "litters",
       "applications",
       "contacts",

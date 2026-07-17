@@ -376,6 +376,7 @@ async function coherentCurrentDocument(
     snapshot.sources.contactId !== context.contactId ||
     snapshot.sources.applicationId !== context.applicationId ||
     snapshot.sources.litterId !== context.litterId ||
+    snapshot.sources.animalId !== document.animal_id ||
     snapshot.documentType !== context.documentType ||
     !sameInstant(document.generated_at, snapshot.capturedAt)
   ) {
