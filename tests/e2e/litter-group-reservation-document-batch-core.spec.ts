@@ -71,38 +71,19 @@ const capturedAt = "2026-07-17T18:30:00.000+02:00";
 const operationId = "litter-group-batch-orchestrator-e2e";
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat groupe orchestrateur QA",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."],
-    health: ["Santé."],
-    educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."],
-    holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const contractDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat groupe orchestrateur QA",
-  preamble: ["Préambule."],
-  clauses: {
-    reservationPurpose: ["Objet."],
-    priceAndPayments: ["Prix."],
-    deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation."],
-    postponementAndCredit: ["Report."],
-    potentialWithholding: ["Retenue."],
-    finalConditions: ["Conditions finales."],
-  },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function q(value: string) {

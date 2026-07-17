@@ -3,9 +3,8 @@ import { notFound } from "next/navigation";
 
 import { CreateDocumentTemplateDraftButton } from "@/features/documents/create-document-template-draft-button";
 import { decodeDocumentTemplateDraft } from "@/features/documents/decode-document-template-draft";
-import { DocumentTemplateAutomaticContent } from "@/features/documents/document-template-automatic-content";
 import { DocumentTemplateEditor } from "@/features/documents/document-template-editor";
-import { hasStructuredDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
+import { hasDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
 import { getDocumentTypeLabel } from "@/features/documents/formatters";
 import { listDocumentTemplateFamilies, type DocumentTemplateVersionSummary } from "@/features/documents/document-template-management";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
@@ -95,7 +94,7 @@ export default async function DocumentTemplateFamilyPage({
   if (!family) notFound();
 
   const documentType = family.documentType;
-  const hasEditor = hasStructuredDocumentTemplateEditor(documentType);
+  const hasEditor = hasDocumentTemplateEditor(documentType);
   const publicationDefinition = hasEditor ? parseVersion(family.publication, documentType) : null;
   const draftDefinition = hasEditor && family.draft
     ? decodeDocumentTemplateDraft({
@@ -105,7 +104,6 @@ export default async function DocumentTemplateFamilyPage({
     : null;
   const canSave = result.role !== "viewer";
   const canPublish = result.role === "owner" || result.role === "admin";
-  const activeDefinition = draftDefinition ?? publicationDefinition;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 sm:px-10">
@@ -160,10 +158,6 @@ export default async function DocumentTemplateFamilyPage({
             </div>
           )}
         </section>
-
-        {hasEditor && activeDefinition?.schemaVersion !== 2 ? (
-          <DocumentTemplateAutomaticContent documentType={documentType} />
-        ) : null}
 
         <section className="rounded-2xl border bg-surface p-5 shadow-sm sm:p-7">
           {family.draft ? (

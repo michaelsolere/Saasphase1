@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { expect, test } from "@playwright/test";
 
-import { createInitialDocumentTemplateDefinition, INITIAL_FREE_RESERVATION_CONTRACT_BODY } from "../../src/features/documents/create-initial-document-template-definition";
+import { createInitialDocumentTemplateDefinition, INITIAL_FREE_COMMITMENT_CERTIFICATE_BODY, INITIAL_FREE_RESERVATION_CONTRACT_BODY } from "../../src/features/documents/create-initial-document-template-definition";
 import { insertTemplateVariableAtSelection } from "../../src/features/documents/insert-template-variable";
 import { toggleTemplateBoldAtSelection } from "../../src/features/documents/insert-template-bold";
 import { buildDocumentPdfPresentation } from "../../src/features/documents/document-pdf-presentation";
@@ -11,6 +11,7 @@ import { createDocumentTemplatePreviewSnapshot } from "../../src/features/docume
 import { parseDocumentTemplateDefinition } from "../../src/features/documents/parse-document-template-definition";
 import { parseDocumentGenerationSnapshot } from "../../src/features/documents/parse-document-generation-snapshot";
 import {
+  COMMITMENT_CERTIFICATE_VARIABLE_CATALOG,
   formatFrenchDate,
   formatFrenchMoney,
   formatFrenchMoneyInWords,
@@ -20,9 +21,9 @@ import {
   resolveReservationContractText,
 } from "../../src/features/documents/reservation-contract-template-variables";
 import { resolveAnimalSnapshotColor } from "../../src/features/documents/resolve-animal-snapshot-color";
-import type { FreeReservationContractTemplateDefinition, ReservationContractTemplateDefinition } from "../../src/features/documents/document-template-definitions";
+import type { CommitmentCertificateTemplateDefinition, FreeReservationContractTemplateDefinition } from "../../src/features/documents/document-template-definitions";
 
-const v1: ReservationContractTemplateDefinition = {
+const v1Contract = {
   schemaVersion: 1,
   locale: "fr-FR",
   documentType: "reservation_contract",
@@ -36,6 +37,20 @@ const v1: ReservationContractTemplateDefinition = {
   signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
 };
 
+const v1Certificate = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat V1",
+  introduction: ["Introduction"],
+  sections: {
+    animalNeeds: ["Besoins"], health: ["Santé"], educationAndBehavior: ["Éducation"],
+    costsAndConstraints: ["Coûts"], holderObligations: ["Obligations"],
+  },
+  acknowledgmentText: ["Reconnaissance"],
+  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+};
+
 const v2: FreeReservationContractTemplateDefinition = {
   schemaVersion: 2,
   locale: "fr-FR",
@@ -44,17 +59,33 @@ const v2: FreeReservationContractTemplateDefinition = {
   body: "Adoptant : [[adoptant.nom_complet]]\nPrix : [[reservation.prix_formate]]\nEn lettres : [[reservation.prix_en_lettres]]",
 };
 
-function parse(definition: unknown) {
+const certificateV2: CommitmentCertificateTemplateDefinition = {
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat d’engagement",
+  body: "Adoptant : [[adoptant.nom_complet]]\nAnimal : [[animal.nom]]",
+};
+
+function parse(definition: unknown, documentType = "reservation_contract") {
   return parseDocumentTemplateDefinition({
     templateFormat: "json",
-    documentType: "reservation_contract",
+    documentType,
     templateContent: JSON.stringify(definition),
   });
 }
 
-test("parse les V1 sans changement et valide strictement les variables V2", () => {
-  expect(parse(v1)).toEqual({ success: true, definition: v1 });
+test("refuse le schéma V1 et valide strictement les variables V2", () => {
+  expect(parse(v1Contract)).toEqual({ success: false, error: "unsupported_schema_version" });
+  expect(parse(v1Certificate, "commitment_certificate")).toEqual({
+    success: false,
+    error: "unsupported_schema_version",
+  });
   expect(parse(v2)).toEqual({ success: true, definition: v2 });
+  expect(parse(certificateV2, "commitment_certificate")).toEqual({
+    success: true,
+    definition: certificateV2,
+  });
 
   const unknown = parse({ ...v2, body: "[[adoptant.telephonne]]" });
   expect(unknown).toMatchObject({ success: false, error: "invalid_template_variables" });
@@ -76,6 +107,54 @@ test("parse les V1 sans changement et valide strictement les variables V2", () =
   expect(parse({ ...v2, body: "x".repeat(30_001) })).toEqual({
     success: false,
     error: "invalid_template_content",
+  });
+});
+
+test("unifie contrat et certificat sur le schéma libre V2 avec catalogues distincts", () => {
+  const contractInitial = createInitialDocumentTemplateDefinition("reservation_contract");
+  const certificateInitial = createInitialDocumentTemplateDefinition("commitment_certificate");
+
+  expect(contractInitial).toEqual({
+    schemaVersion: 2,
+    locale: "fr-FR",
+    documentType: "reservation_contract",
+    title: "Contrat de réservation",
+    body: INITIAL_FREE_RESERVATION_CONTRACT_BODY,
+  });
+  expect(certificateInitial).toEqual({
+    schemaVersion: 2,
+    locale: "fr-FR",
+    documentType: "commitment_certificate",
+    title: "Certificat d’engagement et de connaissance",
+    body: INITIAL_FREE_COMMITMENT_CERTIFICATE_BODY,
+  });
+  expect(Object.keys(contractInitial).sort()).toEqual(["body", "documentType", "locale", "schemaVersion", "title"]);
+  expect(Object.keys(certificateInitial).sort()).toEqual(Object.keys(contractInitial).sort());
+
+  expect(parse(contractInitial)).toEqual({ success: true, definition: contractInitial });
+  expect(parse(certificateInitial, "commitment_certificate")).toEqual({
+    success: true,
+    definition: certificateInitial,
+  });
+
+  expect(RESERVATION_CONTRACT_VARIABLE_CATALOG.some((item) => item.key === "reservation.prix_formate")).toBe(true);
+  expect(COMMITMENT_CERTIFICATE_VARIABLE_CATALOG.some((item) => item.key === "reservation.prix_formate")).toBe(false);
+  expect(parse({
+    ...certificateV2,
+    body: "Prix interdit : [[reservation.prix_formate]]",
+  }, "commitment_certificate")).toMatchObject({
+    success: false,
+    error: "invalid_template_variables",
+  });
+  expect(parse({
+    ...v2,
+    body: "Prix autorisé : [[reservation.prix_formate]]",
+  })).toEqual({
+    success: true,
+    definition: {
+      ...v2,
+      body: "Prix autorisé : [[reservation.prix_formate]]",
+    },
   });
 });
 
@@ -433,16 +512,10 @@ test("insère au curseur, remplace une sélection et initialise les nouveaux con
     selectionStart: 0,
     selectionEnd: 1,
   })).toMatchObject({ value: "x".repeat(30_000), changed: false });
-  expect(createInitialDocumentTemplateDefinition("reservation_contract")).toEqual({
-    schemaVersion: 2,
-    locale: "fr-FR",
-    documentType: "reservation_contract",
-    title: "Contrat de réservation",
-    body: INITIAL_FREE_RESERVATION_CONTRACT_BODY,
-  });
   expect(INITIAL_FREE_RESERVATION_CONTRACT_BODY).toContain(
     "Né le : [[projet.date_naissance]]\nSexe : [[projet.sexe]]\nRang du choix : [[reservation.rang_choix]]\nCouleur : [[animal.couleur]]",
   );
+  expect(INITIAL_FREE_COMMITMENT_CERTIFICATE_BODY).toContain("[[adoptant.nom_complet]]");
 });
 
 test("bascule le gras sans imbriquer les marqueurs et conserve les positions logiques", () => {

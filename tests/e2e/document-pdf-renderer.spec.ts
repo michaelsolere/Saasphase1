@@ -21,44 +21,36 @@ import type {
 const reservationId = "33333333-3333-4333-8333-333333333333";
 
 const contractDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat de réservation Étoile",
-  preamble: ["Préambule premier.", "Préambule deuxième."],
-  clauses: {
-    reservationPurpose: ["Objet - paragraphe 1.", "Objet - paragraphe 2."],
-    priceAndPayments: ["Prix - paragraphe."],
-    deposit: ["Arrhes - paragraphe."],
-    cancellationAndRefund: ["Annulation - paragraphe."],
-    postponementAndCredit: ["Report - paragraphe."],
-    potentialWithholding: ["Retenue - paragraphe."],
-    finalConditions: ["Conditions finales - paragraphe."],
-  },
-  signatureLabels: {
-    breeder: "L’éleveur",
-    reservingParty: "Le réservant",
-  },
+  body: [
+    "Préambule premier.",
+    "Préambule deuxième.",
+    "Éleveur : [[vendeur.nom_commercial]]",
+    "Adoptant : [[adoptant.nom_complet]]",
+    "Projet : [[projet.portee_ou_groupe]]",
+    "Prix total : [[reservation.prix_formate]]",
+    "Arrhes prévues : [[reservation.arrhes_prevues_formatees]]",
+    "Arrhes versées : [[reservation.arrhes_versees_formatees]]",
+  ].join("\n"),
 };
 
 const certificateDefinition: CommitmentCertificateTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat d’engagement et de connaissance",
-  introduction: ["Introduction première.", "Introduction deuxième."],
-  sections: {
-    animalNeeds: ["Besoins - paragraphe."],
-    health: ["Santé - paragraphe."],
-    educationAndBehavior: ["Éducation - paragraphe."],
-    costsAndConstraints: ["Coûts - paragraphe."],
-    holderObligations: ["Obligations - paragraphe."],
-  },
-  acknowledgmentText: ["Reconnaissance - paragraphe."],
-  signatureLabels: {
-    holder: "Le détenteur",
-    issuer: "Le cédant",
-  },
+  body: [
+    "Introduction première.",
+    "Introduction deuxième.",
+    "Adoptant : [[adoptant.nom_complet]]",
+    "Animal : [[animal.nom]]",
+    "Sexe : [[projet.sexe]]",
+    "Identification : [[animal.identification]]",
+    "LOF : [[animal.numero_lof]]",
+  ].join("\n"),
 };
 
 function contractInput(
@@ -196,7 +188,7 @@ function successfulBuild(input: BuildDocumentGenerationSnapshotInput) {
 function expectPdfEnvelope(bytes: Buffer) {
   expect(bytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
   expect(bytes.toString("ascii").trimEnd().endsWith("%%EOF")).toBe(true);
-  expect(bytes.byteLength).toBeGreaterThan(4_000);
+  expect(bytes.byteLength).toBeGreaterThan(1_500);
 }
 
 test("fige la version du logo dans le snapshot et les octets PDF historiques", async () => {
@@ -263,9 +255,30 @@ test("fige la version du logo dans le snapshot et les octets PDF historiques", a
   })).toEqual({ outcome: "error", error: { code: "branding_mismatch" } });
 });
 
-test("builds ordered contract presentation and renders an in-memory A4 PDF", async () => {
+test("builds free-body contract presentation and renders an in-memory A4 PDF", async () => {
   expect(documentPdfStyles.title.fontSize).toBe(24);
-  const input = contractInput();
+  const litterDefinition: ReservationContractTemplateDefinition = {
+    ...contractDefinition,
+    body: [
+      "Préambule premier.",
+      "Éleveur : [[vendeur.nom_commercial]]",
+      "Adoptant : [[adoptant.nom_complet]]",
+      "Portée : [[projet.portee_ou_groupe]]",
+      "Date de naissance : [[projet.date_naissance]]",
+      "Rang de choix : [[reservation.rang_choix]]",
+      "Mère : [[portee.mere.nom]]",
+      "Identification mère : [[portee.mere.identification]]",
+      "LOF mère : [[portee.mere.numero_lof]]",
+      "Père : [[portee.pere.nom]]",
+      "Identification père : [[portee.pere.identification]]",
+      "LOF père : [[portee.pere.numero_lof]]",
+      "Disponibilité : [[portee.date_disponibilite]]",
+      "Prix total : [[reservation.prix_formate]]",
+      "Arrhes prévues : [[reservation.arrhes_prevues_formatees]]",
+      "Arrhes versées : [[reservation.arrhes_versees_formatees]]",
+    ].join("\n"),
+  };
+  const input = contractInput(litterDefinition);
   input.sources.litterId = "66666666-6666-4666-8666-666666666666";
   input.adoptionProject.litter = {
     id: input.sources.litterId,
@@ -294,51 +307,23 @@ test("builds ordered contract presentation and renders an in-memory A4 PDF", asy
   );
   expect(presentation).not.toBeNull();
   expect(presentation?.fileName).toBe(`contrat-reservation-${reservationId}.pdf`);
-  expect(presentation?.sections.map((section) => section.id)).toEqual([
-    "seller", "adopter", "project", "parentage", "availability", "preparation", "financials", "mediator",
-    "preamble", "reservationPurpose", "priceAndPayments", "deposit",
-    "cancellationAndRefund", "postponementAndCredit", "potentialWithholding",
-    "finalConditions", "signatures",
-  ]);
-  expect(presentation?.sections.find((section) => section.id === "preamble")?.paragraphs).toEqual(contractDefinition.preamble);
-  expect(presentation?.sections.filter((section) => [
-    "reservationPurpose", "priceAndPayments", "deposit", "cancellationAndRefund",
-    "postponementAndCredit", "potentialWithholding", "finalConditions",
-  ].includes(section.id)).flatMap((section) => section.paragraphs)).toEqual([
-    ...contractDefinition.clauses.reservationPurpose,
-    ...contractDefinition.clauses.priceAndPayments,
-    ...contractDefinition.clauses.deposit,
-    ...contractDefinition.clauses.cancellationAndRefund,
-    ...contractDefinition.clauses.postponementAndCredit,
-    ...contractDefinition.clauses.potentialWithholding,
-    ...contractDefinition.clauses.finalConditions,
-  ]);
-  expect(presentation?.sections.find((section) => section.id === "seller")?.paragraphs).toContain("Élevage des Étoiles");
-  expect(presentation?.sections.find((section) => section.id === "project")?.paragraphs).toEqual(expect.arrayContaining([
-    "Portée : Portée Hélios",
-    "Date de naissance : 03 janvier 2026",
-    "Rang de choix : 3",
-  ]));
-  expect(presentation?.sections.find((section) => section.id === "parentage")?.paragraphs).toEqual([
-    "Mère : Ushka de la vallée d’Hélios",
-    "Identification : 250269610906173",
-    "LOF : 251769/28489",
-    "Père : Rimbaud de Bihan Ki Breizh",
-    "Identification : 250268743442598",
-    "LOF : 203031/20009",
-  ]);
-  expect(presentation?.sections.find((section) => section.id === "availability")?.paragraphs).toEqual([
-    "Les chiots de cette portée seront disponibles à partir du 28 février 2026.",
-  ]);
-  const financialParagraphs = presentation?.sections.find((section) => section.id === "financials")?.paragraphs ?? [];
-  expect(financialParagraphs).toEqual([
-    "Prix total de l’animal : 2 500,00 €",
-    "Montant total des arrhes convenues : 750,00 €",
-    "Arrhes déjà reçues à la date de génération : 500,00 €",
-    "Complément d’arrhes restant à verser : 250,00 €",
-    "Solde restant après versement complet des arrhes : 1 750,00 €",
-  ]);
-  expect(financialParagraphs.join(" ")).not.toMatch(/Montant remboursé|Payé net|Reste dû|Montant payé/);
+  expect(presentation?.sections).toEqual([]);
+  expect(presentation?.title).toBe(litterDefinition.title);
+  expect(presentation?.freeBody).toContain("Préambule premier.");
+  expect(presentation?.freeBody).toContain("Éleveur : Élevage des Étoiles");
+  expect(presentation?.freeBody).toContain("Adoptant : Camille Dupont");
+  expect(presentation?.freeBody).toContain("Portée : Portée Hélios");
+  expect(presentation?.freeBody).toContain("Date de naissance : 03/01/2026");
+  expect(presentation?.freeBody).toContain("Rang de choix : 3");
+  expect(presentation?.freeBody).toContain("Mère : Ushka de la vallée d’Hélios");
+  expect(presentation?.freeBody).toContain("Identification mère : 250269610906173");
+  expect(presentation?.freeBody).toContain("LOF mère : 251769/28489");
+  expect(presentation?.freeBody).toContain("Père : Rimbaud de Bihan Ki Breizh");
+  expect(presentation?.freeBody).toContain("Disponibilité : 28/02/2026");
+  expect(presentation?.freeBody).toContain("Prix total : 2 500 €");
+  expect(presentation?.freeBody).toContain("Arrhes prévues : 750 €");
+  expect(presentation?.freeBody).toContain("Arrhes versées : 500 €");
+  expect(presentation?.freeBody).not.toContain("[[");
   expect(JSON.stringify(built.snapshot)).not.toMatch(/coat|color|couleur/i);
 
   const rendered = await renderDocumentPdfCore({
@@ -353,22 +338,18 @@ test("builds ordered contract presentation and renders an in-memory A4 PDF", asy
   expectPdfEnvelope(rendered.bytes);
 });
 
-test("renders a certificate with animal data and no financial section", async () => {
+test("renders a certificate with animal data and free body only", async () => {
   const input = certificateInput();
   const built = successfulBuild(input);
   const presentation = buildDocumentPdfPresentation(built.snapshot, built.templateDefinition);
-  expect(presentation?.sections.map((section) => section.id)).toEqual([
-    "seller", "adopter", "project", "preparation", "introduction", "animalNeeds",
-    "health", "educationAndBehavior", "costsAndConstraints", "holderObligations",
-    "acknowledgmentText", "signatures",
-  ]);
-  expect(presentation?.sections.some((section) => section.id === "financials")).toBe(false);
-  expect(presentation?.sections.find((section) => section.id === "project")?.paragraphs).toEqual(expect.arrayContaining([
-    "Animal attribué : Nova",
-    "Sexe : Femelle",
-    "Identification : 250269000000001",
-    "Numéro LOF : LOF 12345/678",
-  ]));
+  expect(presentation?.sections).toEqual([]);
+  expect(presentation?.freeBody).toContain("Introduction première.");
+  expect(presentation?.freeBody).toContain("Animal : Nova");
+  expect(presentation?.freeBody).toContain("Sexe : Femelle");
+  expect(presentation?.freeBody).toContain("Identification : 250269000000001");
+  expect(presentation?.freeBody).toContain("LOF : LOF 12345/678");
+  expect(presentation?.freeBody).not.toContain("[[");
+  expect(presentation?.freeBody).not.toMatch(/Prix|Arrhes|Solde/);
 
   const rendered = await renderDocumentPdfCore({
     documentType: "commitment_certificate",
@@ -382,33 +363,44 @@ test("renders a certificate with animal data and no financial section", async ()
 });
 
 test("accepts an absent animal, a group-only project, and omits unknown remaining balance", async () => {
-  const input = contractInput();
+  const input = contractInput({
+    ...contractDefinition,
+    body: [
+      "Éleveur : [[vendeur.nom_commercial]]",
+      "Projet : [[projet.portee_ou_groupe]]",
+      "Prix total : [[reservation.prix_formate]]",
+    ].join("\n"),
+  });
   input.financials = { ...input.financials!, priceCents: null };
   const built = successfulBuild(input);
-  const presentation = buildDocumentPdfPresentation(built.snapshot, built.templateDefinition);
-  expect(presentation?.sections.find((section) => section.id === "project")?.paragraphs).toContain("Groupe de portées : Portées automne 2026");
-  expect(presentation?.sections.some((section) => section.id === "parentage")).toBe(false);
-  expect(presentation?.sections.some((section) => section.id === "availability")).toBe(false);
-  expect(presentation?.sections.find((section) => section.id === "project")?.paragraphs.some((paragraph) => paragraph.startsWith("Animal attribué"))).toBe(false);
-  expect(presentation?.sections.find((section) => section.id === "financials")?.paragraphs.some((paragraph) => paragraph.startsWith("Solde restant"))).toBe(false);
+  const presentation = buildDocumentPdfPresentation(built.snapshot, built.templateDefinition, {
+    allowMissingTemplateVariables: true,
+  });
+  expect(presentation?.sections).toEqual([]);
+  expect(presentation?.freeBody).toContain("Projet : Portées automne 2026");
+  expect(presentation?.freeBody).toContain("Prix total : [Donnée manquante : prix de la réservation]");
 
   const rendered = await renderDocumentPdfCore({
     documentType: "reservation_contract",
     snapshot: built.snapshot,
     templateContent: input.template.content!,
+    allowMissingTemplateVariables: true,
   });
   expect(rendered.outcome).toBe("success");
 });
 
-test("renders contractual deposit cases without claiming unpaid amounts were received", () => {
+test("renders contractual deposit cases via free-body finance variables", () => {
   const cases = [
-    { paid: 0, expected: ["Complément d’arrhes restant à verser : 750,00 €"], absent: "Arrhes déjà reçues" },
-    { paid: 30_000, expected: ["Arrhes déjà reçues à la date de génération : 300,00 €", "Complément d’arrhes restant à verser : 450,00 €"], absent: "" },
-    { paid: 75_000, expected: ["Arrhes déjà reçues à la date de génération : 750,00 €"], absent: "Complément d’arrhes" },
+    { paid: 0, expected: ["Arrhes versées : 0 €"], absent: "Arrhes versées : 300" },
+    { paid: 30_000, expected: ["Arrhes versées : 300 €"], absent: "" },
+    { paid: 75_000, expected: ["Arrhes versées : 750 €"], absent: "" },
   ];
 
   for (const depositCase of cases) {
-    const input = contractInput();
+    const input = contractInput({
+      ...contractDefinition,
+      body: "Arrhes prévues : [[reservation.arrhes_prevues_formatees]]\nArrhes versées : [[reservation.arrhes_versees_formatees]]",
+    });
     input.financials = {
       ...input.financials!,
       paidCents: depositCase.paid,
@@ -422,15 +414,20 @@ test("renders contractual deposit cases without claiming unpaid amounts were rec
       depositRemainingCents: Math.max(0, 75_000 - depositCase.paid),
       balanceAfterFullDepositCents: 175_000,
     });
-    const paragraphs = buildDocumentPdfPresentation(built.snapshot, built.templateDefinition)
-      ?.sections.find((section) => section.id === "financials")?.paragraphs ?? [];
-    expect(paragraphs).toEqual(expect.arrayContaining(depositCase.expected));
-    if (depositCase.absent) expect(paragraphs.join(" ")).not.toContain(depositCase.absent);
+    const freeBody = buildDocumentPdfPresentation(built.snapshot, built.templateDefinition)?.freeBody ?? "";
+    expect(freeBody).toContain("Arrhes prévues : 750 €");
+    for (const expected of depositCase.expected) {
+      expect(freeBody).toContain(expected);
+    }
+    if (depositCase.absent) expect(freeBody).not.toContain(depositCase.absent);
   }
 });
 
 test("renders an archived version 1 snapshot without the newly added optional fields", async () => {
-  const input = contractInput();
+  const input = contractInput({
+    ...contractDefinition,
+    body: "Éleveur : [[vendeur.nom_commercial]]\nProjet : [[projet.portee_ou_groupe]]\nPrix : [[reservation.prix_formate]]",
+  });
   input.sources.litterId = "66666666-6666-4666-8666-666666666666";
   input.adoptionProject.litter = {
     id: input.sources.litterId,
@@ -456,23 +453,16 @@ test("renders an archived version 1 snapshot without the newly added optional fi
   expect(rendered.outcome).toBe("success");
 });
 
-test("renders long legal sections across pages without persistent files", async () => {
-  const longParagraphs = Array.from({ length: 3 }, (_, index) =>
-    `Paragraphe long ${index + 1}. ${"Texte contractuel fourni par le modèle, avec accents français et pagination automatique. ".repeat(8)}`,
-  );
+test("renders long free-body legal text across pages without persistent files", async () => {
+  const filler = "Texte contractuel fourni par le modèle, avec accents français et pagination automatique. ";
   const longDefinition: ReservationContractTemplateDefinition = {
     ...contractDefinition,
-    preamble: longParagraphs,
-    clauses: {
-      reservationPurpose: longParagraphs,
-      priceAndPayments: longParagraphs,
-      deposit: longParagraphs,
-      cancellationAndRefund: longParagraphs,
-      postponementAndCredit: longParagraphs,
-      potentialWithholding: longParagraphs,
-      finalConditions: longParagraphs,
-    },
+    body: Array.from({ length: 10 }, (_, index) =>
+      `Paragraphe long ${index + 1}. ${filler.repeat(30)}`,
+    ).join("\n\n"),
   };
+  expect(longDefinition.body.length).toBeGreaterThan(20_000);
+  expect(longDefinition.body.length).toBeLessThanOrEqual(30_000);
   const input = contractInput(longDefinition);
   const built = successfulBuild(input);
   const rendered = await renderDocumentPdfCore({
@@ -482,7 +472,7 @@ test("renders long legal sections across pages without persistent files", async 
   });
   expect(rendered.outcome).toBe("success");
   if (rendered.outcome !== "success") throw new Error("Expected long PDF");
-  expect(rendered.bytes.byteLength).toBeGreaterThan(8_000);
+  expect(rendered.bytes.byteLength).toBeGreaterThan(6_000);
   expect(
     rendered.bytes.toString("latin1").match(/\/Type \/Page\b/g)?.length ?? 0,
   ).toBeGreaterThan(2);

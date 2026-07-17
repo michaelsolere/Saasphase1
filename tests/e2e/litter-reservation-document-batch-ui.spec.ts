@@ -58,20 +58,11 @@ const viewerEmail = "litter-batch-ui-viewer@saasphase1.invalid";
 const viewerPassword = "LitterBatchUiViewer-2026!";
 
 const certificateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat groupé UI E2E",
-  introduction: ["Introduction."],
-  sections: {
-    animalNeeds: ["Besoins."],
-    health: ["Santé."],
-    educationAndBehavior: ["Éducation."],
-    costsAndConstraints: ["Contraintes."],
-    holderObligations: ["Obligations."],
-  },
-  acknowledgmentText: ["Reconnaissance."],
-  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const contractDefinition = {
@@ -415,8 +406,10 @@ test("pilote la génération groupée depuis la portée sans fuite ni effet anne
       .locator('input[name="contract_template_id"]')
       .inputValue();
     await partialSection.getByRole("button", { name: "Rejouer cette opération" }).click();
-    await expect(partialSection).toContainText("Génération partiellement terminée", { timeout: 45_000 });
-    await expect(eligibleResult).toContainText("Déjà généré par cette opération");
+    await expect(eligibleResult).toContainText("Déjà généré par cette opération", {
+      timeout: 45_000,
+    });
+    await expect(partialSection).toContainText("Génération partiellement terminée");
     await expect(eligibleResult).not.toContainText("Déjà présent");
     expect(organizationCount("documents")).toBe(rowsBeforeReplay);
     expect(storagePaths()).toEqual(pathsBeforeReplay);

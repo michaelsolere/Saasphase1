@@ -42,24 +42,11 @@ const ids = {
 } as const;
 
 const reservationContractDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat de référence",
-  preamble: ["Préambule du contrat de référence."],
-  clauses: {
-    reservationPurpose: ["Objet de la réservation."],
-    priceAndPayments: ["Prix et modalités de paiement."],
-    deposit: ["Conditions relatives aux arrhes."],
-    cancellationAndRefund: ["Conditions d’annulation et de remboursement."],
-    postponementAndCredit: ["Conditions de report et d’avoir."],
-    potentialWithholding: ["Conditions d’une éventuelle retenue."],
-    finalConditions: ["Conditions finales de la réservation."],
-  },
-  signatureLabels: {
-    breeder: "L’éleveur",
-    reservingParty: "Le réservant",
-  },
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function reservationContractContent(title: string) {

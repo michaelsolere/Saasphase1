@@ -19,44 +19,54 @@ const templateIds = [
 ] as const;
 
 const commitmentCertificate: CommitmentCertificateTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat d’engagement",
-  introduction: ["Texte introductif stable."],
-  sections: {
-    animalNeeds: ["Besoins de l’animal."],
-    health: ["Principes de santé."],
-    educationAndBehavior: ["Éducation et comportement."],
-    costsAndConstraints: ["Coûts et contraintes."],
-    holderObligations: ["Obligations du détenteur."],
-  },
-  acknowledgmentText: ["Texte de reconnaissance."],
-  signatureLabels: {
-    holder: "Le détenteur",
-    issuer: "Le cédant",
-  },
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 const reservationContract: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat de réservation",
-  preamble: ["Préambule stable."],
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]\nPrix : [[reservation.prix_formate]]",
+};
+
+const v1ContractShape = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat V1",
+  preamble: ["Préambule."],
   clauses: {
-    reservationPurpose: ["Objet de la réservation."],
-    priceAndPayments: ["Prix et paiements."],
+    reservationPurpose: ["Objet."],
+    priceAndPayments: ["Prix."],
     deposit: ["Arrhes."],
-    cancellationAndRefund: ["Annulation et remboursement."],
-    postponementAndCredit: ["Report et avoir."],
-    potentialWithholding: ["Retenue éventuelle."],
-    finalConditions: ["Conditions finales."],
+    cancellationAndRefund: ["Annulation."],
+    postponementAndCredit: ["Report."],
+    potentialWithholding: ["Retenue."],
+    finalConditions: ["Final."],
   },
-  signatureLabels: {
-    breeder: "L’éleveur",
-    reservingParty: "Le réservant",
+  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+};
+
+const v1CertificateShape = {
+  schemaVersion: 1,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat V1",
+  introduction: ["Introduction."],
+  sections: {
+    animalNeeds: ["Besoins."],
+    health: ["Santé."],
+    educationAndBehavior: ["Éducation."],
+    costsAndConstraints: ["Coûts."],
+    holderObligations: ["Obligations."],
   },
+  acknowledgmentText: ["Reconnaissance."],
+  signatureLabels: { holder: "Détenteur", issuer: "Cédant" },
 };
 
 function parse(
@@ -145,6 +155,14 @@ test("validates versioned JSON document template definitions and SQL constraints
         schemaVersion: 3,
       }),
     ).toEqual({ success: false, error: "unsupported_schema_version" });
+    expect(parse("reservation_contract", v1ContractShape)).toEqual({
+      success: false,
+      error: "unsupported_schema_version",
+    });
+    expect(parse("commitment_certificate", v1CertificateShape)).toEqual({
+      success: false,
+      error: "unsupported_schema_version",
+    });
     expect(parse("commitment_certificate", reservationContract)).toEqual({
       success: false,
       error: "document_type_mismatch",
@@ -155,16 +173,13 @@ test("validates versioned JSON document template definitions and SQL constraints
         unexpected: true,
       }),
     ).toEqual({ success: false, error: "invalid_template_content" });
-
-    const missingSection = structuredClone(commitmentCertificate) as Record<
-      string,
-      unknown
-    >;
-    delete (missingSection.sections as Record<string, unknown>).health;
-    expect(parse("commitment_certificate", missingSection)).toEqual({
-      success: false,
-      error: "invalid_template_content",
-    });
+    expect(
+      parse("reservation_contract", {
+        ...reservationContract,
+        preamble: ["x"],
+        clauses: {},
+      }),
+    ).toEqual({ success: false, error: "invalid_template_content" });
 
     expect(
       parse("reservation_contract", {
@@ -175,13 +190,13 @@ test("validates versioned JSON document template definitions and SQL constraints
     expect(
       parse("reservation_contract", {
         ...reservationContract,
-        preamble: [],
+        body: "   ",
       }),
     ).toEqual({ success: false, error: "invalid_template_content" });
     expect(
       parse("reservation_contract", {
         ...reservationContract,
-        preamble: ["x".repeat(2_001)],
+        body: "x".repeat(30_001),
       }),
     ).toEqual({ success: false, error: "invalid_template_content" });
     expect(parse("reservation_contract", reservationContract, "html")).toEqual(

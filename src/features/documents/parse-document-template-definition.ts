@@ -1,13 +1,13 @@
 import {
   DOCUMENT_TEMPLATE_SCHEMA_VERSION,
-  FREE_RESERVATION_CONTRACT_SCHEMA_VERSION,
   documentTemplateDefinitionSchema,
   type DocumentTemplateDefinition,
   type DocumentTemplateType,
 } from "./document-template-definition-schemas";
 import {
-  parseFreeReservationContractBody,
-  parseReservationContractVariables,
+  getDocumentTemplateVariableCatalog,
+  parseFreeDocumentTemplateBody,
+  parseDocumentTemplateVariables,
   type TemplateFormattingIssue,
   type TemplateVariableIssue,
 } from "./reservation-contract-template-variables";
@@ -71,8 +71,7 @@ export function parseDocumentTemplateDefinition({
 
   if (
     "schemaVersion" in parsedContent &&
-    parsedContent.schemaVersion !== DOCUMENT_TEMPLATE_SCHEMA_VERSION &&
-    parsedContent.schemaVersion !== FREE_RESERVATION_CONTRACT_SCHEMA_VERSION
+    parsedContent.schemaVersion !== DOCUMENT_TEMPLATE_SCHEMA_VERSION
   ) {
     return { success: false, error: "unsupported_schema_version" };
   }
@@ -93,34 +92,37 @@ export function parseDocumentTemplateDefinition({
     return { success: false, error: "document_type_mismatch" };
   }
 
-  if (result.data.schemaVersion === FREE_RESERVATION_CONTRACT_SCHEMA_VERSION) {
-    if (result.data.title.includes("**")) {
-      return {
-        success: false,
-        error: "invalid_template_formatting",
-        formattingIssues: [{ code: "formatting_in_title", offset: result.data.title.indexOf("**") }],
-      };
-    }
-    const titleVariables = parseReservationContractVariables(result.data.title);
-    const body = parseFreeReservationContractBody(result.data.body);
-    if (!body.success && body.error === "invalid_template_formatting") {
-      return {
-        success: false,
-        error: body.error,
-        formattingIssues: body.issues,
-      };
-    }
-    const issues = [
-      ...(titleVariables.success ? [] : titleVariables.issues),
-      ...(body.success ? [] : body.issues),
-    ];
-    if (issues.length > 0) {
-      return {
-        success: false,
-        error: "invalid_template_variables",
-        variableIssues: issues.slice(0, 50),
-      };
-    }
+  const catalog = getDocumentTemplateVariableCatalog(result.data.documentType);
+
+  if (result.data.title.includes("**")) {
+    return {
+      success: false,
+      error: "invalid_template_formatting",
+      formattingIssues: [
+        { code: "formatting_in_title", offset: result.data.title.indexOf("**") },
+      ],
+    };
+  }
+
+  const titleVariables = parseDocumentTemplateVariables(result.data.title, catalog);
+  const body = parseFreeDocumentTemplateBody(result.data.body, catalog);
+  if (!body.success && body.error === "invalid_template_formatting") {
+    return {
+      success: false,
+      error: body.error,
+      formattingIssues: body.issues,
+    };
+  }
+  const issues = [
+    ...(titleVariables.success ? [] : titleVariables.issues),
+    ...(body.success ? [] : body.issues),
+  ];
+  if (issues.length > 0) {
+    return {
+      success: false,
+      error: "invalid_template_variables",
+      variableIssues: issues.slice(0, 50),
+    };
   }
 
   return { success: true, definition: result.data };

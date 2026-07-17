@@ -14,44 +14,19 @@ import type {
 import { createDocumentTemplatePreviewSnapshot } from "../../src/features/documents/document-template-preview-snapshot";
 
 const contractDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "reservation_contract",
   title: "Contrat aperçu déterministe",
-  preamble: ["Préambule visible dans l’aperçu."],
-  clauses: {
-    reservationPurpose: ["Objet local visible."],
-    priceAndPayments: ["Prix local visible."],
-    deposit: ["Arrhes locales visibles."],
-    cancellationAndRefund: ["Annulation locale visible."],
-    postponementAndCredit: ["Report local visible."],
-    potentialWithholding: ["Retenue locale visible."],
-    finalConditions: ["Conditions finales locales visibles."],
-  },
-  signatureLabels: {
-    breeder: "Signature éleveur fictif",
-    reservingParty: "Signature adoptant fictif",
-  },
+  body: "Préambule visible dans l’aperçu.\nObjet local visible.\nAdoptant : [[adoptant.nom_complet]]\nPrix : [[reservation.prix_formate]]",
 };
 
 const certificateDefinition: CommitmentCertificateTemplateDefinition = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   locale: "fr-FR",
   documentType: "commitment_certificate",
   title: "Certificat aperçu déterministe",
-  introduction: ["Introduction visible dans l’aperçu."],
-  sections: {
-    animalNeeds: ["Besoins visibles."],
-    health: ["Santé visible."],
-    educationAndBehavior: ["Éducation visible."],
-    costsAndConstraints: ["Contraintes visibles."],
-    holderObligations: ["Obligations visibles."],
-  },
-  acknowledgmentText: ["Reconnaissance visible."],
-  signatureLabels: {
-    holder: "Signature détenteur fictif",
-    issuer: "Signature émetteur fictif",
-  },
+  body: "Introduction visible dans l’aperçu.\nBesoins visibles.\nAdoptant : [[adoptant.nom_complet]]\nAnimal : [[animal.nom]]",
 };
 
 function expectPdf(bytes: Uint8Array) {
@@ -95,7 +70,7 @@ test("construit des snapshots fictifs déterministes et valides pour les deux ty
   expect(contract.mediator.name).toContain("fictif");
 });
 
-test("présente les sections automatiques et tout le contenu local du modèle", () => {
+test("présente le titre et le corps libre résolu sans sections automatiques", () => {
   const contractPresentation = buildDocumentPdfPresentation(
     createDocumentTemplatePreviewSnapshot("reservation_contract"),
     contractDefinition,
@@ -105,28 +80,20 @@ test("présente les sections automatiques et tout le contenu local du modèle", 
     certificateDefinition,
   );
 
-  expect(contractPresentation?.sections.map(({ id }) => id)).toEqual([
-    "seller", "adopter", "project", "parentage", "availability", "preparation",
-    "financials", "mediator", "preamble", "reservationPurpose",
-    "priceAndPayments", "deposit", "cancellationAndRefund",
-    "postponementAndCredit", "potentialWithholding", "finalConditions",
-    "signatures",
-  ]);
-  expect(contractPresentation?.sections.flatMap(({ paragraphs }) => paragraphs))
-    .toEqual(expect.arrayContaining([
-      ...contractDefinition.preamble,
-      ...Object.values(contractDefinition.clauses).flat(),
-      "Animal attribué : Nova",
-      "Rang de choix : 2",
-      "Les chiots de cette portée seront disponibles à partir du 27 juin 2026.",
-    ]));
-  expect(certificatePresentation?.sections.flatMap(({ paragraphs }) => paragraphs))
-    .toEqual(expect.arrayContaining([
-      ...certificateDefinition.introduction,
-      ...Object.values(certificateDefinition.sections).flat(),
-      ...certificateDefinition.acknowledgmentText,
-      "Animal attribué : Nova",
-    ]));
+  expect(contractPresentation?.sections).toEqual([]);
+  expect(contractPresentation?.title).toBe(contractDefinition.title);
+  expect(contractPresentation?.freeBody).toContain("Préambule visible dans l’aperçu.");
+  expect(contractPresentation?.freeBody).toContain("Objet local visible.");
+  expect(contractPresentation?.freeBody).toContain("Adoptant :");
+  expect(contractPresentation?.freeBody).toContain("Prix :");
+  expect(contractPresentation?.freeBody).not.toContain("[[");
+
+  expect(certificatePresentation?.sections).toEqual([]);
+  expect(certificatePresentation?.title).toBe(certificateDefinition.title);
+  expect(certificatePresentation?.freeBody).toContain("Introduction visible dans l’aperçu.");
+  expect(certificatePresentation?.freeBody).toContain("Besoins visibles.");
+  expect(certificatePresentation?.freeBody).toContain("Nova");
+  expect(certificatePresentation?.freeBody).not.toContain("[[");
 });
 
 test("rend contrat et certificat avec le composant React PDF partagé", async () => {

@@ -5,44 +5,43 @@ export const documentTemplateTypePresentations: Record<
   {
     label: string;
     description: string;
-    automaticContent: readonly string[];
+    editorHeading: string;
+    editorDescription: string;
+    bodyLabel: string;
   }
 > = {
   commitment_certificate: {
     label: "Certificat d’engagement",
-    description: "Informations, responsabilités et signatures du certificat.",
-    automaticContent: [
-      "vendeur et élevage",
-      "acquéreur et coordonnées",
-      "projet d’adoption, portée, sexe et rang de choix",
-      "parentage et identifiants disponibles",
-      "date de disponibilité fixée sur la portée",
-      "ville et date de préparation",
-    ],
+    description: "Titre libre, corps libre et variables du certificat.",
+    editorHeading: "Certificat libre",
+    editorDescription:
+      "Composez librement le certificat et insérez les données à l’endroit souhaité.",
+    bodyLabel: "Contenu du certificat",
   },
   reservation_contract: {
     label: "Contrat de réservation",
-    description: "Préambule, clauses contractuelles et signatures.",
-    automaticContent: [
-      "vendeur et élevage",
-      "acquéreur et coordonnées",
-      "projet d’adoption, portée, sexe et rang de choix",
-      "parentage et identifiants disponibles",
-      "date de disponibilité fixée sur la portée",
-      "prix, arrhes convenues, arrhes reçues, complément et solde",
-      "ville et date de préparation",
-      "médiateur lorsqu’il est configuré",
-    ],
+    description: "Titre libre, corps libre et variables du contrat.",
+    editorHeading: "Contrat libre",
+    editorDescription:
+      "Composez librement le contrat et insérez les données à l’endroit souhaité.",
+    bodyLabel: "Contenu du contrat",
   },
 };
 
-export const creatableStructuredDocumentTemplateTypes = [
+export const creatableDocumentTemplateTypes = [
   "commitment_certificate",
   "reservation_contract",
 ] as const satisfies readonly DocumentTemplateType[];
 
-export function hasStructuredDocumentTemplateEditor(
+/** @deprecated Use creatableDocumentTemplateTypes */
+export const creatableStructuredDocumentTemplateTypes =
+  creatableDocumentTemplateTypes;
+
+export function hasDocumentTemplateEditor(
   documentType: string,
 ): documentType is DocumentTemplateType {
   return Object.hasOwn(documentTemplateTypePresentations, documentType);
 }
+
+/** @deprecated Use hasDocumentTemplateEditor */
+export const hasStructuredDocumentTemplateEditor = hasDocumentTemplateEditor;

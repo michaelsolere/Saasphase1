@@ -13,7 +13,7 @@ import {
   type DocumentTemplateManagementErrorCode,
 } from "@/features/documents/document-template-management";
 import { createInitialDocumentTemplateDefinition } from "@/features/documents/create-initial-document-template-definition";
-import { hasStructuredDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
+import { hasDocumentTemplateEditor } from "@/features/documents/document-template-editor-config";
 import { resolveCurrentDocumentTemplateOrganization } from "@/features/documents/document-template-management-context";
 
 export type DocumentTemplateActionResult =
@@ -69,7 +69,7 @@ export async function createDocumentTemplateFamilyAction(input: {
   const organization = await resolveCurrentDocumentTemplateOrganization();
   if (!organization) return neutralCreationError("forbidden");
 
-  if (!hasStructuredDocumentTemplateEditor(input.documentType)) {
+  if (!hasDocumentTemplateEditor(input.documentType)) {
     return neutralCreationError("invalid_input");
   }
 

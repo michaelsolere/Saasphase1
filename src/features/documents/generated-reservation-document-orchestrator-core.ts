@@ -22,7 +22,7 @@ import {
   type PrepareDocumentGenerationSnapshotResult,
 } from "./prepare-document-generation-snapshot-core";
 import type { Database } from "@/types/database.types";
-import { resolveFreeReservationContractDefinition } from "./reservation-contract-template-variables";
+import { resolveFreeDocumentTemplateDefinition } from "./reservation-contract-template-variables";
 
 type Supabase = SupabaseClient<Database>;
 type SupportedDocumentType =
@@ -275,29 +275,23 @@ export async function generateAndStoreReservationDocumentPdfCore(
     return fail("render", rendered.error.code);
   }
 
-  let documentTitle = prepared.templateDefinition.title;
-  if (
-    prepared.templateDefinition.schemaVersion === 2 &&
-    prepared.snapshot.documentType === "reservation_contract"
-  ) {
-    const resolvedDefinition = resolveFreeReservationContractDefinition({
-      definition: prepared.templateDefinition,
-      snapshot: prepared.snapshot,
-    });
-    if (!resolvedDefinition.success) {
-      return fail(
-        "render",
-        resolvedDefinition.error === "missing_template_variables"
-          ? "missing_template_variables"
-          : resolvedDefinition.error === "invalid_template_variable_value"
-            ? "invalid_template_variable_value"
-          : resolvedDefinition.error === "invalid_template_formatting"
-            ? "invalid_template_formatting"
-          : "invalid_template",
-      );
-    }
-    documentTitle = resolvedDefinition.title;
+  const resolvedDefinition = resolveFreeDocumentTemplateDefinition({
+    definition: prepared.templateDefinition,
+    snapshot: prepared.snapshot,
+  });
+  if (!resolvedDefinition.success) {
+    return fail(
+      "render",
+      resolvedDefinition.error === "missing_template_variables"
+        ? "missing_template_variables"
+        : resolvedDefinition.error === "invalid_template_variable_value"
+          ? "invalid_template_variable_value"
+        : resolvedDefinition.error === "invalid_template_formatting"
+          ? "invalid_template_formatting"
+        : "invalid_template",
+    );
   }
+  const documentTitle = resolvedDefinition.title;
 
   const currentDocument = await supabase
     .from("documents")

@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 
 import { CreateNextReservationDocumentVariantVersionButton } from "@/features/documents/create-next-reservation-document-variant-version-button";
 import { decodeDocumentTemplateDraft } from "@/features/documents/decode-document-template-draft";
-import { DocumentTemplateAutomaticContent } from "@/features/documents/document-template-automatic-content";
 import { getDocumentTypeLabel } from "@/features/documents/formatters";
 import { ReservationDocumentVariantEditor } from "@/features/documents/reservation-document-variant-editor";
 import { listReservationDocumentVariantVersions } from "@/features/documents/reservation-document-variant-management";
@@ -85,9 +84,6 @@ export default async function ReservationDocumentVariantPage({
         templateContent: draft.templateContent,
       })
     : null;
-  const activeDefinition = draftDefinition ?? (
-    publicationDefinition?.success ? publicationDefinition.definition : null
-  );
   const canSave = listed.role !== "viewer";
   const canPublish = listed.role === "admin" || listed.role === "owner";
   const logo = activeLogo.ok && activeLogo.logo ? {
@@ -132,10 +128,6 @@ export default async function ReservationDocumentVariantPage({
             </div>
           ) : <p className="mt-3 text-sm text-muted">Aucune version publiée.</p>}
         </section>
-
-        {activeDefinition && activeDefinition.schemaVersion !== 2 ? (
-          <DocumentTemplateAutomaticContent documentType={listed.variant.documentType as DocumentTemplateType} />
-        ) : null}
 
         <section className="rounded-2xl border bg-surface p-5 shadow-sm sm:p-7">
           <h2 className="text-xl font-semibold">Brouillon courant</h2>

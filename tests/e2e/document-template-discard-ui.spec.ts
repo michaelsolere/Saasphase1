@@ -16,16 +16,18 @@ const ids = {
 const fixtureNamePrefix = "E2E discard UI ";
 
 const contractDefinition: ReservationContractTemplateDefinition = {
-  schemaVersion: 1, locale: "fr-FR", documentType: "reservation_contract", title: "Contrat destructif E2E",
-  preamble: ["Préambule."],
-  clauses: { reservationPurpose: ["Objet."], priceAndPayments: ["Prix."], deposit: ["Arrhes."], cancellationAndRefund: ["Annulation."], postponementAndCredit: ["Report."], potentialWithholding: ["Retenue."], finalConditions: ["Final."] },
-  signatureLabels: { breeder: "Éleveur", reservingParty: "Réservant" },
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "reservation_contract",
+  title: "Contrat destructif E2E",
+  body: "Contenu E2E du contrat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 const certificateDefinition: CommitmentCertificateTemplateDefinition = {
-  schemaVersion: 1, locale: "fr-FR", documentType: "commitment_certificate", title: "Certificat destructif E2E",
-  introduction: ["Introduction."],
-  sections: { animalNeeds: ["Besoins."], health: ["Santé."], educationAndBehavior: ["Éducation."], costsAndConstraints: ["Coûts."], holderObligations: ["Obligations."] },
-  acknowledgmentText: ["Reconnaissance."], signatureLabels: { holder: "Détenteur", issuer: "Émetteur" },
+  schemaVersion: 2,
+  locale: "fr-FR",
+  documentType: "commitment_certificate",
+  title: "Certificat destructif E2E",
+  body: "Contenu E2E du certificat.\nAdoptant : [[adoptant.nom_complet]]",
 };
 
 function q(value: string) { return `'${value.replaceAll("'", "''")}'`; }
@@ -67,7 +69,7 @@ function setRole(role: "owner" | "admin" | "member" | "viewer") {
   sql(`set session_replication_role = replica; update public.memberships set role = ${q(role)} where id = ${q(membershipId)}::uuid; set session_replication_role = origin;`);
 }
 
-test("présente les blocs automatiques et confirme les retraits destructifs", async ({ page }) => {
+test("présente l’éditeur libre V2 et confirme les retraits destructifs", async ({ page }) => {
   cleanup();
   expect(remainingFixtureCount()).toBe(0);
   seedFixtures();
@@ -75,9 +77,12 @@ test("présente les blocs automatiques et confirme les retraits destructifs", as
     await login(page);
 
     await page.goto(`/documents/modeles/${ids.contractFamily}`);
-    await expect(page.getByRole("heading", { name: "Contenu automatiquement ajouté au document" })).toBeVisible();
-    await expect(page.getByText("prix, arrhes convenues, arrhes reçues, complément et solde")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Clauses communes à rédiger" }).last()).toBeVisible();
+    const contractDraft = page.locator("section").filter({
+      has: page.getByRole("heading", { name: /Brouillon actuel/ }),
+    });
+    await expect(contractDraft.getByRole("heading", { name: "Contrat libre" })).toBeVisible();
+    await expect(contractDraft.getByLabel("Contenu du contrat")).toBeVisible();
+    await expect(contractDraft.getByLabel("Insérer une donnée")).toBeVisible();
     await expect(page.getByRole("button", { name: "Supprimer ce modèle de référence" })).toBeVisible();
 
     setRole("member");
@@ -106,7 +111,11 @@ test("présente les blocs automatiques et confirme les retraits destructifs", as
     expect(sql(`select deleted_at is not null from public.document_template_families where id = ${q(ids.contractFamily)}::uuid;`)).toBe("t");
 
     await page.goto(`/documents/modeles/${ids.certificateFamily}`);
-    await expect(page.getByRole("heading", { name: "Contenu automatiquement ajouté au document" })).toBeVisible();
+    const certificateDraft = page.locator("section").filter({
+      has: page.getByRole("heading", { name: /Brouillon actuel/ }),
+    });
+    await expect(certificateDraft.getByRole("heading", { name: "Certificat libre" })).toBeVisible();
+    await expect(certificateDraft.getByLabel("Contenu du certificat")).toBeVisible();
     await expect(page.getByText("prix, arrhes convenues, arrhes reçues, complément et solde")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Abandonner le brouillon" })).toBeVisible();
     const publicationUpdatedAt = sql(`select updated_at::text from public.document_templates where id = ${q(ids.certificatePublication)}::uuid;`);

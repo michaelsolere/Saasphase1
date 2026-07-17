@@ -1,5 +1,17 @@
-import type { ReservationContractGenerationSnapshot } from "./document-generation-snapshot-schemas";
-import type { FreeReservationContractTemplateDefinition } from "./document-template-definition-schemas";
+import type {
+  CommitmentCertificateGenerationSnapshot,
+  DocumentGenerationSnapshot,
+  ReservationContractGenerationSnapshot,
+} from "./document-generation-snapshot-schemas";
+import type {
+  DocumentTemplateDefinition,
+  DocumentTemplateType,
+} from "./document-template-definition-schemas";
+
+/** Snapshots supported by free V2 template variable resolution. */
+export type DocumentTemplateGenerationSnapshot =
+  | ReservationContractGenerationSnapshot
+  | CommitmentCertificateGenerationSnapshot;
 
 export type ReservationContractVariableCategory =
   | "Vendeur"
@@ -15,7 +27,7 @@ type VariableDefinition = {
   label: string;
   missingLabel: string;
   category: ReservationContractVariableCategory;
-  resolve: (snapshot: ReservationContractGenerationSnapshot) => string | null;
+  resolve: (snapshot: DocumentGenerationSnapshot) => string | null;
 };
 
 export type TemplateVariableIssue = {
@@ -61,9 +73,13 @@ export type ParseFreeReservationContractBodyResult =
   | { success: false; error: "invalid_template_formatting"; issues: TemplateFormattingIssue[] }
   | { success: false; error: "invalid_template_variables"; issues: TemplateVariableIssue[] };
 
+export type ParseFreeDocumentTemplateBodyResult = ParseFreeReservationContractBodyResult;
+
 export type ParseReservationContractVariablesResult =
   | { success: true; segments: TemplateSegment[]; variables: string[] }
   | { success: false; issues: TemplateVariableIssue[] };
+
+export type ParseDocumentTemplateVariablesResult = ParseReservationContractVariablesResult;
 
 export type ResolveReservationContractTextResult =
   | { success: true; text: string; missingVariables: string[] }
@@ -77,6 +93,8 @@ export type ResolveReservationContractTextResult =
       missingVariables?: string[];
       invalidVariables?: string[];
     };
+
+export type ResolveDocumentTemplateTextResult = ResolveReservationContractTextResult;
 
 export type ResolveFreeReservationContractBodyResult =
   | {
@@ -98,6 +116,8 @@ export type ResolveFreeReservationContractBodyResult =
       invalidVariables?: string[];
     };
 
+export type ResolveFreeDocumentTemplateBodyResult = ResolveFreeReservationContractBodyResult;
+
 const compact = (values: Array<string | null | undefined>) =>
   values.filter((value): value is string => Boolean(value?.trim()));
 
@@ -105,7 +125,7 @@ function normalizeIdentityPart(value: string | null | undefined) {
   return value?.trim().replace(/\s+/g, " ") || null;
 }
 
-function resolveSellerFullIdentity(snapshot: ReservationContractGenerationSnapshot) {
+function resolveSellerFullIdentity(snapshot: DocumentGenerationSnapshot) {
   const signerName = normalizeIdentityPart(snapshot.signer?.displayName);
   const organizationName = normalizeIdentityPart(snapshot.seller.legalName)
     ?? normalizeIdentityPart(snapshot.seller.tradeName);
@@ -119,7 +139,7 @@ function resolveSellerFullIdentity(snapshot: ReservationContractGenerationSnapsh
 }
 
 function formatAddress(
-  address: ReservationContractGenerationSnapshot["seller"]["address"],
+  address: DocumentGenerationSnapshot["seller"]["address"],
   country: string | null,
 ) {
   if (!address && !country) return null;
@@ -222,6 +242,14 @@ const legalFormLabels: Record<string, string> = {
   association: "Association", other: "Autre",
 };
 
+const FINANCE_ONLY_VARIABLE_KEYS = new Set([
+  "reservation.prix_formate",
+  "reservation.prix_en_lettres",
+  "reservation.arrhes_prevues_formatees",
+  "reservation.arrhes_versees_formatees",
+  "reservation.solde_formate",
+]);
+
 const variable = (
   key: string,
   label: string,
@@ -229,6 +257,13 @@ const variable = (
   category: ReservationContractVariableCategory,
   resolve: VariableDefinition["resolve"],
 ): VariableDefinition => ({ key, label, missingLabel, category, resolve });
+
+function resolveReservationFinancials(
+  snapshot: DocumentGenerationSnapshot,
+): ReservationContractGenerationSnapshot["financials"] | null {
+  if (snapshot.documentType !== "reservation_contract") return null;
+  return snapshot.financials;
+}
 
 export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[] = [
   variable("vendeur.identite_complete", "Identité complète", "identité complète du vendeur", "Vendeur", resolveSellerFullIdentity),
@@ -257,18 +292,41 @@ export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[
   variable("animal.numero_lof", "Numéro LOF", "numéro LOF de l’animal", "Projet et animal", (s) => s.adoptionProject.animal?.lofNumber ?? null),
   variable("animal.couleur", "Couleur / robe", "couleur de robe de l’animal", "Projet et animal", (s) => s.adoptionProject.animal?.color ?? null),
   variable("reservation.rang_choix", "Rang de choix", "rang de choix de la réservation", "Réservation et finances", (s) => s.reservation.choiceRank?.toString() ?? null),
-  variable("reservation.prix_formate", "Prix formaté", "prix de la réservation", "Réservation et finances", (s) => s.financials.priceCents === null ? null : formatFrenchMoney(s.financials.priceCents, s.financials.currency)),
-  variable("reservation.prix_en_lettres", "Prix en lettres", "prix de la réservation", "Réservation et finances", (s) => s.financials.priceCents === null ? null : formatFrenchMoneyInWords(s.financials.priceCents, s.financials.currency)),
-  variable("reservation.arrhes_prevues_formatees", "Arrhes prévues", "montant des arrhes prévues", "Réservation et finances", (s) => formatFrenchMoney(s.financials.depositTargetCents ?? s.financials.fullDepositTargetCents, s.financials.currency)),
-  variable("reservation.arrhes_versees_formatees", "Arrhes versées", "montant des arrhes versées", "Réservation et finances", (s) => formatFrenchMoney(s.financials.depositPaidCents, s.financials.currency)),
-  variable("reservation.solde_formate", "Solde", "solde de la réservation", "Réservation et finances", (s) => s.financials.remainingCents === null ? null : formatFrenchMoney(s.financials.remainingCents, s.financials.currency)),
+  variable("reservation.prix_formate", "Prix formaté", "prix de la réservation", "Réservation et finances", (s) => {
+    const financials = resolveReservationFinancials(s);
+    if (!financials || financials.priceCents === null) return null;
+    return formatFrenchMoney(financials.priceCents, financials.currency);
+  }),
+  variable("reservation.prix_en_lettres", "Prix en lettres", "prix de la réservation", "Réservation et finances", (s) => {
+    const financials = resolveReservationFinancials(s);
+    if (!financials || financials.priceCents === null) return null;
+    return formatFrenchMoneyInWords(financials.priceCents, financials.currency);
+  }),
+  variable("reservation.arrhes_prevues_formatees", "Arrhes prévues", "montant des arrhes prévues", "Réservation et finances", (s) => {
+    const financials = resolveReservationFinancials(s);
+    if (!financials) return null;
+    return formatFrenchMoney(
+      financials.depositTargetCents ?? financials.fullDepositTargetCents,
+      financials.currency,
+    );
+  }),
+  variable("reservation.arrhes_versees_formatees", "Arrhes versées", "montant des arrhes versées", "Réservation et finances", (s) => {
+    const financials = resolveReservationFinancials(s);
+    if (!financials) return null;
+    return formatFrenchMoney(financials.depositPaidCents, financials.currency);
+  }),
+  variable("reservation.solde_formate", "Solde", "solde de la réservation", "Réservation et finances", (s) => {
+    const financials = resolveReservationFinancials(s);
+    if (!financials || financials.remainingCents === null) return null;
+    return formatFrenchMoney(financials.remainingCents, financials.currency);
+  }),
   variable("portee.nom", "Nom de la portée", "nom de la portée", "Portée et parents", (s) => s.adoptionProject.litter?.name ?? null),
   variable("portee.date_naissance", "Date de naissance", "date de naissance de la portée", "Portée et parents", (s) => formatFrenchDate(s.adoptionProject.litter?.actualBirthDate)),
   variable("portee.date_disponibilite", "Date de disponibilité", "date de disponibilité de la portée", "Portée et parents", (s) => formatFrenchDate(s.adoptionProject.litter?.availableFrom)),
   ...(["mother", "father"] as const).flatMap((parent) => {
     const prefix = parent === "mother" ? "portee.mere" : "portee.pere";
     const subject = parent === "mother" ? "mère" : "père";
-    const get = (s: ReservationContractGenerationSnapshot) => s.adoptionProject.litter?.[parent];
+    const get = (s: DocumentGenerationSnapshot) => s.adoptionProject.litter?.[parent];
     return [
       variable(`${prefix}.nom`, `Nom ${subject}`, `nom du ${subject}`, "Portée et parents", (s) => get(s)?.officialName ?? get(s)?.callName ?? null),
       variable(`${prefix}.identification`, `Identification ${subject}`, `identification du ${subject}`, "Portée et parents", (s) => get(s)?.identification ?? null),
@@ -280,13 +338,30 @@ export const RESERVATION_CONTRACT_VARIABLE_CATALOG: readonly VariableDefinition[
   variable("document.date_generation", "Date de génération", "date de génération", "Document", (s) => formatFrenchDate(s.capturedAt)),
 ] as const;
 
-const VARIABLE_BY_KEY = new Map(
-  RESERVATION_CONTRACT_VARIABLE_CATALOG.map((item) => [item.key, item]),
-);
+export const COMMITMENT_CERTIFICATE_VARIABLE_CATALOG: readonly VariableDefinition[] =
+  RESERVATION_CONTRACT_VARIABLE_CATALOG.filter(
+    (item) => !FINANCE_ONLY_VARIABLE_KEYS.has(item.key),
+  );
+
+export function getDocumentTemplateVariableCatalog(
+  documentType: DocumentTemplateType,
+): readonly VariableDefinition[] {
+  return documentType === "commitment_certificate"
+    ? COMMITMENT_CERTIFICATE_VARIABLE_CATALOG
+    : RESERVATION_CONTRACT_VARIABLE_CATALOG;
+}
+
+function catalogByKey(
+  catalog: readonly VariableDefinition[],
+): Map<string, VariableDefinition> {
+  return new Map(catalog.map((item) => [item.key, item]));
+}
 
 export function parseReservationContractVariables(
   text: string,
+  catalog: readonly VariableDefinition[] = RESERVATION_CONTRACT_VARIABLE_CATALOG,
 ): ParseReservationContractVariablesResult {
+  const variableByKey = catalogByKey(catalog);
   const segments: TemplateSegment[] = [];
   const variables = new Set<string>();
   const issues: TemplateVariableIssue[] = [];
@@ -321,7 +396,7 @@ export function parseReservationContractVariables(
       issues.push({ code: "forbidden_characters", token, offset: opener, message: `Caractères interdits dans ${token}.` });
     } else if (!/^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)) {
       issues.push({ code: "invalid_syntax", token, offset: opener, message: `Syntaxe incorrecte pour ${token}.` });
-    } else if (!VARIABLE_BY_KEY.has(key)) {
+    } else if (!variableByKey.has(key)) {
       issues.push({ code: "unknown_variable", token, offset: opener, message: `Variable inconnue : ${token}.` });
     } else {
       segments.push({ type: "variable", key });
@@ -334,22 +409,27 @@ export function parseReservationContractVariables(
     : { success: true, segments, variables: [...variables] };
 }
 
+export const parseDocumentTemplateVariables = parseReservationContractVariables;
+
 export function resolveReservationContractText({
   text,
   snapshot,
   allowMissingTemplateVariables = false,
+  catalog = RESERVATION_CONTRACT_VARIABLE_CATALOG,
 }: {
   text: string;
-  snapshot: ReservationContractGenerationSnapshot;
+  snapshot: DocumentGenerationSnapshot;
   allowMissingTemplateVariables?: boolean;
+  catalog?: readonly VariableDefinition[];
 }): ResolveReservationContractTextResult {
-  const parsed = parseReservationContractVariables(text);
+  const variableByKey = catalogByKey(catalog);
+  const parsed = parseReservationContractVariables(text, catalog);
   if (!parsed.success) return { success: false, error: "invalid_template_variables", issues: parsed.issues };
   const missingVariables = new Set<string>();
   const invalidVariables = new Set<string>();
   const resolved = parsed.segments.map((segment) => {
     if (segment.type === "text") return segment.value;
-    const definition = VARIABLE_BY_KEY.get(segment.key)!;
+    const definition = variableByKey.get(segment.key)!;
     const value = definition.resolve(snapshot);
     if (value !== null && value !== undefined && value !== "") {
       if (value.includes("[[") || value.includes("]]")) {
@@ -374,13 +454,16 @@ export function resolveReservationContractText({
   return { success: true, text: resolved, missingVariables: [...missingVariables] };
 }
 
+export const resolveDocumentTemplateText = resolveReservationContractText;
+
 function appendTemplateNodes(
   nodes: FreeTextTemplateNode[],
   value: string,
   bold: boolean,
+  catalog: readonly VariableDefinition[],
 ): TemplateVariableIssue[] {
   if (!value) return [];
-  const parsed = parseReservationContractVariables(value);
+  const parsed = parseReservationContractVariables(value, catalog);
   if (!parsed.success) return parsed.issues;
   for (const segment of parsed.segments) {
     nodes.push(segment.type === "text"
@@ -392,6 +475,7 @@ function appendTemplateNodes(
 
 export function parseFreeReservationContractBody(
   body: string,
+  catalog: readonly VariableDefinition[] = RESERVATION_CONTRACT_VARIABLE_CATALOG,
 ): ParseFreeReservationContractBodyResult {
   const paragraphs: FreeTextTemplateParagraph[] = [];
   const variables = new Set<string>();
@@ -408,13 +492,13 @@ export function parseFreeReservationContractBody(
     while (cursor < line.length) {
       const marker = line.indexOf("**", cursor);
       if (marker === -1) {
-        const issues = appendTemplateNodes(nodes, line.slice(cursor), bold);
+        const issues = appendTemplateNodes(nodes, line.slice(cursor), bold, catalog);
         variableIssues.push(...issues.map((issue) => ({ ...issue, offset: globalOffset + cursor + issue.offset })));
         cursor = line.length;
         break;
       }
 
-      const issues = appendTemplateNodes(nodes, line.slice(cursor, marker), bold);
+      const issues = appendTemplateNodes(nodes, line.slice(cursor, marker), bold, catalog);
       variableIssues.push(...issues.map((issue) => ({ ...issue, offset: globalOffset + cursor + issue.offset })));
       const previousCharacter = marker > 0 ? line[marker - 1] : "";
       const nextCharacter = line[marker + 2] ?? "";
@@ -469,16 +553,21 @@ export function parseFreeReservationContractBody(
   return { success: true, paragraphs, variables: [...variables] };
 }
 
+export const parseFreeDocumentTemplateBody = parseFreeReservationContractBody;
+
 export function resolveFreeReservationContractBody({
   body,
   snapshot,
   allowMissingTemplateVariables = false,
+  catalog = RESERVATION_CONTRACT_VARIABLE_CATALOG,
 }: {
   body: string;
-  snapshot: ReservationContractGenerationSnapshot;
+  snapshot: DocumentGenerationSnapshot;
   allowMissingTemplateVariables?: boolean;
+  catalog?: readonly VariableDefinition[];
 }): ResolveFreeReservationContractBodyResult {
-  const parsed = parseFreeReservationContractBody(body);
+  const variableByKey = catalogByKey(catalog);
+  const parsed = parseFreeReservationContractBody(body, catalog);
   if (!parsed.success) {
     return parsed.error === "invalid_template_formatting"
       ? { success: false, error: parsed.error, formattingIssues: parsed.issues }
@@ -490,7 +579,7 @@ export function resolveFreeReservationContractBody({
   const paragraphs = parsed.paragraphs.map(({ nodes }) => ({
     runs: nodes.map((node): FreeTextRun => {
       if (node.type === "text") return { text: node.value, bold: node.bold };
-      const definition = VARIABLE_BY_KEY.get(node.key)!;
+      const definition = variableByKey.get(node.key)!;
       const value = definition.resolve(snapshot);
       if (value !== null && value !== undefined && value !== "") {
         if (value.includes("[[") || value.includes("]]")) {
@@ -521,15 +610,18 @@ export function resolveFreeReservationContractBody({
   };
 }
 
+export const resolveFreeDocumentTemplateBody = resolveFreeReservationContractBody;
+
 export function resolveFreeReservationContractDefinition({
   definition,
   snapshot,
   allowMissingTemplateVariables = false,
 }: {
-  definition: FreeReservationContractTemplateDefinition;
-  snapshot: ReservationContractGenerationSnapshot;
+  definition: DocumentTemplateDefinition;
+  snapshot: DocumentGenerationSnapshot;
   allowMissingTemplateVariables?: boolean;
 }) {
+  const catalog = getDocumentTemplateVariableCatalog(definition.documentType);
   if (definition.title.includes("**")) {
     return {
       success: false as const,
@@ -541,12 +633,14 @@ export function resolveFreeReservationContractDefinition({
     text: definition.title,
     snapshot,
     allowMissingTemplateVariables,
+    catalog,
   });
   if (!title.success) return title;
   const body = resolveFreeReservationContractBody({
     body: definition.body,
     snapshot,
     allowMissingTemplateVariables,
+    catalog,
   });
   if (!body.success) return body;
   return {
@@ -557,3 +651,6 @@ export function resolveFreeReservationContractDefinition({
     missingVariables: [...new Set([...title.missingVariables, ...body.missingVariables])],
   };
 }
+
+export const resolveFreeDocumentTemplateDefinition =
+  resolveFreeReservationContractDefinition;

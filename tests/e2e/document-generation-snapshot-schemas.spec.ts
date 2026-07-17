@@ -8,10 +8,10 @@ import {
 } from "../../src/features/documents/document-generation-snapshots";
 
 const reservationTemplateContent =
-  '{"schemaVersion":1,"locale":"fr-FR","documentType":"reservation_contract","title":"Contrat de réservation","preamble":["Préambule stable."],"clauses":{"reservationPurpose":["Objet."],"priceAndPayments":["Prix."],"deposit":["Arrhes."],"cancellationAndRefund":["Annulation."],"postponementAndCredit":["Report."],"potentialWithholding":["Retenue."],"finalConditions":["Conditions finales."]},"signatureLabels":{"breeder":"Éleveur","reservingParty":"Réservant"}}';
+  '{"schemaVersion":2,"locale":"fr-FR","documentType":"reservation_contract","title":"Contrat de réservation","body":"Contenu E2E du contrat.\\nAdoptant : [[adoptant.nom_complet]]"}';
 
 const certificateTemplateContent =
-  '{"schemaVersion":1,"locale":"fr-FR","documentType":"commitment_certificate","title":"Certificat d’engagement","introduction":["Introduction stable."],"sections":{"animalNeeds":["Besoins."],"health":["Santé."],"educationAndBehavior":["Éducation."],"costsAndConstraints":["Contraintes."],"holderObligations":["Obligations."]},"acknowledgmentText":["Reconnaissance."],"signatureLabels":{"holder":"Détenteur","issuer":"Cédant"}}';
+  '{"schemaVersion":2,"locale":"fr-FR","documentType":"commitment_certificate","title":"Certificat d’engagement","body":"Contenu E2E du certificat.\\nAdoptant : [[adoptant.nom_complet]]"}';
 
 function contractInput(): BuildDocumentGenerationSnapshotInput {
   return {
@@ -182,7 +182,7 @@ test("builds and parses immutable document generation snapshots", () => {
   expect(contract.snapshot.adopter.displayName).toBe("Camille Dupont");
   expect(contract.snapshot.signature.defaultCity).toBe("Paris");
   expect(contract.snapshot.template.templateContentSha256).toBe(
-    "a1dca62c1bdf23e2062035fee2396161ba447530d97f2bd58257987249943364",
+    "d37d470517643d1863a56566cdca577326bcb9a7d96c569934376bf8267a9e61",
   );
   expect(contract.snapshot.template).toMatchObject({
     selectedTemplateId: contractInput().template.id,
