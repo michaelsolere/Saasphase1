@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #289. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #291. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `dc8b8df4eb5cf82abe92cd01a5a111aec7e772a4`.
-- Dernière PR incluse : **#289 — Joindre les PDF exacts à la campagne post-naissance**.
+- SHA de `main` documenté : `82a7f6df51ab475033af92f045938676c260fcbe`.
+- Dernière PR incluse : **#291 — Ajouter le noyau de génération groupée des documents par portée**.
 - Les migrations locales sont appliquées jusqu’à `202607170001`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -179,6 +179,13 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 - Une variante publiée invalide bloque la source au lieu de provoquer un fallback silencieux. La génération stocke l’origine commune exacte, la version de variante exacte éventuelle et le snapshot immuable.
 - Un retrait concurrent de la publication empêche le stockage d’un document incohérent et déclenche la compensation de l’objet Storage.
 
+### Génération groupée par portée exacte
+
+- Un noyau serveur privé permet de compléter le certificat d’engagement puis le contrat de réservation pour au maximum 30 réservations d’une même portée exacte. Il déduplique la sélection en conservant son ordre, traite les dossiers séquentiellement, déduit l’organisation exclusivement de la portée et relit chaque réservation ainsi que ses relations côté serveur.
+- Les identifiants documentaires sont déterministes par organisation, opération, réservation et type, et un rejeu conserve le même `capturedAt`. Lorsque les deux documents manquent, leur préparation et leur rendu sont prévalidés avant le premier stockage. Le noyau réutilise sans duplication la préparation métier, la résolution du modèle commun ou de la variante publiée, le renderer, le stockage PDF et ses compensations.
+- Les documents déjà présents ne sont pas régénérés, les documents `sent` ou `signed` sont protégés et les états ou PDF incohérents sont signalés. Aucune nouvelle version n’est créée automatiquement. Les rejeux et appels concurrents d’une même opération restent idempotents ; les résultats détaillés et leurs compteurs n’exposent ni identifiant documentaire ou de variante, ni chemin Storage, hash, snapshot ou autre donnée technique.
+- L’orchestrateur individuel conserve la politique interne `replace` par défaut et donc son comportement historique de versionnement. Le noyau groupé utilise `create_only` afin d’interdire tout remplacement ou création automatique d’une nouvelle version lorsqu’un autre document courant existe.
+
 ### Consultation sécurisée
 
 - La fiche Document et la fiche Réservation exposent le document courant et son historique de versions.
@@ -201,12 +208,15 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent à concevoir ou implémenter :
 
-- la génération PDF groupée depuis une portée ou un groupe de portées ;
+- l’intention serveur publique et l’interface permettant de déclencher le noyau groupé depuis la fiche d’une portée exacte ; aucun bouton, composant ou Server Action publique n’existe encore ;
+- la génération groupée depuis un groupe de portées, qui n’est pas encore prise en charge ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
+
+Le noyau serveur privé de génération groupée pour une portée exacte existe désormais, sans interface publique pour l’invoquer.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
-La prochaine étape est : **Auditer puis concevoir la génération groupée du certificat d’engagement et du contrat de réservation depuis une portée ou un groupe de portées, en réutilisant pour chaque réservation la sélection serveur du modèle commun ou de sa variante publiée, l’orchestrateur PDF existant, le versionnement et l’idempotence, avec résultats détaillés par dossier et sans compromettre les documents déjà envoyés ou signés.**
+La prochaine étape est : **concevoir puis raccorder l’intention serveur et l’interface de génération groupée depuis la fiche d’une portée exacte, en sélectionnant les réservations et modèles sans accepter d’identifiant de variante ou de document depuis le client, avant tout support des groupes de portées.**
 
 ## Environnement E2E et règles de validation
 
