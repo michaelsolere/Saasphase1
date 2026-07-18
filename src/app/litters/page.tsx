@@ -83,6 +83,12 @@ export default async function LittersPage({
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <Link
+              href="/litters/journal"
+              className="text-sm font-semibold text-accent hover:underline"
+            >
+              Journal des portées
+            </Link>
+            <Link
               href="/litters/new"
               className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
             >
