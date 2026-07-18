@@ -2162,6 +2162,106 @@ export type Database = {
           },
         ]
       }
+      maternal_observations: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          litter_id: string
+          mother_id: string
+          note: string | null
+          numeric_value: number | null
+          observation_type: string
+          organization_id: string
+          observed_at: string
+          severity: string
+          timezone_name: string
+          unit: string | null
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          litter_id: string
+          mother_id: string
+          note?: string | null
+          numeric_value?: number | null
+          observation_type: string
+          organization_id: string
+          observed_at: string
+          severity?: string
+          timezone_name: string
+          unit?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          litter_id?: string
+          mother_id?: string
+          note?: string | null
+          numeric_value?: number | null
+          observation_type?: string
+          organization_id?: string
+          observed_at?: string
+          severity?: string
+          timezone_name?: string
+          unit?: string | null
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maternal_observations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maternal_observations_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "maternal_observations_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "maternal_observations_mother_organization_fk"
+            columns: ["organization_id", "mother_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "maternal_observations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maternal_observations_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media: {
         Row: {
           animal_id: string | null
@@ -4350,6 +4450,27 @@ export type Database = {
           p_version_id: string
         }
         Returns: string
+      }
+      record_maternal_observation: {
+        Args: {
+          p_client_command_id: string
+          p_litter_id: string
+          p_note: string | null
+          p_numeric_value: number | null
+          p_observation_type: string
+          p_observed_at: string
+          p_severity: string
+          p_timezone_name: string
+          p_unit: string | null
+        }
+        Returns: {
+          litter_id: string
+          mother_id: string
+          observation_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+        }[]
       }
       record_reproductive_cycle_mating: {
         Args: {
