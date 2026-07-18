@@ -56,6 +56,7 @@ export type LitterCareTaskServiceErrorCode =
   | "not_found"
   | "invalid_litter"
   | "conflict"
+  | "stale_revision"
   | "not_planned"
   | "database_error";
 
@@ -81,6 +82,7 @@ export type LitterCareTaskTemplateSummary = {
   breed: string | null;
   isActive: boolean;
   sortOrder: number;
+  revision: number;
 };
 
 export type LitterCareTaskSummary = {
@@ -107,10 +109,61 @@ export type LitterCareTaskSummary = {
 };
 
 export type ListLitterCareTaskTemplatesInput = { litterId: string };
+export type ListLitterCareTaskTemplatesForOrganizationInput = {
+  organizationId: string;
+};
 export type ListLitterCareTasksForLitterInput = { litterId: string };
 
 export type ListLitterCareTaskTemplatesResult =
   | { outcome: "success"; role: OrganizationRole; templates: LitterCareTaskTemplateSummary[] }
+  | ErrorResult;
+
+export type ListLitterCareTaskTemplatesForOrganizationResult =
+  | {
+      outcome: "success";
+      role: OrganizationRole;
+      templates: LitterCareTaskTemplateSummary[];
+    }
+  | ErrorResult;
+
+type LitterCareTaskTemplateValues = {
+  title: string;
+  description?: string | null;
+  category: LitterCareTaskCategory;
+  targetScope: LitterCareTaskTargetScope;
+  anchorType: LitterCareTaskAnchorType;
+  offsetDays: number;
+  species: "dog" | "cat";
+  breed?: string | null;
+  sortOrder: number;
+};
+
+export type CreateLitterCareTaskTemplateInput = LitterCareTaskTemplateValues & {
+  organizationId: string;
+  clientCommandId: string;
+};
+
+export type UpdateLitterCareTaskTemplateInput = LitterCareTaskTemplateValues & {
+  templateId: string;
+  clientCommandId: string;
+  expectedRevision: number;
+};
+
+export type SetLitterCareTaskTemplateActiveInput = {
+  templateId: string;
+  clientCommandId: string;
+  expectedRevision: number;
+  isActive: boolean;
+};
+
+export type LitterCareTaskTemplateMutationResult =
+  | {
+      outcome: "success";
+      templateId: string;
+      revision: number;
+      isActive: boolean;
+      replayed: boolean;
+    }
   | ErrorResult;
 
 export type ListLitterCareTasksForLitterResult =
@@ -153,6 +206,8 @@ export type ResolveLitterCareTaskResult =
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_TIMESTAMP_PATTERN = /(?:Z|[+-]\d{2}:\d{2})$/;
+const POSTGRES_INTEGER_MIN = -2_147_483_648;
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
 
 function failure(
   code: LitterCareTaskServiceErrorCode,
@@ -235,6 +290,13 @@ function normalizeOptionalText(value: unknown, maxLength: number) {
   return normalized.length <= maxLength ? normalized || null : undefined;
 }
 
+function normalizeOptionalNonEmptyText(value: unknown, maxLength: number) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized && normalized.length <= maxLength ? normalized : undefined;
+}
+
 function isRole(value: string): value is OrganizationRole {
   return ["owner", "admin", "member", "viewer"].includes(value);
 }
@@ -251,6 +313,30 @@ function isTargetScope(value: unknown): value is LitterCareTaskTargetScope {
     typeof value === "string" &&
     LITTER_CARE_TASK_TARGET_SCOPES.includes(value as LitterCareTaskTargetScope)
   );
+}
+
+function isAnchorType(value: unknown): value is LitterCareTaskAnchorType {
+  return (
+    typeof value === "string" &&
+    LITTER_CARE_TASK_ANCHOR_TYPES.includes(value as LitterCareTaskAnchorType)
+  );
+}
+
+function isSpecies(value: unknown): value is "dog" | "cat" {
+  return value === "dog" || value === "cat";
+}
+
+function isPostgresInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= POSTGRES_INTEGER_MIN &&
+    value <= POSTGRES_INTEGER_MAX
+  );
+}
+
+function isPositivePostgresInteger(value: unknown): value is number {
+  return isPostgresInteger(value) && value > 0;
 }
 
 function isResolutionStatus(
@@ -306,6 +392,39 @@ async function authorizeLitterRead(supabase: Supabase, rawLitterId: unknown) {
   return { litter: litter.data, role: membership.data.role };
 }
 
+async function authorizeOrganizationRead(
+  supabase: Supabase,
+  rawOrganizationId: unknown,
+) {
+  const organizationId = normalizeUuid(rawOrganizationId);
+  if (!organizationId) return invalidInput();
+
+  const userId = await authenticatedUserId(supabase);
+  if (!userId) {
+    return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+  }
+
+  const membership = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("organization_id", organizationId)
+    .eq("profile_id", userId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (membership.error) {
+    return databaseFailure(
+      "litter_care_task_templates_organization_membership_read_failed",
+      membership.error,
+    );
+  }
+  if (!membership.data || !isRole(membership.data.role)) {
+    return failure("not_found", "L’organisation demandée est introuvable.");
+  }
+
+  return { organizationId, role: membership.data.role };
+}
+
 function createFailure(reason: string | null): ErrorResult {
   switch (reason) {
     case "not_authenticated":
@@ -340,6 +459,30 @@ function resolutionFailure(reason: string | null): ErrorResult {
   }
 }
 
+function templateMutationFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure(
+        "forbidden",
+        "Vous n’avez pas les droits nécessaires pour cette opération.",
+      );
+    case "organization_not_found":
+    case "template_not_found":
+      return failure("not_found", "Le modèle demandé est introuvable.");
+    case "client_command_conflict":
+      return failure("conflict", "Cette commande a déjà été utilisée.");
+    case "stale_revision":
+      return failure(
+        "stale_revision",
+        "Le modèle a été modifié depuis votre dernière lecture.",
+      );
+    default:
+      return invalidInput();
+  }
+}
+
 function mapTemplate(
   row: Database["public"]["Tables"]["litter_care_task_templates"]["Row"],
 ): LitterCareTaskTemplateSummary {
@@ -355,6 +498,72 @@ function mapTemplate(
     breed: row.breed,
     isActive: row.is_active,
     sortOrder: row.sort_order,
+    revision: row.revision,
+  };
+}
+
+function normalizeTemplateValues(input: LitterCareTaskTemplateValues) {
+  const title = normalizeRequiredText(input.title, 255);
+  const description = normalizeOptionalText(input.description, 5000);
+  const breed = normalizeOptionalNonEmptyText(input.breed, 255);
+
+  if (
+    !title ||
+    description === undefined ||
+    breed === undefined ||
+    !isCategory(input.category) ||
+    !isTargetScope(input.targetScope) ||
+    !isAnchorType(input.anchorType) ||
+    !isPostgresInteger(input.offsetDays) ||
+    (input.anchorType === "offspring_age" && input.offsetDays < 0) ||
+    !isSpecies(input.species) ||
+    !isPostgresInteger(input.sortOrder)
+  ) {
+    return null;
+  }
+
+  return {
+    title,
+    description,
+    category: input.category,
+    targetScope: input.targetScope,
+    anchorType: input.anchorType,
+    offsetDays: input.offsetDays,
+    species: input.species,
+    breed,
+    sortOrder: input.sortOrder,
+  };
+}
+
+function mapTemplateMutationResult(
+  result:
+    | {
+        outcome: string;
+        template_id: string | null;
+        revision: number | null;
+        is_active: boolean | null;
+        replayed: boolean | null;
+        reason: string | null;
+      }
+    | undefined,
+): LitterCareTaskTemplateMutationResult {
+  const templateId = normalizeUuid(result?.template_id);
+  if (
+    !result ||
+    result.outcome !== "success" ||
+    !templateId ||
+    !isPositivePostgresInteger(result.revision) ||
+    typeof result.is_active !== "boolean"
+  ) {
+    return templateMutationFailure(result?.reason ?? null);
+  }
+
+  return {
+    outcome: "success",
+    templateId,
+    revision: result.revision,
+    isActive: result.is_active,
+    replayed: result.replayed === true,
   };
 }
 
@@ -408,6 +617,137 @@ export async function listLitterCareTaskTemplatesCore(
     role: authorization.role,
     templates: (templates.data ?? []).map(mapTemplate),
   };
+}
+
+export async function listLitterCareTaskTemplatesForOrganizationCore(
+  input: ListLitterCareTaskTemplatesForOrganizationInput,
+  supabase: Supabase,
+): Promise<ListLitterCareTaskTemplatesForOrganizationResult> {
+  const authorization = await authorizeOrganizationRead(
+    supabase,
+    input.organizationId,
+  );
+  if ("outcome" in authorization) return authorization;
+
+  const templates = await supabase
+    .from("litter_care_task_templates")
+    .select("*")
+    .eq("organization_id", authorization.organizationId)
+    .order("is_active", { ascending: false })
+    .order("sort_order", { ascending: true })
+    .order("title", { ascending: true });
+  if (templates.error) {
+    return databaseFailure(
+      "litter_care_task_templates_organization_list_failed",
+      templates.error,
+    );
+  }
+
+  return {
+    outcome: "success",
+    role: authorization.role,
+    templates: (templates.data ?? []).map(mapTemplate),
+  };
+}
+
+export async function createLitterCareTaskTemplateCore(
+  input: CreateLitterCareTaskTemplateInput,
+  supabase: Supabase,
+): Promise<LitterCareTaskTemplateMutationResult> {
+  const organizationId = normalizeUuid(input.organizationId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const values = normalizeTemplateValues(input);
+  if (!organizationId || !clientCommandId || !values) return invalidInput();
+
+  const created = await supabase.rpc("create_litter_care_task_template", {
+    p_organization_id: organizationId,
+    p_client_command_id: clientCommandId,
+    p_title: values.title,
+    p_description: values.description,
+    p_category: values.category,
+    p_target_scope: values.targetScope,
+    p_anchor_type: values.anchorType,
+    p_offset_days: values.offsetDays,
+    p_species: values.species,
+    p_breed: values.breed,
+    p_sort_order: values.sortOrder,
+  });
+  if (created.error) {
+    return databaseFailure("litter_care_task_template_create_failed", created.error);
+  }
+
+  return mapTemplateMutationResult(created.data?.[0]);
+}
+
+export async function updateLitterCareTaskTemplateCore(
+  input: UpdateLitterCareTaskTemplateInput,
+  supabase: Supabase,
+): Promise<LitterCareTaskTemplateMutationResult> {
+  const templateId = normalizeUuid(input.templateId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const values = normalizeTemplateValues(input);
+  if (
+    !templateId ||
+    !clientCommandId ||
+    !isPositivePostgresInteger(input.expectedRevision) ||
+    !values
+  ) {
+    return invalidInput();
+  }
+
+  const updated = await supabase.rpc("update_litter_care_task_template", {
+    p_template_id: templateId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision: input.expectedRevision,
+    p_title: values.title,
+    p_description: values.description,
+    p_category: values.category,
+    p_target_scope: values.targetScope,
+    p_anchor_type: values.anchorType,
+    p_offset_days: values.offsetDays,
+    p_species: values.species,
+    p_breed: values.breed,
+    p_sort_order: values.sortOrder,
+  });
+  if (updated.error) {
+    return databaseFailure("litter_care_task_template_update_failed", updated.error);
+  }
+
+  return mapTemplateMutationResult(updated.data?.[0]);
+}
+
+export async function setLitterCareTaskTemplateActiveCore(
+  input: SetLitterCareTaskTemplateActiveInput,
+  supabase: Supabase,
+): Promise<LitterCareTaskTemplateMutationResult> {
+  const templateId = normalizeUuid(input.templateId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  if (
+    !templateId ||
+    !clientCommandId ||
+    !isPositivePostgresInteger(input.expectedRevision) ||
+    typeof input.isActive !== "boolean"
+  ) {
+    return invalidInput();
+  }
+
+  const activated = await supabase.rpc(
+    "set_litter_care_task_template_active",
+    {
+      p_template_id: templateId,
+      p_client_command_id: clientCommandId,
+      p_expected_revision: input.expectedRevision,
+      p_is_active: input.isActive,
+    },
+  );
+  if (activated.error) {
+    return databaseFailure(
+      "litter_care_task_template_set_active_failed",
+      activated.error,
+    );
+  }
+
+  return mapTemplateMutationResult(activated.data?.[0]);
 }
 
 export async function listLitterCareTasksForLitterCore(
