@@ -2262,6 +2262,149 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_library_import_commands: {
+        Row: {
+          already_imported_count: number
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Insert: {
+          already_imported_count: number
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Update: {
+          already_imported_count?: number
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          imported_count?: number
+          initial_is_active?: boolean
+          organization_id?: string
+          result?: Json
+          selection?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_library_import_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_library_import_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_care_task_library_packs: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          is_available: boolean
+          sort_order: number
+          species: string
+          title: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          sort_order?: number
+          species: string
+          title: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          sort_order?: number
+          species?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      litter_care_task_library_templates: {
+        Row: {
+          anchor_type: string
+          breed: string | null
+          category: string
+          code: string
+          created_at: string
+          description: string | null
+          is_available: boolean
+          offset_days: number
+          pack_code: string
+          sort_order: number
+          species: string
+          target_scope: string
+          title: string
+          version: number
+        }
+        Insert: {
+          anchor_type: string
+          breed?: string | null
+          category: string
+          code: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          offset_days: number
+          pack_code: string
+          sort_order?: number
+          species: string
+          target_scope: string
+          title: string
+          version: number
+        }
+        Update: {
+          anchor_type?: string
+          breed?: string | null
+          category?: string
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          offset_days?: number
+          pack_code?: string
+          sort_order?: number
+          species?: string
+          target_scope?: string
+          title?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_library_templates_pack_species_fk"
+            columns: ["pack_code", "species"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_library_packs"
+            referencedColumns: ["code", "species"]
+          },
+        ]
+      }
       litter_care_task_generation_commands: {
         Row: {
           client_command_id: string
@@ -2398,6 +2541,8 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          library_template_code: string | null
+          library_template_version: number | null
           offset_days: number
           organization_id: string
           revision: number
@@ -2417,6 +2562,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          library_template_code?: string | null
+          library_template_version?: number | null
           offset_days: number
           organization_id: string
           revision?: number
@@ -2436,6 +2583,8 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          library_template_code?: string | null
+          library_template_version?: number | null
           offset_days?: number
           organization_id?: string
           revision?: number
@@ -2447,6 +2596,13 @@ export type Database = {
           updated_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "litter_care_task_templates_library_origin_fk"
+            columns: ["library_template_code", "library_template_version"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_library_templates"
+            referencedColumns: ["code", "version"]
+          },
           {
             foreignKeyName: "litter_care_task_templates_created_by_fkey"
             columns: ["created_by"]
@@ -4710,6 +4866,22 @@ export type Database = {
           litter_id: string
           outcome: string
           reason: string
+          replayed: boolean
+          result: Json
+        }[]
+      }
+      import_litter_care_task_library_templates: {
+        Args: {
+          p_client_command_id: string
+          p_is_active: boolean
+          p_organization_id: string
+          p_selection: Json
+        }
+        Returns: {
+          already_imported_count: number
+          imported_count: number
+          outcome: string
+          reason: string | null
           replayed: boolean
           result: Json
         }[]
