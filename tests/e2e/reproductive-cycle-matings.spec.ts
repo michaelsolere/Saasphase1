@@ -19,6 +19,7 @@ const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const prefix = "9f180002-0000-4000-8000-0000000000";
 const fixtureNamePrefix = "E2E reproductive cycle matings";
+const foreignCycleLockKey = 9_180_002;
 
 const ids = {
   mainMother: `${prefix}01`,
@@ -120,6 +121,7 @@ function fixtureAnimalIdsSql() {
 function cleanup() {
   sql(`
     drop function if exists public.e2e_hold_reproductive_mating_father(uuid);
+    drop function if exists public.e2e_hold_foreign_reproductive_cycle(uuid);
 
     delete from public.reproductive_cycle_matings
     where cycle_id in (
@@ -220,6 +222,14 @@ function remainingFixtureCounts() {
             on namespace.oid = procedure.pronamespace
           where namespace.nspname = 'public'
             and procedure.proname = 'e2e_hold_reproductive_mating_father'
+        ),
+        'e2e_foreign_cycle_lock_function', (
+          select count(*)
+          from pg_catalog.pg_proc procedure
+          join pg_catalog.pg_namespace namespace
+            on namespace.oid = procedure.pronamespace
+          where namespace.nspname = 'public'
+            and procedure.proname = 'e2e_hold_foreign_reproductive_cycle'
         )
       )::text;
     `),
@@ -231,6 +241,24 @@ function expectCleanupAtZero() {
   for (const [table, count] of Object.entries(remaining)) {
     expect(count, `${table} fixtures must be hard-deleted`).toBe(0);
   }
+}
+
+async function waitForForeignCycleLock() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const lockCount = Number(
+      sql(`
+        select count(*)
+        from pg_catalog.pg_locks
+        where locktype = 'advisory'
+          and classid = 0
+          and objid = ${foreignCycleLockKey};
+      `),
+    );
+    if (lockCount > 0) return;
+    await delay(100);
+  }
+
+  throw new Error("The E2E foreign-cycle lock was not acquired in time.");
 }
 
 function outOfScopeCounts() {
@@ -486,6 +514,88 @@ test("records idempotent reproductive cycle matings and links exactly one litter
       sequence_no: null,
       replayed: false,
     });
+
+    sql(`
+      create function public.e2e_hold_foreign_reproductive_cycle(
+        p_cycle_id uuid
+      )
+      returns void
+      language plpgsql
+      as $$
+      begin
+        perform 1
+        from public.reproductive_cycles cycle
+        where cycle.id = p_cycle_id
+        for update;
+
+        perform pg_catalog.pg_advisory_lock(${foreignCycleLockKey});
+        perform pg_sleep(4);
+        perform pg_catalog.pg_advisory_unlock(${foreignCycleLockKey});
+      end;
+      $$;
+    `);
+    const holdForeignCycle = runE2eSql(`
+      select public.e2e_hold_foreign_reproductive_cycle(
+        ${q(ids.foreignCycle)}::uuid
+      );
+    `);
+    await waitForForeignCycleLock();
+    const foreignLockStartedAt = Date.now();
+    const [lockedForeignCycleRpc, lockedMissingCycleRpc] = await Promise.all([
+      owner.rpc("record_reproductive_cycle_mating", {
+        p_cycle_id: ids.foreignCycle,
+        p_client_command_id: ids.commandForeignCycle,
+        p_father_id: ids.father,
+        p_occurred_at: "2026-07-20T06:00:00.000Z",
+        p_timezone_name: "Europe/Paris",
+        p_method: "natural",
+      }),
+      owner.rpc("record_reproductive_cycle_mating", {
+        p_cycle_id: ids.missingCycle,
+        p_client_command_id: ids.commandMissingCycle,
+        p_father_id: ids.father,
+        p_occurred_at: "2026-07-20T06:00:00.000Z",
+        p_timezone_name: "Europe/Paris",
+        p_method: "natural",
+      }),
+    ]);
+    const foreignLockElapsedMs = Date.now() - foreignLockStartedAt;
+    await holdForeignCycle;
+    expect(foreignLockElapsedMs).toBeLessThan(1_500);
+    expect(lockedForeignCycleRpc.error).toBeNull();
+    expect(lockedMissingCycleRpc.error).toBeNull();
+    expect(lockedForeignCycleRpc.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "cycle_not_found",
+      mating_id: null,
+      litter_id: null,
+      sequence_no: null,
+      replayed: false,
+    });
+    expect(lockedMissingCycleRpc.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "cycle_not_found",
+      mating_id: null,
+      litter_id: null,
+      sequence_no: null,
+      replayed: false,
+    });
+    expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'matings', (
+              select count(*) from public.reproductive_cycle_matings
+              where cycle_id = ${q(ids.foreignCycle)}::uuid
+            ),
+            'litters', (
+              select count(*) from public.litters
+              where name like ${q(`${fixtureNamePrefix} foreign cycle%`)}
+            )
+          )::text;
+        `),
+      ),
+    ).toEqual({ matings: 0, litters: 0 });
 
     const first = successful(
       await recordReproductiveCycleMatingCore(

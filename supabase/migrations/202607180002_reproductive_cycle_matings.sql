@@ -146,6 +146,8 @@ set row_security = off
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_cycle_organization_id uuid;
+  v_membership_role text;
   v_cycle public.reproductive_cycles%rowtype;
   v_mother public.animals%rowtype;
   v_father public.animals%rowtype;
@@ -176,11 +178,10 @@ begin
     return;
   end if;
 
-  select *
-  into v_cycle
-  from public.reproductive_cycles
-  where id = p_cycle_id
-  for update;
+  select cycle.organization_id
+  into v_cycle_organization_id
+  from public.reproductive_cycles cycle
+  where cycle.id = p_cycle_id;
 
   if not found then
     reason := 'cycle_not_found';
@@ -188,29 +189,37 @@ begin
     return;
   end if;
 
-  if not exists (
-    select 1
-    from public.memberships membership
-    where membership.organization_id = v_cycle.organization_id
-      and membership.profile_id = v_user_id
-      and membership.status = 'active'
-      and membership.deleted_at is null
-  ) then
+  select membership.role
+  into v_membership_role
+  from public.memberships membership
+  where membership.organization_id = v_cycle_organization_id
+    and membership.profile_id = v_user_id
+    and membership.status = 'active'
+    and membership.deleted_at is null
+  for share;
+
+  if not found then
     reason := 'cycle_not_found';
     return next;
     return;
   end if;
 
-  if not exists (
-    select 1
-    from public.memberships membership
-    where membership.organization_id = v_cycle.organization_id
-      and membership.profile_id = v_user_id
-      and membership.status = 'active'
-      and membership.deleted_at is null
-      and membership.role in ('owner', 'admin', 'member')
-  ) then
+  if v_membership_role not in ('owner', 'admin', 'member') then
     reason := 'membership_required';
+    return next;
+    return;
+  end if;
+
+  select *
+  into v_cycle
+  from public.reproductive_cycles cycle
+  where cycle.id = p_cycle_id
+    and cycle.organization_id = v_cycle_organization_id
+    and cycle.deleted_at is null
+  for update;
+
+  if not found then
+    reason := 'cycle_not_found';
     return next;
     return;
   end if;
@@ -246,12 +255,6 @@ begin
     litter_id := v_litter.id;
     sequence_no := v_existing_mating.sequence_no;
     replayed := true;
-    return next;
-    return;
-  end if;
-
-  if v_cycle.deleted_at is not null then
-    reason := 'cycle_not_found';
     return next;
     return;
   end if;
