@@ -5,6 +5,8 @@ import {
   EmptyLitterJournal,
   LitterJournalDashboard,
 } from "@/features/litter-journal/litter-journal-dashboard";
+import { recordMaternalObservationAction } from "@/features/litter-journal/maternal-observations-actions";
+import { listMaternalObservationsForLitter } from "@/features/litter-journal/maternal-observations";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import { createClient } from "@/lib/supabase/server";
@@ -40,12 +42,34 @@ export default async function LitterJournalPage({
 
   let journal: LitterJournalSelection | null = null;
   let hasLoadingError = false;
+  let maternalObservations: Awaited<ReturnType<typeof listMaternalObservationsForLitter>> | null = null;
 
   try {
     journal = await loadLitterJournal(supabase, requestedLitterId);
   } catch {
     hasLoadingError = true;
   }
+
+  if (journal?.selectedLitter?.id) {
+    try {
+      maternalObservations = await listMaternalObservationsForLitter({
+        litterId: journal.selectedLitter.id,
+      });
+    } catch {
+      maternalObservations = null;
+    }
+  }
+
+  const maternalObservationsLoaded =
+    maternalObservations?.outcome === "success" ? maternalObservations : null;
+  const clientCommandId = crypto.randomUUID();
+  const maternalObservationAction =
+    journal?.selectedLitter?.id && maternalObservationsLoaded
+      ? recordMaternalObservationAction.bind(null, {
+          litterId: journal.selectedLitter.id,
+          clientCommandId,
+        })
+      : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -68,6 +92,15 @@ export default async function LitterJournalPage({
             litters={journal.litters}
             litter={journal.selectedLitter}
             details={journal.selectedDetails}
+            maternalObservations={
+              maternalObservationsLoaded?.observations ?? []
+            }
+            maternalObservationRole={
+              maternalObservationsLoaded?.role ?? null
+            }
+            maternalObservationAction={maternalObservationAction}
+            maternalObservationClientCommandId={clientCommandId}
+            maternalObservationsLoadError={maternalObservationsLoaded === null}
           />
         ) : (
           <EmptyLitterJournal />

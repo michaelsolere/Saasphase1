@@ -8,6 +8,9 @@ import {
 } from "@/features/litters/formatters";
 
 import { LitterJournalSelector } from "./litter-journal-selector";
+import { MaternalObservationsPanel } from "./maternal-observations-panel";
+import type { MaternalObservationActionState } from "./maternal-observations-actions";
+import type { MaternalObservationSummary } from "./maternal-observations";
 import {
   getLitterJournalContextualAge,
   getLitterJournalStatusLabel,
@@ -139,10 +142,23 @@ export function LitterJournalDashboard({
   litters,
   litter,
   details,
+  maternalObservations,
+  maternalObservationRole,
+  maternalObservationAction,
+  maternalObservationClientCommandId,
+  maternalObservationsLoadError,
 }: {
   litters: LitterJournalListItem[];
   litter: LitterJournalListItem;
   details: LitterJournalDetails | null;
+  maternalObservations: MaternalObservationSummary[];
+  maternalObservationRole: "owner" | "admin" | "member" | "viewer" | null;
+  maternalObservationAction: ((
+    previousState: MaternalObservationActionState,
+    formData: FormData,
+  ) => Promise<MaternalObservationActionState>) | null;
+  maternalObservationClientCommandId: string;
+  maternalObservationsLoadError: boolean;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
@@ -201,6 +217,13 @@ export function LitterJournalDashboard({
         <ContextCard litter={litter} details={details} />
         <SummaryCard litter={litter} />
       </div>
+      <MaternalObservationsPanel
+        observations={maternalObservations}
+        role={maternalObservationRole}
+        action={maternalObservationAction}
+        clientCommandId={maternalObservationClientCommandId}
+        loadError={maternalObservationsLoadError}
+      />
       <QuickLinks litter={litter} />
     </div>
   );
