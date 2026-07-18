@@ -3,12 +3,20 @@ import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { listLitterCareTaskTemplatesForOrganization } from "@/features/litter-journal/litter-care-tasks";
+import {
+  listLitterCareTaskLibrary,
+  listLitterCareTaskTemplatesForOrganization,
+} from "@/features/litter-journal/litter-care-tasks";
 import {
   createLitterCareTaskTemplateAction,
+  importLitterCareTaskLibraryTemplatesAction,
   setLitterCareTaskTemplateActiveAction,
   updateLitterCareTaskTemplateAction,
 } from "@/features/settings/litter-care-task-templates-actions";
+import {
+  LitterCareTaskLibrary,
+  LitterCareTaskLibraryUnavailable,
+} from "@/features/settings/litter-care-task-library";
 import {
   LitterCareTaskTemplatesManager,
   type LitterCareTaskTemplateWriteActions,
@@ -39,12 +47,12 @@ function PageHeader() {
           Jalons de suivi des portées
         </h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted">
-          Définissez les jalons réutilisables de votre élevage. Leur application
-          automatique aux portées sera ajoutée dans une étape ultérieure.
+          Créez vos propres jalons ou importez des modèles recommandés, puis
+          choisissez explicitement ceux à générer depuis le Journal des portées.
         </p>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-muted">
-          Activer ou réactiver un modèle ne génère encore aucune tâche et ne
-          modifie aucune tâche existante.
+          Importer, activer ou modifier un modèle ne crée et ne modifie aucune
+          tâche existante.
         </p>
       </header>
     </>
@@ -90,9 +98,14 @@ export default async function LitterCareTaskTemplatesPage() {
     return <UnavailableState />;
   }
 
-  const result = await listLitterCareTaskTemplatesForOrganization({
-    organizationId: membership.data.organization_id,
-  });
+  const [result, libraryResult] = await Promise.all([
+    listLitterCareTaskTemplatesForOrganization({
+      organizationId: membership.data.organization_id,
+    }),
+    listLitterCareTaskLibrary({
+      organizationId: membership.data.organization_id,
+    }),
+  ]);
   if (result.outcome === "error") return <UnavailableState />;
 
   const canEdit = result.role === "owner" || result.role === "admin";
@@ -102,6 +115,13 @@ export default async function LitterCareTaskTemplatesPage() {
         clientCommandId: randomUUID(),
       })
     : null;
+  const importAction =
+    canEdit && libraryResult.outcome === "success"
+      ? importLitterCareTaskLibraryTemplatesAction.bind(null, {
+          organizationId: membership.data.organization_id,
+          clientCommandId: randomUUID(),
+        })
+      : null;
   const templateActions: LitterCareTaskTemplateWriteActions[] = canEdit
     ? result.templates.map((template) => ({
         template,
@@ -122,11 +142,30 @@ export default async function LitterCareTaskTemplatesPage() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl min-w-0 px-6 py-10 sm:px-10 lg:px-12">
       <PageHeader />
-      <LitterCareTaskTemplatesManager
-        templates={result.templates}
-        createAction={createAction}
-        templateActions={templateActions}
-      />
+      {libraryResult.outcome === "success" ? (
+        <LitterCareTaskLibrary
+          packs={libraryResult.packs}
+          templates={libraryResult.templates}
+          importAction={importAction}
+        />
+      ) : (
+        <LitterCareTaskLibraryUnavailable />
+      )}
+      <section aria-labelledby="organization-templates-heading" className="mt-14">
+        <div className="border-b pb-5">
+          <h2 id="organization-templates-heading" className="text-2xl font-semibold">
+            Mes modèles
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Créez, adaptez et activez les jalons propres à votre organisation.
+          </p>
+        </div>
+        <LitterCareTaskTemplatesManager
+          templates={result.templates}
+          createAction={createAction}
+          templateActions={templateActions}
+        />
+      </section>
     </main>
   );
 }

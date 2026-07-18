@@ -530,6 +530,11 @@ function TemplateCard({
               {template.isActive ? "Actif" : "Inactif"}
             </span>
           </div>
+          {template.libraryTemplateCode && template.libraryTemplateVersion ? (
+            <p className="mt-2 text-xs font-medium text-muted">
+              Importé depuis la bibliothèque · version {template.libraryTemplateVersion}
+            </p>
+          ) : null}
           <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted">
             {template.description || "Aucune description."}
           </p>

@@ -848,7 +848,9 @@ test("gère les modèles de jalons sans générer ni modifier de tâche", async 
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
     await expect(page.getByRole("button", { name: /Supprimer|Dupliquer/ })).toHaveCount(0);
-    await expect(page.getByText(/génère encore aucune tâche/)).toBeVisible();
+    await expect(
+      page.getByText(/Importer, activer ou modifier un modèle ne crée/),
+    ).toBeVisible();
 
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
     expect(snapshotTask()).toEqual(snapshotBefore);
