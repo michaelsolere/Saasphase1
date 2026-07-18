@@ -1381,6 +1381,14 @@ export default async function AnimalDetailPage({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-3">
+                {animal.sex === "female" ? (
+                  <Link
+                    href={`/animals/${animal.id}/reproduction`}
+                    className="inline-flex w-fit rounded-xl border border-border px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
+                  >
+                    Reproduction
+                  </Link>
+                ) : null}
                 <Link
                   href={`/animals/${animal.id}/edit`}
                   className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
