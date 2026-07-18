@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
@@ -55,6 +55,7 @@ export type LitterCareTaskServiceErrorCode =
   | "forbidden"
   | "not_found"
   | "invalid_litter"
+  | "stale_plan"
   | "conflict"
   | "stale_revision"
   | "not_planned"
@@ -108,11 +109,48 @@ export type LitterCareTaskSummary = {
   createdAt: string;
 };
 
+export const LITTER_CARE_TASK_GENERATION_STATES = [
+  "ready",
+  "already_generated",
+  "missing_anchor",
+  "inactive",
+  "species_mismatch",
+  "breed_mismatch",
+] as const;
+export type LitterCareTaskGenerationState =
+  (typeof LITTER_CARE_TASK_GENERATION_STATES)[number];
+
+export type LitterCareTaskGenerationReadyPlanItem = {
+  templateId: string;
+  revision: number;
+  anchorType: LitterCareTaskAnchorType;
+  anchorDate: string;
+  plannedFor: string;
+};
+
+export type LitterCareTaskGenerationPlanEntry = {
+  template: LitterCareTaskTemplateSummary;
+  state: LitterCareTaskGenerationState;
+  readyPlan: LitterCareTaskGenerationReadyPlanItem | null;
+};
+
+export type LitterCareTaskGenerationTaskResult = {
+  templateId: string;
+  taskId: string;
+  state: "created" | "already_generated";
+};
+
 export type ListLitterCareTaskTemplatesInput = { litterId: string };
 export type ListLitterCareTaskTemplatesForOrganizationInput = {
   organizationId: string;
 };
 export type ListLitterCareTasksForLitterInput = { litterId: string };
+export type PlanLitterCareTaskGenerationInput = { litterId: string };
+export type GenerateLitterCareTasksFromPlanInput = {
+  litterId: string;
+  clientCommandId: string;
+  plan: LitterCareTaskGenerationReadyPlanItem[];
+};
 
 export type ListLitterCareTaskTemplatesResult =
   | { outcome: "success"; role: OrganizationRole; templates: LitterCareTaskTemplateSummary[] }
@@ -170,6 +208,27 @@ export type ListLitterCareTasksForLitterResult =
   | { outcome: "success"; role: OrganizationRole; tasks: LitterCareTaskSummary[] }
   | ErrorResult;
 
+export type PlanLitterCareTaskGenerationResult =
+  | {
+      outcome: "success";
+      role: OrganizationRole;
+      litterId: string;
+      entries: LitterCareTaskGenerationPlanEntry[];
+      readyPlan: LitterCareTaskGenerationReadyPlanItem[];
+    }
+  | ErrorResult;
+
+export type GenerateLitterCareTasksFromPlanResult =
+  | {
+      outcome: "success";
+      litterId: string;
+      createdCount: number;
+      alreadyGeneratedCount: number;
+      tasks: LitterCareTaskGenerationTaskResult[];
+      replayed: boolean;
+    }
+  | ErrorResult;
+
 export type CreateLitterCareTaskInput = {
   litterId: string;
   clientCommandId: string;
@@ -208,6 +267,17 @@ const UUID_PATTERN =
 const ISO_TIMESTAMP_PATTERN = /(?:Z|[+-]\d{2}:\d{2})$/;
 const POSTGRES_INTEGER_MIN = -2_147_483_648;
 const POSTGRES_INTEGER_MAX = 2_147_483_647;
+const GENERATABLE_LITTER_STATUSES = [
+  "mating_done",
+  "pregnancy_unconfirmed",
+  "pregnancy_confirmed",
+  "birth_expected",
+  "birth_in_progress",
+  "born",
+  "puppies_created",
+  "choice_period",
+  "ready_to_leave",
+] as const;
 
 function failure(
   code: LitterCareTaskServiceErrorCode,
@@ -250,6 +320,24 @@ function normalizeCivilDate(value: unknown) {
   }
 
   return value;
+}
+
+function addCivilDays(value: string, offsetDays: number) {
+  const civilDate = normalizeCivilDate(value);
+  if (!civilDate || !isPostgresInteger(offsetDays)) return null;
+
+  const [year, month, day] = civilDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const result = [
+    String(date.getUTCFullYear()).padStart(4, "0"),
+    String(date.getUTCMonth() + 1).padStart(2, "0"),
+    String(date.getUTCDate()).padStart(2, "0"),
+  ].join("-");
+
+  return normalizeCivilDate(result);
 }
 
 function normalizeTimestamp(value: unknown) {
@@ -299,6 +387,12 @@ function normalizeOptionalNonEmptyText(value: unknown, maxLength: number) {
 
 function isRole(value: string): value is OrganizationRole {
   return ["owner", "admin", "member", "viewer"].includes(value);
+}
+
+function isGeneratableLitterStatus(value: string) {
+  return GENERATABLE_LITTER_STATUSES.includes(
+    value as (typeof GENERATABLE_LITTER_STATUSES)[number],
+  );
 }
 
 function isCategory(value: unknown): value is LitterCareTaskCategory {
@@ -367,7 +461,9 @@ async function authorizeLitterRead(supabase: Supabase, rawLitterId: unknown) {
 
   const litter = await supabase
     .from("litters")
-    .select("id, organization_id")
+    .select(
+      "id, organization_id, species, breed, status, mating_date, estimated_ovulation_date, expected_birth_date, actual_birth_date",
+    )
     .eq("id", litterId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -483,6 +579,86 @@ function templateMutationFailure(reason: string | null): ErrorResult {
   }
 }
 
+function generationFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure(
+        "forbidden",
+        "Vous n’avez pas les droits nécessaires pour cette opération.",
+      );
+    case "litter_not_found":
+      return failure("not_found", "La portée demandée est introuvable.");
+    case "invalid_litter":
+    case "litter_not_open":
+      return failure(
+        "invalid_litter",
+        "Cette portée ne permet pas de générer ces tâches.",
+      );
+    case "stale_plan":
+      return failure(
+        "stale_plan",
+        "Le plan a changé et doit être préparé à nouveau.",
+      );
+    case "client_command_conflict":
+      return failure("conflict", "Cette commande a déjà été utilisée.");
+    default:
+      return invalidInput();
+  }
+}
+
+function normalizeGenerationPlan(value: unknown) {
+  if (!Array.isArray(value)) return null;
+
+  const normalized: LitterCareTaskGenerationReadyPlanItem[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const record = item as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 5 ||
+      !normalizeUuid(record.templateId) ||
+      !isPositivePostgresInteger(record.revision) ||
+      !isAnchorType(record.anchorType) ||
+      !normalizeCivilDate(record.anchorDate) ||
+      !normalizeCivilDate(record.plannedFor)
+    ) {
+      return null;
+    }
+
+    normalized.push({
+      templateId: normalizeUuid(record.templateId)!,
+      revision: record.revision,
+      anchorType: record.anchorType,
+      anchorDate: normalizeCivilDate(record.anchorDate)!,
+      plannedFor: normalizeCivilDate(record.plannedFor)!,
+    });
+  }
+
+  return normalized;
+}
+
+function mapGenerationTaskResults(value: Json) {
+  if (!Array.isArray(value)) return null;
+
+  const tasks: LitterCareTaskGenerationTaskResult[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const templateId = normalizeUuid(item.templateId);
+    const taskId = normalizeUuid(item.taskId);
+    if (
+      !templateId ||
+      !taskId ||
+      (item.state !== "created" && item.state !== "already_generated")
+    ) {
+      return null;
+    }
+    tasks.push({ templateId, taskId, state: item.state });
+  }
+
+  return tasks;
+}
+
 function mapTemplate(
   row: Database["public"]["Tables"]["litter_care_task_templates"]["Row"],
 ): LitterCareTaskTemplateSummary {
@@ -591,6 +767,190 @@ function mapTask(
     resolvedBy: row.resolved_by,
     resolutionNote: row.resolution_note,
     createdAt: row.created_at,
+  };
+}
+
+function litterAnchorDate(
+  litter: Pick<
+    Database["public"]["Tables"]["litters"]["Row"],
+    | "mating_date"
+    | "estimated_ovulation_date"
+    | "expected_birth_date"
+    | "actual_birth_date"
+  >,
+  anchorType: LitterCareTaskAnchorType,
+) {
+  switch (anchorType) {
+    case "first_mating":
+      return litter.mating_date;
+    case "estimated_ovulation":
+      return litter.estimated_ovulation_date;
+    case "expected_birth":
+      return litter.expected_birth_date;
+    case "actual_birth":
+    case "offspring_age":
+      return litter.actual_birth_date;
+  }
+}
+
+function sameBreed(templateBreed: string | null, litterBreed: string) {
+  return (
+    templateBreed === null ||
+    templateBreed.trim().toLowerCase() === litterBreed.trim().toLowerCase()
+  );
+}
+
+export async function planLitterCareTaskGenerationCore(
+  input: PlanLitterCareTaskGenerationInput,
+  supabase: Supabase,
+): Promise<PlanLitterCareTaskGenerationResult> {
+  const authorization = await authorizeLitterRead(supabase, input.litterId);
+  if ("outcome" in authorization) return authorization;
+
+  if (!isGeneratableLitterStatus(authorization.litter.status)) {
+    return failure(
+      "invalid_litter",
+      "Cette portée ne permet pas de générer ces tâches.",
+    );
+  }
+
+  const [templates, generatedTasks] = await Promise.all([
+    supabase
+      .from("litter_care_task_templates")
+      .select("*")
+      .eq("organization_id", authorization.litter.organization_id)
+      .order("is_active", { ascending: false })
+      .order("sort_order", { ascending: true })
+      .order("title", { ascending: true }),
+    supabase
+      .from("litter_care_tasks")
+      .select("organization_template_id")
+      .eq("organization_id", authorization.litter.organization_id)
+      .eq("litter_id", authorization.litter.id)
+      .eq("occurrence_no", 1)
+      .not("organization_template_id", "is", null),
+  ]);
+
+  if (templates.error) {
+    return databaseFailure(
+      "litter_care_task_generation_templates_read_failed",
+      templates.error,
+    );
+  }
+  if (generatedTasks.error) {
+    return databaseFailure(
+      "litter_care_task_generation_existing_tasks_read_failed",
+      generatedTasks.error,
+    );
+  }
+
+  const generatedTemplateIds = new Set(
+    (generatedTasks.data ?? []).flatMap((task) =>
+      task.organization_template_id ? [task.organization_template_id] : [],
+    ),
+  );
+  const entries: LitterCareTaskGenerationPlanEntry[] = [];
+
+  for (const row of templates.data ?? []) {
+    const template = mapTemplate(row);
+    let state: LitterCareTaskGenerationState;
+    let readyPlan: LitterCareTaskGenerationReadyPlanItem | null = null;
+
+    if (generatedTemplateIds.has(template.id)) {
+      state = "already_generated";
+    } else if (!template.isActive) {
+      state = "inactive";
+    } else if (template.species !== authorization.litter.species) {
+      state = "species_mismatch";
+    } else if (!sameBreed(template.breed, authorization.litter.breed)) {
+      state = "breed_mismatch";
+    } else {
+      const anchorDate = litterAnchorDate(
+        authorization.litter,
+        template.anchorType,
+      );
+      if (!anchorDate) {
+        state = "missing_anchor";
+      } else {
+        const plannedFor = addCivilDays(anchorDate, template.offsetDays);
+        if (!plannedFor) {
+          return databaseFailure(
+            "litter_care_task_generation_planned_date_out_of_range",
+            { litterId: authorization.litter.id, templateId: template.id },
+          );
+        }
+        state = "ready";
+        readyPlan = {
+          templateId: template.id,
+          revision: template.revision,
+          anchorType: template.anchorType,
+          anchorDate,
+          plannedFor,
+        };
+      }
+    }
+
+    entries.push({ template, state, readyPlan });
+  }
+
+  return {
+    outcome: "success",
+    role: authorization.role,
+    litterId: authorization.litter.id,
+    entries,
+    readyPlan: entries.flatMap((entry) =>
+      entry.readyPlan ? [entry.readyPlan] : [],
+    ),
+  };
+}
+
+export async function generateLitterCareTasksFromPlanCore(
+  input: GenerateLitterCareTasksFromPlanInput,
+  supabase: Supabase,
+): Promise<GenerateLitterCareTasksFromPlanResult> {
+  const litterId = normalizeUuid(input.litterId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const plan = normalizeGenerationPlan(input.plan);
+  if (!litterId || !clientCommandId || !plan) return invalidInput();
+
+  const generated = await supabase.rpc("generate_litter_care_tasks_from_plan", {
+    p_litter_id: litterId,
+    p_client_command_id: clientCommandId,
+    p_plan: plan,
+  });
+  if (generated.error) {
+    return databaseFailure("litter_care_task_generation_failed", generated.error);
+  }
+
+  const row = generated.data?.[0];
+  if (!row || row.outcome !== "success") {
+    return generationFailure(row?.reason ?? null);
+  }
+
+  const resultLitterId = normalizeUuid(row.litter_id);
+  const tasks = mapGenerationTaskResults(row.result);
+  if (
+    !resultLitterId ||
+    !tasks ||
+    !isPostgresInteger(row.created_count) ||
+    row.created_count < 0 ||
+    !isPostgresInteger(row.already_generated_count) ||
+    row.already_generated_count < 0 ||
+    tasks.filter((task) => task.state === "created").length !==
+      row.created_count ||
+    tasks.filter((task) => task.state === "already_generated").length !==
+      row.already_generated_count
+  ) {
+    return databaseFailure("litter_care_task_generation_invalid_result", row);
+  }
+
+  return {
+    outcome: "success",
+    litterId: resultLitterId,
+    createdCount: row.created_count,
+    alreadyGeneratedCount: row.already_generated_count,
+    tasks,
+    replayed: row.replayed === true,
   };
 }
 
