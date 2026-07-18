@@ -18,12 +18,24 @@ export type ReproductiveCycleStatus =
 export const PROGESTERONE_UNITS = ["ng_ml", "nmol_l"] as const;
 export type ProgesteroneUnit = (typeof PROGESTERONE_UNITS)[number];
 
+export const REPRODUCTIVE_CYCLE_MATING_METHODS = [
+  "natural",
+  "ai_fresh",
+  "ai_chilled",
+  "ai_frozen",
+  "other",
+] as const;
+export type ReproductiveCycleMatingMethod =
+  (typeof REPRODUCTIVE_CYCLE_MATING_METHODS)[number];
+
 export type ReproductionServiceErrorCode =
   | "invalid_input"
   | "unauthenticated"
   | "forbidden"
   | "not_found"
   | "invalid_mother"
+  | "invalid_father"
+  | "invalid_cycle"
   | "conflict"
   | "database_error";
 
@@ -123,6 +135,56 @@ export type AddProgesteroneMeasurementResult =
     }
   | ErrorResult;
 
+export type ReproductiveCycleMatingSummary = {
+  id: string;
+  cycleId: string;
+  fatherId: string;
+  sequenceNo: number;
+  occurredAt: string;
+  timezoneName: string;
+  method: ReproductiveCycleMatingMethod;
+  location: string | null;
+  note: string | null;
+  clientCommandId: string;
+  createdAt: string;
+  createdBy: string | null;
+};
+
+export type ListReproductiveCycleMatingsInput = {
+  cycleId: string;
+};
+
+export type ListReproductiveCycleMatingsResult =
+  | {
+      outcome: "success";
+      role: OrganizationRole;
+      matings: ReproductiveCycleMatingSummary[];
+    }
+  | ErrorResult;
+
+export type RecordReproductiveCycleMatingInput = {
+  cycleId: string;
+  clientCommandId: string;
+  fatherId: string;
+  occurredAt: string;
+  timezoneName: string;
+  method: ReproductiveCycleMatingMethod;
+  location?: string | null;
+  note?: string | null;
+  litterName?: string | null;
+};
+
+export type RecordReproductiveCycleMatingResult =
+  | {
+      outcome: "success";
+      cycleId: string;
+      matingId: string;
+      litterId: string;
+      sequenceNo: number;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -140,6 +202,8 @@ type CycleRow =
   Database["public"]["Tables"]["reproductive_cycles"]["Row"];
 type MeasurementRow =
   Database["public"]["Tables"]["progesterone_measurements"]["Row"];
+type MatingRow =
+  Database["public"]["Tables"]["reproductive_cycle_matings"]["Row"];
 
 function failure(
   code: ReproductionServiceErrorCode,
@@ -217,6 +281,30 @@ function isProgesteroneUnit(value: unknown): value is ProgesteroneUnit {
   );
 }
 
+function isMatingMethod(
+  value: unknown,
+): value is ReproductiveCycleMatingMethod {
+  return (
+    typeof value === "string" &&
+    REPRODUCTIVE_CYCLE_MATING_METHODS.includes(
+      value as ReproductiveCycleMatingMethod,
+    )
+  );
+}
+
+function normalizeTimezone(value: unknown) {
+  if (typeof value !== "string") return null;
+  const timezoneName = value.trim();
+  if (!timezoneName || timezoneName.length > 255) return null;
+
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: timezoneName });
+    return timezoneName;
+  } catch {
+    return null;
+  }
+}
+
 function mapCycle(row: CycleRow): ReproductiveCycleSummary {
   return {
     id: row.id,
@@ -246,6 +334,23 @@ function mapMeasurement(row: MeasurementRow): ProgesteroneMeasurementSummary {
     note: row.note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapMating(row: MatingRow): ReproductiveCycleMatingSummary {
+  return {
+    id: row.id,
+    cycleId: row.cycle_id,
+    fatherId: row.father_id,
+    sequenceNo: row.sequence_no,
+    occurredAt: row.occurred_at,
+    timezoneName: row.timezone_name,
+    method: row.method as ReproductiveCycleMatingMethod,
+    location: row.location,
+    note: row.note,
+    clientCommandId: row.client_command_id,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
   };
 }
 
@@ -572,5 +677,133 @@ export async function addProgesteroneMeasurementCore(
   return {
     outcome: "success",
     measurement: mapMeasurement(inserted.data),
+  };
+}
+
+export async function listReproductiveCycleMatingsForCycleCore(
+  input: ListReproductiveCycleMatingsInput,
+  supabase: Supabase,
+): Promise<ListReproductiveCycleMatingsResult> {
+  const authorization = await authorizeCycle(supabase, input.cycleId, false);
+  if ("outcome" in authorization) return authorization;
+
+  const matings = await supabase
+    .from("reproductive_cycle_matings")
+    .select("*")
+    .eq("organization_id", authorization.cycle.organization_id)
+    .eq("cycle_id", authorization.cycle.id)
+    .order("sequence_no", { ascending: true });
+
+  if (matings.error) {
+    return databaseFailure("reproductive_cycle_matings_list_failed", matings.error);
+  }
+
+  return {
+    outcome: "success",
+    role: authorization.role,
+    matings: (matings.data ?? []).map(mapMating),
+  };
+}
+
+function recordMatingFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure(
+        "forbidden",
+        "Vous n’avez pas les droits nécessaires pour cette opération.",
+      );
+    case "cycle_not_found":
+      return failure("not_found", "Le cycle reproductif demandé est introuvable.");
+    case "mother_ineligible":
+      return failure(
+        "invalid_mother",
+        "La reproductrice associée au cycle ne peut pas être utilisée.",
+      );
+    case "father_ineligible":
+      return failure(
+        "invalid_father",
+        "Le reproducteur sélectionné ne peut pas être utilisé.",
+      );
+    case "cycle_not_open":
+      return failure("invalid_cycle", "Ce cycle ne permet plus d’enregistrer de saillie.");
+    case "father_mismatch":
+      return failure(
+        "conflict",
+        "Les saillies d’un cycle doivent conserver le même reproducteur.",
+      );
+    case "client_command_conflict":
+    case "cycle_litter_conflict":
+    case "cycle_litter_missing":
+    case "linked_litter_not_found":
+      return failure("conflict", "L’état du cycle ne permet pas cette opération.");
+    default:
+      return invalidInput();
+  }
+}
+
+export async function recordReproductiveCycleMatingCore(
+  input: RecordReproductiveCycleMatingInput,
+  supabase: Supabase,
+): Promise<RecordReproductiveCycleMatingResult> {
+  const cycleId = normalizeUuid(input.cycleId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const fatherId = normalizeUuid(input.fatherId);
+  const occurredAt = normalizeTimestamp(input.occurredAt);
+  const timezoneName = normalizeTimezone(input.timezoneName);
+  const location = normalizeOptionalText(input.location, 500);
+  const note = normalizeOptionalText(input.note, 5_000);
+  const litterName = normalizeOptionalText(input.litterName, 255);
+
+  if (
+    !cycleId ||
+    !clientCommandId ||
+    !fatherId ||
+    !occurredAt ||
+    !timezoneName ||
+    !isMatingMethod(input.method) ||
+    location === undefined ||
+    note === undefined ||
+    litterName === undefined
+  ) {
+    return invalidInput();
+  }
+
+  const recorded = await supabase.rpc("record_reproductive_cycle_mating", {
+    p_cycle_id: cycleId,
+    p_client_command_id: clientCommandId,
+    p_father_id: fatherId,
+    p_occurred_at: occurredAt,
+    p_timezone_name: timezoneName,
+    p_method: input.method,
+    p_location: location ?? undefined,
+    p_note: note ?? undefined,
+    p_litter_name: litterName ?? undefined,
+  });
+
+  if (recorded.error) {
+    return databaseFailure("reproductive_cycle_mating_record_failed", recorded.error);
+  }
+
+  const result = recorded.data?.[0];
+  if (
+    !result ||
+    result.outcome !== "success" ||
+    !result.cycle_id ||
+    !result.mating_id ||
+    !result.litter_id ||
+    !result.sequence_no
+  ) {
+    return recordMatingFailure(result?.reason ?? null);
+  }
+
+  return {
+    outcome: "success",
+    cycleId: result.cycle_id,
+    matingId: result.mating_id,
+    litterId: result.litter_id,
+    sequenceNo: result.sequence_no,
+    replayed: result.replayed === true,
   };
 }

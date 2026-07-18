@@ -3319,6 +3319,96 @@ export type Database = {
           },
         ]
       }
+      reproductive_cycle_matings: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string | null
+          cycle_id: string
+          father_id: string
+          id: string
+          location: string | null
+          method: string
+          note: string | null
+          occurred_at: string
+          organization_id: string
+          sequence_no: number
+          timezone_name: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by?: string | null
+          cycle_id: string
+          father_id: string
+          id?: string
+          location?: string | null
+          method: string
+          note?: string | null
+          occurred_at: string
+          organization_id: string
+          sequence_no: number
+          timezone_name: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string | null
+          cycle_id?: string
+          father_id?: string
+          id?: string
+          location?: string | null
+          method?: string
+          note?: string | null
+          occurred_at?: string
+          organization_id?: string
+          sequence_no?: number
+          timezone_name?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reproductive_cycle_matings_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_matings_cycle_organization_fk"
+            columns: ["organization_id", "cycle_id"]
+            isOneToOne: false
+            referencedRelation: "reproductive_cycles"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_matings_father_organization_fk"
+            columns: ["organization_id", "father_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_matings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_matings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reproductive_cycles: {
         Row: {
           breed: string
@@ -4260,6 +4350,28 @@ export type Database = {
           p_version_id: string
         }
         Returns: string
+      }
+      record_reproductive_cycle_mating: {
+        Args: {
+          p_client_command_id: string
+          p_cycle_id: string
+          p_father_id: string
+          p_litter_name?: string
+          p_location?: string
+          p_method: string
+          p_note?: string
+          p_occurred_at: string
+          p_timezone_name: string
+        }
+        Returns: {
+          cycle_id: string
+          litter_id: string
+          mating_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          sequence_no: number
+        }[]
       }
       reservation_document_variant_version_is_used: {
         Args: { p_organization_id: string; p_version_id: string }

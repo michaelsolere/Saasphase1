@@ -5,8 +5,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   addProgesteroneMeasurementCore,
   createReproductiveCycleCore,
+  listReproductiveCycleMatingsForCycleCore,
   listProgesteroneMeasurementsForCycleCore,
   listReproductiveCyclesForMotherCore,
+  recordReproductiveCycleMatingCore,
 } from "./reproductive-cycles-core";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -20,13 +22,19 @@ export type {
   CreateReproductiveCycleResult,
   ListProgesteroneMeasurementsInput,
   ListProgesteroneMeasurementsResult,
+  ListReproductiveCycleMatingsInput,
+  ListReproductiveCycleMatingsResult,
   ListReproductiveCyclesInput,
   ListReproductiveCyclesResult,
   ProgesteroneMeasurementSummary,
   ProgesteroneUnit,
   ReproductionServiceError,
   ReproductionServiceErrorCode,
+  RecordReproductiveCycleMatingInput,
+  RecordReproductiveCycleMatingResult,
   ReproductiveCycleStatus,
+  ReproductiveCycleMatingMethod,
+  ReproductiveCycleMatingSummary,
   ReproductiveCycleSummary,
 } from "./reproductive-cycles-core";
 
@@ -66,6 +74,26 @@ export async function addProgesteroneMeasurement(
   suppliedClient?: Supabase,
 ) {
   return addProgesteroneMeasurementCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function listReproductiveCycleMatingsForCycle(
+  input: Parameters<typeof listReproductiveCycleMatingsForCycleCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return listReproductiveCycleMatingsForCycleCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function recordReproductiveCycleMating(
+  input: Parameters<typeof recordReproductiveCycleMatingCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return recordReproductiveCycleMatingCore(
     input,
     await serverClient(suppliedClient),
   );
