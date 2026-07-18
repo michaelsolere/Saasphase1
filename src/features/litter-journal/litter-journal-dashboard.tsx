@@ -8,6 +8,12 @@ import {
 } from "@/features/litters/formatters";
 
 import { LitterJournalSelector } from "./litter-journal-selector";
+import {
+  LitterCareTasksPanel,
+  type LitterCareTaskResolutionAction,
+} from "./litter-care-tasks-panel";
+import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
+import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
 import type { MaternalObservationSummary } from "./maternal-observations";
@@ -147,6 +153,12 @@ export function LitterJournalDashboard({
   maternalObservationAction,
   maternalObservationClientCommandId,
   maternalObservationsLoadError,
+  litterCareTasks,
+  litterCareTaskRole,
+  createLitterCareTaskAction,
+  createLitterCareTaskClientCommandId,
+  litterCareTaskResolutionActions,
+  litterCareTasksLoadError,
 }: {
   litters: LitterJournalListItem[];
   litter: LitterJournalListItem;
@@ -159,6 +171,15 @@ export function LitterJournalDashboard({
   ) => Promise<MaternalObservationActionState>) | null;
   maternalObservationClientCommandId: string;
   maternalObservationsLoadError: boolean;
+  litterCareTasks: LitterCareTaskSummary[];
+  litterCareTaskRole: "owner" | "admin" | "member" | "viewer" | null;
+  createLitterCareTaskAction: ((
+    previousState: LitterCareTaskActionState,
+    formData: FormData,
+  ) => Promise<LitterCareTaskActionState>) | null;
+  createLitterCareTaskClientCommandId: string;
+  litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
+  litterCareTasksLoadError: boolean;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
@@ -223,6 +244,14 @@ export function LitterJournalDashboard({
         action={maternalObservationAction}
         clientCommandId={maternalObservationClientCommandId}
         loadError={maternalObservationsLoadError}
+      />
+      <LitterCareTasksPanel
+        tasks={litterCareTasks}
+        role={litterCareTaskRole}
+        createAction={createLitterCareTaskAction}
+        createClientCommandId={createLitterCareTaskClientCommandId}
+        resolutionActions={litterCareTaskResolutionActions}
+        loadError={litterCareTasksLoadError}
       />
       <QuickLinks litter={litter} />
     </div>

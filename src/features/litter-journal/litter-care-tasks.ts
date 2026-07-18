@@ -33,6 +33,12 @@ export type {
   ResolveLitterCareTaskResult,
 } from "./litter-care-tasks-core";
 
+export {
+  LITTER_CARE_TASK_CATEGORIES,
+  LITTER_CARE_TASK_RESOLUTION_STATUSES,
+  LITTER_CARE_TASK_TARGET_SCOPES,
+} from "./litter-care-tasks-core";
+
 async function serverClient(suppliedClient?: Supabase) {
   return suppliedClient ?? (await createClient());
 }
