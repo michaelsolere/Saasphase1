@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import {
   createLitterCareTask,
+  generateLitterCareTasksFromPlan,
   LITTER_CARE_TASK_CATEGORIES,
   LITTER_CARE_TASK_RESOLUTION_STATUSES,
   LITTER_CARE_TASK_TARGET_SCOPES,
   resolveLitterCareTask,
   type LitterCareTaskCategory,
+  type LitterCareTaskGenerationReadyPlanItem,
   type LitterCareTaskResolutionStatus,
   type LitterCareTaskTargetScope,
 } from "./litter-care-tasks";
@@ -16,6 +18,11 @@ import {
 export type LitterCareTaskActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+};
+
+export type GenerateLitterCareTasksActionState = LitterCareTaskActionState & {
+  createdCount?: number;
+  alreadyGeneratedCount?: number;
 };
 
 export type CreateLitterCareTaskSubmission = {
@@ -26,6 +33,12 @@ export type CreateLitterCareTaskSubmission = {
 export type ResolveLitterCareTaskSubmission = {
   taskId: string;
   clientCommandId: string;
+};
+
+export type GenerateLitterCareTasksSubmission = {
+  litterId: string;
+  clientCommandId: string;
+  readyPlan: LitterCareTaskGenerationReadyPlanItem[];
 };
 
 function value(formData: FormData, name: string) {
@@ -114,6 +127,122 @@ function resolveErrorMessage(code: string) {
     default:
       return "La tâche ne peut pas être traitée pour le moment.";
   }
+}
+
+function generationErrorMessage(code: string) {
+  switch (code) {
+    case "stale_plan":
+      return "Le plan a changé. Rechargez le Journal avant de recommencer.";
+    case "invalid_litter":
+    case "not_found":
+      return "Cette portée ne permet plus de créer ces tâches.";
+    case "forbidden":
+    case "unauthenticated":
+      return "Vous n’avez pas les droits nécessaires pour créer ces tâches.";
+    case "conflict":
+      return "Cette demande ne peut pas être rejouée. Rechargez le Journal avant de recommencer.";
+    default:
+      return "Les tâches sélectionnées ne peuvent pas être créées pour le moment.";
+  }
+}
+
+function generationSuccessMessage(
+  createdCount: number,
+  alreadyGeneratedCount: number,
+) {
+  const createdIsPlural = createdCount !== 1;
+  const created = `${createdCount} tâche${createdIsPlural ? "s" : ""} créée${createdIsPlural ? "s" : ""}.`;
+  if (alreadyGeneratedCount === 0) return created;
+
+  const alreadyGeneratedIsPlural = alreadyGeneratedCount !== 1;
+  return `${created} ${alreadyGeneratedCount} tâche${alreadyGeneratedIsPlural ? "s" : ""} déjà présente${alreadyGeneratedIsPlural ? "s" : ""}.`;
+}
+
+export async function generateLitterCareTasksAction(
+  submission: GenerateLitterCareTasksSubmission,
+  _previousState: GenerateLitterCareTasksActionState,
+  formData: FormData,
+): Promise<GenerateLitterCareTasksActionState> {
+  if (value(formData, "confirmation") !== "confirmed") {
+    return { status: "error", message: "La confirmation est requise." };
+  }
+
+  const selectedEntries = formData.getAll("template_id");
+  if (
+    selectedEntries.length === 0 ||
+    selectedEntries.some((entry) => typeof entry !== "string")
+  ) {
+    return {
+      status: "error",
+      message: "Sélectionnez au moins une tâche applicable.",
+    };
+  }
+
+  const selectedTemplateIds = selectedEntries as string[];
+  const selectedTemplateIdSet = new Set(selectedTemplateIds);
+  if (selectedTemplateIdSet.size !== selectedTemplateIds.length) {
+    return {
+      status: "error",
+      message: "La sélection contient une tâche en double.",
+    };
+  }
+
+  const readyPlanByTemplateId = new Map(
+    submission.readyPlan.map((item) => [item.templateId, item]),
+  );
+  if (
+    readyPlanByTemplateId.size !== submission.readyPlan.length ||
+    selectedTemplateIds.some(
+      (templateId) => !readyPlanByTemplateId.has(templateId),
+    )
+  ) {
+    return {
+      status: "error",
+      message: "La sélection de tâches est invalide.",
+    };
+  }
+
+  const selectedPlan = submission.readyPlan.filter((item) =>
+    selectedTemplateIdSet.has(item.templateId),
+  );
+  if (selectedPlan.length !== selectedTemplateIds.length) {
+    return {
+      status: "error",
+      message: "La sélection de tâches est invalide.",
+    };
+  }
+
+  let result: Awaited<ReturnType<typeof generateLitterCareTasksFromPlan>>;
+  try {
+    result = await generateLitterCareTasksFromPlan({
+      litterId: submission.litterId,
+      clientCommandId: submission.clientCommandId,
+      plan: selectedPlan,
+    });
+  } catch {
+    return {
+      status: "error",
+      message: "Les tâches sélectionnées ne peuvent pas être créées pour le moment.",
+    };
+  }
+
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      message: generationErrorMessage(result.error.code),
+    };
+  }
+
+  revalidatePath("/litters/journal");
+  return {
+    status: "success",
+    message: generationSuccessMessage(
+      result.createdCount,
+      result.alreadyGeneratedCount,
+    ),
+    createdCount: result.createdCount,
+    alreadyGeneratedCount: result.alreadyGeneratedCount,
+  };
 }
 
 export async function createLitterCareTaskAction(

@@ -9,10 +9,17 @@ import {
 
 import { LitterJournalSelector } from "./litter-journal-selector";
 import {
+  LitterCareTaskGenerationPanel,
+  type LitterCareTaskGenerationPanelEntry,
+} from "./litter-care-task-generation-panel";
+import {
   LitterCareTasksPanel,
   type LitterCareTaskResolutionAction,
 } from "./litter-care-tasks-panel";
-import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
+import type {
+  GenerateLitterCareTasksActionState,
+  LitterCareTaskActionState,
+} from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
@@ -155,6 +162,10 @@ export function LitterJournalDashboard({
   maternalObservationsLoadError,
   litterCareTasks,
   litterCareTaskRole,
+  litterCareTaskGenerationEntries,
+  litterCareTaskGenerationRole,
+  litterCareTaskGenerationAction,
+  litterCareTaskGenerationLoadError,
   createLitterCareTaskAction,
   createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
@@ -173,6 +184,18 @@ export function LitterJournalDashboard({
   maternalObservationsLoadError: boolean;
   litterCareTasks: LitterCareTaskSummary[];
   litterCareTaskRole: "owner" | "admin" | "member" | "viewer" | null;
+  litterCareTaskGenerationEntries: LitterCareTaskGenerationPanelEntry[];
+  litterCareTaskGenerationRole:
+    | "owner"
+    | "admin"
+    | "member"
+    | "viewer"
+    | null;
+  litterCareTaskGenerationAction: ((
+    previousState: GenerateLitterCareTasksActionState,
+    formData: FormData,
+  ) => Promise<GenerateLitterCareTasksActionState>) | null;
+  litterCareTaskGenerationLoadError: boolean;
   createLitterCareTaskAction: ((
     previousState: LitterCareTaskActionState,
     formData: FormData,
@@ -244,6 +267,12 @@ export function LitterJournalDashboard({
         action={maternalObservationAction}
         clientCommandId={maternalObservationClientCommandId}
         loadError={maternalObservationsLoadError}
+      />
+      <LitterCareTaskGenerationPanel
+        entries={litterCareTaskGenerationEntries}
+        role={litterCareTaskGenerationRole}
+        action={litterCareTaskGenerationAction}
+        loadError={litterCareTaskGenerationLoadError}
       />
       <LitterCareTasksPanel
         tasks={litterCareTasks}

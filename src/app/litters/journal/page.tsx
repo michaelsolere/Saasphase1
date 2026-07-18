@@ -9,9 +9,13 @@ import { recordMaternalObservationAction } from "@/features/litter-journal/mater
 import { listMaternalObservationsForLitter } from "@/features/litter-journal/maternal-observations";
 import {
   createLitterCareTaskAction,
+  generateLitterCareTasksAction,
   resolveLitterCareTaskAction,
 } from "@/features/litter-journal/litter-care-tasks-actions";
-import { listLitterCareTasksForLitter } from "@/features/litter-journal/litter-care-tasks";
+import {
+  listLitterCareTasksForLitter,
+  planLitterCareTaskGeneration,
+} from "@/features/litter-journal/litter-care-tasks";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import { createClient } from "@/lib/supabase/server";
@@ -51,6 +55,9 @@ export default async function LitterJournalPage({
   let litterCareTasks: Awaited<
     ReturnType<typeof listLitterCareTasksForLitter>
   > | null = null;
+  let litterCareTaskGenerationPlan: Awaited<
+    ReturnType<typeof planLitterCareTaskGeneration>
+  > | null = null;
 
   try {
     journal = await loadLitterJournal(supabase, requestedLitterId);
@@ -60,15 +67,21 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult] = await Promise.allSettled([
-      listMaternalObservationsForLitter({ litterId }),
-      listLitterCareTasksForLitter({ litterId }),
-    ]);
+    const [maternalResult, tasksResult, generationPlanResult] =
+      await Promise.allSettled([
+        listMaternalObservationsForLitter({ litterId }),
+        listLitterCareTasksForLitter({ litterId }),
+        planLitterCareTaskGeneration({ litterId }),
+      ]);
 
     maternalObservations =
       maternalResult.status === "fulfilled" ? maternalResult.value : null;
     litterCareTasks =
       tasksResult.status === "fulfilled" ? tasksResult.value : null;
+    litterCareTaskGenerationPlan =
+      generationPlanResult.status === "fulfilled"
+        ? generationPlanResult.value
+        : null;
   }
 
   const maternalObservationsLoaded =
@@ -83,6 +96,10 @@ export default async function LitterJournalPage({
       : null;
   const litterCareTasksLoaded =
     litterCareTasks?.outcome === "success" ? litterCareTasks : null;
+  const litterCareTaskGenerationPlanLoaded =
+    litterCareTaskGenerationPlan?.outcome === "success"
+      ? litterCareTaskGenerationPlan
+      : null;
   const litterCareTaskCanWrite =
     litterCareTasksLoaded?.role === "owner" ||
     litterCareTasksLoaded?.role === "admin" ||
@@ -95,6 +112,34 @@ export default async function LitterJournalPage({
           clientCommandId: createTaskClientCommandId,
         })
       : null;
+  const generationClientCommandId = crypto.randomUUID();
+  const litterCareTaskGenerationCanWrite =
+    litterCareTaskGenerationPlanLoaded?.role === "owner" ||
+    litterCareTaskGenerationPlanLoaded?.role === "admin" ||
+    litterCareTaskGenerationPlanLoaded?.role === "member";
+  const litterCareTaskGenerationAction =
+    journal?.selectedLitter?.id &&
+    litterCareTaskGenerationPlanLoaded &&
+    litterCareTaskGenerationCanWrite
+      ? generateLitterCareTasksAction.bind(null, {
+          litterId: journal.selectedLitter.id,
+          clientCommandId: generationClientCommandId,
+          readyPlan: litterCareTaskGenerationPlanLoaded.readyPlan,
+        })
+      : null;
+  const litterCareTaskGenerationEntries =
+    litterCareTaskGenerationPlanLoaded?.entries.map((entry) => ({
+      template: {
+        id: entry.template.id,
+        title: entry.template.title,
+        category: entry.template.category,
+        targetScope: entry.template.targetScope,
+        anchorType: entry.template.anchorType,
+        offsetDays: entry.template.offsetDays,
+      },
+      state: entry.state,
+      plannedFor: entry.readyPlan?.plannedFor ?? null,
+    })) ?? [];
   const resolutionActions = litterCareTaskCanWrite
     ? (litterCareTasksLoaded?.tasks ?? [])
         .filter((task) => task.status === "planned")
@@ -143,6 +188,16 @@ export default async function LitterJournalPage({
             maternalObservationsLoadError={maternalObservationsLoaded === null}
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
             litterCareTaskRole={litterCareTasksLoaded?.role ?? null}
+            litterCareTaskGenerationEntries={
+              litterCareTaskGenerationEntries
+            }
+            litterCareTaskGenerationRole={
+              litterCareTaskGenerationPlanLoaded?.role ?? null
+            }
+            litterCareTaskGenerationAction={litterCareTaskGenerationAction}
+            litterCareTaskGenerationLoadError={
+              litterCareTaskGenerationPlanLoaded === null
+            }
             createLitterCareTaskAction={createTaskAction}
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
