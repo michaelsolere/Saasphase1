@@ -203,6 +203,41 @@ create trigger litter_care_tasks_set_updated_at
 before update on public.litter_care_tasks
 for each row execute function public.set_updated_at();
 
+create or replace function public.validate_litter_care_task_litter_on_insert()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+set row_security = off
+as $$
+declare
+  v_litter_status text;
+begin
+  select litter.status
+  into v_litter_status
+  from public.litters litter
+  where litter.organization_id = new.organization_id
+    and litter.id = new.litter_id
+    and litter.deleted_at is null
+  for share;
+
+  if not found or v_litter_status not in (
+    'mating_done', 'pregnancy_unconfirmed', 'pregnancy_confirmed',
+    'birth_expected', 'birth_in_progress', 'born', 'puppies_created',
+    'choice_period', 'ready_to_leave'
+  ) then
+    raise exception 'litter care task litter must be active and not deleted'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger litter_care_tasks_validate_litter_on_insert
+before insert on public.litter_care_tasks
+for each row execute function public.validate_litter_care_task_litter_on_insert();
+
 alter table public.litter_care_task_templates enable row level security;
 alter table public.litter_care_tasks enable row level security;
 
@@ -596,6 +631,8 @@ grant select on table public.litter_care_task_templates to authenticated;
 
 revoke all on table public.litter_care_tasks from anon, authenticated;
 grant select on table public.litter_care_tasks to authenticated;
+
+revoke all on function public.validate_litter_care_task_litter_on_insert() from public;
 
 revoke all on function public.create_litter_care_task(
   uuid, uuid, text, text, text, text, date

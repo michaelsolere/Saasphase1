@@ -56,6 +56,12 @@ const ids = {
   notApplicableResolutionCommand: `${prefix}63`,
   concurrentResolutionCommand: `${prefix}64`,
   closedResolutionCommand: `${prefix}65`,
+  directActiveCommand: `${prefix}85`,
+  directClosedCommand: `${prefix}86`,
+  directCancelledCommand: `${prefix}87`,
+  directNotPregnantCommand: `${prefix}88`,
+  directArchivedCommand: `${prefix}89`,
+  directDeletedCommand: `${prefix}91`,
 } as const;
 
 function q(value: string) {
@@ -368,6 +374,19 @@ function manualInput(command: string, plannedFor = "2026-07-20") {
   };
 }
 
+function insertManualTaskDirect(litterId: string, commandId: string) {
+  sql(`
+    insert into public.litter_care_tasks (
+      organization_id, litter_id, source, occurrence_no, category, target_scope,
+      title, planned_for, status, creation_command_id, created_by, updated_by
+    ) values (
+      ${q(organizationId)}::uuid, ${q(litterId)}::uuid, 'manual', 1,
+      'preparation', 'litter', 'Insertion SQL directe', '2026-07-23', 'planned',
+      ${q(commandId)}::uuid, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+  `);
+}
+
 test("fonde les modèles et tâches de suivi de portée", async () => {
   cleanup();
   expectCleanupAtZero();
@@ -492,6 +511,33 @@ test("fonde les modèles et tâches de suivi de portée", async () => {
         'actual_birth', '2026-07-18', 3, '2026-07-21', 'planned', ${q(`${prefix}74`)}::uuid
       );`),
     ).toThrow();
+
+    insertManualTaskDirect(ids.secondLitter, ids.directActiveCommand);
+    expect(
+      Number(sql(`select count(*) from public.litter_care_tasks
+        where creation_command_id = ${q(ids.directActiveCommand)}::uuid;`)),
+    ).toBe(1);
+    for (const [litterId, commandId] of [
+      [ids.closedLitter, ids.directClosedCommand],
+      [ids.cancelledLitter, ids.directCancelledCommand],
+      [ids.notPregnantLitter, ids.directNotPregnantCommand],
+      [ids.archivedLitter, ids.directArchivedCommand],
+    ] as const) {
+      expect(() => insertManualTaskDirect(litterId, commandId)).toThrow();
+      expect(
+        Number(sql(`select count(*) from public.litter_care_tasks
+          where creation_command_id = ${q(commandId)}::uuid;`)),
+      ).toBe(0);
+    }
+    sql(`update public.litters set deleted_at = now()
+      where id = ${q(ids.secondLitter)}::uuid;`);
+    expect(() => insertManualTaskDirect(ids.secondLitter, ids.directDeletedCommand)).toThrow();
+    expect(
+      Number(sql(`select count(*) from public.litter_care_tasks
+        where creation_command_id = ${q(ids.directDeletedCommand)}::uuid;`)),
+    ).toBe(0);
+    sql(`update public.litters set deleted_at = null
+      where id = ${q(ids.secondLitter)}::uuid;`);
 
     const created = await createLitterCareTaskCore(manualInput(ids.createCommand, "2026-07-19"), owner);
     expect(created).toMatchObject({ outcome: "success", replayed: false, status: "planned" });
@@ -684,9 +730,14 @@ test("fonde les modèles et tâches de suivi de portée", async () => {
       );
       expect(firstTerminalTask?.id).toBe(closedResolution.taskId);
     }
-    for (const litterId of [ids.closedLitter, ids.cancelledLitter, ids.notPregnantLitter, ids.archivedLitter]) {
+    for (const [litterId, commandId] of [
+      [ids.closedLitter, `${prefix}92`],
+      [ids.cancelledLitter, `${prefix}93`],
+      [ids.notPregnantLitter, `${prefix}94`],
+      [ids.archivedLitter, `${prefix}95`],
+    ] as const) {
       expect(
-        await createLitterCareTaskCore({ ...manualInput(`${prefix}8${litterId.slice(-1)}`), litterId }, owner),
+        await createLitterCareTaskCore({ ...manualInput(commandId), litterId }, owner),
       ).toMatchObject({ outcome: "error", error: { code: "invalid_litter" } });
     }
 
