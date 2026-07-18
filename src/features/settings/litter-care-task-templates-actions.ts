@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import {
   createLitterCareTaskTemplate,
+  importLitterCareTaskLibraryTemplates,
   LITTER_CARE_TASK_ANCHOR_TYPES,
   LITTER_CARE_TASK_CATEGORIES,
   LITTER_CARE_TASK_TARGET_SCOPES,
@@ -19,6 +20,11 @@ const postgresIntegerMin = -2_147_483_648;
 const postgresIntegerMax = 2_147_483_647;
 
 export type LitterCareTaskTemplateActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+};
+
+export type LitterCareTaskLibraryImportActionState = {
   status: "idle" | "success" | "error";
   message?: string;
 };
@@ -39,6 +45,11 @@ export type SetLitterCareTaskTemplateActiveSubmission = {
   expectedRevision: number;
   clientCommandId: string;
   isActive: boolean;
+};
+
+export type ImportLitterCareTaskLibraryTemplatesSubmission = {
+  organizationId: string;
+  clientCommandId: string;
 };
 
 function value(formData: FormData, name: string) {
@@ -164,6 +175,105 @@ function mutationErrorMessage(
     return "Cette demande ne peut pas être rejouée. Rechargez la page avant de recommencer.";
   }
   return `Impossible de ${operation} ce modèle pour le moment.`;
+}
+
+function libraryImportErrorMessage(code: string) {
+  if (
+    code === "stale" ||
+    code === "unavailable" ||
+    code === "not_found"
+  ) {
+    return "La bibliothèque a changé. Rechargez la page avant de recommencer.";
+  }
+  if (code === "conflict") {
+    return "Cette demande ne peut pas être rejouée. Rechargez la page avant de recommencer.";
+  }
+  if (code === "forbidden" || code === "unauthenticated") {
+    return "Vous n’avez pas les droits nécessaires pour importer ces modèles.";
+  }
+  return "Impossible d’importer ces modèles pour le moment.";
+}
+
+function importSuccessMessage(importedCount: number, alreadyImportedCount: number) {
+  const imported = `${importedCount} modèle${importedCount > 1 ? "s" : ""} importé${importedCount > 1 ? "s" : ""}.`;
+  if (alreadyImportedCount === 0) return imported;
+
+  return `${imported} ${alreadyImportedCount} modèle${alreadyImportedCount > 1 ? "s" : ""} déjà présent${alreadyImportedCount > 1 ? "s" : ""}.`;
+}
+
+export async function importLitterCareTaskLibraryTemplatesAction(
+  submission: ImportLitterCareTaskLibraryTemplatesSubmission,
+  _previousState: LitterCareTaskLibraryImportActionState,
+  formData: FormData,
+): Promise<LitterCareTaskLibraryImportActionState> {
+  if (value(formData, "confirmation") !== "confirmed") {
+    return { status: "error", message: "La confirmation est requise." };
+  }
+
+  const rawSelections = formData.getAll("selection");
+  if (
+    rawSelections.length < 1 ||
+    rawSelections.length > 30 ||
+    rawSelections.some((selection) => typeof selection !== "string")
+  ) {
+    return {
+      status: "error",
+      message: "Sélectionnez entre 1 et 30 modèles à importer.",
+    };
+  }
+
+  const selection: Array<{ code: string; version: number }> = [];
+  const seen = new Set<string>();
+  for (const rawSelection of rawSelections as string[]) {
+    const match = /^([a-z0-9]+(?:-[a-z0-9]+)*):([1-9][0-9]*)$/.exec(
+      rawSelection,
+    );
+    const version = match ? Number(match[2]) : Number.NaN;
+    if (
+      !match ||
+      match[1].length > 100 ||
+      !Number.isInteger(version) ||
+      version > postgresIntegerMax ||
+      seen.has(rawSelection)
+    ) {
+      return {
+        status: "error",
+        message: "La sélection de modèles n’est pas valide.",
+      };
+    }
+    seen.add(rawSelection);
+    selection.push({ code: match[1], version });
+  }
+
+  const rawIsActive = value(formData, "is_active");
+  if (rawIsActive !== "true" && rawIsActive !== "false") {
+    return {
+      status: "error",
+      message: "Le statut initial sélectionné n’est pas valide.",
+    };
+  }
+
+  const result = await importLitterCareTaskLibraryTemplates({
+    organizationId: submission.organizationId,
+    clientCommandId: submission.clientCommandId,
+    selection,
+    isActive: rawIsActive === "true",
+  });
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      message: libraryImportErrorMessage(result.error.code),
+    };
+  }
+
+  revalidatePath(settingsPath);
+  return {
+    status: "success",
+    message: importSuccessMessage(
+      result.importedCount,
+      result.alreadyImportedCount,
+    ),
+  };
 }
 
 export async function createLitterCareTaskTemplateAction(
