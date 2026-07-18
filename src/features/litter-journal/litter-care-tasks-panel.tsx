@@ -350,7 +350,7 @@ function ResolveTaskDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [resolvedAt, setResolvedAt] = useState(currentLocalDateTime);
+  const [resolvedAt, setResolvedAt] = useState("");
   const [status, setStatus] =
     useState<LitterCareTaskResolutionStatus>("done");
   const [note, setNote] = useState("");
@@ -370,6 +370,14 @@ function ResolveTaskDialog({
   );
   const [state, formAction] = useActionState(submitAction, initialState);
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen && !open) {
+      setResolvedAt(currentLocalDateTime());
+    }
+
+    setOpen(nextOpen);
+  }
+
   function prepareSubmission() {
     if (resolvedAtRef.current) {
       resolvedAtRef.current.value = localDateTimeToIso(resolvedAt);
@@ -380,7 +388,7 @@ function ResolveTaskDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           Traiter la tâche

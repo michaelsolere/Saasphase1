@@ -670,6 +670,42 @@ test("gère les tâches de suivi du Journal sans effet hors périmètre", async 
     expect(taskCount(reopenedTitle)).toBe(1);
     dynamicallyCreatedTaskIds.push(taskRow(reopenedTitle).id!);
 
+    await page.clock.setFixedTime(new Date("2026-07-18T09:00:00.000Z"));
+    dialog = await openResolveDialog(page, "Tâche changement de rôle");
+    const resolvedAtInput = dialog.getByLabel("Date et heure de résolution");
+    const firstOpeningDefault = await page.evaluate(() => {
+      const now = new Date();
+      const offset = now.getTimezoneOffset() * 60_000;
+      return new Date(now.getTime() - offset).toISOString().slice(0, 16);
+    });
+    await expect(resolvedAtInput).toHaveValue(firstOpeningDefault);
+    expect(firstOpeningDefault).not.toBe("");
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    await expect(dialog).toBeHidden();
+
+    await page.clock.setFixedTime(new Date("2026-07-18T09:05:00.000Z"));
+    dialog = await openResolveDialog(page, "Tâche changement de rôle");
+    const secondOpeningDefault = await page.evaluate(() => {
+      const now = new Date();
+      const offset = now.getTimezoneOffset() * 60_000;
+      return new Date(now.getTime() - offset).toISOString().slice(0, 16);
+    });
+    await expect(
+      dialog.getByLabel("Date et heure de résolution"),
+    ).toHaveValue(secondOpeningDefault);
+    expect(secondOpeningDefault > firstOpeningDefault).toBe(true);
+
+    const manuallyEditedResolution = "2026-07-18T09:03";
+    await dialog
+      .getByLabel("Date et heure de résolution")
+      .fill(manuallyEditedResolution);
+    await page.clock.setFixedTime(new Date("2026-07-18T09:10:00.000Z"));
+    await expect(
+      dialog.getByLabel("Date et heure de résolution"),
+    ).toHaveValue(manuallyEditedResolution);
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    await expect(dialog).toBeHidden();
+
     const beforeDone = Number(
       sql(`select count(*) from public.litter_care_tasks where status = 'done' and litter_id = ${q(ids.mainLitter)}::uuid;`),
     );
@@ -731,14 +767,30 @@ test("gère les tâches de suivi du Journal sans effet hors périmètre", async 
     await dialog.getByRole("button", { name: "Annuler" }).click();
 
     dialog = await openResolveDialog(page, "Tâche changement de rôle");
-    await dialog.getByLabel("Date et heure de résolution").fill("2026-07-18T12:30");
+    const preservedResolutionValue = "2026-07-18T12:30";
+    const mountedDialogId = await dialog.getAttribute("id");
+    await dialog
+      .getByLabel("Date et heure de résolution")
+      .fill(preservedResolutionValue);
     setOwnerRole("viewer");
     await dialog.getByRole("button", { name: "Valider le résultat" }).click();
     await expect(dialog.getByRole("alert")).toHaveText(
       "Vous n’avez pas les droits nécessaires pour traiter cette tâche.",
     );
+    await expect(
+      dialog.getByLabel("Date et heure de résolution"),
+    ).toHaveValue(preservedResolutionValue);
+    await expect(dialog).toHaveAttribute("id", mountedDialogId!);
     expect(taskRow("Tâche changement de rôle").status).toBe("planned");
-    await dialog.getByRole("button", { name: "Annuler" }).click();
+    setOwnerRole("owner");
+    await dialog.getByRole("button", { name: "Valider le résultat" }).click();
+    await expect
+      .poll(() => taskRow("Tâche changement de rôle").status)
+      .toBe("done");
+    await expect(dialog).toBeHidden();
+    expect(taskRow("Tâche changement de rôle").resolution_command_id).toBeTruthy();
+
+    setOwnerRole("viewer");
     await page.reload();
     panel = tasksPanel(page);
     await expect(panel.getByText("Tâche changement de rôle")).toBeVisible();
