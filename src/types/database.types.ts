@@ -3127,6 +3127,92 @@ export type Database = {
         }
         Relationships: []
       }
+      progesterone_measurements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          cycle_id: string
+          deleted_at: string | null
+          id: string
+          laboratory_name: string | null
+          measured_at: string
+          method: string | null
+          note: string | null
+          organization_id: string
+          resulted_at: string | null
+          sample_reference: string | null
+          unit: string
+          updated_at: string
+          updated_by: string | null
+          value: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          cycle_id: string
+          deleted_at?: string | null
+          id?: string
+          laboratory_name?: string | null
+          measured_at: string
+          method?: string | null
+          note?: string | null
+          organization_id: string
+          resulted_at?: string | null
+          sample_reference?: string | null
+          unit: string
+          updated_at?: string
+          updated_by?: string | null
+          value: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          cycle_id?: string
+          deleted_at?: string | null
+          id?: string
+          laboratory_name?: string | null
+          measured_at?: string
+          method?: string | null
+          note?: string | null
+          organization_id?: string
+          resulted_at?: string | null
+          sample_reference?: string | null
+          unit?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "progesterone_measurements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progesterone_measurements_cycle_organization_fk"
+            columns: ["organization_id", "cycle_id"]
+            isOneToOne: false
+            referencedRelation: "reproductive_cycles"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "progesterone_measurements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "progesterone_measurements_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       public_forms: {
         Row: {
           breed: string
@@ -3226,6 +3312,103 @@ export type Database = {
           },
           {
             foreignKeyName: "public_forms_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reproductive_cycles: {
+        Row: {
+          breed: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          ended_on: string | null
+          id: string
+          litter_id: string | null
+          mother_id: string
+          notes: string | null
+          organization_id: string
+          species: string
+          started_on: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          ended_on?: string | null
+          id?: string
+          litter_id?: string | null
+          mother_id: string
+          notes?: string | null
+          organization_id: string
+          species?: string
+          started_on: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          breed?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          ended_on?: string | null
+          id?: string
+          litter_id?: string | null
+          mother_id?: string
+          notes?: string | null
+          organization_id?: string
+          species?: string
+          started_on?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reproductive_cycles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycles_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: true
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycles_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: true
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycles_mother_organization_fk"
+            columns: ["organization_id", "mother_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycles_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
