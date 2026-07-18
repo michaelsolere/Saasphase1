@@ -107,8 +107,14 @@ const sections: SidebarSection[] = [
   },
   {
     label: "Paramètres",
-    href: "/settings/organization",
     icon: Settings,
+    items: [
+      { label: "Organisation", href: "/settings/organization" },
+      {
+        label: "Jalons de portée",
+        href: "/settings/litter-care-task-templates",
+      },
+    ],
   },
 ];
 
