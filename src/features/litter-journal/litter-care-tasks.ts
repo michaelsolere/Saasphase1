@@ -7,9 +7,13 @@ import type { Database } from "@/types/database.types";
 
 import {
   createLitterCareTaskCore,
+  createLitterCareTaskTemplateCore,
+  listLitterCareTaskTemplatesForOrganizationCore,
   listLitterCareTaskTemplatesCore,
   listLitterCareTasksForLitterCore,
   resolveLitterCareTaskCore,
+  setLitterCareTaskTemplateActiveCore,
+  updateLitterCareTaskTemplateCore,
 } from "./litter-care-tasks-core";
 
 type Supabase = SupabaseClient<Database>;
@@ -17,6 +21,7 @@ type Supabase = SupabaseClient<Database>;
 export type {
   CreateLitterCareTaskInput,
   CreateLitterCareTaskResult,
+  CreateLitterCareTaskTemplateInput,
   LitterCareTaskAnchorType,
   LitterCareTaskCategory,
   LitterCareTaskResolutionStatus,
@@ -25,12 +30,17 @@ export type {
   LitterCareTaskSummary,
   LitterCareTaskTargetScope,
   LitterCareTaskTemplateSummary,
+  LitterCareTaskTemplateMutationResult,
+  ListLitterCareTaskTemplatesForOrganizationInput,
+  ListLitterCareTaskTemplatesForOrganizationResult,
   ListLitterCareTaskTemplatesInput,
   ListLitterCareTaskTemplatesResult,
   ListLitterCareTasksForLitterInput,
   ListLitterCareTasksForLitterResult,
   ResolveLitterCareTaskInput,
   ResolveLitterCareTaskResult,
+  SetLitterCareTaskTemplateActiveInput,
+  UpdateLitterCareTaskTemplateInput,
 } from "./litter-care-tasks-core";
 
 export {
@@ -48,6 +58,48 @@ export async function listLitterCareTaskTemplates(
   suppliedClient?: Supabase,
 ) {
   return listLitterCareTaskTemplatesCore(input, await serverClient(suppliedClient));
+}
+
+export async function listLitterCareTaskTemplatesForOrganization(
+  input: Parameters<
+    typeof listLitterCareTaskTemplatesForOrganizationCore
+  >[0],
+  suppliedClient?: Supabase,
+) {
+  return listLitterCareTaskTemplatesForOrganizationCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function createLitterCareTaskTemplate(
+  input: Parameters<typeof createLitterCareTaskTemplateCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return createLitterCareTaskTemplateCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function updateLitterCareTaskTemplate(
+  input: Parameters<typeof updateLitterCareTaskTemplateCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return updateLitterCareTaskTemplateCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function setLitterCareTaskTemplateActive(
+  input: Parameters<typeof setLitterCareTaskTemplateActiveCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return setLitterCareTaskTemplateActiveCore(
+    input,
+    await serverClient(suppliedClient),
+  );
 }
 
 export async function listLitterCareTasksForLitter(

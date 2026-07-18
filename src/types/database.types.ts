@@ -2262,6 +2262,64 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_template_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          operation: string
+          organization_id: string
+          result_is_active: boolean
+          result_revision: number
+          template_id: string
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          operation: string
+          organization_id: string
+          result_is_active: boolean
+          result_revision: number
+          template_id: string
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          operation?: string
+          organization_id?: string
+          result_is_active?: boolean
+          result_revision?: number
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_template_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_template_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_template_commands_template_organization_fk"
+            columns: ["organization_id", "template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       litter_care_task_templates: {
         Row: {
           anchor_type: string
@@ -2274,6 +2332,7 @@ export type Database = {
           is_active: boolean
           offset_days: number
           organization_id: string
+          revision: number
           sort_order: number
           species: string
           target_scope: string
@@ -2292,6 +2351,7 @@ export type Database = {
           is_active?: boolean
           offset_days: number
           organization_id: string
+          revision?: number
           sort_order?: number
           species: string
           target_scope: string
@@ -2310,6 +2370,7 @@ export type Database = {
           is_active?: boolean
           offset_days?: number
           organization_id?: string
+          revision?: number
           sort_order?: number
           species?: string
           target_scope?: string
@@ -4546,6 +4607,29 @@ export type Database = {
           task_id: string
         }[]
       }
+      create_litter_care_task_template: {
+        Args: {
+          p_anchor_type: string
+          p_breed: string | null
+          p_category: string
+          p_client_command_id: string
+          p_description: string | null
+          p_offset_days: number
+          p_organization_id: string
+          p_sort_order: number
+          p_species: string
+          p_target_scope: string
+          p_title: string
+        }
+        Returns: {
+          is_active: boolean
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision: number
+          template_id: string
+        }[]
+      }
       create_document_template_family_with_draft: {
         Args: {
           p_breed: string
@@ -4772,6 +4856,22 @@ export type Database = {
           outcome: string
         }[]
       }
+      set_litter_care_task_template_active: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision: number
+          p_is_active: boolean
+          p_template_id: string
+        }
+        Returns: {
+          is_active: boolean
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision: number
+          template_id: string
+        }[]
+      }
       shares_organization_with: {
         Args: { other_profile_id: string }
         Returns: boolean
@@ -4833,6 +4933,30 @@ export type Database = {
         Returns: {
           public_submission_reference: string
           status: string
+        }[]
+      }
+      update_litter_care_task_template: {
+        Args: {
+          p_anchor_type: string
+          p_breed: string | null
+          p_category: string
+          p_client_command_id: string
+          p_description: string | null
+          p_expected_revision: number
+          p_offset_days: number
+          p_sort_order: number
+          p_species: string
+          p_target_scope: string
+          p_template_id: string
+          p_title: string
+        }
+        Returns: {
+          is_active: boolean
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision: number
+          template_id: string
         }[]
       }
       use_credit: {
