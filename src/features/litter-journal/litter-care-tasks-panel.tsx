@@ -17,6 +17,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import {
+  litterCareTaskCategoryLabels as categoryLabels,
+  litterCareTaskTargetLabels as targetLabels,
+} from "./litter-care-task-labels";
+
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
 import type {
   LitterCareTaskCategory,
@@ -24,28 +29,6 @@ import type {
   LitterCareTaskSummary,
   LitterCareTaskTargetScope,
 } from "./litter-care-tasks";
-
-const categoryLabels: Record<LitterCareTaskCategory, string> = {
-  reproduction: "Reproduction",
-  maternal_health: "Santé de la mère",
-  maternal_feeding: "Alimentation de la mère",
-  preparation: "Préparation",
-  offspring_weight: "Poids des petits",
-  offspring_health: "Santé des petits",
-  offspring_feeding: "Alimentation des petits",
-  socialization: "Socialisation",
-  veterinary: "Vétérinaire",
-  identification: "Identification",
-  vaccination: "Vaccination",
-  other: "Autre",
-};
-
-const targetLabels: Record<LitterCareTaskTargetScope, string> = {
-  mother: "Mère",
-  litter: "Portée",
-  all_offspring: "Tous les petits",
-  organization: "Élevage",
-};
 
 const sourceLabels: Record<LitterCareTaskSummary["source"], string> = {
   manual: "Ajout manuel",
