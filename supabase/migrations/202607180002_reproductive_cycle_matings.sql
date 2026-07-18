@@ -195,6 +195,19 @@ begin
       and membership.profile_id = v_user_id
       and membership.status = 'active'
       and membership.deleted_at is null
+  ) then
+    reason := 'cycle_not_found';
+    return next;
+    return;
+  end if;
+
+  if not exists (
+    select 1
+    from public.memberships membership
+    where membership.organization_id = v_cycle.organization_id
+      and membership.profile_id = v_user_id
+      and membership.status = 'active'
+      and membership.deleted_at is null
       and membership.role in ('owner', 'admin', 'member')
   ) then
     reason := 'membership_required';
@@ -270,7 +283,8 @@ begin
   from public.animals animal
   where animal.organization_id = v_cycle.organization_id
     and animal.id = v_cycle.mother_id
-    and animal.deleted_at is null;
+    and animal.deleted_at is null
+  for share;
 
   if not found
     or v_mother.sex <> 'female'
@@ -297,7 +311,8 @@ begin
   from public.animals animal
   where animal.organization_id = v_cycle.organization_id
     and animal.id = p_father_id
-    and animal.deleted_at is null;
+    and animal.deleted_at is null
+  for share;
 
   if not found
     or v_father.id = v_mother.id

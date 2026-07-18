@@ -9,6 +9,7 @@ import {
 import type { Database } from "../../src/types/database.types";
 import {
   createAuthenticatedSupabaseClient,
+  runE2eSql,
   runE2eSqlSync,
 } from "./helpers/supabase";
 
@@ -26,12 +27,17 @@ const ids = {
   protectedMother: `${prefix}04`,
   closedMother: `${prefix}05`,
   cancelledMother: `${prefix}06`,
+  lockedFatherMother: `${prefix}07`,
+  foreignMother: `${prefix}08`,
   father: `${prefix}10`,
   otherFather: `${prefix}11`,
   retiredFather: `${prefix}12`,
   catFather: `${prefix}13`,
   externalFather: `${prefix}14`,
+  lockedFather: `${prefix}15`,
   otherOrganization: `${prefix}90`,
+  foreignCycle: `${prefix}70`,
+  missingCycle: `${prefix}71`,
   viewerUser: `${prefix}30`,
   viewerIdentity: `${prefix}31`,
   viewerMembership: `${prefix}32`,
@@ -52,6 +58,9 @@ const ids = {
   commandAllocationTwo: `${prefix}62`,
   commandClosed: `${prefix}63`,
   commandCancelled: `${prefix}64`,
+  commandLockedFather: `${prefix}67`,
+  commandForeignCycle: `${prefix}68`,
+  commandMissingCycle: `${prefix}69`,
 } as const;
 
 const users = {
@@ -83,6 +92,10 @@ function sql(value: string) {
   return runE2eSqlSync(value);
 }
 
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
 function fixtureAnimalIdsSql() {
   return [
     ids.mainMother,
@@ -91,11 +104,14 @@ function fixtureAnimalIdsSql() {
     ids.protectedMother,
     ids.closedMother,
     ids.cancelledMother,
+    ids.lockedFatherMother,
+    ids.foreignMother,
     ids.father,
     ids.otherFather,
     ids.retiredFather,
     ids.catFather,
     ids.externalFather,
+    ids.lockedFather,
   ]
     .map((id) => `${q(id)}::uuid`)
     .join(", ");
@@ -103,6 +119,8 @@ function fixtureAnimalIdsSql() {
 
 function cleanup() {
   sql(`
+    drop function if exists public.e2e_hold_reproductive_mating_father(uuid);
+
     delete from public.reproductive_cycle_matings
     where cycle_id in (
       select id
@@ -194,6 +212,14 @@ function remainingFixtureCounts() {
         'organizations', (
           select count(*) from public.organizations
           where id = ${q(ids.otherOrganization)}::uuid
+        ),
+        'e2e_lock_function', (
+          select count(*)
+          from pg_catalog.pg_proc procedure
+          join pg_catalog.pg_namespace namespace
+            on namespace.oid = procedure.pronamespace
+          where namespace.nspname = 'public'
+            and procedure.proname = 'e2e_hold_reproductive_mating_father'
         )
       )::text;
     `),
@@ -297,6 +323,12 @@ function createAnimalFixtures() {
       (${q(ids.cancelledMother)}::uuid, ${q(organizationId)}::uuid,
        'Mère cycle annulé E2E', 'dog', 'Golden Retriever', 'female',
        'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lockedFatherMother)}::uuid, ${q(organizationId)}::uuid,
+       'Mère verrou père E2E', 'dog', 'Golden Retriever', 'female',
+       'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.foreignMother)}::uuid, ${q(ids.otherOrganization)}::uuid,
+       'Mère cycle étrangère E2E', 'dog', 'Golden Retriever', 'female',
+       'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.father)}::uuid, ${q(organizationId)}::uuid,
        'Père principal saillies E2E', 'dog', 'Golden Retriever', 'male',
        'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
@@ -311,7 +343,24 @@ function createAnimalFixtures() {
        'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.externalFather)}::uuid, ${q(ids.otherOrganization)}::uuid,
        'Père autre organisation saillies E2E', 'dog', 'Golden Retriever', 'male',
+       'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lockedFather)}::uuid, ${q(organizationId)}::uuid,
+       'Père verrou concurrent E2E', 'dog', 'Golden Retriever', 'male',
        'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+  `);
+}
+
+function createForeignCycleFixture() {
+  sql(`
+    insert into public.reproductive_cycles (
+      id, organization_id, mother_id, species, breed, status, started_on,
+      notes, created_by, updated_by
+    ) values (
+      ${q(ids.foreignCycle)}::uuid, ${q(ids.otherOrganization)}::uuid,
+      ${q(ids.foreignMother)}::uuid, 'dog', 'Golden Retriever', 'in_progress',
+      '2026-07-01', ${q(`${fixtureNamePrefix} foreign cycle`)},
+      ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
   `);
 }
 
@@ -345,6 +394,7 @@ test("records idempotent reproductive cycle matings and links exactly one litter
   try {
     createUserFixtures();
     createAnimalFixtures();
+    createForeignCycleFixture();
 
     const owner = await createAuthenticatedSupabaseClient();
     const viewer = await clientFor(users.viewer);
@@ -373,6 +423,69 @@ test("records idempotent reproductive cycle matings and links exactly one litter
     const protectedCycle = await createCycle(ids.protectedMother);
     const closedCycle = await createCycle(ids.closedMother, "closed");
     const cancelledCycle = await createCycle(ids.cancelledMother, "cancelled");
+    const lockedFatherCycle = await createCycle(ids.lockedFatherMother);
+
+    const inaccessibleCycleInput = {
+      clientCommandId: ids.commandForeignCycle,
+      fatherId: ids.father,
+      occurredAt: "2026-07-20T08:00:00+02:00",
+      timezoneName: "Europe/Paris",
+      method: "natural" as const,
+    };
+    const foreignCycleResult = await recordReproductiveCycleMatingCore(
+      { ...inaccessibleCycleInput, cycleId: ids.foreignCycle },
+      owner,
+    );
+    const missingCycleResult = await recordReproductiveCycleMatingCore(
+      {
+        ...inaccessibleCycleInput,
+        cycleId: ids.missingCycle,
+        clientCommandId: ids.commandMissingCycle,
+      },
+      owner,
+    );
+    expect(foreignCycleResult).toEqual(missingCycleResult);
+    expect(foreignCycleResult).toMatchObject({
+      outcome: "error",
+      error: { code: "not_found" },
+    });
+
+    const [foreignCycleRpc, missingCycleRpc] = await Promise.all([
+      owner.rpc("record_reproductive_cycle_mating", {
+        p_cycle_id: ids.foreignCycle,
+        p_client_command_id: ids.commandForeignCycle,
+        p_father_id: ids.father,
+        p_occurred_at: "2026-07-20T06:00:00.000Z",
+        p_timezone_name: "Europe/Paris",
+        p_method: "natural",
+      }),
+      owner.rpc("record_reproductive_cycle_mating", {
+        p_cycle_id: ids.missingCycle,
+        p_client_command_id: ids.commandMissingCycle,
+        p_father_id: ids.father,
+        p_occurred_at: "2026-07-20T06:00:00.000Z",
+        p_timezone_name: "Europe/Paris",
+        p_method: "natural",
+      }),
+    ]);
+    expect(foreignCycleRpc.error).toBeNull();
+    expect(missingCycleRpc.error).toBeNull();
+    expect(foreignCycleRpc.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "cycle_not_found",
+      mating_id: null,
+      litter_id: null,
+      sequence_no: null,
+      replayed: false,
+    });
+    expect(missingCycleRpc.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "cycle_not_found",
+      mating_id: null,
+      litter_id: null,
+      sequence_no: null,
+      replayed: false,
+    });
 
     const first = successful(
       await recordReproductiveCycleMatingCore(
@@ -614,6 +727,69 @@ test("records idempotent reproductive cycle matings and links exactly one litter
       }
     }
 
+    sql(`
+      create function public.e2e_hold_reproductive_mating_father(
+        p_father_id uuid
+      )
+      returns void
+      language plpgsql
+      as $$
+      begin
+        update public.animals
+        set
+          is_retired = true,
+          status = 'retired',
+          updated_at = now(),
+          updated_by = ${q(ownerId)}::uuid
+        where id = p_father_id;
+
+        perform pg_sleep(4);
+      end;
+      $$;
+    `);
+    const retireFather = runE2eSql(`
+      select public.e2e_hold_reproductive_mating_father(
+        ${q(ids.lockedFather)}::uuid
+      );
+    `);
+    await delay(150);
+    const lockWaitStartedAt = Date.now();
+    const lockedFatherResult = await recordReproductiveCycleMatingCore(
+      {
+        cycleId: lockedFatherCycle.id,
+        clientCommandId: ids.commandLockedFather,
+        fatherId: ids.lockedFather,
+        occurredAt: "2026-07-23T10:00:00+02:00",
+        timezoneName: "Europe/Paris",
+        method: "natural",
+        litterName: `${fixtureNamePrefix} père verrouillé`,
+      },
+      owner,
+    );
+    const lockWaitElapsedMs = Date.now() - lockWaitStartedAt;
+    await retireFather;
+    expect(lockWaitElapsedMs).toBeGreaterThanOrEqual(2_000);
+    expect(lockedFatherResult).toMatchObject({
+      outcome: "error",
+      error: { code: "invalid_father" },
+    });
+    expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'matings', (
+              select count(*) from public.reproductive_cycle_matings
+              where cycle_id = ${q(lockedFatherCycle.id)}::uuid
+            ),
+            'litters', (
+              select count(*) from public.litters
+              where name = ${q(`${fixtureNamePrefix} père verrouillé`)}
+            )
+          )::text;
+        `),
+      ),
+    ).toEqual({ matings: 0, litters: 0 });
+
     for (const cycle of [closedCycle, cancelledCycle]) {
       const rejected = await recordReproductiveCycleMatingCore(
         {
@@ -658,7 +834,7 @@ test("records idempotent reproductive cycle matings and links exactly one litter
       },
       inactive,
     );
-    expect(inactiveWrite).toMatchObject({ outcome: "error", error: { code: "forbidden" } });
+    expect(inactiveWrite).toMatchObject({ outcome: "error", error: { code: "not_found" } });
 
     const viewerMatings = await listReproductiveCycleMatingsForCycleCore(
       { cycleId: mainCycle.id },
