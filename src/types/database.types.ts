@@ -2262,6 +2262,74 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_generation_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          plan: Json
+          reason: string | null
+          result: Json
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          plan: Json
+          reason?: string | null
+          result: Json
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          organization_id?: string
+          outcome?: string
+          plan?: Json
+          reason?: string | null
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_generation_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       litter_care_task_template_commands: {
         Row: {
           client_command_id: string
@@ -4628,6 +4696,22 @@ export type Database = {
           replayed: boolean
           revision: number
           template_id: string
+        }[]
+      }
+      generate_litter_care_tasks_from_plan: {
+        Args: {
+          p_client_command_id: string
+          p_litter_id: string
+          p_plan: Json
+        }
+        Returns: {
+          already_generated_count: number
+          created_count: number
+          litter_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
         }[]
       }
       create_document_template_family_with_draft: {
