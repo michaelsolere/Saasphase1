@@ -53,13 +53,14 @@ export function formatLitterCareTaskOffset(
   offsetDays: number,
 ) {
   if (anchorType === "offspring_age") {
-    return offsetDays === 0
-      ? "À la naissance"
-      : `À ${offsetDays} jours de vie`;
+    if (offsetDays === 0) return "À la naissance";
+    return `À ${offsetDays} ${Math.abs(offsetDays) === 1 ? "jour" : "jours"} de vie`;
   }
 
   if (offsetDays === 0) return "Le jour même";
+  const absoluteDays = Math.abs(offsetDays);
+  const dayLabel = absoluteDays === 1 ? "jour" : "jours";
   return offsetDays < 0
-    ? `${Math.abs(offsetDays)} jours avant`
-    : `${offsetDays} jours après`;
+    ? `${absoluteDays} ${dayLabel} avant`
+    : `${absoluteDays} ${dayLabel} après`;
 }
