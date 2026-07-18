@@ -2262,6 +2262,222 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_templates: {
+        Row: {
+          anchor_type: string
+          breed: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          offset_days: number
+          organization_id: string
+          sort_order: number
+          species: string
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anchor_type: string
+          breed?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          offset_days: number
+          organization_id: string
+          sort_order?: number
+          species: string
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anchor_type?: string
+          breed?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          offset_days?: number
+          organization_id?: string
+          sort_order?: number
+          species?: string
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_care_tasks: {
+        Row: {
+          anchor_date: string | null
+          anchor_type: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          creation_command_id: string
+          description: string | null
+          id: string
+          litter_id: string
+          occurrence_no: number
+          offset_days: number | null
+          organization_id: string
+          organization_template_id: string | null
+          planned_for: string
+          resolution_command_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_timezone_name: string | null
+          source: string
+          status: string
+          system_template_code: string | null
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id: string
+          description?: string | null
+          id?: string
+          litter_id: string
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id: string
+          organization_template_id?: string | null
+          planned_for: string
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          source: string
+          status?: string
+          system_template_code?: string | null
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id?: string
+          description?: string | null
+          id?: string
+          litter_id?: string
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id?: string
+          organization_template_id?: string | null
+          planned_for?: string
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          source?: string
+          status?: string
+          system_template_code?: string | null
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_template_organization_fk"
+            columns: ["organization_id", "organization_template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       media: {
         Row: {
           animal_id: string | null
@@ -4311,6 +4527,25 @@ export type Database = {
         }
         Returns: string
       }
+      create_litter_care_task: {
+        Args: {
+          p_category: string
+          p_client_command_id: string
+          p_description: string
+          p_litter_id: string
+          p_planned_for: string
+          p_target_scope: string
+          p_title: string
+        }
+        Returns: {
+          litter_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          status: string
+          task_id: string
+        }[]
+      }
       create_document_template_family_with_draft: {
         Args: {
           p_breed: string
@@ -4510,6 +4745,24 @@ export type Database = {
         Returns: {
           application_id: string
           contact_id: string
+        }[]
+      }
+      resolve_litter_care_task: {
+        Args: {
+          p_client_command_id: string
+          p_resolution_note: string
+          p_resolution_status: string
+          p_resolved_at: string
+          p_task_id: string
+          p_timezone_name: string
+        }
+        Returns: {
+          litter_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          status: string
+          task_id: string
         }[]
       }
       retire_active_organization_logo: {
