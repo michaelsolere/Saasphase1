@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #301. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #317. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `ef03000ea5ad7861e69746a5a5e9b35728d900c2`.
-- Dernière PR incluse : **#301 — Ajouter un mode E2E réutilisable**.
-- Les migrations locales sont appliquées jusqu’à `202607170001`.
+- SHA de `main` documenté : `4b1a9cedae1ec10c0f414ace8ab2713f9a1c6b97`.
+- Dernière PR incluse : **#317 — Ajouter l’interface de génération des jalons de portée**.
+- Les migrations locales sont appliquées jusqu’à `202607180006_litter_care_task_generation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -50,6 +50,51 @@ Le produit est construit d’abord pour les chiens, tout en conservant `species`
 - Les portées portent les parents, dates et événements d’élevage, candidatures/réservations associées, campagnes et animaux nés.
 - Les règles d’éligibilité parentale et la cohérence des rattachements sont contrôlées.
 - Les chiots d’une portée sont créés dans `animals` depuis la fiche Portée, jamais dans une table dédiée.
+
+### Journal des portées
+
+Le Journal des portées est disponible sur `/litters/journal?litter=<uuid>`. Il permet de sélectionner une portée active et réunit son contexte reproductif, sa synthèse, les observations maternelles et les tâches de suivi sans surcharger la fiche Portée.
+
+Capacités actuellement disponibles :
+
+- sélection d’une portée active, contexte reproductif et synthèse opérationnelle ;
+- observations maternelles structurées, horodatées et historisées ;
+- tâches manuelles avec date prévue, puis résolution explicite en `done`, `cancelled` ou `not_applicable` ;
+- séparation des tâches à faire et de l’historique, avec calcul du retard local dans le navigateur ;
+- modèles de jalons personnalisés par organisation, paramétrables dans `/settings/litter-care-task-templates` ;
+- planification de chaque modèle selon six états : `ready`, `already_generated`, `missing_anchor`, `inactive`, `species_mismatch` ou `breed_mismatch` ;
+- sélection vide par défaut, puis génération partielle des seuls jalons choisis après confirmation explicite ;
+- aucune tâche ni autre donnée créée au chargement de la page.
+
+Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
+
+#### Invariants des tâches et de la génération
+
+- `litter_care_tasks` conserve le snapshot historique complet du modèle et du calcul utilisés pour créer la tâche. Modifier, désactiver ou réactiver un modèle ne modifie jamais une tâche existante : elle n’est ni déplacée, ni recalculée, ni recréée.
+- Les modèles personnalisés actuels utilisent `occurrence_no = 1`. L’unicité portée + modèle + occurrence empêche de générer deux fois le même jalon.
+- La génération passe par une RPC atomique. Le plan exact est revalidé sous verrou avant toute insertion ; s’il est devenu obsolète, la commande retourne `stale_plan` sans écriture partielle.
+- Le registre privé `litter_care_task_generation_commands` conserve le plan et le résultat de la commande. Le rejeu strictement identique est idempotent.
+- La concurrence est protégée par des verrous de commande, de portée et de modèles, en complément des contraintes d’unicité.
+- Le navigateur ne peut soumettre que la confirmation et les modèles sélectionnés. Aucun plan technique, numéro de révision ou date d’ancrage n’est accepté depuis le DOM ; ces données restent liées à l’intention préparée côté serveur puis sont revalidées par la RPC.
+
+#### Permissions
+
+| Rôle | Tâches et modèles | Gestion des modèles | Interface |
+| --- | --- | --- | --- |
+| `owner`, `admin` | Lecture, création manuelle, résolution et génération depuis les modèles | Création, modification, désactivation et réactivation | Contrôles d’écriture disponibles |
+| `member` | Lecture, création manuelle, résolution et génération depuis les modèles | Lecture seule | Contrôles d’écriture sur les tâches, aucun contrôle de gestion des modèles |
+| `viewer` | Lecture seule stricte | Lecture seule | Aucun contrôle d’écriture dans le DOM |
+
+#### Limites actuelles
+
+- Aucun modèle n’est fourni dans le seed et aucun modèle système réel n’existe.
+- Les modèles doivent actuellement être créés manuellement par l’éleveur dans les paramètres.
+- Il n’existe aucune génération automatique, aucun recalcul après changement d’une date ou d’un modèle, et aucune création de tâche lors de l’activation d’un modèle.
+- Il n’existe aucune notification, aucune projection dans `events`, aucun cron et aucun scheduler.
+
+La prochaine décision fonctionnelle à cadrer porte sur le contenu des premiers modèles réellement utiles et leur mode de distribution : modèles créés manuellement, modèles proposés à copier ou futurs modèles système. Cette décision n’est pas encore prise.
+
+Les PR #312 à #317 ont successivement apporté la fondation des tâches et modèles (#312), l’interface des tâches (#313), la gestion sécurisée des modèles (#314), leur interface de paramétrage (#315), la génération atomique et idempotente (#316), puis l’interface de génération explicite (#317).
 
 ### Animaux
 
@@ -222,6 +267,8 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
+- les premiers modèles de jalons réellement utiles et leur mode de distribution, après cadrage fonctionnel ;
+- les futures étapes du Journal de mise-bas, des naissances atomiques, des pesées et des cycles reproductifs, qui ne sont pas implémentées à ce stade ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
