@@ -1,4 +1,5 @@
 import type { LitterJournalDetails, LitterJournalListItem } from "./types";
+import { getLitterJournalCalendarDaysElapsed } from "./date";
 
 const journalStatusLabels: Record<string, string> = {
   mating_done: "Saillie réalisée",
@@ -11,14 +12,6 @@ const journalStatusLabels: Record<string, string> = {
   choice_period: "Période de choix",
   ready_to_leave: "Prêts au départ",
 };
-
-function daysSince(date: string, now = new Date()) {
-  const [year, month, day] = date.split("-").map(Number);
-  const reference = Date.UTC(year, month - 1, day);
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-
-  return Math.floor((today - reference) / 86_400_000);
-}
 
 export function getLitterJournalStatusLabel(status: string | null) {
   if (!status) {
@@ -34,15 +27,15 @@ export function getLitterJournalContextualAge(
   now?: Date,
 ) {
   if (litter.actual_birth_date) {
-    return `J+${daysSince(litter.actual_birth_date, now)} depuis la naissance`;
+    return `J+${getLitterJournalCalendarDaysElapsed(litter.actual_birth_date, now ?? new Date())} depuis la naissance`;
   }
 
   if (details?.estimated_ovulation_date) {
-    return `J+${daysSince(details.estimated_ovulation_date, now)} depuis l’ovulation estimée`;
+    return `J+${getLitterJournalCalendarDaysElapsed(details.estimated_ovulation_date, now ?? new Date())} depuis l’ovulation estimée`;
   }
 
   if (details?.mating_date) {
-    return `J+${daysSince(details.mating_date, now)} depuis la première saillie`;
+    return `J+${getLitterJournalCalendarDaysElapsed(details.mating_date, now ?? new Date())} depuis la première saillie`;
   }
 
   return null;

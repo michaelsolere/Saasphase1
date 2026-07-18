@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
 
+import { compareSqlDateToLitterJournalBusinessDay } from "./date";
 import {
   ACTIVE_LITTER_JOURNAL_STATUSES,
   type LitterJournalDetails,
@@ -15,22 +16,23 @@ function journalDueDate(litter: LitterJournalListItem) {
   return litter.actual_birth_date ?? litter.expected_birth_date;
 }
 
-function isUpcoming(date: string | null) {
+export function isUpcoming(date: string | null, now = new Date()) {
   if (!date) {
     return false;
   }
 
-  return date >= new Date().toISOString().slice(0, 10);
+  return compareSqlDateToLitterJournalBusinessDay(date, now) >= 0;
 }
 
 export function orderLitterJournalItems(
   litters: LitterJournalListItem[],
+  now = new Date(),
 ) {
   return [...litters].sort((left, right) => {
     const leftDueDate = journalDueDate(left);
     const rightDueDate = journalDueDate(right);
-    const leftIsUpcoming = isUpcoming(leftDueDate);
-    const rightIsUpcoming = isUpcoming(rightDueDate);
+    const leftIsUpcoming = isUpcoming(leftDueDate, now);
+    const rightIsUpcoming = isUpcoming(rightDueDate, now);
 
     if (leftIsUpcoming !== rightIsUpcoming) {
       return leftIsUpcoming ? -1 : 1;

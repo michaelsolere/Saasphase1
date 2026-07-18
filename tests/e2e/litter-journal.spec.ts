@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { getLitterJournalBusinessDateParts } from "@/features/litter-journal/date";
+import { isUpcoming } from "@/features/litter-journal/loader";
+import { getLitterJournalContextualAge } from "@/features/litter-journal/stage";
+import type {
+  LitterJournalDetails,
+  LitterJournalListItem,
+} from "@/features/litter-journal/types";
+
 import {
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
@@ -53,6 +61,8 @@ const localLitterIds = [
   ids.cancelled,
   ids.notPregnant,
 ] as const;
+
+const midnightParisInstant = new Date("2026-07-18T22:30:00.000Z");
 
 let originalOrganizationLitterStatuses: Array<{ id: string; status: string }> = [];
 
@@ -251,6 +261,79 @@ async function login(page: Page) {
   await page.getByRole("button", { name: "Se connecter" }).click();
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
+
+function journalLitterForDateTest(
+  actualBirthDate: string | null,
+): LitterJournalListItem {
+  return {
+    id: "litter-date-test",
+    name: "Portée date test",
+    species: "dog",
+    breed: "Golden Retriever",
+    status: "born",
+    mother_id: null,
+    mother_display_name: null,
+    father_id: null,
+    father_display_name: null,
+    expected_birth_date: null,
+    actual_birth_date: actualBirthDate,
+    expected_puppy_count: null,
+    born_total_count: null,
+    alive_count: null,
+    animal_count: null,
+    reservation_count: null,
+    created_at: null,
+  };
+}
+
+test("utilise le jour civil Europe/Paris après minuit, même lorsque UTC est encore la veille", () => {
+  expect(getLitterJournalBusinessDateParts(midnightParisInstant)).toEqual({
+    year: 2026,
+    month: 7,
+    day: 19,
+  });
+
+  expect(
+    getLitterJournalContextualAge(
+      journalLitterForDateTest("2026-07-18"),
+      null,
+      midnightParisInstant,
+    ),
+  ).toBe("J+1 depuis la naissance");
+
+  const beforeBirthLitter = journalLitterForDateTest(null);
+  const ovulationDetails: LitterJournalDetails = {
+    id: "litter-date-test",
+    mating_date: null,
+    mating_date_2: null,
+    estimated_ovulation_date: "2026-07-18",
+    pregnancy_confirmed_at: null,
+    pregnancy_confirmation_method: null,
+  };
+  expect(
+    getLitterJournalContextualAge(
+      beforeBirthLitter,
+      ovulationDetails,
+      midnightParisInstant,
+    ),
+  ).toBe("J+1 depuis l’ovulation estimée");
+
+  const matingDetails: LitterJournalDetails = {
+    ...ovulationDetails,
+    estimated_ovulation_date: null,
+    mating_date: "2026-07-18",
+  };
+  expect(
+    getLitterJournalContextualAge(
+      beforeBirthLitter,
+      matingDetails,
+      midnightParisInstant,
+    ),
+  ).toBe("J+1 depuis la première saillie");
+
+  expect(isUpcoming("2026-07-18", midnightParisInstant)).toBe(false);
+  expect(isUpcoming("2026-07-19", midnightParisInstant)).toBe(true);
+});
 
 test("affiche le cockpit journal actif en lecture seule sans divulguer les autres organisations", async ({ page }) => {
   cleanup();
