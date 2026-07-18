@@ -1,7 +1,8 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { useActionState, useRef, useState } from "react";
+import Link from "next/link";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { Button } from "@/components/ui/button";
@@ -18,16 +19,29 @@ import {
 import {
   addProgesteroneMeasurementAction,
   createReproductiveCycleAction,
-  initialReproductionActionState,
 } from "@/features/reproduction/actions";
+import {
+  initialReproductionActionState,
+  type ReproductionActionState,
+} from "@/features/reproduction/action-state";
 import type {
   ProgesteroneMeasurementSummary,
+  ReproductiveCycleMatingMethod,
+  ReproductiveCycleMatingSummary,
   ReproductiveCycleSummary,
 } from "@/features/reproduction/reproductive-cycles";
 
 type CycleWithMeasurements = ReproductiveCycleSummary & {
   measurements: ProgesteroneMeasurementSummary[];
+  matings: ReproductiveCycleMatingSummary[];
+  litterName: string | null;
+  matingAction: (
+    previousState: ReproductionActionState,
+    formData: FormData,
+  ) => Promise<ReproductionActionState>;
 };
+
+type FatherOption = { id: string; name: string };
 
 const statusLabels: Record<ReproductiveCycleSummary["status"], string> = {
   planned: "Prévu",
@@ -41,6 +55,14 @@ const unitLabels = {
   ng_ml: "ng/mL",
   nmol_l: "nmol/L",
 } as const;
+
+const matingMethodLabels: Record<ReproductiveCycleMatingMethod, string> = {
+  natural: "Saillie naturelle",
+  ai_fresh: "Insémination — semence fraîche",
+  ai_chilled: "Insémination — semence réfrigérée",
+  ai_frozen: "Insémination — semence congelée",
+  other: "Autre",
+};
 
 const inputClass =
   "mt-2 min-h-10 w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent";
@@ -317,14 +339,199 @@ function Measurements({
   );
 }
 
+function RecordMatingDialog({
+  cycle,
+  eligibleFathers,
+  lockedFatherName,
+}: {
+  cycle: CycleWithMeasurements;
+  eligibleFathers: FatherOption[];
+  lockedFatherName: string | null;
+}) {
+  // Garde la commande idempotente liée au rendu initial, y compris après une revalidation.
+  const actionRef = useRef(cycle.matingAction);
+  const stableAction = useCallback(
+    (previousState: ReproductionActionState, formData: FormData) =>
+      actionRef.current(previousState, formData),
+    [],
+  );
+  const [state, formAction] = useActionState(stableAction, initialReproductionActionState);
+  const [open, setOpen] = useState(false);
+  const occurredAtRef = useRef<HTMLInputElement>(null);
+  const occurredAtIsoRef = useRef<HTMLInputElement>(null);
+  const timezoneNameRef = useRef<HTMLInputElement>(null);
+  const isFirstMating = cycle.matings.length === 0;
+
+  useEffect(() => {
+    if (state.status !== "success") return;
+
+    window.sessionStorage.setItem(
+      `reproduction-mating-success:${cycle.id}`,
+      "La saillie a été enregistrée.",
+    );
+    window.location.reload();
+  }, [cycle.id, state.status]);
+
+  function prepareTimestamp() {
+    if (occurredAtIsoRef.current) {
+      occurredAtIsoRef.current.value = localDateTimeToIso(occurredAtRef.current?.value ?? "");
+    }
+    if (timezoneNameRef.current) {
+      timezoneNameRef.current.value = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm">Enregistrer une saillie</Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Enregistrer une saillie</DialogTitle>
+          <DialogDescription>
+            {isFirstMating
+              ? "La première saillie crée la portée liée à ce cycle."
+              : "L’étalon et la portée sont déjà fixés pour ce cycle."}
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} onSubmit={prepareTimestamp} className="space-y-4">
+          <input ref={occurredAtIsoRef} type="hidden" name="occurred_at" />
+          <input ref={timezoneNameRef} type="hidden" name="timezone_name" />
+          {isFirstMating ? (
+            <div>
+              <label className={labelClass} htmlFor={`mating-father-${cycle.id}`}>Étalon</label>
+              <select id={`mating-father-${cycle.id}`} className={inputClass} name="father_id" required defaultValue="">
+                <option value="" disabled>Sélectionnez un étalon</option>
+                {eligibleFathers.map((father) => <option key={father.id} value={father.id}>{father.name}</option>)}
+              </select>
+              {eligibleFathers.length === 0 ? <p className="mt-2 text-sm text-muted">Aucun étalon éligible n’est disponible.</p> : null}
+            </div>
+          ) : (
+            <div className="rounded-xl border bg-muted/30 px-3 py-3 text-sm">
+              <p className="font-semibold">Étalon déjà fixé</p>
+              <p className="mt-1 text-muted">{lockedFatherName ?? "Étalon non disponible"}</p>
+            </div>
+          )}
+          <div>
+            <label className={labelClass} htmlFor={`mating-occurred-at-${cycle.id}`}>Date et heure</label>
+            <input ref={occurredAtRef} id={`mating-occurred-at-${cycle.id}`} className={inputClass} type="datetime-local" required />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`mating-method-${cycle.id}`}>Méthode</label>
+            <select id={`mating-method-${cycle.id}`} className={inputClass} name="method" required defaultValue="">
+              <option value="" disabled>Sélectionnez une méthode</option>
+              {Object.entries(matingMethodLabels).map(([method, label]) => <option key={method} value={method}>{label}</option>)}
+            </select>
+          </div>
+          {isFirstMating ? (
+            <div>
+              <label className={labelClass} htmlFor={`mating-litter-name-${cycle.id}`}>Nom de la portée</label>
+              <input id={`mating-litter-name-${cycle.id}`} className={inputClass} name="litter_name" type="text" maxLength={255} required />
+            </div>
+          ) : null}
+          <div>
+            <label className={labelClass} htmlFor={`mating-location-${cycle.id}`}>Lieu</label>
+            <input id={`mating-location-${cycle.id}`} className={inputClass} name="location" type="text" maxLength={500} />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`mating-note-${cycle.id}`}>Note</label>
+            <textarea id={`mating-note-${cycle.id}`} className={inputClass} name="note" rows={3} maxLength={5000} />
+          </div>
+          <ActionMessage status={state.status} message={state.message} />
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+            <SubmitButton label="Enregistrer la saillie" pendingLabel="Enregistrement..." />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MatingSuccessNotice({ cycleId }: { cycleId: string }) {
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const key = `reproduction-mating-success:${cycleId}`;
+    const saved = window.sessionStorage.getItem(key);
+    if (!saved) return;
+    window.sessionStorage.removeItem(key);
+    const frame = window.requestAnimationFrame(() => setMessage(saved));
+    return () => window.cancelAnimationFrame(frame);
+  }, [cycleId]);
+
+  return message ? <ActionMessage status="success" message={message} /> : null;
+}
+
+function Matings({
+  cycle,
+  canWrite,
+  eligibleFathers,
+  fatherNames,
+}: {
+  cycle: CycleWithMeasurements;
+  canWrite: boolean;
+  eligibleFathers: FatherOption[];
+  fatherNames: Record<string, string>;
+}) {
+  const canRecord = canWrite && cycle.status !== "closed" && cycle.status !== "cancelled";
+  const lockedFatherName = cycle.matings[0] ? fatherNames[cycle.matings[0].fatherId] ?? null : null;
+
+  return (
+    <section className="mt-6 border-t pt-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold">Saillies</h3>
+          <p className="mt-1 text-sm text-muted">Les saillies sont affichées dans leur ordre d’enregistrement.</p>
+        </div>
+        {canRecord ? <RecordMatingDialog cycle={cycle} eligibleFathers={eligibleFathers} lockedFatherName={lockedFatherName} /> : null}
+      </div>
+      <div className="mt-4"><MatingSuccessNotice cycleId={cycle.id} /></div>
+      {cycle.litterId ? (
+        <p className="mt-4 text-sm">
+          <Link href={`/litters/${cycle.litterId}`} className="font-semibold text-accent hover:underline">Ouvrir la portée</Link>
+          {cycle.litterName ? <span className="text-muted"> · {cycle.litterName}</span> : null}
+        </p>
+      ) : null}
+      {cycle.matings.length === 0 ? (
+        <p className="mt-4 text-sm text-muted">Aucune saillie enregistrée pour ce cycle.</p>
+      ) : (
+        <ol className="mt-4 space-y-3">
+          {cycle.matings.map((mating) => (
+            <li key={mating.id} className="min-w-0 rounded-xl border bg-background p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="font-semibold">Saillie n° {mating.sequenceNo}</p>
+                  <p className="mt-1 text-sm text-muted">{formatDateTime(mating.occurredAt)}</p>
+                </div>
+                <p className="text-sm font-medium text-foreground">{matingMethodLabels[mating.method]}</p>
+              </div>
+              <dl className="mt-3 grid gap-2 break-words text-sm text-muted sm:grid-cols-2">
+                <div><dt className="font-medium text-foreground">Étalon</dt><dd>{fatherNames[mating.fatherId] ?? "Étalon non disponible"}</dd></div>
+                {mating.location ? <div><dt className="font-medium text-foreground">Lieu</dt><dd>{mating.location}</dd></div> : null}
+                {mating.note ? <div className="sm:col-span-2"><dt className="font-medium text-foreground">Note</dt><dd className="whitespace-pre-wrap">{mating.note}</dd></div> : null}
+              </dl>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
 export function ReproductionPanel({
   motherId,
   cycles,
   canWrite,
+  eligibleFathers,
+  fatherNames,
 }: {
   motherId: string;
   cycles: CycleWithMeasurements[];
   canWrite: boolean;
+  eligibleFathers: FatherOption[];
+  fatherNames: Record<string, string>;
 }) {
   return (
     <section className="rounded-2xl border bg-surface p-5 sm:p-8">
@@ -353,6 +560,7 @@ export function ReproductionPanel({
                 <p className="mt-1 whitespace-pre-wrap break-words">{cycle.notes || "Aucune note renseignée."}</p>
               </div>
               <Measurements cycle={cycle} motherId={motherId} canWrite={canWrite} />
+              <Matings cycle={cycle} canWrite={canWrite} eligibleFathers={eligibleFathers} fatherNames={fatherNames} />
             </li>
           ))}
         </ol>

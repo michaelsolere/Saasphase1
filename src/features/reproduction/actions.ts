@@ -2,21 +2,15 @@
 
 import { revalidatePath } from "next/cache";
 
+import type { ReproductionActionState } from "@/features/reproduction/action-state";
 import {
   addProgesteroneMeasurement,
   createReproductiveCycle,
+  recordReproductiveCycleMating,
   type ProgesteroneUnit,
+  type ReproductiveCycleMatingMethod,
   type ReproductiveCycleStatus,
 } from "@/features/reproduction/reproductive-cycles";
-
-export type ReproductionActionState = {
-  status: "idle" | "success" | "error";
-  message?: string;
-};
-
-export const initialReproductionActionState: ReproductionActionState = {
-  status: "idle",
-};
 
 function value(formData: FormData, name: string) {
   const entry = formData.get(name);
@@ -40,6 +34,12 @@ function progesteroneUnit(value: string): ProgesteroneUnit | null {
     : null;
 }
 
+function matingMethod(value: string): ReproductiveCycleMatingMethod | null {
+  return ["natural", "ai_fresh", "ai_chilled", "ai_frozen", "other"].includes(value)
+    ? (value as ReproductiveCycleMatingMethod)
+    : null;
+}
+
 function errorMessage(code: string) {
   if (code === "conflict") {
     return "Un cycle actif existe déjà pour cette reproductrice.";
@@ -50,6 +50,68 @@ function errorMessage(code: string) {
   }
 
   return "Impossible d’enregistrer ces informations. Aucune autre donnée n’a été modifiée.";
+}
+
+function matingErrorMessage(code: string, message: string) {
+  if (code === "invalid_father") {
+    return "L’étalon sélectionné ne peut pas être utilisé pour cette saillie.";
+  }
+  if (code === "invalid_cycle") {
+    return "Ce cycle est clos ou annulé et ne permet plus d’enregistrer de saillie.";
+  }
+  if (code === "forbidden") {
+    return "Vous n’avez pas les droits nécessaires pour enregistrer une saillie.";
+  }
+  if (code === "conflict" && message.includes("même reproducteur")) {
+    return "Le père enregistré pour ce cycle est différent de celui de cette saillie.";
+  }
+  if (code === "conflict") {
+    return "L’état du cycle a changé. Rechargez la page avant de réessayer.";
+  }
+  return "Les informations de la saillie sont invalides ou ne peuvent pas être enregistrées pour le moment.";
+}
+
+export type ReproductiveCycleMatingIntention = {
+  motherId: string;
+  cycleId: string;
+  clientCommandId: string;
+  fatherId?: string;
+};
+
+export async function recordReproductiveCycleMatingAction(
+  intention: ReproductiveCycleMatingIntention,
+  _previousState: ReproductionActionState,
+  formData: FormData,
+): Promise<ReproductionActionState> {
+  const method = matingMethod(value(formData, "method"));
+  const fatherId = intention.fatherId ?? value(formData, "father_id");
+
+  if (!method || !fatherId) {
+    return { status: "error", message: "Les informations de la saillie sont invalides." };
+  }
+
+  const result = await recordReproductiveCycleMating({
+    cycleId: intention.cycleId,
+    clientCommandId: intention.clientCommandId,
+    fatherId,
+    occurredAt: value(formData, "occurred_at"),
+    timezoneName: value(formData, "timezone_name"),
+    method,
+    location: optionalValue(formData, "location"),
+    note: optionalValue(formData, "note"),
+    litterName: intention.fatherId ? null : optionalValue(formData, "litter_name"),
+  });
+
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      message: matingErrorMessage(result.error.code, result.error.message),
+    };
+  }
+
+  revalidatePath(`/animals/${intention.motherId}/reproduction`);
+  revalidatePath(`/litters/${result.litterId}`);
+  return { status: "success", message: "La saillie a été enregistrée." };
 }
 
 export async function createReproductiveCycleAction(
