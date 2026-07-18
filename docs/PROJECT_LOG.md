@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #317. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #320. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `4b1a9cedae1ec10c0f414ace8ab2713f9a1c6b97`.
-- Dernière PR incluse : **#317 — Ajouter l’interface de génération des jalons de portée**.
-- Les migrations locales sont appliquées jusqu’à `202607180006_litter_care_task_generation`.
+- SHA de `main` documenté : `b27fa2eb6a2ba7895ef66981e82d0b8da0f95023`.
+- Dernière PR incluse : **#320 — Ajouter l’interface d’import de la bibliothèque de jalons**.
+- Les migrations locales sont appliquées jusqu’à `202607190001_litter_care_task_library`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -62,11 +62,34 @@ Capacités actuellement disponibles :
 - tâches manuelles avec date prévue, puis résolution explicite en `done`, `cancelled` ou `not_applicable` ;
 - séparation des tâches à faire et de l’historique, avec calcul du retard local dans le navigateur ;
 - modèles de jalons personnalisés par organisation, paramétrables dans `/settings/litter-care-task-templates` ;
+- bibliothèque recommandée consultable et importable explicitement depuis cette même page ;
 - planification de chaque modèle selon six états : `ready`, `already_generated`, `missing_anchor`, `inactive`, `species_mismatch` ou `breed_mismatch` ;
 - sélection vide par défaut, puis génération partielle des seuls jalons choisis après confirmation explicite ;
 - aucune tâche ni autre donnée créée au chargement de la page.
 
 Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
+
+#### Bibliothèque recommandée et copies d’organisation
+
+La bibliothèque disponible dans `/settings/litter-care-task-templates` est un catalogue global, versionné, en lecture seule et consultable même lorsqu’aucun modèle n’a encore été importé. Elle fournit actuellement quinze modèles canins en version 1, répartis dans trois packs :
+
+- **Gestation et préparation** ;
+- **Naissance et premiers jours** ;
+- **Croissance et préparation des départs**.
+
+Le catalogue ne crée automatiquement ni modèle propre à une organisation ni tâche. L’import est toujours explicite et sélectif, avec une sélection vide par défaut, le choix d’une copie initialement active ou inactive et une confirmation avant mutation. Le catalogue global n’est jamais utilisé directement pour générer les tâches d’une portée.
+
+Chaque import crée une copie réelle dans `litter_care_task_templates`. Cette copie devient un modèle d’organisation ordinaire : elle reste modifiable, activable ou désactivable, peut ensuite être utilisée par le moteur de génération existant et demeure indépendante des futures modifications du catalogue.
+
+La copie conserve `library_template_code` et `library_template_version`, dont la combinaison d’origine est immuable. Modifier la copie ne modifie jamais le catalogue ; publier une nouvelle version de bibliothèque ne modifie jamais les copies existantes. Une nouvelle version disponible peut être importée explicitement comme une seconde copie, sans altérer les versions précédentes. L’unicité par organisation, code et version empêche l’import en double de la même version. Ces copies restent des modèles d’organisation et ne sont pas des `system_template`.
+
+#### Import sécurisé
+
+- L’import est atomique et tout ou rien ; la sélection est strictement validée et limitée.
+- Le registre privé `litter_care_task_library_import_commands` conserve l’intention et le résultat. Un rejeu strictement identique est idempotent, tandis qu’une réutilisation conflictuelle de la même commande est refusée.
+- Les imports concurrents sont sérialisés par organisation, en complément des contraintes d’unicité.
+- Aucune métadonnée métier du catalogue n’est acceptée depuis le navigateur. Le formulaire transmet seulement la confirmation, les couples `code/version` sélectionnés et le statut initial actif ou inactif.
+- La RPC relit le catalogue, contrôle les droits et reste l’autorité finale de l’import.
 
 #### Invariants des tâches et de la génération
 
@@ -79,22 +102,25 @@ Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_b
 
 #### Permissions
 
-| Rôle | Tâches et modèles | Gestion des modèles | Interface |
+| Rôle | Tâches | Modèles d’organisation | Bibliothèque recommandée |
 | --- | --- | --- | --- |
-| `owner`, `admin` | Lecture, création manuelle, résolution et génération depuis les modèles | Création, modification, désactivation et réactivation | Contrôles d’écriture disponibles |
-| `member` | Lecture, création manuelle, résolution et génération depuis les modèles | Lecture seule | Contrôles d’écriture sur les tâches, aucun contrôle de gestion des modèles |
-| `viewer` | Lecture seule stricte | Lecture seule | Aucun contrôle d’écriture dans le DOM |
+| `owner`, `admin` | Lecture, création manuelle, résolution et génération depuis les modèles | Création, modification, désactivation et réactivation, y compris pour les copies importées dans « Mes modèles » | Consultation, sélection, import et choix de l’activation initiale |
+| `member` | Lecture, création manuelle, résolution et génération depuis les modèles | Lecture seule | Consultation, sans aucun contrôle d’import dans le DOM |
+| `viewer` | Lecture seule stricte | Lecture seule | Consultation, sans aucun contrôle d’import dans le DOM |
 
 #### Limites actuelles
 
-- Aucun modèle n’est fourni dans le seed et aucun modèle système réel n’existe.
-- Les modèles doivent actuellement être créés manuellement par l’éleveur dans les paramètres.
-- Il n’existe aucune génération automatique, aucun recalcul après changement d’une date ou d’un modèle, et aucune création de tâche lors de l’activation d’un modèle.
+- Aucun modèle système directement générateur n’existe : la bibliothèque ne remplace pas les modèles d’organisation.
+- Il n’existe aucune importation automatique, aucune sélection précochée et aucune génération automatique de tâche.
+- Une modification de modèle ou de date ne recalcule, ne déplace et ne modifie aucune tâche existante ; activer, désactiver ou importer un modèle ne crée aucune tâche.
 - Il n’existe aucune notification, aucune projection dans `events`, aucun cron et aucun scheduler.
+- Aucun pack félin n’est proposé à ce stade.
+- La bibliothèque actuelle couvre des jalons ponctuels, pas les actions répétitives spécialisées. Les pesées répétées, les relevés successifs, la socialisation détaillée et les soins récurrents restent destinés à de futurs modules spécialisés plutôt qu’à une multiplication de jalons ponctuels.
 
-La prochaine décision fonctionnelle à cadrer porte sur le contenu des premiers modèles réellement utiles et leur mode de distribution : modèles créés manuellement, modèles proposés à copier ou futurs modèles système. Cette décision n’est pas encore prise.
+Les PR #312 à #318 ont apporté la fondation des tâches et modèles, leur interface et leur gestion sécurisée, puis la génération atomique, idempotente et explicitement sélectionnée depuis le Journal, avant l’actualisation du présent état de référence. Les deux PR suivantes complètent ce socle sans changer le moteur de génération :
 
-Les PR #312 à #317 ont successivement apporté la fondation des tâches et modèles (#312), l’interface des tâches (#313), la gestion sécurisée des modèles (#314), leur interface de paramétrage (#315), la génération atomique et idempotente (#316), puis l’interface de génération explicite (#317).
+- **#319** : fondation globale versionnée et import atomique de la bibliothèque recommandée ;
+- **#320** : interface de consultation et d’import explicite.
 
 ### Animaux
 
@@ -267,8 +293,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
-- les premiers modèles de jalons réellement utiles et leur mode de distribution, après cadrage fonctionnel ;
-- les futures étapes du Journal de mise-bas, des naissances atomiques, des pesées et des cycles reproductifs, qui ne sont pas implémentées à ce stade ;
+- la prochaine grande étape fonctionnelle du Journal, dont l’ordre reste à cadrer entre la mise-bas et les naissances atomiques, les pesées des petits, les cycles reproductifs, ainsi que les soins et suivis récurrents ;
 - une éventuelle mise en forme avancée, sans priorité immédiate.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
