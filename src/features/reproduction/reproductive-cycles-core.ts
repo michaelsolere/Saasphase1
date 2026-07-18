@@ -52,6 +52,7 @@ type ErrorResult = {
 export type ReproductiveCycleSummary = {
   id: string;
   motherId: string;
+  litterId: string | null;
   species: string;
   breed: string;
   status: ReproductiveCycleStatus;
@@ -309,6 +310,7 @@ function mapCycle(row: CycleRow): ReproductiveCycleSummary {
   return {
     id: row.id,
     motherId: row.mother_id,
+    litterId: row.litter_id,
     species: row.species,
     breed: row.breed,
     status: row.status as ReproductiveCycleStatus,
