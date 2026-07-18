@@ -9,6 +9,8 @@ import {
   createLitterCareTaskCore,
   createLitterCareTaskTemplateCore,
   generateLitterCareTasksFromPlanCore,
+  importLitterCareTaskLibraryTemplatesCore,
+  listLitterCareTaskLibraryCore,
   listLitterCareTaskTemplatesForOrganizationCore,
   listLitterCareTaskTemplatesCore,
   listLitterCareTasksForLitterCore,
@@ -26,6 +28,8 @@ export type {
   CreateLitterCareTaskTemplateInput,
   GenerateLitterCareTasksFromPlanInput,
   GenerateLitterCareTasksFromPlanResult,
+  ImportLitterCareTaskLibraryTemplatesInput,
+  ImportLitterCareTaskLibraryTemplatesResult,
   LitterCareTaskAnchorType,
   LitterCareTaskCategory,
   LitterCareTaskResolutionStatus,
@@ -35,12 +39,19 @@ export type {
   LitterCareTaskGenerationReadyPlanItem,
   LitterCareTaskGenerationState,
   LitterCareTaskGenerationTaskResult,
+  LitterCareTaskLibraryImportedVersionSummary,
+  LitterCareTaskLibraryImportItemResult,
+  LitterCareTaskLibraryPackSummary,
+  LitterCareTaskLibrarySelection,
+  LitterCareTaskLibraryTemplateSummary,
   LitterCareTaskSummary,
   LitterCareTaskTargetScope,
   LitterCareTaskTemplateSummary,
   LitterCareTaskTemplateMutationResult,
   ListLitterCareTaskTemplatesForOrganizationInput,
   ListLitterCareTaskTemplatesForOrganizationResult,
+  ListLitterCareTaskLibraryInput,
+  ListLitterCareTaskLibraryResult,
   ListLitterCareTaskTemplatesInput,
   ListLitterCareTaskTemplatesResult,
   ListLitterCareTasksForLitterInput,
@@ -79,6 +90,26 @@ export async function listLitterCareTaskTemplatesForOrganization(
   suppliedClient?: Supabase,
 ) {
   return listLitterCareTaskTemplatesForOrganizationCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function listLitterCareTaskLibrary(
+  input: Parameters<typeof listLitterCareTaskLibraryCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return listLitterCareTaskLibraryCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function importLitterCareTaskLibraryTemplates(
+  input: Parameters<typeof importLitterCareTaskLibraryTemplatesCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return importLitterCareTaskLibraryTemplatesCore(
     input,
     await serverClient(suppliedClient),
   );

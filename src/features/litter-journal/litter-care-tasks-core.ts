@@ -84,7 +84,53 @@ export type LitterCareTaskTemplateSummary = {
   isActive: boolean;
   sortOrder: number;
   revision: number;
+  libraryTemplateCode: string | null;
+  libraryTemplateVersion: number | null;
 };
+
+export type LitterCareTaskLibraryPackSummary = {
+  code: string;
+  title: string;
+  description: string | null;
+  species: "dog" | "cat";
+  sortOrder: number;
+};
+
+export type LitterCareTaskLibraryImportedVersionSummary = {
+  version: number;
+  organizationTemplateId: string;
+  isActive: boolean;
+};
+
+export type LitterCareTaskLibraryTemplateSummary = {
+  code: string;
+  version: number;
+  packCode: string;
+  title: string;
+  description: string | null;
+  category: LitterCareTaskCategory;
+  targetScope: LitterCareTaskTargetScope;
+  anchorType: LitterCareTaskAnchorType;
+  offsetDays: number;
+  species: "dog" | "cat";
+  breed: string | null;
+  sortOrder: number;
+  isImported: boolean;
+  organizationTemplateId: string | null;
+  organizationTemplateIsActive: boolean | null;
+  latestImportedVersion: LitterCareTaskLibraryImportedVersionSummary | null;
+};
+
+export type LitterCareTaskLibrarySelection = {
+  code: string;
+  version: number;
+};
+
+export type LitterCareTaskLibraryImportItemResult =
+  LitterCareTaskLibrarySelection & {
+    templateId: string;
+    state: "imported" | "already_imported";
+  };
 
 export type LitterCareTaskSummary = {
   id: string;
@@ -144,6 +190,15 @@ export type ListLitterCareTaskTemplatesInput = { litterId: string };
 export type ListLitterCareTaskTemplatesForOrganizationInput = {
   organizationId: string;
 };
+export type ListLitterCareTaskLibraryInput = {
+  organizationId: string;
+};
+export type ImportLitterCareTaskLibraryTemplatesInput = {
+  organizationId: string;
+  clientCommandId: string;
+  selection: LitterCareTaskLibrarySelection[];
+  isActive: boolean;
+};
 export type ListLitterCareTasksForLitterInput = { litterId: string };
 export type PlanLitterCareTaskGenerationInput = { litterId: string };
 export type GenerateLitterCareTasksFromPlanInput = {
@@ -161,6 +216,25 @@ export type ListLitterCareTaskTemplatesForOrganizationResult =
       outcome: "success";
       role: OrganizationRole;
       templates: LitterCareTaskTemplateSummary[];
+    }
+  | ErrorResult;
+
+export type ListLitterCareTaskLibraryResult =
+  | {
+      outcome: "success";
+      role: OrganizationRole;
+      packs: LitterCareTaskLibraryPackSummary[];
+      templates: LitterCareTaskLibraryTemplateSummary[];
+    }
+  | ErrorResult;
+
+export type ImportLitterCareTaskLibraryTemplatesResult =
+  | {
+      outcome: "success";
+      importedCount: number;
+      alreadyImportedCount: number;
+      templates: LitterCareTaskLibraryImportItemResult[];
+      replayed: boolean;
     }
   | ErrorResult;
 
@@ -264,6 +338,7 @@ export type ResolveLitterCareTaskResult =
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LIBRARY_CODE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ISO_TIMESTAMP_PATTERN = /(?:Z|[+-]\d{2}:\d{2})$/;
 const POSTGRES_INTEGER_MIN = -2_147_483_648;
 const POSTGRES_INTEGER_MAX = 2_147_483_647;
@@ -608,6 +683,86 @@ function generationFailure(reason: string | null): ErrorResult {
   }
 }
 
+function libraryImportFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure(
+        "forbidden",
+        "Vous n’avez pas les droits nécessaires pour cette opération.",
+      );
+    case "organization_not_found":
+      return failure("not_found", "L’organisation demandée est introuvable.");
+    case "selection_unavailable":
+      return failure("not_found", "La sélection de modèles est indisponible.");
+    case "client_command_conflict":
+      return failure("conflict", "Cette commande a déjà été utilisée.");
+    default:
+      return invalidInput();
+  }
+}
+
+function normalizeLibrarySelection(value: unknown) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 30) {
+    return null;
+  }
+
+  const normalized: LitterCareTaskLibrarySelection[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const record = item as Record<string, unknown>;
+    if (
+      Object.keys(record).length !== 2 ||
+      typeof record.code !== "string" ||
+      record.code.length < 1 ||
+      record.code.length > 100 ||
+      !LIBRARY_CODE_PATTERN.test(record.code) ||
+      !isPositivePostgresInteger(record.version)
+    ) {
+      return null;
+    }
+
+    const key = `${record.code}:${record.version}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    normalized.push({ code: record.code, version: record.version });
+  }
+
+  return normalized;
+}
+
+function mapLibraryImportResults(value: Json) {
+  if (!Array.isArray(value)) return null;
+
+  const templates: LitterCareTaskLibraryImportItemResult[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+    const templateId = normalizeUuid(item.templateId);
+    if (
+      typeof item.code !== "string" ||
+      item.code.length < 1 ||
+      item.code.length > 100 ||
+      !LIBRARY_CODE_PATTERN.test(item.code) ||
+      !isPositivePostgresInteger(item.version) ||
+      !templateId ||
+      (item.state !== "imported" && item.state !== "already_imported")
+    ) {
+      return null;
+    }
+
+    templates.push({
+      code: item.code,
+      version: item.version,
+      templateId,
+      state: item.state,
+    });
+  }
+
+  return templates;
+}
+
 function normalizeGenerationPlan(value: unknown) {
   if (!Array.isArray(value)) return null;
 
@@ -675,6 +830,20 @@ function mapTemplate(
     isActive: row.is_active,
     sortOrder: row.sort_order,
     revision: row.revision,
+    libraryTemplateCode: row.library_template_code,
+    libraryTemplateVersion: row.library_template_version,
+  };
+}
+
+function mapLibraryPack(
+  row: Database["public"]["Tables"]["litter_care_task_library_packs"]["Row"],
+): LitterCareTaskLibraryPackSummary {
+  return {
+    code: row.code,
+    title: row.title,
+    description: row.description,
+    species: row.species as "dog" | "cat",
+    sortOrder: row.sort_order,
   };
 }
 
@@ -1007,6 +1176,195 @@ export async function listLitterCareTaskTemplatesForOrganizationCore(
     outcome: "success",
     role: authorization.role,
     templates: (templates.data ?? []).map(mapTemplate),
+  };
+}
+
+export async function listLitterCareTaskLibraryCore(
+  input: ListLitterCareTaskLibraryInput,
+  supabase: Supabase,
+): Promise<ListLitterCareTaskLibraryResult> {
+  const authorization = await authorizeOrganizationRead(
+    supabase,
+    input.organizationId,
+  );
+  if ("outcome" in authorization) return authorization;
+
+  const [packs, libraryTemplates, organizationTemplates] = await Promise.all([
+    supabase
+      .from("litter_care_task_library_packs")
+      .select("*")
+      .eq("is_available", true)
+      .order("sort_order", { ascending: true })
+      .order("code", { ascending: true }),
+    supabase
+      .from("litter_care_task_library_templates")
+      .select("*")
+      .eq("is_available", true)
+      .order("sort_order", { ascending: true })
+      .order("code", { ascending: true })
+      .order("version", { ascending: false }),
+    supabase
+      .from("litter_care_task_templates")
+      .select(
+        "id, library_template_code, library_template_version, is_active",
+      )
+      .eq("organization_id", authorization.organizationId)
+      .not("library_template_code", "is", null)
+      .order("library_template_version", { ascending: false }),
+  ]);
+
+  if (packs.error) {
+    return databaseFailure("litter_care_task_library_packs_list_failed", packs.error);
+  }
+  if (libraryTemplates.error) {
+    return databaseFailure(
+      "litter_care_task_library_templates_list_failed",
+      libraryTemplates.error,
+    );
+  }
+  if (organizationTemplates.error) {
+    return databaseFailure(
+      "litter_care_task_library_imports_list_failed",
+      organizationTemplates.error,
+    );
+  }
+
+  const mappedPacks = (packs.data ?? []).map(mapLibraryPack);
+  const availablePackCodes = new Set(mappedPacks.map((pack) => pack.code));
+  const exactImports = new Map<
+    string,
+    LitterCareTaskLibraryImportedVersionSummary
+  >();
+  const latestImports = new Map<
+    string,
+    LitterCareTaskLibraryImportedVersionSummary
+  >();
+
+  for (const imported of organizationTemplates.data ?? []) {
+    if (
+      !imported.library_template_code ||
+      !isPositivePostgresInteger(imported.library_template_version)
+    ) {
+      continue;
+    }
+
+    const summary = {
+      version: imported.library_template_version,
+      organizationTemplateId: imported.id,
+      isActive: imported.is_active,
+    };
+    exactImports.set(
+      `${imported.library_template_code}:${imported.library_template_version}`,
+      summary,
+    );
+    const latest = latestImports.get(imported.library_template_code);
+    if (!latest || summary.version > latest.version) {
+      latestImports.set(imported.library_template_code, summary);
+    }
+  }
+
+  const packOrder = new Map(
+    mappedPacks.map((pack, index) => [pack.code, index]),
+  );
+  const templates = (libraryTemplates.data ?? [])
+    .filter((template) => availablePackCodes.has(template.pack_code))
+    .map((template): LitterCareTaskLibraryTemplateSummary => {
+      const exactImport = exactImports.get(`${template.code}:${template.version}`);
+      return {
+        code: template.code,
+        version: template.version,
+        packCode: template.pack_code,
+        title: template.title,
+        description: template.description,
+        category: template.category as LitterCareTaskCategory,
+        targetScope: template.target_scope as LitterCareTaskTargetScope,
+        anchorType: template.anchor_type as LitterCareTaskAnchorType,
+        offsetDays: template.offset_days,
+        species: template.species as "dog" | "cat",
+        breed: template.breed,
+        sortOrder: template.sort_order,
+        isImported: Boolean(exactImport),
+        organizationTemplateId: exactImport?.organizationTemplateId ?? null,
+        organizationTemplateIsActive: exactImport?.isActive ?? null,
+        latestImportedVersion: latestImports.get(template.code) ?? null,
+      };
+    });
+  templates.sort(
+    (left, right) =>
+      (packOrder.get(left.packCode) ?? Number.MAX_SAFE_INTEGER) -
+        (packOrder.get(right.packCode) ?? Number.MAX_SAFE_INTEGER) ||
+      left.sortOrder - right.sortOrder ||
+      left.code.localeCompare(right.code) ||
+      right.version - left.version,
+  );
+
+  return {
+    outcome: "success",
+    role: authorization.role,
+    packs: mappedPacks,
+    templates,
+  };
+}
+
+export async function importLitterCareTaskLibraryTemplatesCore(
+  input: ImportLitterCareTaskLibraryTemplatesInput,
+  supabase: Supabase,
+): Promise<ImportLitterCareTaskLibraryTemplatesResult> {
+  const organizationId = normalizeUuid(input.organizationId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const selection = normalizeLibrarySelection(input.selection);
+  if (
+    !organizationId ||
+    !clientCommandId ||
+    !selection ||
+    typeof input.isActive !== "boolean"
+  ) {
+    return invalidInput();
+  }
+
+  if (!(await authenticatedUserId(supabase))) {
+    return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+  }
+
+  const imported = await supabase.rpc(
+    "import_litter_care_task_library_templates",
+    {
+      p_organization_id: organizationId,
+      p_client_command_id: clientCommandId,
+      p_selection: selection,
+      p_is_active: input.isActive,
+    },
+  );
+  if (imported.error) {
+    return databaseFailure("litter_care_task_library_import_failed", imported.error);
+  }
+
+  const row = imported.data?.[0];
+  if (!row || row.outcome !== "success") {
+    return libraryImportFailure(row?.reason ?? null);
+  }
+
+  const templates = mapLibraryImportResults(row.result);
+  if (
+    !templates ||
+    !isPostgresInteger(row.imported_count) ||
+    row.imported_count < 0 ||
+    !isPostgresInteger(row.already_imported_count) ||
+    row.already_imported_count < 0 ||
+    templates.filter((template) => template.state === "imported").length !==
+      row.imported_count ||
+    templates.filter((template) => template.state === "already_imported")
+      .length !== row.already_imported_count
+  ) {
+    return databaseFailure("litter_care_task_library_import_invalid_result", row);
+  }
+
+  return {
+    outcome: "success",
+    importedCount: row.imported_count,
+    alreadyImportedCount: row.already_imported_count,
+    templates,
+    replayed: row.replayed === true,
   };
 }
 
