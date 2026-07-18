@@ -40,6 +40,7 @@ create table public.maternal_observations (
         observation_type = 'temperature'
         and numeric_value is not null
         and numeric_value > 0
+        and unit is not null
         and unit in ('celsius', 'fahrenheit')
       )
       or (
@@ -340,6 +341,7 @@ begin
   if p_observation_type = 'temperature' then
     if p_numeric_value is null
       or p_numeric_value <= 0
+      or p_unit is null
       or p_unit not in ('celsius', 'fahrenheit') then
       reason := 'invalid_temperature';
       return next;

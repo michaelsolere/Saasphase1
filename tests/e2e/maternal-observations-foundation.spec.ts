@@ -50,6 +50,8 @@ const ids = {
   conflictCommand: `${prefix}54`,
   viewerCommand: `${prefix}55`,
   lockedMotherCommand: `${prefix}56`,
+  nullUnitCommand: `${prefix}57`,
+  sqlConstraintCommand: `${prefix}58`,
 } as const;
 
 const users = {
@@ -541,6 +543,57 @@ test("records append-only maternal observations with idempotence and isolated ac
         error: { code: "invalid_input" },
       });
     }
+
+    const nullUnitRpc = await rawRecord(owner, {
+      p_client_command_id: ids.nullUnitCommand,
+      p_unit: null,
+    });
+    expect(nullUnitRpc.error).toBeNull();
+    expect(nullUnitRpc.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "invalid_temperature",
+    });
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.maternal_observations
+          where organization_id = ${q(organizationId)}::uuid
+            and client_command_id = ${q(ids.nullUnitCommand)}::uuid;
+        `),
+      ),
+    ).toBe(0);
+
+    expect(() =>
+      sql(`
+        insert into public.maternal_observations (
+          organization_id, litter_id, mother_id, observation_type,
+          observed_at, timezone_name, numeric_value, unit, severity,
+          client_command_id, created_by, updated_by
+        ) values (
+          ${q(organizationId)}::uuid,
+          ${q(ids.mainLitter)}::uuid,
+          ${q(ids.mother)}::uuid,
+          'temperature',
+          '2026-07-18T14:15:00.000Z'::timestamptz,
+          'Europe/Paris',
+          38.4,
+          null,
+          'routine',
+          ${q(ids.sqlConstraintCommand)}::uuid,
+          ${q(ownerId)}::uuid,
+          ${q(ownerId)}::uuid
+        );
+      `),
+    ).toThrow();
+    expect(
+      Number(
+        sql(`
+          select count(*) from public.maternal_observations
+          where organization_id = ${q(organizationId)}::uuid
+            and client_command_id = ${q(ids.sqlConstraintCommand)}::uuid;
+        `),
+      ),
+    ).toBe(0);
 
     for (const [overrides, reason] of [
       [{ p_unit: "kelvin" }, "invalid_temperature"],
