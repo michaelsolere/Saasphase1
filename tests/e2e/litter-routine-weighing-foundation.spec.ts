@@ -615,6 +615,14 @@ test("records collective routine weights atomically, idempotently and without si
       collective.sessionId,
     ]);
     expect(history.sessions.map((session) => session.measurementCount)).toEqual([1, 3]);
+    expect(history.sessions.map((session) => ({
+      averageGrams: session.averageGrams,
+      minimumGrams: session.minimumGrams,
+      maximumGrams: session.maximumGrams,
+    }))).toEqual([
+      { averageGrams: 435, minimumGrams: 435, maximumGrams: 435 },
+      { averageGrams: 420, minimumGrams: 410, maximumGrams: 430 },
+    ]);
     expect(history.measurements.filter((measurement) => measurement.type === "birth")).toHaveLength(3);
     expect(history.measurements.filter((measurement) => measurement.type === "routine")).toHaveLength(4);
     for (const animalId of created.journalAnimals) {

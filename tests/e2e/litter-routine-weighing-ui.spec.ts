@@ -43,6 +43,7 @@ const ids = {
   existingRoutineThird: `${prefix}74`,
   inconsistentRoutineWeight: `${prefix}75`,
   relationRoutineSession: `${prefix}76`,
+  emptyRoutineSession: `${prefix}77`,
 } as const;
 
 const litterIds = [
@@ -315,6 +316,11 @@ function createFixtures() {
       ${q(ids.relationRoutineSession)}::uuid, ${q(organizationId)}::uuid,
       ${q(ids.relationLitter)}::uuid, '2026-07-19T10:00:00Z', 'Europe/Paris',
       'Séance support de la relation incohérente.', ${q(ownerId)}::uuid
+    ),
+    (
+      ${q(ids.emptyRoutineSession)}::uuid, ${q(organizationId)}::uuid,
+      ${q(ids.mainLitter)}::uuid, '2026-07-18T06:00:00Z', 'Europe/Paris',
+      'Séance sans mesure exploitable.', ${q(ownerId)}::uuid
     );
 
     insert into public.animal_weight_measurements (
@@ -387,7 +393,10 @@ function mainRoutineState() {
       select json_build_object(
         'sessions_created', (select count(*) from public.litter_weighing_sessions
           where litter_id = ${q(ids.mainLitter)}::uuid
-            and id <> ${q(ids.existingRoutineSession)}::uuid),
+            and id not in (
+              ${q(ids.existingRoutineSession)}::uuid,
+              ${q(ids.emptyRoutineSession)}::uuid
+            )),
         'commands_created', (select count(*) from public.litter_weight_commands
           where litter_id = ${q(ids.mainLitter)}::uuid),
         'new_measurements', coalesce((select json_agg(json_build_object(
@@ -459,6 +468,7 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     whelpingSession: ids.whelpingSession,
     births: [ids.firstBirth, ids.secondBirth, ids.thirdBirth],
     existingRoutineSession: ids.existingRoutineSession,
+    emptyRoutineSession: ids.emptyRoutineSession,
   };
 
   try {
@@ -469,8 +479,37 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
     let panel = weightPanel(page);
     await expect(panel.getByRole("heading", { name: "Poids et croissance" })).toBeVisible();
-    await expect(panel).toContainText("3 animaux suivis · 1 séance de routine");
+    await expect(panel).toContainText("3 animaux suivis · 2 séances de routine");
+    const latestSummary = panel.getByTestId("latest-litter-weight-session-summary");
+    await expect(latestSummary).toContainText("Synthèse de la dernière séance");
+    await expect(latestSummary).toContainText("3 poids enregistrés");
+    await expect(latestSummary).toContainText("Moyenne");
+    await expect(latestSummary).toContainText("440 g");
+    await expect(latestSummary).toContainText("Minimum");
+    await expect(latestSummary).toContainText("430 g");
+    await expect(latestSummary).toContainText("Maximum");
+    await expect(latestSummary).toContainText("450 g");
+    await expect(latestSummary).toContainText(
+      "Calculé sur les poids enregistrés pendant cette séance.",
+    );
     await expect(panel).toContainText("Séance de routine existante.");
+    const sessionHistory = panel.getByTestId("litter-weight-sessions-history");
+    const existingSessionBeforeDelete = sessionHistory
+      .getByRole("listitem")
+      .filter({ hasText: "Séance de routine existante." });
+    await expect(existingSessionBeforeDelete).toContainText("3 poids enregistrés");
+    await expect(existingSessionBeforeDelete.getByText("Moyenne :", { exact: true })).toBeVisible();
+    await expect(existingSessionBeforeDelete.getByText("440 g", { exact: true })).toBeVisible();
+    await expect(existingSessionBeforeDelete.getByText("Minimum :", { exact: true })).toBeVisible();
+    await expect(existingSessionBeforeDelete.getByText("430 g", { exact: true })).toBeVisible();
+    await expect(existingSessionBeforeDelete.getByText("Maximum :", { exact: true })).toBeVisible();
+    await expect(existingSessionBeforeDelete.getByText("450 g", { exact: true })).toBeVisible();
+    const emptySession = sessionHistory
+      .getByRole("listitem")
+      .filter({ hasText: "Séance sans mesure exploitable." });
+    await expect(emptySession).toContainText(
+      "Statistiques indisponibles pour cette séance.",
+    );
     await expect(panel).toContainText("Poids de naissance Naya.");
     await expect(panel).toContainText("Repère déclaré à la naissance : 360 g");
     await expect(panel).toContainText("430 g");
@@ -486,13 +525,25 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
         where id = ${q(ids.secondAnimal)}::uuid;`);
       await page.reload();
       panel = weightPanel(page);
-      await expect(panel).toContainText("2 animaux suivis · 1 séance de routine");
+      await expect(panel).toContainText("2 animaux suivis · 2 séances de routine");
       await expect(panel.getByText("Orion officiel", { exact: true })).toHaveCount(0);
-      await expect(panel.getByText("440 g", { exact: true })).toHaveCount(0);
+      await expect(
+        panel.getByTestId("litter-weight-animals-history").getByText("440 g", { exact: true }),
+      ).toHaveCount(0);
       const existingSession = panel
+        .getByTestId("litter-weight-sessions-history")
         .getByRole("listitem")
         .filter({ hasText: "Séance de routine existante." });
-      await expect(existingSession).toContainText("3 poids");
+      await expect(existingSession).toContainText("3 poids enregistrés");
+      await expect(existingSession.getByText("Moyenne :", { exact: true })).toBeVisible();
+      await expect(existingSession.getByText("440 g", { exact: true })).toBeVisible();
+      await expect(existingSession.getByText("Minimum :", { exact: true })).toBeVisible();
+      await expect(existingSession.getByText("430 g", { exact: true })).toBeVisible();
+      await expect(existingSession.getByText("Maximum :", { exact: true })).toBeVisible();
+      await expect(existingSession.getByText("450 g", { exact: true })).toBeVisible();
+      await expect(panel.getByTestId("latest-litter-weight-session-summary")).toContainText(
+        "440 g",
+      );
 
       await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
       const softDeleteDialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
@@ -542,10 +593,15 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
     await expect(dialog).toBeHidden();
     await expect(panel.getByText("2 poids ont été enregistrés.")).toBeVisible();
-    await expect(panel).toContainText("2 séances de routine");
+    await expect(panel).toContainText("3 séances de routine");
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
     await expect(panel).toContainText("455 g");
     await expect(panel).toContainText("465 g");
+    const newLatestSummary = panel.getByTestId("latest-litter-weight-session-summary");
+    await expect(newLatestSummary).toContainText("2 poids enregistrés");
+    await expect(newLatestSummary).toContainText("460 g");
+    await expect(newLatestSummary).toContainText("455 g");
+    await expect(newLatestSummary).toContainText("465 g");
 
     const expectedMeasuredAt = await page.evaluate(
       () => new Date("2026-07-20T10:00").toISOString(),
@@ -570,17 +626,26 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
     await page.reload();
     panel = weightPanel(page);
-    await expect(panel).toContainText("2 séances de routine");
+    await expect(panel).toContainText("3 séances de routine");
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
     await expect(panel).toContainText("455 g");
     await expect(panel).toContainText("465 g");
+
+    const consultationState = mainRoutineState();
 
     setOwnerRole("viewer");
     await page.reload();
     panel = weightPanel(page);
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
+    await expect(panel.getByTestId("latest-litter-weight-session-summary")).toContainText(
+      "Moyenne",
+    );
+    await expect(panel.getByTestId("litter-weight-sessions-history")).toContainText(
+      "Calculé sur les poids enregistrés pendant cette séance.",
+    );
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
     await expect(panel.locator("form, input, textarea")).toHaveCount(0);
+    expect(mainRoutineState()).toEqual(consultationState);
 
     setOwnerRole("owner");
     await page.goto(`/litters/journal?litter=${ids.inconsistentLitter}`);
@@ -607,6 +672,10 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await page.setViewportSize({ width: 375, height: 760 });
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
     panel = weightPanel(page);
+    await expect(panel.getByTestId("latest-litter-weight-session-summary")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
     await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
     await expect(page.getByRole("dialog", { name: "Nouvelle pesée" })).toBeVisible();
     expect(
