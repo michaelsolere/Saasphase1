@@ -4509,6 +4509,155 @@ export type Database = {
           },
         ]
       }
+      whelping_events: {
+        Row: {
+          author_id: string
+          event_type: string
+          id: string
+          note: string | null
+          occurred_at: string
+          organization_id: string
+          recorded_at: string
+          sequence_no: number
+          session_id: string
+        }
+        Insert: {
+          author_id: string
+          event_type: string
+          id?: string
+          note?: string | null
+          occurred_at: string
+          organization_id: string
+          recorded_at?: string
+          sequence_no: number
+          session_id: string
+        }
+        Update: {
+          author_id?: string
+          event_type?: string
+          id?: string
+          note?: string | null
+          occurred_at?: string
+          organization_id?: string
+          recorded_at?: string
+          sequence_no?: number
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whelping_events_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_events_session_organization_fk"
+            columns: ["organization_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_sessions"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      whelping_sessions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          ended_at: string | null
+          id: string
+          litter_id: string
+          mother_id: string
+          note: string | null
+          organization_id: string
+          started_at: string
+          status: string
+          timezone_name: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          litter_id: string
+          mother_id: string
+          note?: string | null
+          organization_id: string
+          started_at: string
+          status?: string
+          timezone_name: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          ended_at?: string | null
+          id?: string
+          litter_id?: string
+          mother_id?: string
+          note?: string | null
+          organization_id?: string
+          started_at?: string
+          status?: string
+          timezone_name?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whelping_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_sessions_litter_mother_organization_fk"
+            columns: ["organization_id", "litter_id", "mother_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id", "mother_id"]
+          },
+          {
+            foreignKeyName: "whelping_sessions_litter_mother_organization_fk"
+            columns: ["organization_id", "litter_id", "mother_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id", "mother_id"]
+          },
+          {
+            foreignKeyName: "whelping_sessions_mother_organization_fk"
+            columns: ["organization_id", "mother_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_sessions_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       application_overview: {
@@ -4795,6 +4944,22 @@ export type Database = {
           form_submission_id: string
         }[]
       }
+      close_whelping_session: {
+        Args: {
+          p_client_command_id: string
+          p_ended_at: string
+          p_note?: string | null
+          p_session_id: string
+        }
+        Returns: {
+          event_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          sequence_no: number | null
+          session_id: string | null
+        }[]
+      }
       build_contact_display_name: {
         Args: {
           fallback?: string
@@ -5006,6 +5171,23 @@ export type Database = {
           reservation_updated: boolean
         }[]
       }
+      open_whelping_session: {
+        Args: {
+          p_client_command_id: string
+          p_litter_id: string
+          p_note?: string | null
+          p_started_at: string
+          p_timezone_name: string
+        }
+        Returns: {
+          litter_id: string | null
+          mother_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          session_id: string | null
+        }[]
+      }
       publish_document_template_version: {
         Args: {
           p_expected_template_content: string | null
@@ -5067,6 +5249,23 @@ export type Database = {
           reason: string
           replayed: boolean
           sequence_no: number
+        }[]
+      }
+      record_whelping_event: {
+        Args: {
+          p_client_command_id: string
+          p_event_type: string
+          p_note?: string | null
+          p_occurred_at: string
+          p_session_id: string
+        }
+        Returns: {
+          event_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          sequence_no: number | null
+          session_id: string | null
         }[]
       }
       reservation_document_variant_version_is_used: {
