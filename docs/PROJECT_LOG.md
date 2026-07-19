@@ -71,7 +71,7 @@ Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_b
 
 #### Sessions, chronologie, naissances et poids de mise-bas
 
-Le Journal repose sur `whelping_sessions`, `whelping_events`, `whelping_births`, `animal_weight_measurements` et le registre privé `whelping_commands`. Une seule session peut être ouverte par portée ; son fuseau IANA est conservé. Les commandes serveur d’ouverture, d’ajout d’événement et de clôture restent idempotentes, et les événements `observation`, `care`, `birth` et `note` forment une chronologie append-only ordonnée côté serveur. Tous les membres actifs peuvent lire le Journal ; l’écriture est réservée aux rôles `owner`, `admin` et `member`, avec neutralisation inter-organisation.
+Le Journal repose sur `whelping_sessions`, `whelping_events`, `whelping_births`, `animal_weight_measurements` et le registre privé `whelping_commands`. Une seule session peut être ouverte par portée ; son fuseau IANA est conservé. Les commandes serveur d’ouverture, d’ajout d’événement et de clôture restent idempotentes. Les événements génériques autorisés — début du travail, contractions, rupture de la poche des eaux, placenta, allaitement, appel vétérinaire, intervention et observation — ainsi que les événements spécialisés — `birth`, créé exclusivement par `record_whelping_birth`, et `session_closed`, créé exclusivement par la commande de clôture — forment une chronologie append-only ordonnée côté serveur. Tous les membres actifs peuvent lire le Journal ; l’écriture est réservée aux rôles `owner`, `admin` et `member`, avec neutralisation inter-organisation.
 
 ##### Naissance atomique
 
