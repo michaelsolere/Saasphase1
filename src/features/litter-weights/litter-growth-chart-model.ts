@@ -3,17 +3,17 @@ import type {
   LitterWeightHistoryMeasurement,
 } from "./litter-weights-core";
 import {
+  buildAnimalWeightRelativeSeries,
+  type AnimalWeightMeasurement,
+  type AnimalWeightMeasurementInput,
+  type AnimalWeightRelativePoint,
+} from "./animal-weight-relative-series";
+import {
   litterWeightAnimalDetails,
   litterWeightAnimalName,
 } from "./litter-weight-animal-identity";
 
-export type LitterGrowthPoint = {
-  internalId: string;
-  timestamp: number;
-  measuredAt: string;
-  grams: number;
-  type: "birth" | "routine";
-};
+export type LitterGrowthPoint = AnimalWeightMeasurement;
 
 export type LitterGrowthSeries = {
   internalId: string;
@@ -24,10 +24,7 @@ export type LitterGrowthSeries = {
   latestMeasurement: LitterGrowthPoint;
 };
 
-export type LitterRelativeGrowthPoint = LitterGrowthPoint & {
-  elapsedMilliseconds: number;
-  index: number;
-};
+export type LitterRelativeGrowthPoint = AnimalWeightRelativePoint;
 
 export type LitterRelativeGrowthSeries = {
   internalId: string;
@@ -105,9 +102,26 @@ export function buildLitterGrowthModel(
   measurements: readonly LitterWeightHistoryMeasurement[],
 ): LitterGrowthModel {
   const measurementsByAnimal = new Map<string, LitterGrowthPoint[]>();
+  const relativeMeasurementsByAnimal = new Map<
+    string,
+    AnimalWeightMeasurementInput[]
+  >();
 
   for (const measurement of measurements) {
     if (measurement.type !== "birth" && measurement.type !== "routine") continue;
+    const relativeMeasurements =
+      relativeMeasurementsByAnimal.get(measurement.animalId) ?? [];
+    relativeMeasurements.push({
+      internalId: measurement.id,
+      measuredAt: measurement.measuredAt,
+      grams: measurement.grams,
+      type: measurement.type,
+    });
+    relativeMeasurementsByAnimal.set(
+      measurement.animalId,
+      relativeMeasurements,
+    );
+
     const timestamp = Date.parse(measurement.measuredAt);
     if (!Number.isFinite(timestamp) || !Number.isFinite(measurement.grams)) continue;
 
@@ -133,21 +147,11 @@ export function buildLitterGrowthModel(
     const points = measurementsByAnimal.get(animal.id) ?? [];
     const latestMeasurement = points.at(-1) ?? null;
     const previousMeasurement = points.at(-2) ?? null;
-    const usableBirthMeasurements = points.filter(
-      (point) => point.type === "birth" && point.grams > 0,
+    const relativeResult = buildAnimalWeightRelativeSeries(
+      relativeMeasurementsByAnimal.get(animal.id) ?? [],
     );
-    const birthMeasurement =
-      usableBirthMeasurements.length === 1 ? usableBirthMeasurements[0] : null;
-    const relativePoints: LitterRelativeGrowthPoint[] = birthMeasurement
-      ? points
-          .filter((point) => point.timestamp >= birthMeasurement.timestamp)
-          .map((point) => ({
-            ...point,
-            elapsedMilliseconds: point.timestamp - birthMeasurement.timestamp,
-            index: (point.grams / birthMeasurement.grams) * 100,
-          }))
-      : [];
-    const latestRelativePoint = relativePoints.at(-1) ?? null;
+    const latestRelativePoint =
+      relativeResult.status === "available" ? relativeResult.latestPoint : null;
     const publicIdentity = {
       internalId: animal.id,
       publicLabel: litterWeightAnimalName(animal),
@@ -180,12 +184,12 @@ export function buildLitterGrowthModel(
       latestMeasurement,
     });
 
-    if (birthMeasurement && latestRelativePoint) {
+    if (relativeResult.status === "available") {
       relativeSeries.push({
         ...publicIdentity,
-        birthMeasurement,
-        points: relativePoints,
-        latestPoint: latestRelativePoint,
+        birthMeasurement: relativeResult.birthMeasurement,
+        points: relativeResult.points,
+        latestPoint: relativeResult.latestPoint,
       });
     }
   });
