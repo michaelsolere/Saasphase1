@@ -79,6 +79,74 @@ function formatDateTime(value: string, timezoneName?: string) {
   }
 }
 
+const gramsFormatter = new Intl.NumberFormat("fr-FR", {
+  maximumFractionDigits: 1,
+});
+
+function formatGrams(value: number) {
+  return `${gramsFormatter.format(value)} g`;
+}
+
+function SessionStatistics({
+  session,
+  compact = false,
+}: {
+  session: LitterWeightHistorySession;
+  compact?: boolean;
+}) {
+  const { averageGrams, minimumGrams, maximumGrams } = session;
+  if (
+    session.measurementCount === 0 ||
+    averageGrams === null ||
+    minimumGrams === null ||
+    maximumGrams === null
+  ) {
+    return (
+      <p className={compact ? "mt-3 text-sm text-muted" : "mt-2 text-sm text-muted"}>
+        Statistiques indisponibles pour cette séance.
+      </p>
+    );
+  }
+
+  return (
+    <div className={compact ? "mt-3" : "mt-2"}>
+      <p className="text-sm text-muted">
+        {session.measurementCount} poids enregistré
+        {session.measurementCount > 1 ? "s" : ""}
+      </p>
+      <dl
+        className={
+          compact
+            ? "mt-3 grid min-w-0 grid-cols-1 gap-2 text-sm min-[360px]:grid-cols-3"
+            : "mt-2 grid min-w-0 gap-1 text-sm"
+        }
+      >
+        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
+          <dt className="font-medium">Moyenne{compact ? "" : " :"}</dt>
+          <dd className={compact ? "mt-1 break-words" : "break-words"}>
+            {formatGrams(averageGrams)}
+          </dd>
+        </div>
+        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
+          <dt className="font-medium">Minimum{compact ? "" : " :"}</dt>
+          <dd className={compact ? "mt-1 break-words" : "break-words"}>
+            {formatGrams(minimumGrams)}
+          </dd>
+        </div>
+        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
+          <dt className="font-medium">Maximum{compact ? "" : " :"}</dt>
+          <dd className={compact ? "mt-1 break-words" : "break-words"}>
+            {formatGrams(maximumGrams)}
+          </dd>
+        </div>
+      </dl>
+      <p className="mt-2 text-xs leading-5 text-muted">
+        Calculé sur les poids enregistrés pendant cette séance.
+      </p>
+    </div>
+  );
+}
+
 function eligibleForRoutineWeight(animal: LitterWeightHistoryAnimal) {
   return (
     animal.ownershipStatus === "produced" &&
@@ -262,7 +330,7 @@ function RoutineWeightDialog({
 
 function SessionsHistory({ sessions }: { sessions: LitterWeightHistorySession[] }) {
   return (
-    <div>
+    <div data-testid="litter-weight-sessions-history">
       <h3 className="text-base font-semibold">Séances</h3>
       {sessions.length === 0 ? (
         <p className="mt-3 text-sm text-muted">Aucune pesée de routine enregistrée.</p>
@@ -273,9 +341,7 @@ function SessionsHistory({ sessions }: { sessions: LitterWeightHistorySession[] 
               <p className="font-semibold">
                 {formatDateTime(session.measuredAt, session.timezoneName)}
               </p>
-              <p className="mt-1 text-muted">
-                {session.measurementCount} {session.measurementCount > 1 ? "poids" : "poids"}
-              </p>
+              <SessionStatistics session={session} />
               {session.note ? <p className="mt-2 whitespace-pre-wrap">{session.note}</p> : null}
             </li>
           ))}
@@ -298,7 +364,7 @@ function AnimalsHistory({
     sessions.map((session) => [session.id, session.timezoneName]),
   );
   return (
-    <div>
+    <div data-testid="litter-weight-animals-history">
       <h3 className="text-base font-semibold">Animaux</h3>
       <div className="mt-3 space-y-4">
         {animals.map((animal) => {
@@ -413,11 +479,6 @@ export function LitterWeightPanel({
             {animals.length} {animals.length > 1 ? "animaux suivis" : "animal suivi"}
             {" · "}{sessions.length} séance{sessions.length > 1 ? "s" : ""} de routine
           </p>
-          {lastSession ? (
-            <p className="mt-1 text-sm text-muted">
-              Dernière séance : {formatDateTime(lastSession.measuredAt, lastSession.timezoneName)}
-            </p>
-          ) : null}
         </div>
         {canWrite ? (
           <RoutineWeightDialog
@@ -427,6 +488,21 @@ export function LitterWeightPanel({
           />
         ) : null}
       </div>
+      {lastSession ? (
+        <section
+          data-testid="latest-litter-weight-session-summary"
+          aria-labelledby="latest-litter-weight-session-summary-title"
+          className="mt-4 min-w-0 rounded-xl border bg-secondary/50 p-4"
+        >
+          <h3 id="latest-litter-weight-session-summary-title" className="font-semibold">
+            Synthèse de la dernière séance
+          </h3>
+          <p className="mt-1 text-sm text-muted">
+            {formatDateTime(lastSession.measuredAt, lastSession.timezoneName)}
+          </p>
+          <SessionStatistics session={lastSession} compact />
+        </section>
+      ) : null}
       {confirmation ? (
         <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}

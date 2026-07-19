@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.types";
 
+import { buildLitterWeighingSessionStatistics } from "./litter-weighing-session-statistics";
+
 type Supabase = SupabaseClient<Database>;
 export type LitterWeightOrganizationRole =
   | "owner"
@@ -81,6 +83,9 @@ export type LitterWeightHistorySession = {
   timezoneName: string;
   note: string | null;
   measurementCount: number;
+  averageGrams: number | null;
+  minimumGrams: number | null;
+  maximumGrams: number | null;
   createdBy: string;
   createdAt: string;
 };
@@ -437,7 +442,7 @@ export async function listLitterWeightHistoryCore(
       ? Promise.resolve({ data: [], error: null })
       : supabase
           .from("animal_weight_measurements")
-          .select("litter_weighing_session_id")
+          .select("litter_weighing_session_id, grams")
           .eq("organization_id", authorization.organizationId)
           .eq("measurement_kind", "routine")
           .in("litter_weighing_session_id", sessionIds),
@@ -469,18 +474,19 @@ export async function listLitterWeightHistoryCore(
     });
   }
 
-  const countsBySession = new Map<string, number>();
-  for (const measurement of sessionMeasurements.data ?? []) {
-    if (
+  const statisticsBySession = buildLitterWeighingSessionStatistics(
+    (sessionMeasurements.data ?? []).flatMap((measurement) =>
       measurement.litter_weighing_session_id &&
       sessionIdSet.has(measurement.litter_weighing_session_id)
-    ) {
-      countsBySession.set(
-        measurement.litter_weighing_session_id,
-        (countsBySession.get(measurement.litter_weighing_session_id) ?? 0) + 1,
-      );
-    }
-  }
+        ? [
+            {
+              sessionId: measurement.litter_weighing_session_id,
+              grams: measurement.grams,
+            },
+          ]
+        : [],
+    ),
+  );
 
   return {
     outcome: "success",
@@ -499,15 +505,21 @@ export async function listLitterWeightHistoryCore(
       deathDate: animal.death_date,
       birthWeightGrams: animal.birth_weight_grams,
     })),
-    sessions: (sessions.data ?? []).map((session) => ({
-      id: session.id,
-      measuredAt: session.measured_at,
-      timezoneName: session.timezone_name,
-      note: session.note,
-      measurementCount: countsBySession.get(session.id) ?? 0,
-      createdBy: session.created_by,
-      createdAt: session.created_at,
-    })),
+    sessions: (sessions.data ?? []).map((session) => {
+      const statistics = statisticsBySession.get(session.id);
+      return {
+        id: session.id,
+        measuredAt: session.measured_at,
+        timezoneName: session.timezone_name,
+        note: session.note,
+        measurementCount: statistics?.measurementCount ?? 0,
+        averageGrams: statistics?.averageGrams ?? null,
+        minimumGrams: statistics?.minimumGrams ?? null,
+        maximumGrams: statistics?.maximumGrams ?? null,
+        createdBy: session.created_by,
+        createdAt: session.created_at,
+      };
+    }),
     measurements: measurementRows.map((measurement) => ({
       id: measurement.id,
       animalId: measurement.animal_id,
