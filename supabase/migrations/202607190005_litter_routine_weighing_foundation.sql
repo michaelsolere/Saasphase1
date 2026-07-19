@@ -242,6 +242,40 @@ create trigger animal_weight_measurements_validate_links
 before insert or update on public.animal_weight_measurements
 for each row execute function public.validate_animal_weight_measurement_links();
 
+create or replace function public.protect_routine_weight_animal_litter()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+set row_security = off
+as $$
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  if (
+    new.organization_id is distinct from old.organization_id
+    or new.litter_id is distinct from old.litter_id
+  ) and exists (
+    select 1
+    from public.animal_weight_measurements measurement
+    where measurement.organization_id = old.organization_id
+      and measurement.animal_id = old.id
+      and measurement.measurement_kind = 'routine'
+  ) then
+    raise exception 'routine weight animal organization and litter are immutable'
+      using errcode = '55000';
+  end if;
+
+  return new;
+end;
+$$;
+
+create trigger animals_protect_routine_weight_litter
+before update of organization_id, litter_id on public.animals
+for each row execute function public.protect_routine_weight_animal_litter();
+
 create table public.litter_weight_commands (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
@@ -726,6 +760,7 @@ revoke all on function public.validate_litter_weighing_session_timezone() from p
 revoke all on function public.prevent_litter_weighing_session_insert() from public;
 revoke all on function public.prevent_litter_weighing_session_mutation() from public;
 revoke all on function public.validate_animal_weight_measurement_links() from public;
+revoke all on function public.protect_routine_weight_animal_litter() from public;
 revoke all on function public.record_litter_routine_weights(
   uuid, uuid, timestamptz, text, text, jsonb
 ) from public;

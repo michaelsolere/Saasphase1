@@ -433,6 +433,24 @@ export async function listLitterWeightHistoryCore(
   }
 
   const measurementRows = measurements.data ?? [];
+  const sessionIds = new Set((sessions.data ?? []).map((session) => session.id));
+  const inconsistentMeasurement = measurementRows.find(
+    (measurement) =>
+      (measurement.measurement_kind === "routine" &&
+        (!measurement.litter_weighing_session_id ||
+          !sessionIds.has(measurement.litter_weighing_session_id))) ||
+      (measurement.measurement_kind === "birth" &&
+        measurement.litter_weighing_session_id !== null),
+  );
+  if (inconsistentMeasurement) {
+    return databaseFailure("litter_weight_history_inconsistent_session_link", {
+      litterId: authorization.litterId,
+      measurementId: inconsistentMeasurement.id,
+      measurementKind: inconsistentMeasurement.measurement_kind,
+      sessionId: inconsistentMeasurement.litter_weighing_session_id,
+    });
+  }
+
   const countsBySession = new Map<string, number>();
   for (const measurement of measurementRows) {
     if (measurement.litter_weighing_session_id) {

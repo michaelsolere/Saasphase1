@@ -448,6 +448,33 @@ function stableBusinessState() {
   );
 }
 
+function routineAnimalLinkState(
+  animalId: string,
+  measurementId: string,
+  sessionId: string,
+) {
+  return JSON.parse(
+    sql(`
+      select json_build_object(
+        'animal', (select json_build_object(
+          'organization_id', organization_id, 'litter_id', litter_id
+        ) from public.animals where id = ${q(animalId)}::uuid),
+        'session', (select row_to_json(session) from (
+          select id, organization_id, litter_id, measured_at, timezone_name,
+            note, created_at, created_by
+          from public.litter_weighing_sessions where id = ${q(sessionId)}::uuid
+        ) session),
+        'measurement', (select row_to_json(measurement) from (
+          select id, organization_id, animal_id, litter_weighing_session_id,
+            measured_at, grams, measurement_kind, source_birth_id, note,
+            created_at, created_by
+          from public.animal_weight_measurements where id = ${q(measurementId)}::uuid
+        ) measurement)
+      )::text;
+    `),
+  );
+}
+
 test("records collective routine weights atomically, idempotently and without side effects", async () => {
   cleanup();
   expectCleanupAtZero();
@@ -658,6 +685,67 @@ test("records collective routine weights atomically, idempotently and without si
     );
     created.weighingSessions.push(memberResult.sessionId);
     created.routineWeights.push(...memberResult.measurementIds);
+
+    const memberMeasurementId = memberResult.measurementIds[0]!;
+    const structuralLinkBefore = routineAnimalLinkState(
+      ids.adminFirst,
+      memberMeasurementId,
+      memberResult.sessionId,
+    );
+    const forbiddenMove = await owner
+      .from("animals")
+      .update({ litter_id: ids.otherLitter })
+      .eq("id", ids.adminFirst);
+    expect(forbiddenMove.error).not.toBeNull();
+    expect(
+      routineAnimalLinkState(
+        ids.adminFirst,
+        memberMeasurementId,
+        memberResult.sessionId,
+      ),
+    ).toEqual(structuralLinkBefore);
+
+    const collarUpdate = await owner
+      .from("animals")
+      .update({ collar_color_current: "orange" })
+      .eq("id", ids.adminFirst)
+      .select("collar_color_current")
+      .single();
+    expect(collarUpdate.error).toBeNull();
+    expect(collarUpdate.data?.collar_color_current).toBe("orange");
+
+    try {
+      sql(`
+        begin;
+        set local session_replication_role = replica;
+        update public.animals
+        set litter_id = ${q(ids.otherLitter)}::uuid
+        where id = ${q(ids.adminFirst)}::uuid;
+        commit;
+      `);
+      expect(
+        await listLitterWeightHistoryCore({ litterId: ids.otherLitter }, owner),
+      ).toMatchObject({
+        outcome: "error",
+        error: { code: "database_error" },
+      });
+    } finally {
+      sql(`
+        begin;
+        set local session_replication_role = replica;
+        update public.animals
+        set litter_id = ${q(ids.adminLitter)}::uuid
+        where id = ${q(ids.adminFirst)}::uuid;
+        commit;
+      `);
+    }
+    expect(
+      routineAnimalLinkState(
+        ids.adminFirst,
+        memberMeasurementId,
+        memberResult.sessionId,
+      ),
+    ).toEqual(structuralLinkBefore);
 
     const identicalInput = routineIntent(
       ids.adminLitter,
