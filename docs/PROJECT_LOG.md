@@ -49,7 +49,7 @@ Le produit est construit d’abord pour les chiens, tout en conservant `species`
 - Les groupes structurent une période ou campagne lorsque la portée exacte n’est pas encore arrêtée ; les candidatures et réservations peuvent ensuite être rattachées à une portée précise.
 - Les portées portent les parents, dates et événements d’élevage, candidatures/réservations associées, campagnes et animaux nés.
 - Les règles d’éligibilité parentale et la cohérence des rattachements sont contrôlées.
-- Les chiots d’une portée sont créés dans `animals` depuis la fiche Portée, jamais dans une table dédiée.
+- Les animaux nés d’une portée sont toujours créés dans `animals`, jamais dans une table dédiée. Ils peuvent être créés administrativement depuis la fiche Portée lorsqu’aucune naissance issue du Journal n’existe, ou être créés atomiquement par le Journal lors de l’enregistrement d’une naissance. Les protections serveur interdisent de mélanger ces deux modes pour une même portée.
 
 ### Journal des portées
 
