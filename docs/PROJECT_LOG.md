@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #322. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #324. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `82814351e23614f5d51d501aaba0a80bb35673be`.
-- Dernière PR incluse : **#322 — Ajouter le socle des sessions de mise-bas**.
-- Les migrations locales sont appliquées jusqu’à `202607190002_whelping_sessions_events`.
+- SHA de `main` documenté : `95f2a3da825883c3af34425cc00d9c1d1ceede86`.
+- Dernière PR incluse : **PR #324 — Ajouter la naissance atomique et le poids de naissance**.
+- Les migrations locales sont appliquées jusqu’à `202607190003_whelping_births_weights`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -69,26 +69,53 @@ Capacités actuellement disponibles :
 
 Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
 
-#### Sessions et chronologie générique de mise-bas
+#### Sessions, chronologie, naissances et poids de mise-bas
 
-Le socle serveur de mise-bas repose sur `whelping_sessions`, `whelping_events` et le registre privé `whelping_commands`. Les relations composites maintiennent la cohérence entre organisation, portée et mère, et une portée ne peut avoir qu’une seule session ouverte. L’ouverture et la clôture passent exclusivement par des commandes serveur dédiées ; les tables n’acceptent aucune écriture directe cliente.
+Le Journal repose sur `whelping_sessions`, `whelping_events`, `whelping_births`, `animal_weight_measurements` et le registre privé `whelping_commands`. Une seule session peut être ouverte par portée ; son fuseau IANA est conservé. Les commandes serveur d’ouverture, d’ajout d’événement et de clôture restent idempotentes. Les événements génériques autorisés — début du travail, contractions, rupture de la poche des eaux, placenta, allaitement, appel vétérinaire, intervention et observation — ainsi que les événements spécialisés — `birth`, créé exclusivement par `record_whelping_birth`, et `session_closed`, créé exclusivement par la commande de clôture — forment une chronologie append-only ordonnée côté serveur. Tous les membres actifs peuvent lire le Journal ; l’écriture est réservée aux rôles `owner`, `admin` et `member`, avec neutralisation inter-organisation.
 
-- Les événements génériques sont horodatés et ordonnés dans chaque session. `occurred_at` conserve l’heure métier observée tandis que `recorded_at` vient de l’horloge serveur.
-- La chronologie est append-only. Le verrouillage transactionnel de la session rend l’allocation concurrente des numéros de séquence sûre et sans doublon.
-- Chaque commande possède une clé strictement idempotente : un rejeu identique retourne le résultat initial et une réutilisation conflictuelle est refusée.
-- La clôture met à jour la session et crée l’événement final `session_closed` dans la même transaction.
-- Tous les membres actifs peuvent lire les sessions et événements. Les rôles `owner`, `admin` et `member` peuvent utiliser les commandes d’écriture ; `viewer` reste en lecture seule.
-- Aucune session ni aucun événement de mise-bas n’est projeté dans la table générique `events`.
+##### Naissance atomique
 
-Limites actuelles de ce socle :
+La commande serveur dédiée `record_whelping_birth` exige une session ouverte et crée dans une transaction unique :
 
-- aucune interface visible, Server Action ou modale ne permet encore d’ouvrir, alimenter ou clôturer une session ;
-- aucune naissance structurée n’existe ; le type `birth` est réservé à une future commande dédiée ;
-- le module ne crée aucun animal et ne conserve aucun historique de poids ;
-- `litters.actual_birth_date`, les compteurs et les statuts de portée ne sont jamais modifiés automatiquement ;
-- aucune correction, annulation ou réouverture de session n’est disponible.
+- l’événement de mise-bas `birth` ;
+- la naissance structurée dans `whelping_births` ;
+- l’animal unique dans `animals` ;
+- sa mesure de poids de naissance lorsqu’un poids est fourni ;
+- les projections de synthèse de la portée ;
+- le résultat idempotent exact dans `whelping_commands`.
 
-La **PR #322 — Ajouter le socle des sessions de mise-bas** apporte cette fondation serveur sans ajouter d’interface ni de naissance atomique.
+L’organisation, la portée, la mère, le père, l’espèce et la race sont toujours relus côté serveur. La commande accepte uniquement le sexe, la viabilité, l’heure observée, une couleur initiale facultative et un poids facultatif avec son heure de pesée distincte. Aucun nom d’animal n’est inventé. Un animal vivant est créé avec le statut `born` ; un mort-né avec le statut `stillborn` et sa date de décès.
+
+L’ordre de naissance et l’ordre de chronologie sont alloués côté serveur sous verrou. La concurrence est sérialisée, un rejeu strictement identique rend les mêmes identifiants et ordres sans doublon, et la réutilisation conflictuelle d’un identifiant de commande est refusée.
+
+`occurred_at` reste l’heure métier de la naissance. La date et l’heure projetées sur l’animal sont calculées dans le fuseau de la session. `litters.actual_birth_date` correspond au jour civil local de la première naissance et ne se décale pas si la mise-bas se poursuit après minuit.
+
+Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `born_female_count` et `alive_count` sont recalculées exclusivement depuis les naissances du Journal. Le statut de la portée n’est jamais modifié automatiquement.
+
+##### Poids de naissance
+
+`animal_weight_measurements` est la source de vérité des poids ; `animals.birth_weight_grams` n’est qu’une projection de compatibilité. Le poids de naissance est facultatif lors de la création. Une mesure `birth` est liée à la naissance et à son animal exact, avec une heure de pesée indépendante de l’heure de naissance. L’historique est append-only. Aucune mesure de routine ou clinique n’est encore saisissable.
+
+##### Protections
+
+- un ordre de naissance actif est unique dans une portée, et la migration échoue explicitement si son audit détecte des doublons préexistants ;
+- une naissance Journal est refusée si la portée possède déjà des animaux produits administrativement ; inversement, la création administrative est refusée pendant une session ouverte ou après une naissance Journal ;
+- le parentage, l’espèce et la race de la portée sont verrouillés pendant une session ouverte et après une naissance Journal ;
+- les projections de naissance de l’animal ainsi que la date réelle et les compteurs de la portée sont protégés contre les modifications directes ;
+- la couleur actuelle et les futurs statuts de parcours de l’animal restent évolutifs ;
+- aucune naissance n’est projetée dans la table générique `events`.
+
+##### Limites actuelles
+
+- aucune interface ne permet encore d’ouvrir ou de clôturer une session ;
+- aucun bouton rapide de naissance ni Server Action React de mise-bas n’existe ;
+- aucune saisie vocale n’est disponible ;
+- un poids manquant ne peut pas être complété ultérieurement ;
+- aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
+- aucune pesée collective n’est disponible ;
+- aucun graphique de croissance ni interface d’historique des pesées n’existe ;
+- aucune PWA ou application mobile indépendante n’existe ;
+- le statut de la portée n’est jamais modifié automatiquement.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -314,11 +341,12 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
-1. naissance atomique et poids de naissance ;
-2. interface rapide de mise-bas branchée sur les sessions et événements ;
-3. pesées collectives et historique de croissance ;
-4. soins et suivis récurrents spécialisés ;
-5. historique et comparaisons.
+1. une interface rapide de mise-bas reliée aux sessions, aux événements et à la naissance atomique ; cette couche mince utilisera exclusivement les services et commandes existants, sans recréer de logique métier dans React ;
+2. l’ajout ultérieur et la saisie collective des poids ;
+3. l’historique individuel et collectif de croissance ;
+4. les soins et suivis récurrents spécialisés ;
+5. l’historique et les comparaisons inter-portées ;
+6. une éventuelle expérience mobile indépendante ou PWA.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
