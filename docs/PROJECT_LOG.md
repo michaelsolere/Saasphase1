@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #320. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #322. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `b27fa2eb6a2ba7895ef66981e82d0b8da0f95023`.
-- Dernière PR incluse : **#320 — Ajouter l’interface d’import de la bibliothèque de jalons**.
-- Les migrations locales sont appliquées jusqu’à `202607190001_litter_care_task_library`.
+- SHA de `main` documenté : `82814351e23614f5d51d501aaba0a80bb35673be`.
+- Dernière PR incluse : **#322 — Ajouter le socle des sessions de mise-bas**.
+- Les migrations locales sont appliquées jusqu’à `202607190002_whelping_sessions_events`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -68,6 +68,27 @@ Capacités actuellement disponibles :
 - aucune tâche ni autre donnée créée au chargement de la page.
 
 Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
+
+#### Sessions et chronologie générique de mise-bas
+
+Le socle serveur de mise-bas repose sur `whelping_sessions`, `whelping_events` et le registre privé `whelping_commands`. Les relations composites maintiennent la cohérence entre organisation, portée et mère, et une portée ne peut avoir qu’une seule session ouverte. L’ouverture et la clôture passent exclusivement par des commandes serveur dédiées ; les tables n’acceptent aucune écriture directe cliente.
+
+- Les événements génériques sont horodatés et ordonnés dans chaque session. `occurred_at` conserve l’heure métier observée tandis que `recorded_at` vient de l’horloge serveur.
+- La chronologie est append-only. Le verrouillage transactionnel de la session rend l’allocation concurrente des numéros de séquence sûre et sans doublon.
+- Chaque commande possède une clé strictement idempotente : un rejeu identique retourne le résultat initial et une réutilisation conflictuelle est refusée.
+- La clôture met à jour la session et crée l’événement final `session_closed` dans la même transaction.
+- Tous les membres actifs peuvent lire les sessions et événements. Les rôles `owner`, `admin` et `member` peuvent utiliser les commandes d’écriture ; `viewer` reste en lecture seule.
+- Aucune session ni aucun événement de mise-bas n’est projeté dans la table générique `events`.
+
+Limites actuelles de ce socle :
+
+- aucune interface visible, Server Action ou modale ne permet encore d’ouvrir, alimenter ou clôturer une session ;
+- aucune naissance structurée n’existe ; le type `birth` est réservé à une future commande dédiée ;
+- le module ne crée aucun animal et ne conserve aucun historique de poids ;
+- `litters.actual_birth_date`, les compteurs et les statuts de portée ne sont jamais modifiés automatiquement ;
+- aucune correction, annulation ou réouverture de session n’est disponible.
+
+La **PR #322 — Ajouter le socle des sessions de mise-bas** apporte cette fondation serveur sans ajouter d’interface ni de naissance atomique.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -293,8 +314,11 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
-- la prochaine grande étape fonctionnelle du Journal, dont l’ordre reste à cadrer entre la mise-bas et les naissances atomiques, les pesées des petits, les cycles reproductifs, ainsi que les soins et suivis récurrents ;
-- une éventuelle mise en forme avancée, sans priorité immédiate.
+1. naissance atomique et poids de naissance ;
+2. interface rapide de mise-bas branchée sur les sessions et événements ;
+3. pesées collectives et historique de croissance ;
+4. soins et suivis récurrents spécialisés ;
+5. historique et comparaisons.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
