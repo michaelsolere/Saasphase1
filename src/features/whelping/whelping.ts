@@ -6,9 +6,11 @@ import {
   closeWhelpingSessionCore,
   getOpenWhelpingSessionForLitterCore,
   listWhelpingEventsForSessionCore,
+  listWhelpingBirthsForSessionCore,
   listWhelpingSessionsForLitterCore,
   openWhelpingSessionCore,
   recordWhelpingEventCore,
+  recordWhelpingBirthCore,
 } from "./whelping-core";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -23,12 +25,21 @@ export type {
   GetOpenWhelpingSessionForLitterResult,
   ListWhelpingEventsForSessionInput,
   ListWhelpingEventsForSessionResult,
+  ListWhelpingBirthsForSessionInput,
+  ListWhelpingBirthsForSessionResult,
   ListWhelpingSessionsForLitterInput,
   ListWhelpingSessionsForLitterResult,
   OpenWhelpingSessionInput,
   OpenWhelpingSessionResult,
   RecordWhelpingEventInput,
   RecordWhelpingEventResult,
+  RecordWhelpingBirthInput,
+  RecordWhelpingBirthResult,
+  BirthWeightMeasurementSummary,
+  WhelpingBirthAnimalSummary,
+  WhelpingBirthSex,
+  WhelpingBirthSummary,
+  WhelpingBirthViability,
   WhelpingEventSummary,
   WhelpingEventType,
   WhelpingServiceError,
@@ -62,6 +73,13 @@ export async function listWhelpingEventsForSession(
   return listWhelpingEventsForSessionCore(input, await serverClient(suppliedClient));
 }
 
+export async function listWhelpingBirthsForSession(
+  input: Parameters<typeof listWhelpingBirthsForSessionCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return listWhelpingBirthsForSessionCore(input, await serverClient(suppliedClient));
+}
+
 export async function openWhelpingSession(
   input: Parameters<typeof openWhelpingSessionCore>[0],
   suppliedClient?: Supabase,
@@ -74,6 +92,13 @@ export async function recordWhelpingEvent(
   suppliedClient?: Supabase,
 ) {
   return recordWhelpingEventCore(input, await serverClient(suppliedClient));
+}
+
+export async function recordWhelpingBirth(
+  input: Parameters<typeof recordWhelpingBirthCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return recordWhelpingBirthCore(input, await serverClient(suppliedClient));
 }
 
 export async function closeWhelpingSession(
