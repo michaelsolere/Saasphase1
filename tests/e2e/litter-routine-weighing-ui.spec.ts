@@ -25,6 +25,7 @@ const ids = {
   mainLitter: `${prefix}21`,
   noSessionLitter: `${prefix}22`,
   inconsistentLitter: `${prefix}23`,
+  relationLitter: `${prefix}24`,
   whelpingSession: `${prefix}31`,
   firstBirthEvent: `${prefix}41`,
   secondBirthEvent: `${prefix}42`,
@@ -41,9 +42,15 @@ const ids = {
   existingRoutineSecond: `${prefix}73`,
   existingRoutineThird: `${prefix}74`,
   inconsistentRoutineWeight: `${prefix}75`,
+  relationRoutineSession: `${prefix}76`,
 } as const;
 
-const litterIds = [ids.mainLitter, ids.noSessionLitter, ids.inconsistentLitter] as const;
+const litterIds = [
+  ids.mainLitter,
+  ids.noSessionLitter,
+  ids.inconsistentLitter,
+  ids.relationLitter,
+] as const;
 const animalIds = [
   ids.firstAnimal,
   ids.secondAnimal,
@@ -202,6 +209,10 @@ function createFixtures() {
       (${q(ids.inconsistentLitter)}::uuid, ${q(organizationId)}::uuid,
        ${q(`${fixtureNamePrefix} incohérente`)}, 'dog', 'Golden Retriever',
        ${q(ids.mother)}::uuid, ${q(ids.father)}::uuid, 'puppies_created', '2026-07-18',
+       1, 0, 1, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.relationLitter)}::uuid, ${q(organizationId)}::uuid,
+       ${q(`${fixtureNamePrefix} support relationnel`)}, 'dog', 'Golden Retriever',
+       ${q(ids.mother)}::uuid, ${q(ids.father)}::uuid, 'puppies_created', '2026-07-18',
        1, 0, 1, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
 
     insert into public.whelping_sessions (
@@ -294,10 +305,16 @@ function createFixtures() {
     insert into public.litter_weighing_sessions (
       id, organization_id, litter_id, measured_at, timezone_name, note,
       created_by
-    ) values (
+    ) values
+    (
       ${q(ids.existingRoutineSession)}::uuid, ${q(organizationId)}::uuid,
       ${q(ids.mainLitter)}::uuid, '2026-07-19T10:00:00Z', 'Europe/Paris',
       'Séance de routine existante.', ${q(ownerId)}::uuid
+    ),
+    (
+      ${q(ids.relationRoutineSession)}::uuid, ${q(organizationId)}::uuid,
+      ${q(ids.relationLitter)}::uuid, '2026-07-19T10:00:00Z', 'Europe/Paris',
+      'Séance support de la relation incohérente.', ${q(ownerId)}::uuid
     );
 
     insert into public.animal_weight_measurements (
@@ -321,7 +338,7 @@ function createFixtures() {
     ) values (
       ${q(ids.inconsistentRoutineWeight)}::uuid, ${q(organizationId)}::uuid,
       ${q(ids.inconsistentAnimal)}::uuid, '2026-07-19T10:00:00Z', 460, 'routine',
-      ${q(ids.existingRoutineSession)}::uuid, 'Lien incohérent volontaire.', ${q(ownerId)}::uuid
+      ${q(ids.relationRoutineSession)}::uuid, 'Lien incohérent volontaire.', ${q(ownerId)}::uuid
     );
     set session_replication_role = origin;
   `);
@@ -463,6 +480,32 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     expect(await panel.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
+
+    try {
+      sql(`update public.animals set deleted_at = now()
+        where id = ${q(ids.secondAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+      await expect(panel).toContainText("2 animaux suivis · 1 séance de routine");
+      await expect(panel.getByText("Orion officiel", { exact: true })).toHaveCount(0);
+      await expect(panel.getByText("440 g", { exact: true })).toHaveCount(0);
+      const existingSession = panel
+        .getByRole("listitem")
+        .filter({ hasText: "Séance de routine existante." });
+      await expect(existingSession).toContainText("3 poids");
+
+      await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
+      const softDeleteDialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
+      await expect(softDeleteDialog.getByRole("group")).toHaveCount(2);
+      await expect(softDeleteDialog).not.toContainText("Orion officiel");
+      await softDeleteDialog.getByRole("button", { name: "Annuler" }).click();
+      await expect(softDeleteDialog).toBeHidden();
+    } finally {
+      sql(`update public.animals set deleted_at = null
+        where id = ${q(ids.secondAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+    }
 
     await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
     let dialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
