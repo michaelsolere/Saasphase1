@@ -24,6 +24,23 @@ export type LitterGrowthSeries = {
   latestMeasurement: LitterGrowthPoint;
 };
 
+export type LitterGrowthIndicator = {
+  internalId: string;
+  publicLabel: string;
+  publicDetails: string;
+  seriesIndex: number;
+  measurementCount: number;
+  latestMeasurement: LitterGrowthPoint | null;
+  previousMeasurement: LitterGrowthPoint | null;
+  differenceGrams: number | null;
+  intervalMilliseconds: number | null;
+};
+
+export type LitterGrowthModel = {
+  indicators: LitterGrowthIndicator[];
+  series: LitterGrowthSeries[];
+};
+
 export type GrowthChartDomain = {
   minTimestamp: number;
   maxTimestamp: number;
@@ -44,6 +61,9 @@ export type ProjectedGrowthPoint = { x: number; y: number };
 
 const TICK_COUNT = 5;
 const IDENTICAL_TIMESTAMP_MARGIN_MS = 30 * 60 * 1_000;
+const MINUTE_MS = 60 * 1_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
 
 function linearTicks(min: number, max: number, count = TICK_COUNT) {
   if (count <= 1) return [min];
@@ -51,10 +71,10 @@ function linearTicks(min: number, max: number, count = TICK_COUNT) {
   return Array.from({ length: count }, (_, index) => min + step * index);
 }
 
-export function buildLitterGrowthSeries(
+export function buildLitterGrowthModel(
   animals: readonly LitterWeightHistoryAnimal[],
   measurements: readonly LitterWeightHistoryMeasurement[],
-): LitterGrowthSeries[] {
+): LitterGrowthModel {
   const measurementsByAnimal = new Map<string, LitterGrowthPoint[]>();
 
   for (const measurement of measurements) {
@@ -73,23 +93,74 @@ export function buildLitterGrowthSeries(
     measurementsByAnimal.set(measurement.animalId, points);
   }
 
+  for (const points of measurementsByAnimal.values()) {
+    points.sort((left, right) => left.timestamp - right.timestamp);
+  }
+
+  const indicators: LitterGrowthIndicator[] = [];
   const series: LitterGrowthSeries[] = [];
   animals.forEach((animal, seriesIndex) => {
-    const points = measurementsByAnimal.get(animal.id);
-    if (!points?.length) return;
-
-    points.sort((left, right) => left.timestamp - right.timestamp);
-    series.push({
+    const points = measurementsByAnimal.get(animal.id) ?? [];
+    const latestMeasurement = points.at(-1) ?? null;
+    const previousMeasurement = points.at(-2) ?? null;
+    const publicIdentity = {
       internalId: animal.id,
       publicLabel: litterWeightAnimalName(animal),
       publicDetails: litterWeightAnimalDetails(animal),
       seriesIndex,
+    };
+
+    indicators.push({
+      ...publicIdentity,
+      measurementCount: points.length,
+      latestMeasurement,
+      previousMeasurement,
+      differenceGrams:
+        latestMeasurement && previousMeasurement
+          ? latestMeasurement.grams - previousMeasurement.grams
+          : null,
+      intervalMilliseconds:
+        latestMeasurement && previousMeasurement
+          ? latestMeasurement.timestamp - previousMeasurement.timestamp
+          : null,
+    });
+
+    if (!latestMeasurement) return;
+    series.push({
+      ...publicIdentity,
       points,
-      latestMeasurement: points[points.length - 1],
+      latestMeasurement,
     });
   });
 
-  return series;
+  return { indicators, series };
+}
+
+export function buildLitterGrowthSeries(
+  animals: readonly LitterWeightHistoryAnimal[],
+  measurements: readonly LitterWeightHistoryMeasurement[],
+): LitterGrowthSeries[] {
+  return buildLitterGrowthModel(animals, measurements).series;
+}
+
+export function formatObservedInterval(intervalMilliseconds: number) {
+  if (intervalMilliseconds < MINUTE_MS) {
+    return intervalMilliseconds === 0 ? "0 min" : "Moins d’une minute";
+  }
+
+  let remaining = intervalMilliseconds;
+  const days = Math.floor(remaining / DAY_MS);
+  remaining -= days * DAY_MS;
+  const hours = Math.floor(remaining / HOUR_MS);
+  remaining -= hours * HOUR_MS;
+  const minutes = Math.floor(remaining / MINUTE_MS);
+  const parts = [
+    days > 0 ? `${days} j` : null,
+    hours > 0 ? `${hours} h` : null,
+    minutes > 0 ? `${minutes} min` : null,
+  ].filter((part): part is string => part !== null);
+
+  return parts.join(" ");
 }
 
 export function buildGrowthChartDomain(
