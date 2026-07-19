@@ -24,6 +24,16 @@ import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
 import type { MaternalObservationSummary } from "./maternal-observations";
+import type {
+  WhelpingActionState,
+  WhelpingBirthActionState,
+} from "@/features/whelping/whelping-actions-core";
+import type {
+  WhelpingBirthSummary,
+  WhelpingEventSummary,
+  WhelpingSessionSummary,
+} from "@/features/whelping/whelping-core";
+import { WhelpingPanel } from "@/features/whelping/whelping-panel";
 import {
   getLitterJournalContextualAge,
   getLitterJournalStatusLabel,
@@ -170,6 +180,15 @@ export function LitterJournalDashboard({
   createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
   litterCareTasksLoadError,
+  whelpingSession,
+  whelpingEvents,
+  whelpingBirths,
+  whelpingRole,
+  whelpingLoadError,
+  openWhelpingAction,
+  recordWhelpingEventAction,
+  recordWhelpingBirthAction,
+  closeWhelpingSessionAction,
 }: {
   litters: LitterJournalListItem[];
   litter: LitterJournalListItem;
@@ -203,6 +222,27 @@ export function LitterJournalDashboard({
   createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
   litterCareTasksLoadError: boolean;
+  whelpingSession: WhelpingSessionSummary | null;
+  whelpingEvents: WhelpingEventSummary[];
+  whelpingBirths: WhelpingBirthSummary[];
+  whelpingRole: "owner" | "admin" | "member" | "viewer" | null;
+  whelpingLoadError: boolean;
+  openWhelpingAction: ((
+    previousState: WhelpingActionState,
+    formData: FormData,
+  ) => Promise<WhelpingActionState>) | null;
+  recordWhelpingEventAction: ((
+    previousState: WhelpingActionState,
+    formData: FormData,
+  ) => Promise<WhelpingActionState>) | null;
+  recordWhelpingBirthAction: ((
+    previousState: WhelpingBirthActionState,
+    formData: FormData,
+  ) => Promise<WhelpingBirthActionState>) | null;
+  closeWhelpingSessionAction: ((
+    previousState: WhelpingActionState,
+    formData: FormData,
+  ) => Promise<WhelpingActionState>) | null;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
@@ -261,6 +301,17 @@ export function LitterJournalDashboard({
         <ContextCard litter={litter} details={details} />
         <SummaryCard litter={litter} />
       </div>
+      <WhelpingPanel
+        session={whelpingSession}
+        events={whelpingEvents}
+        births={whelpingBirths}
+        role={whelpingRole}
+        loadError={whelpingLoadError}
+        openAction={openWhelpingAction}
+        eventAction={recordWhelpingEventAction}
+        birthAction={recordWhelpingBirthAction}
+        closeAction={closeWhelpingSessionAction}
+      />
       <MaternalObservationsPanel
         observations={maternalObservations}
         role={maternalObservationRole}
