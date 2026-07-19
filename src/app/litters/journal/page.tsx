@@ -33,6 +33,8 @@ import {
   type WhelpingSessionSummary,
 } from "@/features/whelping/whelping";
 import { createClient } from "@/lib/supabase/server";
+import { listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
+import { recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +84,9 @@ export default async function LitterJournalPage({
   let whelpingBirths: Awaited<
     ReturnType<typeof listWhelpingBirthsForSession>
   > | null = null;
+  let litterWeightHistory: Awaited<
+    ReturnType<typeof listLitterWeightHistory>
+  > | null = null;
 
   try {
     journal = await loadLitterJournal(supabase, requestedLitterId);
@@ -91,12 +96,13 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, sessionsResult] =
+    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
         listWhelpingSessionsForLitter({ litterId }),
+        listLitterWeightHistory({ litterId }),
       ]);
 
     maternalObservations =
@@ -109,6 +115,8 @@ export default async function LitterJournalPage({
         : null;
     whelpingSessions =
       sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
+    litterWeightHistory =
+      weightsResult.status === "fulfilled" ? weightsResult.value : null;
 
     if (whelpingSessions?.outcome === "success") {
       selectedWhelpingSession =
@@ -293,6 +301,32 @@ export default async function LitterJournalPage({
             };
           })
       : [];
+  const litterWeightHistoryLoaded =
+    litterWeightHistory?.outcome === "success" ? litterWeightHistory : null;
+  const eligibleLitterWeightAnimals =
+    litterWeightHistoryLoaded?.animals.filter(
+      (animal) =>
+        animal.ownershipStatus === "produced" &&
+        animal.birthDate !== null &&
+        animal.status !== "stillborn",
+    ) ?? [];
+  const litterWeightCanWrite =
+    litterWeightHistoryLoaded?.role === "owner" ||
+    litterWeightHistoryLoaded?.role === "admin" ||
+    litterWeightHistoryLoaded?.role === "member";
+  const litterWeightClientCommandId = crypto.randomUUID();
+  const litterWeightAction =
+    selectedLitterId &&
+    litterWeightHistoryLoaded &&
+    litterWeightCanWrite &&
+    eligibleLitterWeightAnimals.length >= 1 &&
+    eligibleLitterWeightAnimals.length <= 30
+      ? recordLitterRoutineWeightsAction.bind(null, {
+          litterId: selectedLitterId,
+          clientCommandId: litterWeightClientCommandId,
+          animalIds: eligibleLitterWeightAnimals.map((animal) => animal.id),
+        })
+      : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -350,6 +384,12 @@ export default async function LitterJournalPage({
             recordWhelpingBirthAction={recordWhelpingBirth}
             recordWhelpingBirthWeightActions={recordWhelpingBirthWeightActions}
             closeWhelpingSessionAction={closeWhelpingAction}
+            litterWeightAnimals={litterWeightHistoryLoaded?.animals ?? []}
+            litterWeightSessions={litterWeightHistoryLoaded?.sessions ?? []}
+            litterWeightMeasurements={litterWeightHistoryLoaded?.measurements ?? []}
+            litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
+            litterWeightAction={litterWeightAction}
+            litterWeightsLoadError={litterWeightHistoryLoaded === null}
           />
         ) : (
           <EmptyLitterJournal />

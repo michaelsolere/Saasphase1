@@ -33,6 +33,14 @@ import type {
   WhelpingEventSummary,
   WhelpingSessionSummary,
 } from "@/features/whelping/whelping-core";
+import { LitterWeightPanel } from "@/features/litter-weights/litter-weight-panel";
+import type {
+  LitterWeightHistoryAnimal,
+  LitterWeightHistoryMeasurement,
+  LitterWeightHistorySession,
+  LitterWeightOrganizationRole,
+} from "@/features/litter-weights/litter-weights-core";
+import type { LitterRoutineWeightsActionState } from "@/features/litter-weights/litter-weights-actions-core";
 import {
   WhelpingPanel,
   type WhelpingBirthWeightAction,
@@ -193,6 +201,12 @@ export function LitterJournalDashboard({
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightActions,
   closeWhelpingSessionAction,
+  litterWeightAnimals,
+  litterWeightSessions,
+  litterWeightMeasurements,
+  litterWeightRole,
+  litterWeightAction,
+  litterWeightsLoadError,
 }: {
   litters: LitterJournalListItem[];
   litter: LitterJournalListItem;
@@ -248,6 +262,15 @@ export function LitterJournalDashboard({
     previousState: WhelpingActionState,
     formData: FormData,
   ) => Promise<WhelpingActionState>) | null;
+  litterWeightAnimals: LitterWeightHistoryAnimal[];
+  litterWeightSessions: LitterWeightHistorySession[];
+  litterWeightMeasurements: LitterWeightHistoryMeasurement[];
+  litterWeightRole: LitterWeightOrganizationRole | null;
+  litterWeightAction: ((
+    previousState: LitterRoutineWeightsActionState,
+    formData: FormData,
+  ) => Promise<LitterRoutineWeightsActionState>) | null;
+  litterWeightsLoadError: boolean;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
@@ -317,6 +340,14 @@ export function LitterJournalDashboard({
         birthAction={recordWhelpingBirthAction}
         birthWeightActions={recordWhelpingBirthWeightActions}
         closeAction={closeWhelpingSessionAction}
+      />
+      <LitterWeightPanel
+        animals={litterWeightAnimals}
+        sessions={litterWeightSessions}
+        measurements={litterWeightMeasurements}
+        role={litterWeightRole}
+        action={litterWeightAction}
+        loadError={litterWeightsLoadError}
       />
       <MaternalObservationsPanel
         observations={maternalObservations}

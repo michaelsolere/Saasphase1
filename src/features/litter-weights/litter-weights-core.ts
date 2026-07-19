@@ -62,6 +62,7 @@ export type RecordLitterRoutineWeightsResult =
 
 export type LitterWeightHistoryAnimal = {
   id: string;
+  ownershipStatus: string;
   birthOrder: number | null;
   sex: string;
   callName: string | null;
@@ -389,10 +390,11 @@ export async function listLitterWeightHistoryCore(
   const animals = await supabase
     .from("animals")
     .select(
-      "id, birth_order, sex, call_name, official_name, collar_color_initial, collar_color_current, status, birth_date, death_date, birth_weight_grams",
+      "id, ownership_status, birth_order, sex, call_name, official_name, collar_color_initial, collar_color_current, status, birth_date, death_date, birth_weight_grams",
     )
     .eq("organization_id", authorization.organizationId)
     .eq("litter_id", authorization.litterId)
+    .is("deleted_at", null)
     .order("birth_order", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true });
 
@@ -466,6 +468,7 @@ export async function listLitterWeightHistoryCore(
     role: authorization.role,
     animals: animalRows.map((animal) => ({
       id: animal.id,
+      ownershipStatus: animal.ownership_status,
       birthOrder: animal.birth_order,
       sex: animal.sex,
       callName: animal.call_name,
