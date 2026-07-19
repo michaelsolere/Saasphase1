@@ -92,6 +92,7 @@ const sections: SidebarSection[] = [
     icon: PawPrint,
     items: [
       { label: "Actuelles", href: "/litters" },
+      { label: "Journal", href: "/litters/journal" },
       { label: "Passées", comingSoon: true },
     ],
   },
