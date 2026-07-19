@@ -3,6 +3,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database.types";
 
 import {
+  buildLitterAgeComparisonModel,
+  type LitterAgeComparisonPoint,
+} from "./litter-age-comparison-model";
+import {
   buildLitterWeightLatestSessionComparison,
   type LitterWeightLatestSessionComparison,
 } from "./litter-weighing-session-comparison";
@@ -17,6 +21,9 @@ export type LitterWeightOrganizationRole =
 
 export type LitterWeightServiceErrorCode =
   | "invalid_input"
+  | "too_many_litters"
+  | "incompatible_litters"
+  | "comparison_too_large"
   | "too_many_animals"
   | "duplicate_animal"
   | "unauthenticated"
@@ -108,6 +115,30 @@ export type LitterWeightHistoryMeasurement = {
 
 export type ListLitterWeightHistoryInput = { litterId: string };
 
+export type ListLitterAgeComparisonInput = {
+  litterIds: string[];
+};
+
+export type ListLitterAgeComparisonResult =
+  | {
+      outcome: "success";
+      role: LitterWeightOrganizationRole;
+      species: string;
+      breed: string;
+      model: {
+        series: Array<{
+          publicLabel: string;
+          seriesIndex: number;
+          totalAnimalCount: number;
+          eligibleAnimalCount: number;
+          excludedAnimalCount: number;
+          status: "available" | "no_eligible_animals";
+          points: LitterAgeComparisonPoint[];
+        }>;
+      };
+    }
+  | ErrorResult;
+
 export type ListLitterWeightHistoryResult =
   | {
       outcome: "success";
@@ -121,6 +152,11 @@ export type ListLitterWeightHistoryResult =
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const LITTER_COMPARISON_MIN_LITTERS = 2;
+const LITTER_COMPARISON_MAX_LITTERS = 5;
+const LITTER_COMPARISON_MAX_ANIMALS = 150;
+const LITTER_COMPARISON_MAX_MEASUREMENTS = 25_000;
+const LITTER_COMPARISON_PAGE_SIZE = 500;
 
 function failure(
   code: LitterWeightServiceErrorCode,
@@ -297,6 +333,276 @@ async function authorizeLitterRead(
     organizationId: litter.data.organization_id,
     role: membership.data.role,
   };
+}
+
+type LitterComparisonLitter = {
+  id: string;
+  organization_id: string;
+  name: string;
+  species: string;
+  breed: string;
+};
+
+type LitterComparisonAuthorization = {
+  litterIds: string[];
+  litters: LitterComparisonLitter[];
+  organizationId: string;
+  role: LitterWeightOrganizationRole;
+  species: string;
+  breed: string;
+};
+
+function normalizeComparisonLitterIds(input: unknown): string[] | ErrorResult {
+  if (!Array.isArray(input) || input.length < LITTER_COMPARISON_MIN_LITTERS) {
+    return invalidInput("Sélectionnez entre deux et cinq portées.");
+  }
+  if (input.length > LITTER_COMPARISON_MAX_LITTERS) {
+    return failure(
+      "too_many_litters",
+      "La comparaison est limitée à cinq portées.",
+    );
+  }
+
+  const litterIds: string[] = [];
+  const uniqueLitterIds = new Set<string>();
+  for (const value of input) {
+    const litterId = normalizeUuid(value);
+    if (!litterId || uniqueLitterIds.has(litterId)) {
+      return invalidInput("La sélection de portées est invalide.");
+    }
+    uniqueLitterIds.add(litterId);
+    litterIds.push(litterId);
+  }
+
+  return litterIds;
+}
+
+async function authorizeLitterComparisonRead(
+  rawLitterIds: unknown,
+  supabase: Supabase,
+): Promise<LitterComparisonAuthorization | ErrorResult> {
+  const litterIds = normalizeComparisonLitterIds(rawLitterIds);
+  if (!Array.isArray(litterIds)) return litterIds;
+
+  const userId = await authenticatedUserId(supabase);
+  if (!userId) {
+    return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+  }
+
+  const litterResult = await supabase
+    .from("litters")
+    .select("id, organization_id, name, species, breed")
+    .in("id", litterIds)
+    .is("deleted_at", null);
+
+  if (litterResult.error) {
+    return databaseFailure(
+      "litter_age_comparison_litters_read_failed",
+      litterResult.error,
+    );
+  }
+
+  const litterRows = litterResult.data ?? [];
+  if (litterRows.length !== litterIds.length) {
+    return failure("not_found", "La sélection de portées est introuvable.");
+  }
+
+  const litterById = new Map(litterRows.map((litter) => [litter.id, litter]));
+  const orderedLitters = litterIds.flatMap((litterId) => {
+    const litter = litterById.get(litterId);
+    return litter ? [litter] : [];
+  });
+  if (orderedLitters.length !== litterIds.length) {
+    return failure("not_found", "La sélection de portées est introuvable.");
+  }
+
+  const organizationId = orderedLitters[0].organization_id;
+  if (
+    orderedLitters.some(
+      (litter) => litter.organization_id !== organizationId,
+    )
+  ) {
+    return failure("not_found", "La sélection de portées est introuvable.");
+  }
+
+  const membership = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("organization_id", organizationId)
+    .eq("profile_id", userId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (membership.error) {
+    return databaseFailure(
+      "litter_age_comparison_membership_read_failed",
+      membership.error,
+    );
+  }
+  if (!membership.data || !isOrganizationRole(membership.data.role)) {
+    return failure("not_found", "La sélection de portées est introuvable.");
+  }
+
+  const species = orderedLitters[0].species.trim();
+  const normalizedSpecies = species.toLocaleLowerCase("fr-FR");
+  const breed = orderedLitters[0].breed.trim();
+  const normalizedBreed = breed.toLocaleLowerCase("fr-FR");
+  if (
+    !species ||
+    !breed ||
+    orderedLitters.some(
+      (litter) =>
+        !litter.species.trim() ||
+        litter.species.trim().toLocaleLowerCase("fr-FR") !==
+          normalizedSpecies ||
+        !litter.breed.trim() ||
+        litter.breed.trim().toLocaleLowerCase("fr-FR") !== normalizedBreed,
+    )
+  ) {
+    return failure(
+      "incompatible_litters",
+      "Les portées sélectionnées ne sont pas compatibles.",
+    );
+  }
+
+  return {
+    litterIds,
+    litters: orderedLitters,
+    organizationId,
+    role: membership.data.role,
+    species,
+    breed,
+  };
+}
+
+type LitterComparisonSessionRow = {
+  id: string;
+  litter_id: string;
+};
+
+async function listComparisonSessions(
+  authorization: LitterComparisonAuthorization,
+  supabase: Supabase,
+): Promise<LitterComparisonSessionRow[] | ErrorResult> {
+  const rows: LitterComparisonSessionRow[] = [];
+
+  for (let offset = 0; ; offset += LITTER_COMPARISON_PAGE_SIZE) {
+    const page = await supabase
+      .from("litter_weighing_sessions")
+      .select("id, litter_id")
+      .eq("organization_id", authorization.organizationId)
+      .in("litter_id", authorization.litterIds)
+      .order("id", { ascending: true })
+      .range(offset, offset + LITTER_COMPARISON_PAGE_SIZE - 1);
+
+    if (page.error) {
+      return databaseFailure(
+        "litter_age_comparison_sessions_read_failed",
+        page.error,
+      );
+    }
+
+    const pageRows = page.data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < LITTER_COMPARISON_PAGE_SIZE) return rows;
+  }
+}
+
+type LitterComparisonMeasurementRow = {
+  id: string;
+  animal_id: string;
+  litter_weighing_session_id: string | null;
+  measurement_kind: string;
+  grams: number;
+  measured_at: string;
+  created_at: string;
+};
+
+export function areLitterAgeComparisonRelationsConsistent(
+  animalLitterById: ReadonlyMap<string, string>,
+  sessionLitterById: ReadonlyMap<string, string>,
+  measurements: readonly Pick<
+    LitterComparisonMeasurementRow,
+    | "animal_id"
+    | "litter_weighing_session_id"
+    | "measurement_kind"
+  >[],
+) {
+  return measurements.every((measurement) => {
+    const animalLitterId = animalLitterById.get(measurement.animal_id);
+    if (!animalLitterId) return false;
+
+    if (measurement.measurement_kind === "birth") {
+      return measurement.litter_weighing_session_id === null;
+    }
+    if (
+      measurement.measurement_kind !== "routine" ||
+      !measurement.litter_weighing_session_id
+    ) {
+      return false;
+    }
+
+    return (
+      sessionLitterById.get(measurement.litter_weighing_session_id) ===
+      animalLitterId
+    );
+  });
+}
+
+async function listComparisonMeasurements(
+  animalIds: string[],
+  organizationId: string,
+  supabase: Supabase,
+): Promise<LitterComparisonMeasurementRow[] | ErrorResult> {
+  if (animalIds.length === 0) return [];
+
+  const rows: LitterComparisonMeasurementRow[] = [];
+  let offset = 0;
+  while (offset <= LITTER_COMPARISON_MAX_MEASUREMENTS) {
+    const remainingWithOverflowRow =
+      LITTER_COMPARISON_MAX_MEASUREMENTS + 1 - offset;
+    const pageSize = Math.min(
+      LITTER_COMPARISON_PAGE_SIZE,
+      remainingWithOverflowRow,
+    );
+    const page = await supabase
+      .from("animal_weight_measurements")
+      .select(
+        "id, animal_id, litter_weighing_session_id, measurement_kind, grams, measured_at, created_at",
+      )
+      .eq("organization_id", organizationId)
+      .in("animal_id", animalIds)
+      .in("measurement_kind", ["birth", "routine"])
+      .order("animal_id", { ascending: true })
+      .order("measured_at", { ascending: true })
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+
+    if (page.error) {
+      return databaseFailure(
+        "litter_age_comparison_measurements_read_failed",
+        page.error,
+      );
+    }
+
+    const pageRows = page.data ?? [];
+    rows.push(...pageRows);
+    if (rows.length > LITTER_COMPARISON_MAX_MEASUREMENTS) {
+      return failure(
+        "comparison_too_large",
+        "La comparaison demandée dépasse la limite autorisée.",
+      );
+    }
+    if (pageRows.length < pageSize) return rows;
+    offset += pageRows.length;
+  }
+
+  return failure(
+    "comparison_too_large",
+    "La comparaison demandée dépasse la limite autorisée.",
+  );
 }
 
 export async function recordLitterRoutineWeightsCore(
@@ -557,5 +863,133 @@ export async function listLitterWeightHistoryCore(
       createdBy: measurement.created_by,
       createdAt: measurement.created_at,
     })),
+  };
+}
+
+export async function listLitterAgeComparisonCore(
+  input: ListLitterAgeComparisonInput,
+  supabase: Supabase,
+): Promise<ListLitterAgeComparisonResult> {
+  const authorization = await authorizeLitterComparisonRead(
+    input?.litterIds,
+    supabase,
+  );
+  if ("outcome" in authorization) return authorization;
+
+  const animals = await supabase
+    .from("animals")
+    .select("id, litter_id")
+    .eq("organization_id", authorization.organizationId)
+    .in("litter_id", authorization.litterIds)
+    .eq("ownership_status", "produced")
+    .neq("status", "stillborn")
+    .order("litter_id", { ascending: true })
+    .order("id", { ascending: true })
+    .range(0, LITTER_COMPARISON_MAX_ANIMALS);
+
+  if (animals.error) {
+    return databaseFailure(
+      "litter_age_comparison_animals_read_failed",
+      animals.error,
+    );
+  }
+
+  const animalRows = animals.data ?? [];
+  if (animalRows.length > LITTER_COMPARISON_MAX_ANIMALS) {
+    return failure(
+      "comparison_too_large",
+      "La comparaison demandée dépasse la limite autorisée.",
+    );
+  }
+
+  const litterIdSet = new Set(authorization.litterIds);
+  if (
+    animalRows.some(
+      (animal) => !animal.litter_id || !litterIdSet.has(animal.litter_id),
+    )
+  ) {
+    return databaseFailure("litter_age_comparison_inconsistent_animal", null);
+  }
+
+  const [sessions, measurements] = await Promise.all([
+    listComparisonSessions(authorization, supabase),
+    listComparisonMeasurements(
+      animalRows.map((animal) => animal.id),
+      authorization.organizationId,
+      supabase,
+    ),
+  ]);
+  if (!Array.isArray(sessions)) return sessions;
+  if (!Array.isArray(measurements)) return measurements;
+
+  const animalLitterById = new Map(
+    animalRows.map((animal) => [animal.id, animal.litter_id as string]),
+  );
+  const sessionLitterById = new Map(
+    sessions.map((session) => [session.id, session.litter_id]),
+  );
+  const measurementsByAnimalId = new Map<
+    string,
+    LitterComparisonMeasurementRow[]
+  >();
+
+  if (
+    !areLitterAgeComparisonRelationsConsistent(
+      animalLitterById,
+      sessionLitterById,
+      measurements,
+    )
+  ) {
+    return databaseFailure(
+      "litter_age_comparison_inconsistent_relations",
+      null,
+    );
+  }
+
+  for (const measurement of measurements) {
+    const animalMeasurements =
+      measurementsByAnimalId.get(measurement.animal_id) ?? [];
+    animalMeasurements.push(measurement);
+    measurementsByAnimalId.set(measurement.animal_id, animalMeasurements);
+  }
+
+  const internalModel = buildLitterAgeComparisonModel(
+    authorization.litters.map((litter, seriesIndex) => ({
+      internalId: litter.id,
+      publicLabel:
+        litter.name.trim() || `Portée sélectionnée ${seriesIndex + 1}`,
+      seriesIndex,
+      animals: animalRows
+        .filter((animal) => animal.litter_id === litter.id)
+        .map((animal) => ({
+          internalId: animal.id,
+          measurements: (measurementsByAnimalId.get(animal.id) ?? []).map(
+            (measurement) => ({
+              internalId: measurement.id,
+              measuredAt: measurement.measured_at,
+              grams: measurement.grams,
+              type: measurement.measurement_kind as "birth" | "routine",
+            }),
+          ),
+        })),
+    })),
+  );
+
+  return {
+    outcome: "success",
+    role: authorization.role,
+    species: authorization.species,
+    breed: authorization.breed,
+    model: {
+      series: internalModel.series.map((series) => ({
+        publicLabel: series.publicLabel,
+        seriesIndex: series.seriesIndex,
+        totalAnimalCount: series.totalAnimalCount,
+        eligibleAnimalCount: series.eligibleAnimalCount,
+        excludedAnimalCount: series.excludedAnimalCount,
+        status: series.status,
+        points: series.points,
+      })),
+    },
   };
 }
