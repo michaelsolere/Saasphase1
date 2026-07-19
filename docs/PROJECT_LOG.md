@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #324. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #328. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `95f2a3da825883c3af34425cc00d9c1d1ceede86`.
-- Dernière PR incluse : **PR #324 — Ajouter la naissance atomique et le poids de naissance**.
-- Les migrations locales sont appliquées jusqu’à `202607190003_whelping_births_weights`.
+- SHA de `main` documenté : `26274659ef77ceb72253e7411a732f6ed1a96e1f`.
+- Dernière PR incluse : **PR #328 — Ajouter le Journal des portées à la sidebar**.
+- Les migrations locales sont appliquées jusqu’à `202607190003_whelping_births_weights` ; les PR #326 à #328 n’ajoutent aucune migration.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -49,11 +49,13 @@ Le produit est construit d’abord pour les chiens, tout en conservant `species`
 - Les groupes structurent une période ou campagne lorsque la portée exacte n’est pas encore arrêtée ; les candidatures et réservations peuvent ensuite être rattachées à une portée précise.
 - Les portées portent les parents, dates et événements d’élevage, candidatures/réservations associées, campagnes et animaux nés.
 - Les règles d’éligibilité parentale et la cohérence des rattachements sont contrôlées.
-- Les chiots d’une portée sont créés dans `animals` depuis la fiche Portée, jamais dans une table dédiée.
+- Les animaux nés d’une portée sont toujours créés dans `animals`, jamais dans une table dédiée. Ils peuvent être créés administrativement depuis la fiche Portée lorsqu’aucune naissance issue du Journal n’existe, ou être créés atomiquement par le Journal lors de l’enregistrement d’une naissance. Les protections serveur interdisent de mélanger ces deux modes pour une même portée.
 
 ### Journal des portées
 
-Le Journal des portées est disponible sur `/litters/journal?litter=<uuid>`. Il permet de sélectionner une portée active et réunit son contexte reproductif, sa synthèse, les observations maternelles et les tâches de suivi sans surcharger la fiche Portée.
+Le Journal des portées est directement accessible depuis **Portées → Journal**, à l’adresse `/litters/journal`. Le paramètre optionnel `?litter=<uuid>` permet d’ouvrir directement une portée précise, mais n’est plus le seul moyen d’accéder au Journal. La page permet de sélectionner une portée active et réunit son contexte reproductif, sa synthèse, les observations maternelles et les tâches de suivi sans surcharger la fiche Portée.
+
+Dans la sidebar privée, la rubrique **Portées** présente, dans cet ordre, **Actuelles**, **Journal** et **Passées**. Sur `/litters/journal`, la rubrique est déployée, **Journal** est l’entrée active et **Actuelles** ne l’est pas. La PR #328 ajoute exclusivement cet accès de navigation, sans modification métier ni changement de base de données.
 
 Capacités actuellement disponibles :
 
@@ -72,6 +74,26 @@ Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_b
 #### Sessions, chronologie, naissances et poids de mise-bas
 
 Le Journal repose sur `whelping_sessions`, `whelping_events`, `whelping_births`, `animal_weight_measurements` et le registre privé `whelping_commands`. Une seule session peut être ouverte par portée ; son fuseau IANA est conservé. Les commandes serveur d’ouverture, d’ajout d’événement et de clôture restent idempotentes. Les événements génériques autorisés — début du travail, contractions, rupture de la poche des eaux, placenta, allaitement, appel vétérinaire, intervention et observation — ainsi que les événements spécialisés — `birth`, créé exclusivement par `record_whelping_birth`, et `session_closed`, créé exclusivement par la commande de clôture — forment une chronologie append-only ordonnée côté serveur. Tous les membres actifs peuvent lire le Journal ; l’écriture est réservée aux rôles `owner`, `admin` et `member`, avec neutralisation inter-organisation.
+
+##### Server Actions de mise-bas
+
+La PR #326 ajoute quatre Server Actions minces pour ouvrir une session, ajouter un événement générique, enregistrer une naissance atomique et clôturer la session. Elles restent de simples adaptateurs vers les services et commandes métier existants.
+
+Les intentions liées côté serveur portent la portée, la session lorsqu’elle existe et la clé idempotente. Aucun identifiant structurant n’est accepté depuis les champs du formulaire. Les actions valident notamment les timestamps avec offset explicite, le fuseau IANA, les types fermés, le poids et la cohérence entre poids et heure de pesée. Elles traduisent les erreurs métier en messages neutres, limitent les revalidations aux routes utiles et ne retournent aucun UUID technique au navigateur.
+
+##### Interface opérationnelle
+
+La PR #327 expose un panneau de mise-bas responsive dans le Journal, avant le suivi maternel. Le chargement sélectionne la session ouverte ou, à défaut, la session clôturée la plus récente. L’état vide propose un démarrage explicite. Une session ouverte affiche son badge, son heure de début, son fuseau et le nombre de naissances enregistrées.
+
+Le bouton mobile prioritaire **+ ENREGISTRER UNE NAISSANCE** permet de saisir rapidement le sexe, la viabilité, la couleur initiale, le poids facultatif, l’heure de pesée associée et une note. Une interface unique permet également d’ajouter les huit types d’événements génériques autorisés. La clôture exige une confirmation explicite et rappelle qu’aucune réouverture n’est disponible. Une session clôturée est entièrement en lecture seule ; le rôle `viewer` reste lui aussi strictement en lecture seule.
+
+Si le chargement des sessions, événements ou naissances n’est pas fiable, le panneau affiche un état neutre et ne rend aucune commande d’écriture. Aucune naissance ni aucun événement n’est ajouté optimistement à l’état React : après une mutation réussie, les données sont relues à la suite des revalidations serveur.
+
+##### Chronologie unique
+
+La chronologie est construite à partir de `whelping_events`, dans l’ordre de `sequence_no`. Lorsqu’un événement est de type `birth`, il est enrichi par sa ligne structurée `whelping_births` et n’est jamais doublé par un second affichage de la naissance. L’entrée peut ainsi présenter l’ordre de naissance, le sexe, la viabilité, la couleur initiale, le poids et l’heure de pesée.
+
+Une relation de naissance incohérente ne fait pas planter le panneau : l’événement reste visible avec un avertissement neutre indiquant que les détails sont indisponibles. Aucun UUID technique n’est affiché dans l’interface.
 
 ##### Naissance atomique
 
@@ -107,15 +129,25 @@ Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `bor
 
 ##### Limites actuelles
 
-- aucune interface ne permet encore d’ouvrir ou de clôturer une session ;
-- aucun bouton rapide de naissance ni Server Action React de mise-bas n’existe ;
 - aucune saisie vocale n’est disponible ;
 - un poids manquant ne peut pas être complété ultérieurement ;
 - aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
 - aucune pesée collective n’est disponible ;
-- aucun graphique de croissance ni interface d’historique des pesées n’existe ;
+- aucun graphique de croissance ni interface d’historique individuel ou collectif des pesées n’existe ;
 - aucune PWA ou application mobile indépendante n’existe ;
 - le statut de la portée n’est jamais modifié automatiquement.
+
+L’interface actuelle est responsive et utilisable sur mobile dans le navigateur, mais elle n’est ni une PWA ni une application mobile indépendante.
+
+##### Synthèse fonctionnelle des PR de mise-bas
+
+- **#322** : sessions et événements de mise-bas ;
+- **#324** : naissance atomique, animal et poids de naissance ;
+- **#326** : Server Actions minces ;
+- **#327** : panneau opérationnel et chronologie unique ;
+- **#328** : accès direct par la sidebar.
+
+Les PR #323 et #325 ont actualisé le présent journal sans modifier ces capacités fonctionnelles.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -341,12 +373,15 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
-1. une interface rapide de mise-bas reliée aux sessions, aux événements et à la naissance atomique ; cette couche mince utilisera exclusivement les services et commandes existants, sans recréer de logique métier dans React ;
-2. l’ajout ultérieur et la saisie collective des poids ;
-3. l’historique individuel et collectif de croissance ;
-4. les soins et suivis récurrents spécialisés ;
-5. l’historique et les comparaisons inter-portées ;
-6. une éventuelle expérience mobile indépendante ou PWA.
+1. l’ajout ultérieur d’un poids de naissance manquant et la saisie collective des poids ;
+2. l’historique individuel et collectif de croissance ;
+3. les soins et suivis récurrents spécialisés ;
+4. l’historique et les comparaisons inter-portées ;
+5. la correction ou l’annulation encadrée d’une naissance et une éventuelle stratégie de réouverture ;
+6. la saisie vocale ;
+7. une éventuelle PWA ou application mobile indépendante.
+
+Ces évolutions restent à concevoir ; leur architecture et leur ordre de réalisation ne sont pas encore décidés techniquement.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
