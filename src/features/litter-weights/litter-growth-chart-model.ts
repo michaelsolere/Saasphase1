@@ -24,6 +24,21 @@ export type LitterGrowthSeries = {
   latestMeasurement: LitterGrowthPoint;
 };
 
+export type LitterRelativeGrowthPoint = LitterGrowthPoint & {
+  elapsedMilliseconds: number;
+  index: number;
+};
+
+export type LitterRelativeGrowthSeries = {
+  internalId: string;
+  publicLabel: string;
+  publicDetails: string;
+  seriesIndex: number;
+  birthMeasurement: LitterGrowthPoint;
+  points: LitterRelativeGrowthPoint[];
+  latestPoint: LitterRelativeGrowthPoint;
+};
+
 export type LitterGrowthIndicator = {
   internalId: string;
   publicLabel: string;
@@ -34,11 +49,13 @@ export type LitterGrowthIndicator = {
   previousMeasurement: LitterGrowthPoint | null;
   differenceGrams: number | null;
   intervalMilliseconds: number | null;
+  relativeProgressPercentage: number | null;
 };
 
 export type LitterGrowthModel = {
   indicators: LitterGrowthIndicator[];
   series: LitterGrowthSeries[];
+  relativeSeries: LitterRelativeGrowthSeries[];
 };
 
 export type GrowthChartDomain = {
@@ -64,6 +81,18 @@ const IDENTICAL_TIMESTAMP_MARGIN_MS = 30 * 60 * 1_000;
 const MINUTE_MS = 60 * 1_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+function compareGrowthPoints(
+  left: LitterGrowthPoint,
+  right: LitterGrowthPoint,
+) {
+  const timestampDifference = left.timestamp - right.timestamp;
+  if (timestampDifference !== 0) return timestampDifference;
+  if (left.type !== right.type) return left.type === "birth" ? -1 : 1;
+  if (left.internalId < right.internalId) return -1;
+  if (left.internalId > right.internalId) return 1;
+  return 0;
+}
 
 function linearTicks(min: number, max: number, count = TICK_COUNT) {
   if (count <= 1) return [min];
@@ -94,15 +123,31 @@ export function buildLitterGrowthModel(
   }
 
   for (const points of measurementsByAnimal.values()) {
-    points.sort((left, right) => left.timestamp - right.timestamp);
+    points.sort(compareGrowthPoints);
   }
 
   const indicators: LitterGrowthIndicator[] = [];
   const series: LitterGrowthSeries[] = [];
+  const relativeSeries: LitterRelativeGrowthSeries[] = [];
   animals.forEach((animal, seriesIndex) => {
     const points = measurementsByAnimal.get(animal.id) ?? [];
     const latestMeasurement = points.at(-1) ?? null;
     const previousMeasurement = points.at(-2) ?? null;
+    const usableBirthMeasurements = points.filter(
+      (point) => point.type === "birth" && point.grams > 0,
+    );
+    const birthMeasurement =
+      usableBirthMeasurements.length === 1 ? usableBirthMeasurements[0] : null;
+    const relativePoints: LitterRelativeGrowthPoint[] = birthMeasurement
+      ? points
+          .filter((point) => point.timestamp >= birthMeasurement.timestamp)
+          .map((point) => ({
+            ...point,
+            elapsedMilliseconds: point.timestamp - birthMeasurement.timestamp,
+            index: (point.grams / birthMeasurement.grams) * 100,
+          }))
+      : [];
+    const latestRelativePoint = relativePoints.at(-1) ?? null;
     const publicIdentity = {
       internalId: animal.id,
       publicLabel: litterWeightAnimalName(animal),
@@ -123,6 +168,9 @@ export function buildLitterGrowthModel(
         latestMeasurement && previousMeasurement
           ? latestMeasurement.timestamp - previousMeasurement.timestamp
           : null,
+      relativeProgressPercentage: latestRelativePoint
+        ? latestRelativePoint.index - 100
+        : null,
     });
 
     if (!latestMeasurement) return;
@@ -131,9 +179,18 @@ export function buildLitterGrowthModel(
       points,
       latestMeasurement,
     });
+
+    if (birthMeasurement && latestRelativePoint) {
+      relativeSeries.push({
+        ...publicIdentity,
+        birthMeasurement,
+        points: relativePoints,
+        latestPoint: latestRelativePoint,
+      });
+    }
   });
 
-  return { indicators, series };
+  return { indicators, series, relativeSeries };
 }
 
 export function buildLitterGrowthSeries(
@@ -141,6 +198,13 @@ export function buildLitterGrowthSeries(
   measurements: readonly LitterWeightHistoryMeasurement[],
 ): LitterGrowthSeries[] {
   return buildLitterGrowthModel(animals, measurements).series;
+}
+
+export function buildLitterRelativeGrowthSeries(
+  animals: readonly LitterWeightHistoryAnimal[],
+  measurements: readonly LitterWeightHistoryMeasurement[],
+): LitterRelativeGrowthSeries[] {
+  return buildLitterGrowthModel(animals, measurements).relativeSeries;
 }
 
 export function formatObservedInterval(intervalMilliseconds: number) {
@@ -200,6 +264,41 @@ export function buildGrowthChartDomain(
     maxGrams,
     timestampTicks: linearTicks(minTimestamp, maxTimestamp),
     gramTicks: linearTicks(minGrams, maxGrams),
+  };
+}
+
+export function buildRelativeGrowthChartDomain(
+  points: readonly LitterRelativeGrowthPoint[],
+): GrowthChartDomain | null {
+  if (points.length === 0) return null;
+
+  const maxElapsedMilliseconds = Math.max(
+    ...points.map((point) => point.elapsedMilliseconds),
+  );
+  const indices = points.map((point) => point.index);
+  const rawMinIndex = Math.min(...indices);
+  const rawMaxIndex = Math.max(...indices);
+  const indexRange = rawMaxIndex - rawMinIndex;
+  const indexMargin =
+    indexRange === 0
+      ? Math.max(5, rawMaxIndex * 0.05)
+      : Math.max(5, indexRange * 0.12);
+  const minIndex = Math.max(
+    0,
+    Math.floor((rawMinIndex - indexMargin) / 5) * 5,
+  );
+  let maxIndex = Math.ceil((rawMaxIndex + indexMargin) / 5) * 5;
+  if (maxIndex <= minIndex) maxIndex = minIndex + 5;
+  const maxElapsed =
+    maxElapsedMilliseconds === 0 ? HOUR_MS : maxElapsedMilliseconds;
+
+  return {
+    minTimestamp: 0,
+    maxTimestamp: maxElapsed,
+    minGrams: minIndex,
+    maxGrams: maxIndex,
+    timestampTicks: linearTicks(0, maxElapsed),
+    gramTicks: linearTicks(minIndex, maxIndex),
   };
 }
 

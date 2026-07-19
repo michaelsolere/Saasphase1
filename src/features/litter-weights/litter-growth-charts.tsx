@@ -9,11 +9,14 @@ import type {
 import {
   buildLitterGrowthModel,
   buildGrowthChartDomain,
+  buildRelativeGrowthChartDomain,
   formatObservedInterval,
   projectGrowthPoint,
   type LitterGrowthIndicator,
   type LitterGrowthPoint,
   type LitterGrowthSeries,
+  type LitterRelativeGrowthPoint,
+  type LitterRelativeGrowthSeries,
 } from "./litter-growth-chart-model";
 
 const CHART_WIDTH = 760;
@@ -32,6 +35,16 @@ const SERIES_COLORS = [
 const LINE_PATTERNS = [undefined, "12 5", "3 5", "12 4 3 4"] as const;
 const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1_000;
 const THIRTY_ONE_DAYS = 31 * 24 * 60 * 60 * 1_000;
+const FRENCH_DECIMAL = new Intl.NumberFormat("fr-FR", {
+  maximumFractionDigits: 1,
+});
+
+type GrowthChartSeries = {
+  internalId: string;
+  publicLabel: string;
+  seriesIndex: number;
+  points: (LitterGrowthPoint | LitterRelativeGrowthPoint)[];
+};
 
 function seriesStyle(seriesIndex: number) {
   return {
@@ -66,6 +79,14 @@ function measurementTypeLabel(type: LitterGrowthPoint["type"]) {
 
 function formatSignedGrams(value: number) {
   return `${value > 0 ? "+" : ""}${value} g`;
+}
+
+function formatIndex(value: number) {
+  return FRENCH_DECIMAL.format(value);
+}
+
+function formatSignedPercentage(value: number) {
+  return `${value > 0 ? "+" : ""}${FRENCH_DECIMAL.format(value)} %`;
 }
 
 function AnimalGrowthIndicator({
@@ -120,6 +141,18 @@ function AnimalGrowthIndicator({
           )}
         </div>
       )}
+      {indicator.relativeProgressPercentage === null ? (
+        <p className="mt-3 text-sm">
+          <span className="font-medium">
+            Progression depuis la naissance indisponible
+          </span>
+        </p>
+      ) : (
+        <p className="mt-3 text-sm">
+          <span className="font-medium">Progression depuis la naissance :</span>{" "}
+          {formatSignedPercentage(indicator.relativeProgressPercentage)}
+        </p>
+      )}
     </li>
   );
 }
@@ -131,17 +164,25 @@ function Marker({
   color,
   animalLabel,
   seriesIndex,
+  relative,
 }: {
-  point: LitterGrowthPoint;
+  point: LitterGrowthPoint | LitterRelativeGrowthPoint;
   x: number;
   y: number;
   color: string;
   animalLabel: string;
   seriesIndex: number;
+  relative: boolean;
 }) {
-  const title = `${animalLabel} · ${point.grams} g · ${formatMeasurementDate(
-    point.measuredAt,
-  )} · ${measurementTypeLabel(point.type)}`;
+  const title = relative
+    ? `${animalLabel} · Indice ${formatIndex(
+        (point as LitterRelativeGrowthPoint).index,
+      )} · ${formatObservedInterval(
+        (point as LitterRelativeGrowthPoint).elapsedMilliseconds,
+      )} depuis la naissance · ${measurementTypeLabel(point.type)}`
+    : `${animalLabel} · ${point.grams} g · ${formatMeasurementDate(
+        point.measuredAt,
+      )} · ${measurementTypeLabel(point.type)}`;
 
   if (point.type === "birth") {
     return (
@@ -183,19 +224,33 @@ function Marker({
 function GrowthSvg({
   series,
   accessibleLabel,
+  mode = "absolute",
 }: {
-  series: LitterGrowthSeries[];
+  series: GrowthChartSeries[];
   accessibleLabel: string;
+  mode?: "absolute" | "relative";
 }) {
   const titleId = useId();
   const descriptionId = useId();
   const points = series.flatMap((item) => item.points);
-  const domain = buildGrowthChartDomain(points);
+  const relative = mode === "relative";
+  const domain = relative
+    ? buildRelativeGrowthChartDomain(points as LitterRelativeGrowthPoint[])
+    : buildGrowthChartDomain(points);
   if (!domain) return null;
 
   const firstTimestamp = Math.min(...points.map((point) => point.timestamp));
   const lastTimestamp = Math.max(...points.map((point) => point.timestamp));
   const extent = lastTimestamp - firstTimestamp;
+  const chartCoordinates = (
+    point: LitterGrowthPoint | LitterRelativeGrowthPoint,
+  ) =>
+    relative
+      ? {
+          timestamp: (point as LitterRelativeGrowthPoint).elapsedMilliseconds,
+          grams: (point as LitterRelativeGrowthPoint).index,
+        }
+      : point;
 
   return (
     <svg
@@ -207,8 +262,9 @@ function GrowthSvg({
     >
       <title id={titleId}>{accessibleLabel}</title>
       <desc id={descriptionId}>
-        Poids réels en grammes selon la date et l’heure de mesure. Les cercles
-        représentent les mesures de naissance et les carrés les pesées de routine.
+        {relative
+          ? "Indice base 100 selon le temps écoulé depuis la mesure réelle de naissance de chaque animal. Les cercles représentent les mesures de naissance et les carrés les pesées de routine."
+          : "Poids réels en grammes selon la date et l’heure de mesure. Les cercles représentent les mesures de naissance et les carrés les pesées de routine."}
       </desc>
 
       {domain.gramTicks.map((grams) => {
@@ -236,7 +292,7 @@ function GrowthSvg({
               fill="currentColor"
               opacity="0.72"
             >
-              {Math.round(grams)} g
+              {relative ? formatIndex(grams) : `${Math.round(grams)} g`}
             </text>
           </g>
         );
@@ -273,7 +329,9 @@ function GrowthSvg({
               fill="currentColor"
               opacity="0.72"
             >
-              {formatAxisDate(timestamp, extent)}
+              {relative
+                ? formatObservedInterval(timestamp)
+                : formatAxisDate(timestamp, extent)}
             </text>
           </g>
         );
@@ -301,7 +359,7 @@ function GrowthSvg({
       {series.map((item) => {
         const style = seriesStyle(item.seriesIndex);
         const projected = item.points.map((point) => ({
-          ...projectGrowthPoint(point, domain, PLOT),
+          ...projectGrowthPoint(chartCoordinates(point), domain, PLOT),
           point,
         }));
         return (
@@ -328,6 +386,7 @@ function GrowthSvg({
                 color={style.color}
                 animalLabel={item.publicLabel}
                 seriesIndex={item.seriesIndex}
+                relative={relative}
               />
             ))}
           </g>
@@ -346,6 +405,41 @@ function MarkerKey() {
   );
 }
 
+function SeriesLegend({
+  series,
+  ariaLabel,
+}: {
+  series: GrowthChartSeries[];
+  ariaLabel: string;
+}) {
+  return (
+    <ul className="flex flex-wrap gap-x-5 gap-y-3" aria-label={ariaLabel}>
+      {series.map((item) => {
+        const style = seriesStyle(item.seriesIndex);
+        return (
+          <li
+            key={item.internalId}
+            className="flex min-w-0 items-center gap-2 text-sm"
+          >
+            <svg width="30" height="12" viewBox="0 0 30 12" aria-hidden="true">
+              <line
+                x1="1"
+                x2="29"
+                y1="6"
+                y2="6"
+                stroke={style.color}
+                strokeWidth="3"
+                strokeDasharray={style.dash}
+              />
+            </svg>
+            <span className="break-words">{item.publicLabel}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function EntireLitterView({
   series,
   animalsWithoutMeasurements,
@@ -360,32 +454,56 @@ function EntireLitterView({
         accessibleLabel={`Courbes de croissance de la portée, ${series.length} séries animales`}
       />
       <MarkerKey />
-      <ul className="flex flex-wrap gap-x-5 gap-y-3" aria-label="Légende des animaux">
-        {series.map((item) => {
-          const style = seriesStyle(item.seriesIndex);
-          return (
-            <li key={item.internalId} className="flex min-w-0 items-center gap-2 text-sm">
-              <svg width="30" height="12" viewBox="0 0 30 12" aria-hidden="true">
-                <line
-                  x1="1"
-                  x2="29"
-                  y1="6"
-                  y2="6"
-                  stroke={style.color}
-                  strokeWidth="3"
-                  strokeDasharray={style.dash}
-                />
-              </svg>
-              <span className="break-words">{item.publicLabel}</span>
-            </li>
-          );
-        })}
-      </ul>
+      <SeriesLegend series={series} ariaLabel="Légende des animaux" />
       {animalsWithoutMeasurements > 0 ? (
         <p className="text-sm text-muted">
-          {animalsWithoutMeasurements} animal
-          {animalsWithoutMeasurements > 1 ? "aux" : ""} sans mesure réelle non
-          tracé{animalsWithoutMeasurements > 1 ? "s" : ""}.
+          {animalsWithoutMeasurements}{" "}
+          {animalsWithoutMeasurements > 1 ? "animaux" : "animal"} sans mesure
+          réelle non tracé{animalsWithoutMeasurements > 1 ? "s" : ""}.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function RelativeGrowthView({
+  series,
+  ineligibleAnimalCount,
+}: {
+  series: LitterRelativeGrowthSeries[];
+  ineligibleAnimalCount: number;
+}) {
+  return (
+    <div className="space-y-4" data-testid="relative-growth-view">
+      <p className="text-sm leading-6 text-muted">
+        Indice 100 = poids de naissance réel. Les courbes comparent la progression
+        proportionnelle des animaux, indépendamment de leur poids de départ.
+      </p>
+      {series.length > 0 ? (
+        <>
+          <GrowthSvg
+            series={series}
+            accessibleLabel={`Courbes de progression relative de la portée, ${series.length} séries animales éligibles`}
+            mode="relative"
+          />
+          <MarkerKey />
+          <SeriesLegend
+            series={series}
+            ariaLabel="Légende de la progression relative"
+          />
+        </>
+      ) : (
+        <p className="rounded-xl border bg-secondary px-3 py-3 text-sm text-muted">
+          Aucun animal ne dispose d’une mesure réelle de naissance exploitable pour
+          tracer une progression relative.
+        </p>
+      )}
+      {ineligibleAnimalCount > 0 ? (
+        <p className="text-sm text-muted">
+          {ineligibleAnimalCount}{" "}
+          {ineligibleAnimalCount > 1 ? "animaux" : "animal"} sans mesure réelle
+          de naissance exploitable non tracé
+          {ineligibleAnimalCount > 1 ? "s" : ""}.
         </p>
       ) : null}
     </div>
@@ -454,9 +572,13 @@ export function LitterGrowthCharts({
   animals: LitterWeightHistoryAnimal[];
   measurements: LitterWeightHistoryMeasurement[];
 }) {
-  const [view, setView] = useState<"litter" | "animal">("litter");
-  const { indicators, series } = buildLitterGrowthModel(animals, measurements);
+  const [view, setView] = useState<"litter" | "animal" | "relative">("litter");
+  const { indicators, series, relativeSeries } = buildLitterGrowthModel(
+    animals,
+    measurements,
+  );
   const animalsWithoutMeasurements = animals.length - series.length;
+  const ineligibleRelativeAnimalCount = animals.length - relativeSeries.length;
 
   return (
     <section
@@ -487,7 +609,7 @@ export function LitterGrowthCharts({
             Courbes de croissance
           </h3>
           <div
-            className="inline-flex w-fit rounded-xl border bg-background p-1"
+            className="grid w-full grid-cols-1 rounded-xl border bg-background p-1 sm:w-fit sm:grid-cols-3"
             aria-label="Vue des courbes"
           >
             <button
@@ -506,11 +628,24 @@ export function LitterGrowthCharts({
             >
               Un animal
             </button>
+            <button
+              type="button"
+              aria-pressed={view === "relative"}
+              onClick={() => setView("relative")}
+              className="min-h-10 rounded-lg px-3 text-sm font-medium transition aria-pressed:bg-accent aria-pressed:text-white"
+            >
+              Progression relative
+            </button>
           </div>
         </div>
 
         <div className="mt-5 min-w-0">
-          {series.length === 0 ? (
+          {view === "relative" ? (
+            <RelativeGrowthView
+              series={relativeSeries}
+              ineligibleAnimalCount={ineligibleRelativeAnimalCount}
+            />
+          ) : series.length === 0 ? (
             <p className="rounded-xl border bg-secondary px-3 py-3 text-sm text-muted">
               Aucune mesure réelle disponible pour tracer une courbe.
             </p>

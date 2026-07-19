@@ -347,7 +347,7 @@ function weightPanel(page: Page) {
   return page.getByTestId("litter-weight-panel");
 }
 
-test("courbes superposées et individuelles, viewer, erreur et mobile", async ({ page }) => {
+test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page }) => {
   cleanup();
   expectCleanupAtZero();
   const deterministicFixtureIds = {
@@ -383,6 +383,9 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
       "aria-pressed",
       "false",
     );
+    await expect(
+      panel.getByRole("button", { name: "Progression relative" }),
+    ).toHaveAttribute("aria-pressed", "false");
     await expect(panel).toContainText("Dates affichées dans le fuseau de cet appareil.");
 
     const indicators = panel.getByRole("list", {
@@ -411,13 +414,22 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     await expect(aubeIndicator).toContainText(
       "Dernier intervalle observé : 1 j 1 h 58 min",
     );
+    await expect(aubeIndicator).toContainText(
+      "Progression depuis la naissance : +26,5 %",
+    );
     await expect(singleIndicator).toContainText("Dernier poids réel : 460 g");
     await expect(singleIndicator).toContainText("1 mesure réelle");
     await expect(singleIndicator).toContainText(
       "Aucun intervalle n’est encore observable.",
     );
+    await expect(singleIndicator).toContainText(
+      "Progression depuis la naissance indisponible",
+    );
     await expect(emptyIndicator).toContainText("Aucune mesure réelle");
     await expect(emptyIndicator).not.toContainText("380 g");
+    await expect(emptyIndicator).toContainText(
+      "Progression depuis la naissance indisponible",
+    );
 
     const entireView = panel.getByTestId("entire-litter-growth-view");
     const chart = entireView.getByRole("img");
@@ -438,6 +450,46 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     await expect(entireView).toContainText("1 animal sans mesure réelle non tracé.");
     expect(await chart.locator("title").allTextContents()).not.toContainEqual(
       expect.stringContaining("390 g"),
+    );
+
+    await panel.getByRole("button", { name: "Progression relative" }).click();
+    const relativeView = panel.getByTestId("relative-growth-view");
+    await expect(relativeView).toContainText(
+      "Indice 100 = poids de naissance réel. Les courbes comparent la progression proportionnelle des animaux, indépendamment de leur poids de départ.",
+    );
+    const relativeChart = relativeView.getByRole("img");
+    await expect(relativeChart).toBeVisible();
+    await expect(relativeChart.locator("[data-growth-series]")).toHaveCount(2);
+    await expect(
+      relativeChart.locator('[data-measurement-type="birth"]'),
+    ).toHaveCount(2);
+    await expect(
+      relativeChart.locator('[data-measurement-type="routine"]'),
+    ).toHaveCount(2);
+    const relativeLegendLabels = await relativeView
+      .getByRole("list", { name: "Légende de la progression relative" })
+      .getByRole("listitem")
+      .allTextContents();
+    expect(relativeLegendLabels.map((label) => label.trim())).toEqual([
+      "Aube",
+      "Boréal officiel",
+    ]);
+    await expect(relativeView).toContainText(
+      "2 animaux sans mesure réelle de naissance exploitable non tracés.",
+    );
+    const relativeTitles = await relativeChart.locator("title").allTextContents();
+    expect(relativeTitles).toContainEqual(expect.stringContaining("Indice 100"));
+    expect(relativeTitles).toContainEqual(expect.stringContaining("Indice 126,5"));
+    expect(relativeTitles).not.toContainEqual(expect.stringContaining("Chiot n° 3"));
+    const relativeAttributes = await relativeView.locator("*").evaluateAll((elements) =>
+      elements.flatMap((element) =>
+        Array.from(element.attributes).map(
+          (attribute) => `${attribute.name}=${attribute.value}`,
+        ),
+      ),
+    );
+    expect(relativeAttributes.join(" ")).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
 
     await panel.getByRole("button", { name: "Un animal" }).click();
@@ -504,8 +556,11 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     await expect(panel.getByRole("heading", { name: "Repères par animal" })).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Courbes de croissance" })).toBeVisible();
     await expect(panel.getByRole("img")).toBeVisible();
+    await panel.getByRole("button", { name: "Progression relative" }).click();
+    await expect(panel.getByTestId("relative-growth-view").getByRole("img")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
     await expect(panel.locator("form, input, textarea")).toHaveCount(0);
+    expect(readOnlyState()).toEqual(beforeConsultation);
 
     setOwnerRole("owner");
     await page.goto(`/litters/journal?litter=${ids.inconsistentLitter}`);
@@ -522,6 +577,8 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
       panel.getByRole("list", { name: "Repères de poids par animal" }),
     ).toBeVisible();
     await expect(panel.getByRole("img")).toBeVisible();
+    await panel.getByRole("button", { name: "Progression relative" }).click();
+    await expect(panel.getByTestId("relative-growth-view").getByRole("img")).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
