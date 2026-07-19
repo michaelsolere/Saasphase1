@@ -18,6 +18,18 @@ import {
 } from "@/features/litter-journal/litter-care-tasks";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
+import {
+  closeWhelpingSessionAction,
+  openWhelpingSessionAction,
+  recordWhelpingBirthAction,
+  recordWhelpingEventAction,
+} from "@/features/whelping/whelping-actions";
+import {
+  listWhelpingBirthsForSession,
+  listWhelpingEventsForSession,
+  listWhelpingSessionsForLitter,
+  type WhelpingSessionSummary,
+} from "@/features/whelping/whelping";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +70,16 @@ export default async function LitterJournalPage({
   let litterCareTaskGenerationPlan: Awaited<
     ReturnType<typeof planLitterCareTaskGeneration>
   > | null = null;
+  let whelpingSessions: Awaited<
+    ReturnType<typeof listWhelpingSessionsForLitter>
+  > | null = null;
+  let selectedWhelpingSession: WhelpingSessionSummary | null = null;
+  let whelpingEvents: Awaited<
+    ReturnType<typeof listWhelpingEventsForSession>
+  > | null = null;
+  let whelpingBirths: Awaited<
+    ReturnType<typeof listWhelpingBirthsForSession>
+  > | null = null;
 
   try {
     journal = await loadLitterJournal(supabase, requestedLitterId);
@@ -67,11 +89,12 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult] =
+    const [maternalResult, tasksResult, generationPlanResult, sessionsResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
+        listWhelpingSessionsForLitter({ litterId }),
       ]);
 
     maternalObservations =
@@ -82,6 +105,30 @@ export default async function LitterJournalPage({
       generationPlanResult.status === "fulfilled"
         ? generationPlanResult.value
         : null;
+    whelpingSessions =
+      sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
+
+    if (whelpingSessions?.outcome === "success") {
+      selectedWhelpingSession =
+        whelpingSessions.sessions.find((session) => session.status === "open") ??
+        whelpingSessions.sessions[0] ??
+        null;
+
+      if (selectedWhelpingSession) {
+        const [eventsResult, birthsResult] = await Promise.allSettled([
+          listWhelpingEventsForSession({
+            sessionId: selectedWhelpingSession.id,
+          }),
+          listWhelpingBirthsForSession({
+            sessionId: selectedWhelpingSession.id,
+          }),
+        ]);
+        whelpingEvents =
+          eventsResult.status === "fulfilled" ? eventsResult.value : null;
+        whelpingBirths =
+          birthsResult.status === "fulfilled" ? birthsResult.value : null;
+      }
+    }
   }
 
   const maternalObservationsLoaded =
@@ -155,6 +202,75 @@ export default async function LitterJournalPage({
           };
         })
     : [];
+  const whelpingSessionsLoaded =
+    whelpingSessions?.outcome === "success" ? whelpingSessions : null;
+  const whelpingEventsLoaded =
+    whelpingEvents?.outcome === "success" ? whelpingEvents : null;
+  const whelpingBirthsLoaded =
+    whelpingBirths?.outcome === "success" ? whelpingBirths : null;
+  const whelpingLoadError =
+    whelpingSessionsLoaded === null ||
+    (selectedWhelpingSession !== null &&
+      (whelpingEventsLoaded === null || whelpingBirthsLoaded === null));
+  const whelpingServiceRoles = [
+    whelpingSessionsLoaded?.role,
+    selectedWhelpingSession ? whelpingEventsLoaded?.role : undefined,
+    selectedWhelpingSession ? whelpingBirthsLoaded?.role : undefined,
+  ].filter((role): role is "owner" | "admin" | "member" | "viewer" =>
+    role !== undefined,
+  );
+  const whelpingRole = whelpingServiceRoles.includes("viewer")
+    ? "viewer"
+    : (whelpingSessionsLoaded?.role ?? null);
+  const whelpingCanWrite =
+    whelpingServiceRoles.length > 0 &&
+    whelpingServiceRoles.every(
+      (role) => role === "owner" || role === "admin" || role === "member",
+    );
+  const whelpingDataReliable = !whelpingLoadError;
+  const openWhelpingClientCommandId = crypto.randomUUID();
+  const eventWhelpingClientCommandId = crypto.randomUUID();
+  const birthWhelpingClientCommandId = crypto.randomUUID();
+  const closeWhelpingClientCommandId = crypto.randomUUID();
+  const selectedLitterId = journal?.selectedLitter?.id ?? null;
+  const selectedSessionId = selectedWhelpingSession?.id ?? null;
+  const openWhelpingAction =
+    selectedLitterId &&
+    whelpingDataReliable &&
+    whelpingCanWrite &&
+    selectedWhelpingSession === null
+      ? openWhelpingSessionAction.bind(null, {
+          litterId: selectedLitterId,
+          clientCommandId: openWhelpingClientCommandId,
+        })
+      : null;
+  const sessionWriteEnabled =
+    selectedLitterId !== null &&
+    selectedSessionId !== null &&
+    selectedWhelpingSession?.status === "open" &&
+    whelpingDataReliable &&
+    whelpingCanWrite;
+  const recordWhelpingEvent = sessionWriteEnabled
+    ? recordWhelpingEventAction.bind(null, {
+        litterId: selectedLitterId,
+        sessionId: selectedSessionId,
+        clientCommandId: eventWhelpingClientCommandId,
+      })
+    : null;
+  const recordWhelpingBirth = sessionWriteEnabled
+    ? recordWhelpingBirthAction.bind(null, {
+        litterId: selectedLitterId,
+        sessionId: selectedSessionId,
+        clientCommandId: birthWhelpingClientCommandId,
+      })
+    : null;
+  const closeWhelpingAction = sessionWriteEnabled
+    ? closeWhelpingSessionAction.bind(null, {
+        litterId: selectedLitterId,
+        sessionId: selectedSessionId,
+        clientCommandId: closeWhelpingClientCommandId,
+      })
+    : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -202,6 +318,15 @@ export default async function LitterJournalPage({
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
+            whelpingSession={selectedWhelpingSession}
+            whelpingEvents={whelpingEventsLoaded?.events ?? []}
+            whelpingBirths={whelpingBirthsLoaded?.births ?? []}
+            whelpingRole={whelpingRole}
+            whelpingLoadError={whelpingLoadError}
+            openWhelpingAction={openWhelpingAction}
+            recordWhelpingEventAction={recordWhelpingEvent}
+            recordWhelpingBirthAction={recordWhelpingBirth}
+            closeWhelpingSessionAction={closeWhelpingAction}
           />
         ) : (
           <EmptyLitterJournal />
