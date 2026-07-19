@@ -27,6 +27,11 @@ import type {
   LitterWeightHistorySession,
   LitterWeightOrganizationRole,
 } from "./litter-weights-core";
+import {
+  litterWeightAnimalDetails,
+  litterWeightAnimalName,
+} from "./litter-weight-animal-identity";
+import { LitterGrowthCharts } from "./litter-growth-charts";
 
 type RecordAction = (
   previousState: LitterRoutineWeightsActionState,
@@ -36,12 +41,6 @@ type RecordAction = (
 const inputClass =
   "mt-2 min-h-11 w-full min-w-0 rounded-xl border bg-background px-3 py-2 text-base outline-none transition focus:border-accent focus:ring-1 focus:ring-accent sm:text-sm";
 const labelClass = "text-sm font-semibold";
-
-const sexLabels: Record<string, string> = {
-  female: "Femelle",
-  male: "Mâle",
-  unknown: "Sexe inconnu",
-};
 
 function currentLocalDateTime() {
   const now = new Date();
@@ -78,25 +77,6 @@ function formatDateTime(value: string, timezoneName?: string) {
       timeZone: "UTC",
     }).format(new Date(value));
   }
-}
-
-function animalName(animal: LitterWeightHistoryAnimal) {
-  return (
-    animal.callName ||
-    animal.officialName ||
-    (animal.birthOrder ? `Chiot n° ${animal.birthOrder}` : "Animal de la portée")
-  );
-}
-
-function animalDetails(animal: LitterWeightHistoryAnimal) {
-  const values = [
-    animal.birthOrder ? `Ordre de naissance : ${animal.birthOrder}` : null,
-    sexLabels[animal.sex] ?? animal.sex,
-    animal.currentCollarColor || animal.initialCollarColor
-      ? `Collier : ${animal.currentCollarColor || animal.initialCollarColor}`
-      : null,
-  ];
-  return values.filter(Boolean).join(" · ");
 }
 
 function eligibleForRoutineWeight(animal: LitterWeightHistoryAnimal) {
@@ -227,11 +207,11 @@ function RoutineWeightDialog({
                 className="min-w-0 rounded-2xl border bg-surface p-4"
               >
                 <legend className="max-w-full px-1 text-base font-semibold">
-                  <span className="break-words">{animalName(animal)}</span>
+                  <span className="break-words">{litterWeightAnimalName(animal)}</span>
                 </legend>
-                {animalDetails(animal) ? (
+                {litterWeightAnimalDetails(animal) ? (
                   <p className="mb-3 break-words text-xs leading-5 text-muted">
-                    {animalDetails(animal)}
+                    {litterWeightAnimalDetails(animal)}
                   </p>
                 ) : null}
                 <div className="grid min-w-0 gap-3 sm:grid-cols-2">
@@ -327,10 +307,10 @@ function AnimalsHistory({
           );
           return (
             <article key={animal.id} className="rounded-2xl border p-4 sm:p-5">
-              <h4 className="break-words font-semibold">{animalName(animal)}</h4>
-              {animalDetails(animal) ? (
+              <h4 className="break-words font-semibold">{litterWeightAnimalName(animal)}</h4>
+              {litterWeightAnimalDetails(animal) ? (
                 <p className="mt-1 break-words text-xs leading-5 text-muted">
-                  {animalDetails(animal)}
+                  {litterWeightAnimalDetails(animal)}
                 </p>
               ) : null}
               {animal.birthWeightGrams !== null ? (
@@ -452,6 +432,7 @@ export function LitterWeightPanel({
           {confirmation}
         </p>
       ) : null}
+      <LitterGrowthCharts animals={animals} measurements={measurements} />
       <div className="mt-6 grid min-w-0 gap-8 lg:grid-cols-2">
         <SessionsHistory sessions={sessions} />
         <AnimalsHistory animals={animals} measurements={measurements} sessions={sessions} />
