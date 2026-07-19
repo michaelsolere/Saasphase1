@@ -116,6 +116,10 @@ export function litterRoutineWeightsErrorMessage(
   switch (serviceError.code) {
     case "invalid_input":
       return "Le formulaire de pesée est invalide.";
+    case "too_many_litters":
+    case "incompatible_litters":
+    case "comparison_too_large":
+      return "Une erreur technique empêche momentanément l’enregistrement.";
     case "too_many_animals":
       return "Une séance est limitée à 30 animaux.";
     case "duplicate_animal":
