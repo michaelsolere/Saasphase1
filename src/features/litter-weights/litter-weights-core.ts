@@ -62,6 +62,7 @@ export type RecordLitterRoutineWeightsResult =
 
 export type LitterWeightHistoryAnimal = {
   id: string;
+  ownershipStatus: string;
   birthOrder: number | null;
   sex: string;
   callName: string | null;
@@ -389,10 +390,11 @@ export async function listLitterWeightHistoryCore(
   const animals = await supabase
     .from("animals")
     .select(
-      "id, birth_order, sex, call_name, official_name, collar_color_initial, collar_color_current, status, birth_date, death_date, birth_weight_grams",
+      "id, ownership_status, birth_order, sex, call_name, official_name, collar_color_initial, collar_color_current, status, birth_date, death_date, birth_weight_grams",
     )
     .eq("organization_id", authorization.organizationId)
     .eq("litter_id", authorization.litterId)
+    .is("deleted_at", null)
     .order("birth_order", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true });
 
@@ -402,14 +404,22 @@ export async function listLitterWeightHistoryCore(
 
   const animalRows = animals.data ?? [];
   const animalIds = animalRows.map((animal) => animal.id);
-  const [sessions, measurements] = await Promise.all([
-    supabase
-      .from("litter_weighing_sessions")
-      .select("id, measured_at, timezone_name, note, created_by, created_at")
-      .eq("organization_id", authorization.organizationId)
-      .eq("litter_id", authorization.litterId)
-      .order("measured_at", { ascending: false })
-      .order("created_at", { ascending: false }),
+  const sessions = await supabase
+    .from("litter_weighing_sessions")
+    .select("id, measured_at, timezone_name, note, created_by, created_at")
+    .eq("organization_id", authorization.organizationId)
+    .eq("litter_id", authorization.litterId)
+    .order("measured_at", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (sessions.error) {
+    return databaseFailure("litter_weight_history_relations_read_failed", {
+      sessions: sessions.error,
+    });
+  }
+
+  const sessionIds = (sessions.data ?? []).map((session) => session.id);
+  const [measurements, sessionMeasurements] = await Promise.all([
     animalIds.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -423,22 +433,30 @@ export async function listLitterWeightHistoryCore(
           .order("animal_id", { ascending: true })
           .order("measured_at", { ascending: true })
           .order("created_at", { ascending: true }),
+    sessionIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("animal_weight_measurements")
+          .select("litter_weighing_session_id")
+          .eq("organization_id", authorization.organizationId)
+          .eq("measurement_kind", "routine")
+          .in("litter_weighing_session_id", sessionIds),
   ]);
 
-  if (sessions.error || measurements.error) {
+  if (measurements.error || sessionMeasurements.error) {
     return databaseFailure("litter_weight_history_relations_read_failed", {
-      sessions: sessions.error,
       measurements: measurements.error,
+      sessionMeasurements: sessionMeasurements.error,
     });
   }
 
   const measurementRows = measurements.data ?? [];
-  const sessionIds = new Set((sessions.data ?? []).map((session) => session.id));
+  const sessionIdSet = new Set(sessionIds);
   const inconsistentMeasurement = measurementRows.find(
     (measurement) =>
       (measurement.measurement_kind === "routine" &&
         (!measurement.litter_weighing_session_id ||
-          !sessionIds.has(measurement.litter_weighing_session_id))) ||
+          !sessionIdSet.has(measurement.litter_weighing_session_id))) ||
       (measurement.measurement_kind === "birth" &&
         measurement.litter_weighing_session_id !== null),
   );
@@ -452,8 +470,11 @@ export async function listLitterWeightHistoryCore(
   }
 
   const countsBySession = new Map<string, number>();
-  for (const measurement of measurementRows) {
-    if (measurement.litter_weighing_session_id) {
+  for (const measurement of sessionMeasurements.data ?? []) {
+    if (
+      measurement.litter_weighing_session_id &&
+      sessionIdSet.has(measurement.litter_weighing_session_id)
+    ) {
       countsBySession.set(
         measurement.litter_weighing_session_id,
         (countsBySession.get(measurement.litter_weighing_session_id) ?? 0) + 1,
@@ -466,6 +487,7 @@ export async function listLitterWeightHistoryCore(
     role: authorization.role,
     animals: animalRows.map((animal) => ({
       id: animal.id,
+      ownershipStatus: animal.ownership_status,
       birthOrder: animal.birth_order,
       sex: animal.sex,
       callName: animal.call_name,
