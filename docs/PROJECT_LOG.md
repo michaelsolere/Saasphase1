@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #328. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #334. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `26274659ef77ceb72253e7411a732f6ed1a96e1f`.
-- Dernière PR incluse : **PR #328 — Ajouter le Journal des portées à la sidebar**.
-- Les migrations locales sont appliquées jusqu’à `202607190003_whelping_births_weights` ; les PR #326 à #328 n’ajoutent aucune migration.
+- SHA de `main` documenté : `713eef3ed3475c9e2b8697edfce68545ed255c1f`.
+- Dernière PR incluse : **PR #334 — premières courbes de croissance**.
+- Les migrations locales sont appliquées jusqu’à `202607190005_litter_routine_weighing_foundation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -85,7 +85,7 @@ Les intentions liées côté serveur portent la portée, la session lorsqu’ell
 
 La PR #327 expose un panneau de mise-bas responsive dans le Journal, avant le suivi maternel. Le chargement sélectionne la session ouverte ou, à défaut, la session clôturée la plus récente. L’état vide propose un démarrage explicite. Une session ouverte affiche son badge, son heure de début, son fuseau et le nombre de naissances enregistrées.
 
-Le bouton mobile prioritaire **+ ENREGISTRER UNE NAISSANCE** permet de saisir rapidement le sexe, la viabilité, la couleur initiale, le poids facultatif, l’heure de pesée associée et une note. Une interface unique permet également d’ajouter les huit types d’événements génériques autorisés. La clôture exige une confirmation explicite et rappelle qu’aucune réouverture n’est disponible. Une session clôturée est entièrement en lecture seule ; le rôle `viewer` reste lui aussi strictement en lecture seule.
+Le bouton mobile prioritaire **+ ENREGISTRER UNE NAISSANCE** permet de saisir rapidement le sexe, la viabilité, la couleur initiale, le poids facultatif, l’heure de pesée associée et une note. Une interface unique permet également d’ajouter les huit types d’événements génériques autorisés. La clôture exige une confirmation explicite et rappelle qu’aucune réouverture n’est disponible. Après clôture, les événements et commandes de mise-bas restent en lecture seule ; seul le complément distinct d’un poids de naissance manquant demeure possible. Le rôle `viewer` reste strictement en lecture seule.
 
 Si le chargement des sessions, événements ou naissances n’est pas fiable, le panneau affiche un état neutre et ne rend aucune commande d’écriture. Aucune naissance ni aucun événement n’est ajouté optimistement à l’état React : après une mutation réussie, les données sont relues à la suite des revalidations serveur.
 
@@ -116,7 +116,25 @@ Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `bor
 
 ##### Poids de naissance
 
-`animal_weight_measurements` est la source de vérité des poids ; `animals.birth_weight_grams` n’est qu’une projection de compatibilité. Le poids de naissance est facultatif lors de la création. Une mesure `birth` est liée à la naissance et à son animal exact, avec une heure de pesée indépendante de l’heure de naissance. L’historique est append-only. Aucune mesure de routine ou clinique n’est encore saisissable.
+`animal_weight_measurements` est la source de vérité des poids ; `animals.birth_weight_grams` n’est qu’une projection de compatibilité. Le poids de naissance est facultatif lors de la création. Une mesure `birth` est liée à la naissance et à son animal exact, avec une heure de pesée indépendante de l’heure de naissance. L’historique est append-only.
+
+Un poids manquant peut être complété après la naissance, y compris lorsque la session de mise-bas est clôturée. Seul le passage `null → valeur` est autorisé : la commande ajoute l’unique mesure `birth` et sa projection de compatibilité, sans créer ni modifier d’événement, d’ordre, de compteur ou de statut de portée. Un rejeu strictement identique est idempotent ; la réutilisation de l’intention avec une valeur différente est refusée. Les rôles `owner`, `admin` et `member` peuvent effectuer le complément, tandis que `viewer` reste en lecture seule.
+
+La **PR #330** apporte cette fondation serveur et la migration `202607190004_whelping_birth_weight_completion`. La **PR #331** expose l’interface de complément du poids depuis le panneau de mise-bas.
+
+##### Pesées collectives et historique
+
+La **PR #332** ajoute la fondation serveur et la migration `202607190005_litter_routine_weighing_foundation`. Chaque pesée collective crée une ligne immutable dans `litter_weighing_sessions` et des mesures `routine` append-only dans `animal_weight_measurements`. Le registre privé `litter_weight_commands` conserve l’intention et le résultat pour rendre les rejeux strictement identiques idempotents et refuser les réutilisations conflictuelles.
+
+La RPC atomique accepte de 1 à 30 animaux et autorise une séance partielle. Elle revalide l’organisation, la portée et chaque animal ; un animal déjà pesé ne peut plus être déplacé vers une autre portée. La pesée fonctionne indépendamment de l’existence d’une session de mise-bas. Les rôles `owner`, `admin` et `member` disposent de l’écriture, tandis que `viewer` conserve une lecture seule stricte.
+
+La **PR #333** ajoute le formulaire collectif mobile-first et les historiques. Aucun UUID structurant n’est transmis par les champs HTML : les animaux restent liés à l’intention serveur. Le panneau présente l’historique des séances et l’historique individuel de chaque animal. Le poids de naissance déclaré dans `animals.birth_weight_grams` reste affiché séparément des mesures réelles. Le compteur historique d’une séance reste stable lorsqu’un animal est ensuite soft-delete.
+
+##### Courbes de croissance
+
+La **PR #334** ajoute les premières courbes de croissance avec deux vues : **Portée entière** et **Un animal**. Le rendu utilise un SVG React natif, sans bibliothèque graphique. Seules les mesures réelles `birth` et `routine` sont tracées ; `animals.birth_weight_grams` ne crée jamais de point fictif.
+
+L’axe horizontal repose sur la date et l’heure réelles de chaque mesure, dans le fuseau local de l’appareil, et l’axe vertical exprime le poids en grammes. Les points successifs sont reliés sans lissage, interpolation, extrapolation ni diagnostic. Un cercle distingue une mesure de naissance et un carré une pesée de routine. La légende reste lisible sans UUID et la sélection individuelle utilise un index non technique. Le rendu est accessible, responsive à 375 px et disponible en lecture seule pour `viewer`.
 
 ##### Protections
 
@@ -129,11 +147,16 @@ Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `bor
 
 ##### Limites actuelles
 
+- aucune correction ou suppression d’une mesure n’est disponible ;
+- aucune mesure clinique n’est disponible ;
+- aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
+- aucun calcul de moyenne, minimum ou maximum n’est disponible ;
+- aucune comparaison inter-portées n’est disponible ;
+- aucune courbe de référence de race n’est disponible ;
+- aucun pourcentage automatique de prise de poids n’est disponible ;
+- aucune alerte ou interprétation vétérinaire n’est disponible ;
 - aucune saisie vocale n’est disponible ;
-- un poids manquant ne peut pas être complété ultérieurement ;
 - aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
-- aucune pesée collective n’est disponible ;
-- aucun graphique de croissance ni interface d’historique individuel ou collectif des pesées n’existe ;
 - aucune PWA ou application mobile indépendante n’existe ;
 - le statut de la portée n’est jamais modifié automatiquement.
 
@@ -145,9 +168,14 @@ L’interface actuelle est responsive et utilisable sur mobile dans le navigateu
 - **#324** : naissance atomique, animal et poids de naissance ;
 - **#326** : Server Actions minces ;
 - **#327** : panneau opérationnel et chronologie unique ;
-- **#328** : accès direct par la sidebar.
+- **#328** : accès direct par la sidebar ;
+- **#330** : complément serveur du poids de naissance ;
+- **#331** : interface du complément du poids ;
+- **#332** : fondation des pesées collectives ;
+- **#333** : saisie collective et historique ;
+- **#334** : premières courbes de croissance.
 
-Les PR #323 et #325 ont actualisé le présent journal sans modifier ces capacités fonctionnelles.
+Les PR #323, #325 et #329 ont actualisé le présent journal sans modifier ces capacités fonctionnelles.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -195,7 +223,7 @@ La copie conserve `library_template_code` et `library_template_version`, dont la
 - Une modification de modèle ou de date ne recalcule, ne déplace et ne modifie aucune tâche existante ; activer, désactiver ou importer un modèle ne crée aucune tâche.
 - Il n’existe aucune notification, aucune projection dans `events`, aucun cron et aucun scheduler.
 - Aucun pack félin n’est proposé à ce stade.
-- La bibliothèque actuelle couvre des jalons ponctuels, pas les actions répétitives spécialisées. Les pesées répétées, les relevés successifs, la socialisation détaillée et les soins récurrents restent destinés à de futurs modules spécialisés plutôt qu’à une multiplication de jalons ponctuels.
+- La bibliothèque actuelle couvre des jalons ponctuels, pas les actions répétitives spécialisées. La socialisation détaillée et les soins récurrents restent destinés à de futurs modules spécialisés plutôt qu’à une multiplication de jalons ponctuels.
 
 Les PR #312 à #318 ont apporté la fondation des tâches et modèles, leur interface et leur gestion sécurisée, puis la génération atomique, idempotente et explicitement sélectionnée depuis le Journal, avant l’actualisation du présent état de référence. Les deux PR suivantes complètent ce socle sans changer le moteur de génération :
 
@@ -373,15 +401,15 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Reste à concevoir ou implémenter :
 
-1. l’ajout ultérieur d’un poids de naissance manquant et la saisie collective des poids ;
-2. l’historique individuel et collectif de croissance ;
-3. les soins et suivis récurrents spécialisés ;
-4. l’historique et les comparaisons inter-portées ;
-5. la correction ou l’annulation encadrée d’une naissance et une éventuelle stratégie de réouverture ;
+1. des indicateurs simples de progression et de rythme des pesées ;
+2. des comparaisons statistiques au sein d’une portée ;
+3. l’historique et les comparaisons inter-portées ;
+4. les soins et suivis récurrents spécialisés ;
+5. la correction ou l’annulation encadrée d’une naissance ;
 6. la saisie vocale ;
 7. une éventuelle PWA ou application mobile indépendante.
 
-Ces évolutions restent à concevoir ; leur architecture et leur ordre de réalisation ne sont pas encore décidés techniquement.
+Cette liste est prudente et ne constitue pas un ordre définitivement validé. Ces évolutions restent à concevoir ; leur architecture et leur ordre de réalisation ne sont pas encore décidés techniquement.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
