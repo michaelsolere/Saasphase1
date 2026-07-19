@@ -2,6 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.types";
 
+import {
+  buildLitterWeightLatestSessionComparison,
+  type LitterWeightLatestSessionComparison,
+} from "./litter-weighing-session-comparison";
 import { buildLitterWeighingSessionStatistics } from "./litter-weighing-session-statistics";
 
 type Supabase = SupabaseClient<Database>;
@@ -111,6 +115,7 @@ export type ListLitterWeightHistoryResult =
       animals: LitterWeightHistoryAnimal[];
       sessions: LitterWeightHistorySession[];
       measurements: LitterWeightHistoryMeasurement[];
+      latestSessionComparison: LitterWeightLatestSessionComparison;
     }
   | ErrorResult;
 
@@ -442,7 +447,7 @@ export async function listLitterWeightHistoryCore(
       ? Promise.resolve({ data: [], error: null })
       : supabase
           .from("animal_weight_measurements")
-          .select("litter_weighing_session_id, grams")
+          .select("litter_weighing_session_id, animal_id, grams")
           .eq("organization_id", authorization.organizationId)
           .eq("measurement_kind", "routine")
           .in("litter_weighing_session_id", sessionIds),
@@ -487,10 +492,31 @@ export async function listLitterWeightHistoryCore(
         : [],
     ),
   );
+  const latestSessionComparison = buildLitterWeightLatestSessionComparison(
+    (sessions.data ?? []).map((session) => ({
+      sessionId: session.id,
+      measuredAt: session.measured_at,
+      timezoneName: session.timezone_name,
+      createdAt: session.created_at,
+    })),
+    (sessionMeasurements.data ?? []).flatMap((measurement) =>
+      measurement.litter_weighing_session_id &&
+      sessionIdSet.has(measurement.litter_weighing_session_id)
+        ? [
+            {
+              sessionId: measurement.litter_weighing_session_id,
+              animalId: measurement.animal_id,
+              grams: measurement.grams,
+            },
+          ]
+        : [],
+    ),
+  );
 
   return {
     outcome: "success",
     role: authorization.role,
+    latestSessionComparison,
     animals: animalRows.map((animal) => ({
       id: animal.id,
       ownershipStatus: animal.ownership_status,

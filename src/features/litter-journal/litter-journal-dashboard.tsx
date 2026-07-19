@@ -40,6 +40,7 @@ import type {
   LitterWeightHistorySession,
   LitterWeightOrganizationRole,
 } from "@/features/litter-weights/litter-weights-core";
+import type { LitterWeightLatestSessionComparison } from "@/features/litter-weights/litter-weighing-session-comparison";
 import type { LitterRoutineWeightsActionState } from "@/features/litter-weights/litter-weights-actions-core";
 import {
   WhelpingPanel,
@@ -204,6 +205,7 @@ export function LitterJournalDashboard({
   litterWeightAnimals,
   litterWeightSessions,
   litterWeightMeasurements,
+  litterWeightLatestSessionComparison,
   litterWeightRole,
   litterWeightAction,
   litterWeightsLoadError,
@@ -265,6 +267,7 @@ export function LitterJournalDashboard({
   litterWeightAnimals: LitterWeightHistoryAnimal[];
   litterWeightSessions: LitterWeightHistorySession[];
   litterWeightMeasurements: LitterWeightHistoryMeasurement[];
+  litterWeightLatestSessionComparison: LitterWeightLatestSessionComparison;
   litterWeightRole: LitterWeightOrganizationRole | null;
   litterWeightAction: ((
     previousState: LitterRoutineWeightsActionState,
@@ -345,6 +348,7 @@ export function LitterJournalDashboard({
         animals={litterWeightAnimals}
         sessions={litterWeightSessions}
         measurements={litterWeightMeasurements}
+        latestSessionComparison={litterWeightLatestSessionComparison}
         role={litterWeightRole}
         action={litterWeightAction}
         loadError={litterWeightsLoadError}

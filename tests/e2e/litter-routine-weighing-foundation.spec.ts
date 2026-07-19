@@ -534,9 +534,9 @@ test("records collective routine weights atomically, idempotently and without si
       ids.collectiveCommand,
       "2026-07-19T10:30:00+02:00",
       [
-        { animalId: created.journalAnimals[2]!, grams: 430, note: "  Calme  " },
-        { animalId: created.journalAnimals[0]!, grams: 410 },
-        { animalId: created.journalAnimals[1]!, grams: 420, note: "Vif" },
+        { animalId: created.journalAnimals[2]!, grams: 450, note: "  Calme  " },
+        { animalId: created.journalAnimals[0]!, grams: 430 },
+        { animalId: created.journalAnimals[1]!, grams: 440, note: "Vif" },
       ],
     );
     const collective = requireSuccess(
@@ -586,6 +586,11 @@ test("records collective routine weights atomically, idempotently and without si
     expect(exact.command.items.map((item: { animal_id: string }) => item.animal_id)).toEqual(
       [...created.journalAnimals].sort(),
     );
+    expect(
+      requireSuccess(
+        await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
+      ).latestSessionComparison,
+    ).toEqual({ status: "insufficient_sessions" });
 
     const partial = requireSuccess(
       await recordLitterRoutineWeightsCore(
@@ -593,7 +598,10 @@ test("records collective routine weights atomically, idempotently and without si
           ids.journalLitter,
           ids.partialCommand,
           "2026-07-19T12:00:00+02:00",
-          [{ animalId: created.journalAnimals[0]!, grams: 435, note: "Après tétée" }],
+          [
+            { animalId: created.journalAnimals[0]!, grams: 455, note: "Après tétée" },
+            { animalId: created.journalAnimals[1]!, grams: 465 },
+          ],
           { note: "Pesée partielle" },
         ),
         owner,
@@ -601,7 +609,7 @@ test("records collective routine weights atomically, idempotently and without si
     );
     created.weighingSessions.push(partial.sessionId);
     created.routineWeights.push(...partial.measurementIds);
-    expect(partial.measurementCount).toBe(1);
+    expect(partial.measurementCount).toBe(2);
 
     const history = requireSuccess(
       await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
@@ -614,22 +622,65 @@ test("records collective routine weights atomically, idempotently and without si
       partial.sessionId,
       collective.sessionId,
     ]);
-    expect(history.sessions.map((session) => session.measurementCount)).toEqual([1, 3]);
+    expect(history.sessions.map((session) => session.measurementCount)).toEqual([2, 3]);
     expect(history.sessions.map((session) => ({
       averageGrams: session.averageGrams,
       minimumGrams: session.minimumGrams,
       maximumGrams: session.maximumGrams,
     }))).toEqual([
-      { averageGrams: 435, minimumGrams: 435, maximumGrams: 435 },
-      { averageGrams: 420, minimumGrams: 410, maximumGrams: 430 },
+      { averageGrams: 460, minimumGrams: 455, maximumGrams: 465 },
+      { averageGrams: 440, minimumGrams: 430, maximumGrams: 450 },
     ]);
+    expect(history.latestSessionComparison).toEqual({
+      status: "available",
+      previousMeasuredAt: "2026-07-19T08:30:00+00:00",
+      previousTimezoneName: "Europe/Paris",
+      previousMeasurementCount: 3,
+      currentMeasuredAt: "2026-07-19T10:00:00+00:00",
+      currentTimezoneName: "Europe/Paris",
+      currentMeasurementCount: 2,
+      commonAnimalCount: 2,
+      previousCommonAverageGrams: 435,
+      currentCommonAverageGrams: 460,
+      averageDifferenceGrams: 25,
+      previousCommonRangeGrams: 10,
+      currentCommonRangeGrams: 10,
+      rangeDifferenceGrams: 0,
+    });
+    expect(JSON.stringify(history.latestSessionComparison)).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|animalId|sessionId/i,
+    );
     expect(history.measurements.filter((measurement) => measurement.type === "birth")).toHaveLength(3);
-    expect(history.measurements.filter((measurement) => measurement.type === "routine")).toHaveLength(4);
+    expect(history.measurements.filter((measurement) => measurement.type === "routine")).toHaveLength(5);
     for (const animalId of created.journalAnimals) {
       const dates = history.measurements
         .filter((measurement) => measurement.animalId === animalId)
         .map((measurement) => measurement.measuredAt);
       expect(dates).toEqual([...dates].sort());
+    }
+
+    try {
+      sql(`update public.animals set deleted_at = now()
+        where id = ${q(created.journalAnimals[0]!)}::uuid;`);
+      const historyAfterSoftDelete = requireSuccess(
+        await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
+      );
+      expect(
+        historyAfterSoftDelete.animals.some(
+          (animal) => animal.id === created.journalAnimals[0],
+        ),
+      ).toBe(false);
+      expect(
+        historyAfterSoftDelete.measurements.some(
+          (measurement) => measurement.animalId === created.journalAnimals[0],
+        ),
+      ).toBe(false);
+      expect(historyAfterSoftDelete.latestSessionComparison).toEqual(
+        history.latestSessionComparison,
+      );
+    } finally {
+      sql(`update public.animals set deleted_at = null
+        where id = ${q(created.journalAnimals[0]!)}::uuid;`);
     }
 
     const adminHistory = requireSuccess(

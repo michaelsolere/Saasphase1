@@ -27,6 +27,7 @@ import type {
   LitterWeightHistorySession,
   LitterWeightOrganizationRole,
 } from "./litter-weights-core";
+import type { LitterWeightLatestSessionComparison } from "./litter-weighing-session-comparison";
 import {
   litterWeightAnimalDetails,
   litterWeightAnimalName,
@@ -87,6 +88,15 @@ function formatGrams(value: number) {
   return `${gramsFormatter.format(value)} g`;
 }
 
+function formatGramDifference(value: number) {
+  if (value === 0) return "0 g";
+  return `${value > 0 ? "+" : ""}${gramsFormatter.format(value)} g`;
+}
+
+function measurementCountLabel(count: number) {
+  return `${count} poids enregistré${count > 1 ? "s" : ""}`;
+}
+
 function SessionStatistics({
   session,
   compact = false,
@@ -144,6 +154,95 @@ function SessionStatistics({
         Calculé sur les poids enregistrés pendant cette séance.
       </p>
     </div>
+  );
+}
+
+function LatestSessionComparison({
+  comparison,
+}: {
+  comparison: LitterWeightLatestSessionComparison;
+}) {
+  return (
+    <section
+      data-testid="latest-litter-weight-session-comparison"
+      aria-labelledby="latest-litter-weight-session-comparison-title"
+      className="mt-4 min-w-0 rounded-xl border p-4"
+    >
+      <h3
+        id="latest-litter-weight-session-comparison-title"
+        className="font-semibold"
+      >
+        Évolution entre les deux dernières séances
+      </h3>
+      {comparison.status === "insufficient_sessions" ? (
+        <p className="mt-3 text-sm leading-6 text-muted">
+          Deux séances comportant des poids sont nécessaires pour afficher une
+          évolution.
+        </p>
+      ) : comparison.status === "no_common_animals" ? (
+        <p className="mt-3 text-sm leading-6 text-muted">
+          Les deux dernières séances ne comportent aucun animal pesé en commun ;
+          leur évolution moyenne n’est donc pas comparée.
+        </p>
+      ) : (
+        <div className="mt-3 min-w-0 space-y-4 text-sm">
+          <div className="space-y-1 text-muted">
+            <p className="break-words">
+              <span className="font-medium text-foreground">Séance précédente :</span>{" "}
+              {formatDateTime(
+                comparison.previousMeasuredAt,
+                comparison.previousTimezoneName,
+              )}{" "}
+              · {measurementCountLabel(comparison.previousMeasurementCount)}
+            </p>
+            <p className="break-words">
+              <span className="font-medium text-foreground">Dernière séance :</span>{" "}
+              {formatDateTime(
+                comparison.currentMeasuredAt,
+                comparison.currentTimezoneName,
+              )}{" "}
+              · {measurementCountLabel(comparison.currentMeasurementCount)}
+            </p>
+          </div>
+          <p className="font-medium">
+            {comparison.commonAnimalCount}{" "}
+            {comparison.commonAnimalCount > 1 ? "animaux" : "animal"} pesé
+            {comparison.commonAnimalCount > 1 ? "s" : ""} lors des deux séances
+          </p>
+          <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
+            <div className="min-w-0 rounded-lg bg-secondary/50 p-3">
+              <dt className="font-medium">Poids moyen des animaux communs</dt>
+              <dd className="mt-2 break-words text-base font-semibold">
+                {formatGrams(comparison.previousCommonAverageGrams)} →{" "}
+                {formatGrams(comparison.currentCommonAverageGrams)}
+              </dd>
+              <dd className="mt-1 break-words text-muted">
+                Évolution : {formatGramDifference(comparison.averageDifferenceGrams)}
+              </dd>
+            </div>
+            <div className="min-w-0 rounded-lg bg-secondary/50 p-3">
+              <dt className="font-medium">
+                Amplitude des poids des animaux communs
+              </dt>
+              <dd className="mt-1 text-xs leading-5 text-muted">
+                Écart entre le poids minimum et le poids maximum.
+              </dd>
+              <dd className="mt-2 break-words text-base font-semibold">
+                {formatGrams(comparison.previousCommonRangeGrams)} →{" "}
+                {formatGrams(comparison.currentCommonRangeGrams)}
+              </dd>
+              <dd className="mt-1 break-words text-muted">
+                Évolution : {formatGramDifference(comparison.rangeDifferenceGrams)}
+              </dd>
+            </div>
+          </dl>
+          <p className="text-xs leading-5 text-muted">
+            Comparaison calculée uniquement sur les animaux pesés lors des deux
+            séances.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -433,6 +532,7 @@ export function LitterWeightPanel({
   animals,
   sessions,
   measurements,
+  latestSessionComparison,
   role,
   action,
   loadError,
@@ -440,6 +540,7 @@ export function LitterWeightPanel({
   animals: LitterWeightHistoryAnimal[];
   sessions: LitterWeightHistorySession[];
   measurements: LitterWeightHistoryMeasurement[];
+  latestSessionComparison: LitterWeightLatestSessionComparison;
   role: LitterWeightOrganizationRole | null;
   action: RecordAction | null;
   loadError: boolean;
@@ -503,6 +604,7 @@ export function LitterWeightPanel({
           <SessionStatistics session={lastSession} compact />
         </section>
       ) : null}
+      <LatestSessionComparison comparison={latestSessionComparison} />
       {confirmation ? (
         <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}

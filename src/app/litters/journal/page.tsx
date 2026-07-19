@@ -387,6 +387,11 @@ export default async function LitterJournalPage({
             litterWeightAnimals={litterWeightHistoryLoaded?.animals ?? []}
             litterWeightSessions={litterWeightHistoryLoaded?.sessions ?? []}
             litterWeightMeasurements={litterWeightHistoryLoaded?.measurements ?? []}
+            litterWeightLatestSessionComparison={
+              litterWeightHistoryLoaded?.latestSessionComparison ?? {
+                status: "insufficient_sessions",
+              }
+            }
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
             litterWeightsLoadError={litterWeightHistoryLoaded === null}
