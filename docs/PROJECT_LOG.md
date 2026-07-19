@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #334. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #339. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `713eef3ed3475c9e2b8697edfce68545ed255c1f`.
-- Dernière PR incluse : **PR #334 — premières courbes de croissance**.
-- Les migrations locales sont appliquées jusqu’à `202607190005_litter_routine_weighing_foundation`.
+- SHA de `main` documenté : `9b00f63bf76012de7a596816b84a3eec37407f12`.
+- Dernière PR incluse : **PR #339 — comparaison des deux dernières séances de pesée**.
+- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #336 à #339 n’ajoutent aucune migration.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -136,6 +136,19 @@ La **PR #334** ajoute les premières courbes de croissance avec deux vues : **Po
 
 L’axe horizontal repose sur la date et l’heure réelles de chaque mesure, dans le fuseau local de l’appareil, et l’axe vertical exprime le poids en grammes. Les points successifs sont reliés sans lissage, interpolation, extrapolation ni diagnostic. Un cercle distingue une mesure de naissance et un carré une pesée de routine. La légende reste lisible sans UUID et la sélection individuelle utilise un index non technique. Le rendu est accessible, responsive à 375 px et disponible en lecture seule pour `viewer`.
 
+##### Repères et analyses descriptives
+
+Le suivi complète les courbes par une architecture descriptive cohérente, sans seuil de santé ni interprétation de la croissance :
+
+- chaque animal dispose de son dernier poids réel et de sa date, du nombre de mesures réelles, de l’écart avec la mesure précédente et de l’intervalle observé entre ses deux dernières mesures ; une information manquante produit un état neutre ;
+- la vue graphique **Progression relative** exprime le pourcentage de progression proportionnelle depuis l’unique mesure réelle `birth` de chaque animal. L’indice base 100 vaut `poids mesuré / poids réel de naissance × 100`, et la progression vaut `indice − 100`. Le temps écoulé est propre à chaque animal depuis sa mesure de naissance, ce qui permet une comparaison indépendante du poids de départ, sans interpolation ni extrapolation ;
+- la synthèse de la dernière séance présente son compteur, sa moyenne, son minimum et son maximum, calculés exclusivement depuis les mesures `routine` réellement liées à cette séance. Une séance partielle est valide et signalée comme telle ; une séance vide conserve des statistiques indisponibles ;
+- les deux dernières séances `routine` non vides sont comparées sur leur groupe commun, défini comme l’intersection des animaux pesés lors des deux séances. Les moyennes sont recalculées uniquement sur ce groupe. L’amplitude est l’écart entre le poids minimum et le poids maximum ; l’interface affiche l’évolution de la moyenne et de l’amplitude.
+
+Avec moins de deux séances non vides ou sans animal commun, la comparaison reste dans un état neutre. Les valeurs historiques par séance et leur comparaison sont calculées depuis le relevé complet des mesures liées aux séances, indépendamment de la liste des animaux actuellement visibles : compteurs, statistiques et comparaison restent donc stables après le soft-delete d’un animal. Les séances partielles restent valides.
+
+`animal_weight_measurements` demeure la source de vérité. Les mesures réelles `birth` et `routine` sont append-only ; `animals.birth_weight_grams` reste une projection ou un repère déclaré séparé et n’est jamais utilisé comme fallback pour la progression relative. Sans mesure réelle `birth`, l’animal est exclu de la courbe relative avec un état neutre. Ces capacités sont accessibles en lecture seule à `viewer` et ne produisent ni classement, seuil, pourcentage d’évolution entre séances, alerte, diagnostic ou interprétation vétérinaire.
+
 ##### Protections
 
 - un ordre de naissance actif est unique dans une portée, et la migration échoue explicitement si son audit détecte des doublons préexistants ;
@@ -150,10 +163,8 @@ L’axe horizontal repose sur la date et l’heure réelles de chaque mesure, da
 - aucune correction ou suppression d’une mesure n’est disponible ;
 - aucune mesure clinique n’est disponible ;
 - aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
-- aucun calcul de moyenne, minimum ou maximum n’est disponible ;
 - aucune comparaison inter-portées n’est disponible ;
 - aucune courbe de référence de race n’est disponible ;
-- aucun pourcentage automatique de prise de poids n’est disponible ;
 - aucune alerte ou interprétation vétérinaire n’est disponible ;
 - aucune saisie vocale n’est disponible ;
 - aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
@@ -173,9 +184,13 @@ L’interface actuelle est responsive et utilisable sur mobile dans le navigateu
 - **#331** : interface du complément du poids ;
 - **#332** : fondation des pesées collectives ;
 - **#333** : saisie collective et historique ;
-- **#334** : premières courbes de croissance.
+- **#334** : premières courbes de croissance ;
+- **#336** : repères descriptifs de progression par animal ;
+- **#337** : progression relative et courbes en base 100 ;
+- **#338** : statistiques stables par séance ;
+- **#339** : comparaison des deux dernières séances sur leur groupe commun.
 
-Les PR #323, #325 et #329 ont actualisé le présent journal sans modifier ces capacités fonctionnelles.
+Les PR #323, #325, #329 et #335 ont actualisé le présent journal sans ajouter de capacité métier ; la PR #335 a consolidé la documentation après la PR #334.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -399,17 +414,17 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 ## Limites actuelles et feuille de route immédiate
 
-Reste à concevoir ou implémenter :
+Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-1. des indicateurs simples de progression et de rythme des pesées ;
-2. des comparaisons statistiques au sein d’une portée ;
-3. l’historique et les comparaisons inter-portées ;
-4. les soins et suivis récurrents spécialisés ;
-5. la correction ou l’annulation encadrée d’une naissance ;
-6. la saisie vocale ;
-7. une éventuelle PWA ou application mobile indépendante.
+- l’historique et les comparaisons inter-portées ;
+- la planification des pesées et des autres suivis récurrents spécialisés ;
+- la correction ou la suppression encadrée d’une mesure ;
+- la correction ou l’annulation encadrée d’une naissance ;
+- d’éventuelles mesures cliniques ;
+- la saisie vocale ;
+- une éventuelle PWA ou application mobile indépendante.
 
-Cette liste est prudente et ne constitue pas un ordre définitivement validé. Ces évolutions restent à concevoir ; leur architecture et leur ordre de réalisation ne sont pas encore décidés techniquement.
+Cette liste reste prudente et ne constitue pas un ordre de réalisation définitivement validé. L’architecture et la priorité de ces évolutions devront être confirmées avant leur mise en œuvre.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
