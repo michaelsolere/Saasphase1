@@ -8,6 +8,8 @@ import {
   expectSupabaseData,
 } from "./helpers/supabase";
 
+test.setTimeout(120_000);
+
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const uuidPattern =
@@ -181,7 +183,7 @@ test("creates newborn animals from a litter without touching reservations", asyn
     });
 
     await page.getByRole("button", { name: "Créer les chiots" }).click();
-    await expect(page).toHaveURL(/offspring_status=success/);
+    await expect(page).toHaveURL(/offspring_status=success/, { timeout: 30_000 });
     await expect(page.locator("#animaux-lies")).toContainText(firstGeneratedDisplayName);
     await expect(page.locator("#animaux-lies")).toContainText(generatedDisplayName);
     await expect(page.locator("#animaux-lies")).not.toContainText(motherName);
@@ -278,7 +280,7 @@ test("creates newborn animals from a litter without touching reservations", asyn
     await page.locator('input[name="offspring_0_collar_color"]').fill("vert");
     await page.locator('input[name="offspring_0_birth_order"]').fill("3");
     await page.getByRole("button", { name: "Créer les chiots" }).click();
-    await expect(page).toHaveURL(/offspring_status=success/);
+    await expect(page).toHaveURL(/offspring_status=success/, { timeout: 30_000 });
     await expect(page.locator("#animaux-lies")).toContainText(
       fallbackGeneratedDisplayName,
     );

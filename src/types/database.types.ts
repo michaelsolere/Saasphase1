@@ -34,6 +34,74 @@ export type Database = {
   }
   public: {
     Tables: {
+      animal_weight_measurements: {
+        Row: {
+          animal_id: string
+          created_at: string
+          created_by: string
+          grams: number
+          id: string
+          measured_at: string
+          measurement_kind: string
+          note: string | null
+          organization_id: string
+          source_birth_id: string | null
+        }
+        Insert: {
+          animal_id: string
+          created_at?: string
+          created_by: string
+          grams: number
+          id?: string
+          measured_at: string
+          measurement_kind: string
+          note?: string | null
+          organization_id: string
+          source_birth_id?: string | null
+        }
+        Update: {
+          animal_id?: string
+          created_at?: string
+          created_by?: string
+          grams?: number
+          id?: string
+          measured_at?: string
+          measurement_kind?: string
+          note?: string | null
+          organization_id?: string
+          source_birth_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "animal_weight_measurements_animal_organization_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "animal_weight_measurements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "animal_weight_measurements_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "animal_weight_measurements_source_birth_organization_fk"
+            columns: ["organization_id", "source_birth_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_births"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       animals: {
         Row: {
           birth_date: string | null
@@ -4509,6 +4577,84 @@ export type Database = {
           },
         ]
       }
+      whelping_births: {
+        Row: {
+          animal_id: string
+          birth_order: number
+          created_at: string
+          created_by: string
+          event_id: string
+          id: string
+          initial_collar_color: string | null
+          organization_id: string
+          session_id: string
+          sex: string
+          viability: string
+        }
+        Insert: {
+          animal_id: string
+          birth_order: number
+          created_at?: string
+          created_by: string
+          event_id: string
+          id?: string
+          initial_collar_color?: string | null
+          organization_id: string
+          session_id: string
+          sex: string
+          viability: string
+        }
+        Update: {
+          animal_id?: string
+          birth_order?: number
+          created_at?: string
+          created_by?: string
+          event_id?: string
+          id?: string
+          initial_collar_color?: string | null
+          organization_id?: string
+          session_id?: string
+          sex?: string
+          viability?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whelping_births_animal_organization_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_births_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_births_event_session_organization_fk"
+            columns: ["organization_id", "session_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_events"
+            referencedColumns: ["organization_id", "session_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_births_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_births_session_organization_fk"
+            columns: ["organization_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_sessions"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       whelping_events: {
         Row: {
           author_id: string
@@ -5249,6 +5395,30 @@ export type Database = {
           reason: string
           replayed: boolean
           sequence_no: number
+        }[]
+      }
+      record_whelping_birth: {
+        Args: {
+          p_client_command_id: string
+          p_initial_collar_color?: string | null
+          p_measured_at?: string | null
+          p_note?: string | null
+          p_occurred_at: string
+          p_session_id: string
+          p_sex: string
+          p_viability: string
+          p_weight_grams?: number | null
+        }
+        Returns: {
+          animal_id: string | null
+          birth_id: string | null
+          birth_order: number | null
+          event_id: string | null
+          event_sequence_no: number | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          weight_measurement_id: string | null
         }[]
       }
       record_whelping_event: {
