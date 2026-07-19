@@ -24,6 +24,7 @@ export type {
   RecordLitterRoutineWeightsInput,
   RecordLitterRoutineWeightsResult,
 } from "./litter-weights-core";
+export type { LitterWeightLatestSessionComparison } from "./litter-weighing-session-comparison";
 
 async function serverClient(suppliedClient?: Supabase) {
   return suppliedClient ?? (await createClient());

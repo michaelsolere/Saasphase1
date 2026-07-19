@@ -492,6 +492,15 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(latestSummary).toContainText(
       "Calculé sur les poids enregistrés pendant cette séance.",
     );
+    const initialComparison = panel.getByTestId(
+      "latest-litter-weight-session-comparison",
+    );
+    await expect(initialComparison).toContainText(
+      "Évolution entre les deux dernières séances",
+    );
+    await expect(initialComparison).toContainText(
+      "Deux séances comportant des poids sont nécessaires pour afficher une évolution.",
+    );
     await expect(panel).toContainText("Séance de routine existante.");
     const sessionHistory = panel.getByTestId("litter-weight-sessions-history");
     const existingSessionBeforeDelete = sessionHistory
@@ -602,6 +611,36 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(newLatestSummary).toContainText("460 g");
     await expect(newLatestSummary).toContainText("455 g");
     await expect(newLatestSummary).toContainText("465 g");
+    const comparison = panel.getByTestId(
+      "latest-litter-weight-session-comparison",
+    );
+    await expect(comparison).toContainText(
+      "Évolution entre les deux dernières séances",
+    );
+    await expect(comparison).toContainText("Séance précédente :");
+    await expect(comparison).toContainText("3 poids enregistrés");
+    await expect(comparison).toContainText("Dernière séance :");
+    await expect(comparison).toContainText("2 poids enregistrés");
+    await expect(comparison).toContainText(
+      "2 animaux pesés lors des deux séances",
+    );
+    await expect(comparison).toContainText("Poids moyen des animaux communs");
+    await expect(comparison).toContainText("435 g → 460 g");
+    await expect(comparison).toContainText("Évolution : +25 g");
+    await expect(comparison).toContainText(
+      "Amplitude des poids des animaux communs",
+    );
+    await expect(comparison).toContainText(
+      "Écart entre le poids minimum et le poids maximum.",
+    );
+    await expect(comparison).toContainText("10 g → 10 g");
+    await expect(comparison).toContainText("Évolution : 0 g");
+    await expect(comparison).toContainText(
+      "Comparaison calculée uniquement sur les animaux pesés lors des deux séances.",
+    );
+    expect(await panel.textContent()).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
 
     const expectedMeasuredAt = await page.evaluate(
       () => new Date("2026-07-20T10:00").toISOString(),
@@ -631,6 +670,31 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(panel).toContainText("455 g");
     await expect(panel).toContainText("465 g");
 
+    try {
+      sql(`update public.animals set deleted_at = now()
+        where id = ${q(ids.secondAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+      await expect(panel.getByText("Orion officiel", { exact: true })).toHaveCount(0);
+      await expect(
+        panel
+          .getByTestId("litter-weight-animals-history")
+          .getByText("465 g", { exact: true }),
+      ).toHaveCount(0);
+      const comparisonAfterSoftDelete = panel.getByTestId(
+        "latest-litter-weight-session-comparison",
+      );
+      await expect(comparisonAfterSoftDelete).toContainText("435 g → 460 g");
+      await expect(comparisonAfterSoftDelete).toContainText("Évolution : +25 g");
+      await expect(comparisonAfterSoftDelete).toContainText("10 g → 10 g");
+      await expect(comparisonAfterSoftDelete).toContainText("Évolution : 0 g");
+    } finally {
+      sql(`update public.animals set deleted_at = null
+        where id = ${q(ids.secondAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+    }
+
     const consultationState = mainRoutineState();
 
     setOwnerRole("viewer");
@@ -643,6 +707,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(panel.getByTestId("litter-weight-sessions-history")).toContainText(
       "Calculé sur les poids enregistrés pendant cette séance.",
     );
+    await expect(
+      panel.getByTestId("latest-litter-weight-session-comparison"),
+    ).toContainText("Évolution : +25 g");
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
     await expect(panel.locator("form, input, textarea")).toHaveCount(0);
     expect(mainRoutineState()).toEqual(consultationState);
@@ -673,6 +740,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
     panel = weightPanel(page);
     await expect(panel.getByTestId("latest-litter-weight-session-summary")).toBeVisible();
+    await expect(
+      panel.getByTestId("latest-litter-weight-session-comparison"),
+    ).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
