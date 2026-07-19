@@ -41,6 +41,7 @@ export type Database = {
           created_by: string
           grams: number
           id: string
+          litter_weighing_session_id: string | null
           measured_at: string
           measurement_kind: string
           note: string | null
@@ -53,6 +54,7 @@ export type Database = {
           created_by: string
           grams: number
           id?: string
+          litter_weighing_session_id?: string | null
           measured_at: string
           measurement_kind: string
           note?: string | null
@@ -65,6 +67,7 @@ export type Database = {
           created_by?: string
           grams?: number
           id?: string
+          litter_weighing_session_id?: string | null
           measured_at?: string
           measurement_kind?: string
           note?: string | null
@@ -85,6 +88,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "animal_weight_measurements_litter_session_organization_fk"
+            columns: ["organization_id", "litter_weighing_session_id"]
+            isOneToOne: false
+            referencedRelation: "litter_weighing_sessions"
+            referencedColumns: ["organization_id", "id"]
           },
           {
             foreignKeyName: "animal_weight_measurements_organization_id_fkey"
@@ -2091,6 +2101,149 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_weighing_sessions: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          measured_at: string
+          note: string | null
+          organization_id: string
+          timezone_name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          measured_at: string
+          note?: string | null
+          organization_id: string
+          timezone_name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          measured_at?: string
+          note?: string | null
+          organization_id?: string
+          timezone_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_weighing_sessions_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weighing_sessions_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weighing_sessions_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weighing_sessions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_weight_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          items_snapshot: Json
+          litter_id: string
+          litter_weighing_session_id: string
+          measured_at: string
+          measurement_count: number
+          note: string | null
+          organization_id: string
+          timezone_name: string
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          items_snapshot: Json
+          litter_id: string
+          litter_weighing_session_id: string
+          measured_at: string
+          measurement_count: number
+          note?: string | null
+          organization_id: string
+          timezone_name: string
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          items_snapshot?: Json
+          litter_id?: string
+          litter_weighing_session_id?: string
+          measured_at?: string
+          measurement_count?: number
+          note?: string | null
+          organization_id?: string
+          timezone_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_weight_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weight_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weight_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weight_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weight_commands_session_organization_fk"
+            columns: ["organization_id", "litter_weighing_session_id"]
+            isOneToOne: false
+            referencedRelation: "litter_weighing_sessions"
+            referencedColumns: ["organization_id", "id"]
           },
         ]
       }
@@ -5353,6 +5506,25 @@ export type Database = {
           p_version_id: string
         }
         Returns: string
+      }
+      record_litter_routine_weights: {
+        Args: {
+          p_client_command_id: string
+          p_items: Json
+          p_litter_id: string
+          p_measured_at: string
+          p_note: string | null
+          p_timezone_name: string
+        }
+        Returns: {
+          litter_id: string
+          litter_weighing_session_id: string | null
+          measurement_count: number | null
+          measurement_ids: string[] | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+        }[]
       }
       record_maternal_observation: {
         Args: {
