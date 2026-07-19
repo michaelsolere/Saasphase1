@@ -373,6 +373,7 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
 
     let panel = weightPanel(page);
+    await expect(panel.getByRole("heading", { name: "Repères par animal" })).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Courbes de croissance" })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Portée entière" })).toHaveAttribute(
       "aria-pressed",
@@ -383,6 +384,40 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
       "false",
     );
     await expect(panel).toContainText("Dates affichées dans le fuseau de cet appareil.");
+
+    const indicators = panel.getByRole("list", {
+      name: "Repères de poids par animal",
+    });
+    await expect(indicators.getByRole("listitem")).toHaveCount(4);
+    const aubeIndicator = indicators.getByRole("listitem").filter({ hasText: "Aube" });
+    const singleIndicator = indicators
+      .getByRole("listitem")
+      .filter({ hasText: "Chiot n° 3" });
+    const emptyIndicator = indicators
+      .getByRole("listitem")
+      .filter({ hasText: "Sans mesure" });
+    const expectedAubeDate = await page.evaluate(() =>
+      new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(new Date("2026-07-19T10:00:00Z")),
+    );
+    await expect(aubeIndicator).toContainText("Dernier poids réel : 430 g");
+    await expect(aubeIndicator).toContainText(`Dernière mesure : ${expectedAubeDate}`);
+    await expect(aubeIndicator).toContainText("2 mesures réelles");
+    await expect(aubeIndicator).toContainText(
+      "Écart avec la mesure précédente : +90 g",
+    );
+    await expect(aubeIndicator).toContainText(
+      "Dernier intervalle observé : 1 j 1 h 58 min",
+    );
+    await expect(singleIndicator).toContainText("Dernier poids réel : 460 g");
+    await expect(singleIndicator).toContainText("1 mesure réelle");
+    await expect(singleIndicator).toContainText(
+      "Aucun intervalle n’est encore observable.",
+    );
+    await expect(emptyIndicator).toContainText("Aucune mesure réelle");
+    await expect(emptyIndicator).not.toContainText("380 g");
 
     const entireView = panel.getByTestId("entire-litter-growth-view");
     const chart = entireView.getByRole("img");
@@ -466,6 +501,7 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     setOwnerRole("viewer");
     await page.reload();
     panel = weightPanel(page);
+    await expect(panel.getByRole("heading", { name: "Repères par animal" })).toBeVisible();
     await expect(panel.getByRole("heading", { name: "Courbes de croissance" })).toBeVisible();
     await expect(panel.getByRole("img")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
@@ -481,6 +517,10 @@ test("courbes superposées et individuelles, viewer, erreur et mobile", async ({
     await page.setViewportSize({ width: 375, height: 760 });
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
     panel = weightPanel(page);
+    await expect(panel.getByRole("heading", { name: "Repères par animal" })).toBeVisible();
+    await expect(
+      panel.getByRole("list", { name: "Repères de poids par animal" }),
+    ).toBeVisible();
     await expect(panel.getByRole("img")).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),

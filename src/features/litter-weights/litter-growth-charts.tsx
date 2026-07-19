@@ -7,9 +7,11 @@ import type {
   LitterWeightHistoryMeasurement,
 } from "./litter-weights-core";
 import {
+  buildLitterGrowthModel,
   buildGrowthChartDomain,
-  buildLitterGrowthSeries,
+  formatObservedInterval,
   projectGrowthPoint,
+  type LitterGrowthIndicator,
   type LitterGrowthPoint,
   type LitterGrowthSeries,
 } from "./litter-growth-chart-model";
@@ -60,6 +62,66 @@ function formatMeasurementDate(value: string) {
 
 function measurementTypeLabel(type: LitterGrowthPoint["type"]) {
   return type === "birth" ? "Mesure de naissance" : "Pesée de routine";
+}
+
+function formatSignedGrams(value: number) {
+  return `${value > 0 ? "+" : ""}${value} g`;
+}
+
+function AnimalGrowthIndicator({
+  indicator,
+}: {
+  indicator: LitterGrowthIndicator;
+}) {
+  const latest = indicator.latestMeasurement;
+
+  return (
+    <li className="min-w-0 rounded-xl border bg-background p-4">
+      <h4 className="break-words font-semibold">{indicator.publicLabel}</h4>
+      {indicator.publicDetails ? (
+        <p className="mt-1 break-words text-xs leading-5 text-muted">
+          {indicator.publicDetails}
+        </p>
+      ) : null}
+      {!latest ? (
+        <p className="mt-3 text-sm text-muted">Aucune mesure réelle</p>
+      ) : (
+        <div className="mt-3 space-y-1 text-sm">
+          <p>
+            <span className="font-medium">Dernier poids réel :</span>{" "}
+            {latest.grams} g
+          </p>
+          <p className="text-muted">
+            Dernière mesure : {formatMeasurementDate(latest.measuredAt)}
+          </p>
+          <p className="text-muted">
+            {indicator.measurementCount} mesure
+            {indicator.measurementCount > 1 ? "s" : ""} réelle
+            {indicator.measurementCount > 1 ? "s" : ""}
+          </p>
+          {indicator.differenceGrams !== null &&
+          indicator.intervalMilliseconds !== null ? (
+            <>
+              <p className="pt-2">
+                <span className="font-medium">
+                  Écart avec la mesure précédente :
+                </span>{" "}
+                {formatSignedGrams(indicator.differenceGrams)}
+              </p>
+              <p className="text-muted">
+                Dernier intervalle observé :{" "}
+                {formatObservedInterval(indicator.intervalMilliseconds)}
+              </p>
+            </>
+          ) : (
+            <p className="pt-2 text-muted">
+              Aucun intervalle n’est encore observable.
+            </p>
+          )}
+        </div>
+      )}
+    </li>
+  );
 }
 
 function Marker({
@@ -393,52 +455,74 @@ export function LitterGrowthCharts({
   measurements: LitterWeightHistoryMeasurement[];
 }) {
   const [view, setView] = useState<"litter" | "animal">("litter");
-  const series = buildLitterGrowthSeries(animals, measurements);
+  const { indicators, series } = buildLitterGrowthModel(animals, measurements);
   const animalsWithoutMeasurements = animals.length - series.length;
 
   return (
-    <section className="mt-7 min-w-0 border-t pt-6" aria-labelledby="growth-curves-title">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h3 id="growth-curves-title" className="text-base font-semibold">
-          Courbes de croissance
-        </h3>
-        <div className="inline-flex w-fit rounded-xl border bg-background p-1" aria-label="Vue des courbes">
-          <button
-            type="button"
-            aria-pressed={view === "litter"}
-            onClick={() => setView("litter")}
-            className="min-h-10 rounded-lg px-3 text-sm font-medium transition aria-pressed:bg-accent aria-pressed:text-white"
-          >
-            Portée entière
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === "animal"}
-            onClick={() => setView("animal")}
-            className="min-h-10 rounded-lg px-3 text-sm font-medium transition aria-pressed:bg-accent aria-pressed:text-white"
-          >
-            Un animal
-          </button>
-        </div>
-      </div>
-
-      <p className="mt-3 text-xs text-muted">
+    <section
+      className="mt-7 min-w-0 border-t pt-6"
+      aria-labelledby="growth-indicators-title"
+    >
+      <h3 id="growth-indicators-title" className="text-base font-semibold">
+        Repères par animal
+      </h3>
+      <p className="mt-2 text-xs text-muted">
         Dates affichées dans le fuseau de cet appareil.
       </p>
-
-      <div className="mt-5 min-w-0">
-        {series.length === 0 ? (
-          <p className="rounded-xl border bg-secondary px-3 py-3 text-sm text-muted">
-            Aucune mesure réelle disponible pour tracer une courbe.
-          </p>
-        ) : view === "litter" ? (
-          <EntireLitterView
-            series={series}
-            animalsWithoutMeasurements={animalsWithoutMeasurements}
+      <ul
+        className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+        aria-label="Repères de poids par animal"
+      >
+        {indicators.map((indicator) => (
+          <AnimalGrowthIndicator
+            key={indicator.internalId}
+            indicator={indicator}
           />
-        ) : (
-          <IndividualAnimalView series={series} />
-        )}
+        ))}
+      </ul>
+
+      <div className="mt-7 border-t pt-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <h3 id="growth-curves-title" className="text-base font-semibold">
+            Courbes de croissance
+          </h3>
+          <div
+            className="inline-flex w-fit rounded-xl border bg-background p-1"
+            aria-label="Vue des courbes"
+          >
+            <button
+              type="button"
+              aria-pressed={view === "litter"}
+              onClick={() => setView("litter")}
+              className="min-h-10 rounded-lg px-3 text-sm font-medium transition aria-pressed:bg-accent aria-pressed:text-white"
+            >
+              Portée entière
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === "animal"}
+              onClick={() => setView("animal")}
+              className="min-h-10 rounded-lg px-3 text-sm font-medium transition aria-pressed:bg-accent aria-pressed:text-white"
+            >
+              Un animal
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 min-w-0">
+          {series.length === 0 ? (
+            <p className="rounded-xl border bg-secondary px-3 py-3 text-sm text-muted">
+              Aucune mesure réelle disponible pour tracer une courbe.
+            </p>
+          ) : view === "litter" ? (
+            <EntireLitterView
+              series={series}
+              animalsWithoutMeasurements={animalsWithoutMeasurements}
+            />
+          ) : (
+            <IndividualAnimalView series={series} />
+          )}
+        </div>
       </div>
     </section>
   );

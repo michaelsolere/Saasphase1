@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 
 import {
   buildGrowthChartDomain,
+  buildLitterGrowthModel,
   buildLitterGrowthSeries,
+  formatObservedInterval,
   projectGrowthPoint,
   type LitterGrowthPoint,
 } from "../../src/features/litter-weights/litter-growth-chart-model";
@@ -97,6 +99,86 @@ test("trie les mesures chronologiquement et conserve la dernière", () => {
     "latest",
   ]);
   expect(series[0].latestMeasurement.internalId).toBe("latest");
+});
+
+test("construit les repères de tous les animaux à partir des mesures réelles désordonnées", () => {
+  const animals = [
+    animal("none", { callName: "Sans mesure", birthWeightGrams: 375 }),
+    animal("single", { callName: "Unique" }),
+    animal("positive", { callName: "Hausse" }),
+    animal("zero", { callName: "Stable" }),
+    animal("negative", { callName: "Baisse" }),
+  ];
+  const measurements = [
+    measurement("positive-latest", "positive", "2026-07-20T12:30:00Z", 430),
+    measurement("negative-first", "negative", "2026-07-18T11:00:00Z", 410),
+    measurement("zero-latest", "zero", "2026-07-19T12:00:00Z", 400),
+    measurement("single-only", "single", "2026-07-19T10:00:00Z", 390),
+    measurement("positive-first", "positive", "2026-07-18T10:00:00Z", 350, "birth"),
+    measurement("negative-latest", "negative", "2026-07-20T11:00:00Z", 390),
+    measurement("zero-first", "zero", "2026-07-19T10:00:00Z", 400),
+  ];
+
+  const model = buildLitterGrowthModel(animals, measurements);
+
+  expect(model.indicators.map((indicator) => indicator.publicLabel)).toEqual([
+    "Sans mesure",
+    "Unique",
+    "Hausse",
+    "Stable",
+    "Baisse",
+  ]);
+  expect(model.series).toHaveLength(4);
+  expect(model.indicators[0]).toMatchObject({
+    measurementCount: 0,
+    latestMeasurement: null,
+    previousMeasurement: null,
+    differenceGrams: null,
+    intervalMilliseconds: null,
+  });
+  expect(model.indicators[1]).toMatchObject({
+    measurementCount: 1,
+    previousMeasurement: null,
+    differenceGrams: null,
+    intervalMilliseconds: null,
+  });
+  expect(model.indicators[1].latestMeasurement?.internalId).toBe("single-only");
+  expect(model.indicators[2]).toMatchObject({
+    measurementCount: 2,
+    differenceGrams: 80,
+    intervalMilliseconds: 2 * 24 * 60 * 60 * 1_000 + 2.5 * 60 * 60 * 1_000,
+  });
+  expect(model.indicators[2].previousMeasurement?.internalId).toBe("positive-first");
+  expect(model.indicators[2].latestMeasurement?.internalId).toBe("positive-latest");
+  expect(model.indicators[3]).toMatchObject({
+    differenceGrams: 0,
+    intervalMilliseconds: 2 * 60 * 60 * 1_000,
+  });
+  expect(model.indicators[4]).toMatchObject({
+    differenceGrams: -20,
+    intervalMilliseconds: 2 * 24 * 60 * 60 * 1_000,
+  });
+});
+
+test("calcule l’intervalle uniquement entre les deux dernières mesures", () => {
+  const { indicators } = buildLitterGrowthModel(
+    [animal("animal-a")],
+    [
+      measurement("latest", "animal-a", "2026-07-20T18:45:00Z", 460),
+      measurement("oldest", "animal-a", "2026-07-01T08:00:00Z", 300),
+      measurement("previous", "animal-a", "2026-07-19T16:15:00Z", 440),
+    ],
+  );
+
+  expect(indicators[0].previousMeasurement?.internalId).toBe("previous");
+  expect(indicators[0].latestMeasurement?.internalId).toBe("latest");
+  expect(indicators[0].differenceGrams).toBe(20);
+  expect(indicators[0].intervalMilliseconds).toBe(
+    24 * 60 * 60 * 1_000 + 2.5 * 60 * 60 * 1_000,
+  );
+  expect(formatObservedInterval(indicators[0].intervalMilliseconds!)).toBe(
+    "1 j 2 h 30 min",
+  );
 });
 
 test("sépare strictement les mesures des animaux", () => {
