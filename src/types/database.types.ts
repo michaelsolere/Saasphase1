@@ -5421,6 +5421,23 @@ export type Database = {
           weight_measurement_id: string | null
         }[]
       }
+      record_whelping_birth_weight: {
+        Args: {
+          p_birth_id: string
+          p_client_command_id: string
+          p_measured_at: string
+          p_note?: string | null
+          p_weight_grams: number
+        }
+        Returns: {
+          animal_id: string | null
+          birth_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          weight_measurement_id: string | null
+        }[]
+      }
       record_whelping_event: {
         Args: {
           p_client_command_id: string

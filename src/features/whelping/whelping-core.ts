@@ -46,6 +46,9 @@ export type WhelpingServiceErrorCode =
   | "already_open"
   | "session_closed"
   | "conflict"
+  | "measured_before_birth"
+  | "birth_weight_already_recorded"
+  | "invalid_birth_relations"
   | "database_error";
 
 export type WhelpingServiceError = {
@@ -232,6 +235,24 @@ export type RecordWhelpingBirthResult =
       weightMeasurementId: string | null;
       eventSequenceNo: number;
       birthOrder: number;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
+export type RecordWhelpingBirthWeightInput = {
+  birthId: string;
+  clientCommandId: string;
+  weightGrams: number;
+  measuredAt: string;
+  note?: string | null;
+};
+
+export type RecordWhelpingBirthWeightResult =
+  | {
+      outcome: "success";
+      birthId: string;
+      animalId: string;
+      weightMeasurementId: string;
       replayed: boolean;
     }
   | ErrorResult;
@@ -543,6 +564,8 @@ function commandFailure(reason: string | null): ErrorResult {
       return failure("not_found", "La portée demandée est introuvable.");
     case "session_not_found":
       return failure("not_found", "La session demandée est introuvable.");
+    case "birth_not_found":
+      return failure("not_found", "La naissance demandée est introuvable.");
     case "litter_not_open":
       return failure("invalid_litter", "Cette portée ne permet pas d’ouvrir une session.");
     case "mother_ineligible":
@@ -557,6 +580,27 @@ function commandFailure(reason: string | null): ErrorResult {
       return failure("session_closed", "Cette session est déjà clôturée.");
     case "client_command_conflict":
       return failure("conflict", "Cette commande a déjà été utilisée.");
+    case "measured_before_birth":
+      return failure(
+        "measured_before_birth",
+        "L’heure de pesée ne peut pas précéder l’heure de naissance.",
+      );
+    case "birth_weight_already_recorded":
+      return failure(
+        "birth_weight_already_recorded",
+        "Un poids de naissance est déjà enregistré.",
+      );
+    case "birth_relations_inconsistent":
+    case "birth_weight_inconsistent":
+      return failure(
+        "invalid_birth_relations",
+        "Les données liées à cette naissance sont incohérentes.",
+      );
+    case "technical_error":
+      return failure(
+        "database_error",
+        "Une erreur technique empêche momentanément cette opération.",
+      );
     case "administrative_offspring_exists":
       return failure(
         "conflict",
@@ -903,6 +947,58 @@ export async function recordWhelpingBirthCore(
     weightMeasurementId: result.weight_measurement_id,
     eventSequenceNo: result.event_sequence_no,
     birthOrder: result.birth_order,
+    replayed: result.replayed === true,
+  };
+}
+
+export async function recordWhelpingBirthWeightCore(
+  input: RecordWhelpingBirthWeightInput,
+  supabase: Supabase,
+): Promise<RecordWhelpingBirthWeightResult> {
+  const birthId = normalizeUuid(input.birthId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const weightGrams = normalizeOptionalWeight(input.weightGrams);
+  const measuredAt = normalizeTimestamp(input.measuredAt);
+  const note = normalizeOptionalText(input.note, 5_000);
+
+  if (
+    !birthId ||
+    !clientCommandId ||
+    weightGrams === null ||
+    weightGrams === undefined ||
+    !measuredAt ||
+    note === undefined
+  ) {
+    return invalidInput();
+  }
+
+  const recorded = await supabase.rpc("record_whelping_birth_weight", {
+    p_birth_id: birthId,
+    p_client_command_id: clientCommandId,
+    p_weight_grams: weightGrams,
+    p_measured_at: measuredAt,
+    p_note: note,
+  });
+
+  if (recorded.error) {
+    return databaseFailure("whelping_birth_weight_record_failed", recorded.error);
+  }
+  const result = recorded.data?.[0];
+  if (
+    !result ||
+    result.outcome !== "success" ||
+    !result.birth_id ||
+    !result.animal_id ||
+    !result.weight_measurement_id
+  ) {
+    return commandFailure(result?.reason ?? null);
+  }
+
+  return {
+    outcome: "success",
+    birthId: result.birth_id,
+    animalId: result.animal_id,
+    weightMeasurementId: result.weight_measurement_id,
     replayed: result.replayed === true,
   };
 }
