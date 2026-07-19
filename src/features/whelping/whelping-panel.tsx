@@ -42,6 +42,11 @@ type BirthAction = (
   formData: FormData,
 ) => Promise<WhelpingBirthActionState>;
 
+export type WhelpingBirthWeightAction = {
+  birthId: string;
+  action: SimpleAction;
+};
+
 type WhelpingRole = "owner" | "admin" | "member" | "viewer" | null;
 
 const inputClass =
@@ -530,6 +535,122 @@ function EventDialog({
   );
 }
 
+function BirthWeightDialog({
+  action,
+  birthOrder,
+  onSuccess,
+}: {
+  action: SimpleAction;
+  birthOrder: number;
+  onSuccess: (message: string) => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [measuredAt, setMeasuredAt] = useState(currentLocalDateTime);
+  const measuredAtIsoRef = useRef<HTMLInputElement>(null);
+  const submitAction = useCallback(
+    async (previousState: WhelpingActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.status === "success" && nextState.message) {
+        setOpen(false);
+        onSuccess(nextState.message);
+        router.refresh();
+      }
+      return nextState;
+    },
+    [action, onSuccess, router],
+  );
+  const [state, formAction] = useActionState(
+    submitAction,
+    initialWhelpingActionState,
+  );
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (nextOpen) setMeasuredAt(currentLocalDateTime());
+    setOpen(nextOpen);
+  }
+
+  function prepareSubmission() {
+    if (measuredAtIsoRef.current) {
+      measuredAtIsoRef.current.value = localDateTimeToIso(measuredAt);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className="mt-3 min-h-10">
+          Renseigner le poids
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Renseigner le poids de naissance</DialogTitle>
+          <DialogDescription>
+            Complétez la pesée de la naissance n° {birthOrder}. Cette mesure ne pourra pas être remplacée ici.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} onSubmit={prepareSubmission} className="space-y-4">
+          <input ref={measuredAtIsoRef} type="hidden" name="measured_at" />
+          <div>
+            <label className={labelClass} htmlFor={`whelping-birth-weight-${birthOrder}`}>
+              Poids en grammes
+            </label>
+            <input
+              id={`whelping-birth-weight-${birthOrder}`}
+              className={inputClass}
+              name="birth_weight_grams"
+              type="number"
+              min={1}
+              max={100000}
+              step={1}
+              inputMode="numeric"
+              required
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`whelping-birth-measured-at-${birthOrder}`}>
+              Date et heure de pesée
+            </label>
+            <input
+              id={`whelping-birth-measured-at-${birthOrder}`}
+              className={inputClass}
+              type="datetime-local"
+              value={measuredAt}
+              onChange={(event) => setMeasuredAt(event.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`whelping-birth-weight-note-${birthOrder}`}>
+              Note (facultative)
+            </label>
+            <textarea
+              id={`whelping-birth-weight-note-${birthOrder}`}
+              className={inputClass}
+              name="note"
+              rows={3}
+              maxLength={5000}
+            />
+          </div>
+          <ActionMessage state={state} />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" className="min-h-11">
+                Annuler
+              </Button>
+            </DialogClose>
+            <SubmitButton
+              idleLabel="Enregistrer le poids"
+              pendingLabel="Enregistrement..."
+            />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CloseSessionDialog({
   action,
   onSuccess,
@@ -627,13 +748,20 @@ function Timeline({
   session,
   events,
   births,
+  birthWeightActions,
+  onWeightSuccess,
 }: {
   session: WhelpingSessionSummary;
   events: WhelpingEventSummary[];
   births: WhelpingBirthSummary[];
+  birthWeightActions: WhelpingBirthWeightAction[];
+  onWeightSuccess: (message: string) => void;
 }) {
   const birthsByEventId = new Map(
     births.map((birth) => [birth.event.id, birth]),
+  );
+  const weightActionsByBirthId = new Map(
+    birthWeightActions.map((entry) => [entry.birthId, entry.action]),
   );
 
   if (events.length === 0) {
@@ -649,6 +777,9 @@ function Timeline({
       {events.map((event) => {
         const birth = event.eventType === "birth"
           ? birthsByEventId.get(event.id)
+          : undefined;
+        const birthWeightAction = birth
+          ? weightActionsByBirthId.get(birth.id)
           : undefined;
         const title = event.eventType === "birth"
           ? birth
@@ -710,7 +841,23 @@ function Timeline({
                       </span>
                     </dd>
                   </div>
-                ) : null}
+                ) : (
+                  <div>
+                    <dt className="text-muted">Poids de naissance</dt>
+                    <dd>
+                      <span className="text-muted">Poids de naissance non renseigné</span>
+                      {birthWeightAction ? (
+                        <span className="block">
+                          <BirthWeightDialog
+                            action={birthWeightAction}
+                            birthOrder={birth.birthOrder}
+                            onSuccess={onWeightSuccess}
+                          />
+                        </span>
+                      ) : null}
+                    </dd>
+                  </div>
+                )}
               </dl>
             ) : null}
             {event.note ? (
@@ -734,6 +881,7 @@ export function WhelpingPanel({
   openAction,
   eventAction,
   birthAction,
+  birthWeightActions,
   closeAction,
 }: {
   session: WhelpingSessionSummary | null;
@@ -744,11 +892,14 @@ export function WhelpingPanel({
   openAction: SimpleAction | null;
   eventAction: SimpleAction | null;
   birthAction: BirthAction | null;
+  birthWeightActions: WhelpingBirthWeightAction[];
   closeAction: SimpleAction | null;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
   const sessionIsOpen = session?.status === "open";
+  const canCompleteClosedBirthWeights =
+    session?.status === "closed" && birthWeightActions.length > 0;
 
   return (
     <section className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
@@ -819,9 +970,21 @@ export function WhelpingPanel({
             </div>
           ) : null}
 
+          {canCompleteClosedBirthWeights ? (
+            <p className="mt-5 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
+              La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés.
+            </p>
+          ) : null}
+
           <div className="mt-6">
             <h3 className="font-semibold">Chronologie</h3>
-            <Timeline session={session} events={events} births={births} />
+            <Timeline
+              session={session}
+              events={events}
+              births={births}
+              birthWeightActions={birthWeightActions}
+              onWeightSuccess={setConfirmation}
+            />
           </div>
 
           {sessionIsOpen && canWrite && closeAction ? (

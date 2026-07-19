@@ -6,10 +6,12 @@ import {
   closeWhelpingSessionActionCore,
   openWhelpingSessionActionCore,
   recordWhelpingBirthActionCore,
+  recordWhelpingBirthWeightActionCore,
   recordWhelpingEventActionCore,
   type CloseWhelpingSessionIntention,
   type OpenWhelpingSessionIntention,
   type RecordWhelpingBirthIntention,
+  type RecordWhelpingBirthWeightIntention,
   type RecordWhelpingEventIntention,
   type WhelpingActionDependencies,
   type WhelpingActionState,
@@ -19,6 +21,7 @@ import {
   closeWhelpingSession,
   openWhelpingSession,
   recordWhelpingBirth,
+  recordWhelpingBirthWeight,
   recordWhelpingEvent,
 } from "./whelping";
 
@@ -26,6 +29,7 @@ const dependencies: WhelpingActionDependencies = {
   openSession: openWhelpingSession,
   recordEvent: recordWhelpingEvent,
   recordBirth: recordWhelpingBirth,
+  recordBirthWeight: recordWhelpingBirthWeight,
   closeSession: closeWhelpingSession,
   revalidatePath,
 };
@@ -62,6 +66,19 @@ export async function recordWhelpingBirthAction(
   formData: FormData,
 ) {
   return recordWhelpingBirthActionCore(
+    intention,
+    previousState,
+    formData,
+    dependencies,
+  );
+}
+
+export async function recordWhelpingBirthWeightAction(
+  intention: RecordWhelpingBirthWeightIntention,
+  previousState: WhelpingActionState,
+  formData: FormData,
+) {
+  return recordWhelpingBirthWeightActionCore(
     intention,
     previousState,
     formData,

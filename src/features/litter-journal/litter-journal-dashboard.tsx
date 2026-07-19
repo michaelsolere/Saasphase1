@@ -33,7 +33,10 @@ import type {
   WhelpingEventSummary,
   WhelpingSessionSummary,
 } from "@/features/whelping/whelping-core";
-import { WhelpingPanel } from "@/features/whelping/whelping-panel";
+import {
+  WhelpingPanel,
+  type WhelpingBirthWeightAction,
+} from "@/features/whelping/whelping-panel";
 import {
   getLitterJournalContextualAge,
   getLitterJournalStatusLabel,
@@ -188,6 +191,7 @@ export function LitterJournalDashboard({
   openWhelpingAction,
   recordWhelpingEventAction,
   recordWhelpingBirthAction,
+  recordWhelpingBirthWeightActions,
   closeWhelpingSessionAction,
 }: {
   litters: LitterJournalListItem[];
@@ -239,6 +243,7 @@ export function LitterJournalDashboard({
     previousState: WhelpingBirthActionState,
     formData: FormData,
   ) => Promise<WhelpingBirthActionState>) | null;
+  recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[];
   closeWhelpingSessionAction: ((
     previousState: WhelpingActionState,
     formData: FormData,
@@ -310,6 +315,7 @@ export function LitterJournalDashboard({
         openAction={openWhelpingAction}
         eventAction={recordWhelpingEventAction}
         birthAction={recordWhelpingBirthAction}
+        birthWeightActions={recordWhelpingBirthWeightActions}
         closeAction={closeWhelpingSessionAction}
       />
       <MaternalObservationsPanel

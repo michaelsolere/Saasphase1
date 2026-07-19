@@ -22,8 +22,10 @@ import {
   closeWhelpingSessionAction,
   openWhelpingSessionAction,
   recordWhelpingBirthAction,
+  recordWhelpingBirthWeightAction,
   recordWhelpingEventAction,
 } from "@/features/whelping/whelping-actions";
+import type { WhelpingBirthWeightAction } from "@/features/whelping/whelping-panel";
 import {
   listWhelpingBirthsForSession,
   listWhelpingEventsForSession,
@@ -271,6 +273,26 @@ export default async function LitterJournalPage({
         clientCommandId: closeWhelpingClientCommandId,
       })
     : null;
+  const recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[] =
+    selectedLitterId !== null &&
+    selectedSessionId !== null &&
+    whelpingDataReliable &&
+    whelpingCanWrite
+      ? (whelpingBirthsLoaded?.births ?? [])
+          .filter((birth) => birth.birthWeightMeasurement === null)
+          .map((birth) => {
+            const birthWeightClientCommandId = crypto.randomUUID();
+            return {
+              birthId: birth.id,
+              action: recordWhelpingBirthWeightAction.bind(null, {
+                litterId: selectedLitterId,
+                sessionId: selectedSessionId,
+                birthId: birth.id,
+                clientCommandId: birthWeightClientCommandId,
+              }),
+            };
+          })
+      : [];
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -326,6 +348,7 @@ export default async function LitterJournalPage({
             openWhelpingAction={openWhelpingAction}
             recordWhelpingEventAction={recordWhelpingEvent}
             recordWhelpingBirthAction={recordWhelpingBirth}
+            recordWhelpingBirthWeightActions={recordWhelpingBirthWeightActions}
             closeWhelpingSessionAction={closeWhelpingAction}
           />
         ) : (

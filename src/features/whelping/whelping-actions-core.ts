@@ -8,6 +8,8 @@ import type {
   OpenWhelpingSessionResult,
   RecordWhelpingBirthInput,
   RecordWhelpingBirthResult,
+  RecordWhelpingBirthWeightInput,
+  RecordWhelpingBirthWeightResult,
   RecordWhelpingEventInput,
   RecordWhelpingEventResult,
   WhelpingBirthSex,
@@ -73,6 +75,9 @@ export type RecordWhelpingEventIntention = {
 
 export type RecordWhelpingBirthIntention = RecordWhelpingEventIntention;
 export type CloseWhelpingSessionIntention = RecordWhelpingEventIntention;
+export type RecordWhelpingBirthWeightIntention = RecordWhelpingEventIntention & {
+  birthId: string;
+};
 
 export type WhelpingActionDependencies = {
   openSession: (
@@ -84,6 +89,9 @@ export type WhelpingActionDependencies = {
   recordBirth: (
     input: RecordWhelpingBirthInput,
   ) => Promise<RecordWhelpingBirthResult>;
+  recordBirthWeight: (
+    input: RecordWhelpingBirthWeightInput,
+  ) => Promise<RecordWhelpingBirthWeightResult>;
   closeSession: (
     input: CloseWhelpingSessionInput,
   ) => Promise<CloseWhelpingSessionResult>;
@@ -188,6 +196,12 @@ function isSessionIntention(
   );
 }
 
+function isBirthWeightIntention(
+  intention: RecordWhelpingBirthWeightIntention,
+): intention is RecordWhelpingBirthWeightIntention {
+  return isSessionIntention(intention) && isValidId(intention?.birthId);
+}
+
 function isGenericEventType(value: string): value is GenericWhelpingEventType {
   return GENERIC_EVENT_TYPES.includes(value as GenericWhelpingEventType);
 }
@@ -232,10 +246,23 @@ export function whelpingErrorMessage(error: WhelpingServiceError) {
       return "Cette session de mise-bas est déjà clôturée.";
     case "conflict":
       return conflictMessage(error);
+    case "measured_before_birth":
+      return "L’heure de pesée ne peut pas être antérieure à l’heure de naissance.";
+    case "birth_weight_already_recorded":
+      return "Un poids de naissance est déjà enregistré pour cette naissance.";
+    case "invalid_birth_relations":
+      return "Les relations associées à cette naissance sont incohérentes.";
     case "database_error":
     default:
       return "L’opération ne peut pas être réalisée pour le moment.";
   }
+}
+
+function birthWeightErrorMessage(error: WhelpingServiceError) {
+  if (error.code === "not_found") {
+    return "La naissance demandée est introuvable ou inaccessible.";
+  }
+  return whelpingErrorMessage(error);
 }
 
 function invalidState(message = "Les informations transmises sont invalides.") {
@@ -379,6 +406,54 @@ export async function recordWhelpingBirthActionCore(
       replayed: result.replayed,
       birthOrder: result.birthOrder,
       eventSequenceNo: result.eventSequenceNo,
+    };
+  } catch {
+    return invalidState("L’opération ne peut pas être réalisée pour le moment.");
+  }
+}
+
+export async function recordWhelpingBirthWeightActionCore(
+  intention: RecordWhelpingBirthWeightIntention,
+  _previousState: WhelpingActionState,
+  formData: FormData,
+  dependencies: WhelpingActionDependencies,
+): Promise<WhelpingActionState> {
+  if (!isBirthWeightIntention(intention)) {
+    return invalidState("Le formulaire de poids de naissance est invalide.");
+  }
+
+  const birthWeightGrams = normalizeOptionalWeight(formData);
+  const measuredAt = normalizeTimestamp(formData, "measured_at");
+  const note = normalizeOptionalText(formData, "note", MAX_NOTE_LENGTH);
+  if (
+    birthWeightGrams === null ||
+    birthWeightGrams === undefined ||
+    !measuredAt ||
+    note === undefined
+  ) {
+    return invalidState("Le formulaire de poids de naissance est invalide.");
+  }
+
+  try {
+    const result = await dependencies.recordBirthWeight({
+      birthId: intention.birthId,
+      clientCommandId: intention.clientCommandId,
+      weightGrams: birthWeightGrams,
+      measuredAt,
+      note,
+    });
+    if (result.outcome === "error") {
+      return { status: "error", message: birthWeightErrorMessage(result.error) };
+    }
+
+    dependencies.revalidatePath("/litters/journal");
+    dependencies.revalidatePath(`/litters/${intention.litterId}`);
+    dependencies.revalidatePath("/animals");
+    dependencies.revalidatePath(`/animals/${result.animalId}`);
+    return {
+      status: "success",
+      message: "Le poids de naissance a été enregistré.",
+      replayed: result.replayed,
     };
   } catch {
     return invalidState("L’opération ne peut pas être réalisée pour le moment.");
