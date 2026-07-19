@@ -6,11 +6,13 @@ import {
   initialWhelpingBirthActionState,
   openWhelpingSessionActionCore,
   recordWhelpingBirthActionCore,
+  recordWhelpingBirthWeightActionCore,
   recordWhelpingEventActionCore,
   whelpingErrorMessage,
   type CloseWhelpingSessionIntention,
   type OpenWhelpingSessionIntention,
   type RecordWhelpingBirthIntention,
+  type RecordWhelpingBirthWeightIntention,
   type RecordWhelpingEventIntention,
   type WhelpingActionDependencies,
 } from "../../src/features/whelping/whelping-actions-core";
@@ -18,6 +20,7 @@ import type {
   CloseWhelpingSessionInput,
   OpenWhelpingSessionInput,
   RecordWhelpingBirthInput,
+  RecordWhelpingBirthWeightInput,
   RecordWhelpingEventInput,
   WhelpingServiceErrorCode,
 } from "../../src/features/whelping/whelping-core";
@@ -26,6 +29,7 @@ const litterId = "10000000-0000-4000-8000-000000000001";
 const sessionId = "20000000-0000-4000-8000-000000000002";
 const clientCommandId = "30000000-0000-4000-8000-000000000003";
 const technicalId = "40000000-0000-4000-8000-000000000004";
+const birthId = "50000000-0000-4000-8000-000000000005";
 
 const openIntention: OpenWhelpingSessionIntention = {
   litterId,
@@ -35,6 +39,10 @@ const sessionIntention: RecordWhelpingEventIntention = {
   litterId,
   sessionId,
   clientCommandId,
+};
+const birthWeightIntention: RecordWhelpingBirthWeightIntention = {
+  ...sessionIntention,
+  birthId,
 };
 
 function openForm() {
@@ -72,10 +80,19 @@ function closeForm() {
   return formData;
 }
 
+function birthWeightForm() {
+  const formData = new FormData();
+  formData.set("birth_weight_grams", " 438 ");
+  formData.set("measured_at", "2026-07-19T11:12:00+02:00");
+  formData.set("note", " Pesée après séchage ");
+  return formData;
+}
+
 function harness() {
   const opened: OpenWhelpingSessionInput[] = [];
   const events: RecordWhelpingEventInput[] = [];
   const births: RecordWhelpingBirthInput[] = [];
+  const birthWeights: RecordWhelpingBirthWeightInput[] = [];
   const closed: CloseWhelpingSessionInput[] = [];
   const paths: string[] = [];
   const dependencies: WhelpingActionDependencies = {
@@ -112,6 +129,16 @@ function harness() {
         replayed: false,
       };
     },
+    recordBirthWeight: async (input) => {
+      birthWeights.push(input);
+      return {
+        outcome: "success",
+        birthId,
+        animalId: technicalId,
+        weightMeasurementId: technicalId,
+        replayed: false,
+      };
+    },
     closeSession: async (input) => {
       closed.push(input);
       return {
@@ -124,7 +151,7 @@ function harness() {
     },
     revalidatePath: (path) => paths.push(path),
   };
-  return { dependencies, opened, events, births, closed, paths };
+  return { dependencies, opened, events, births, birthWeights, closed, paths };
 }
 
 function forgeTechnicalFields(formData: FormData) {
@@ -138,6 +165,7 @@ function forgeTechnicalFields(formData: FormData) {
     "animal_id",
     "birth_id",
     "measurement_id",
+    "weight_measurement_id",
     "born_total_count",
     "status",
   ]) {
@@ -556,5 +584,140 @@ test("refuse une intention liée invalide avant tout appel", async () => {
   );
   expect(state.status).toBe("error");
   expect(context.closed).toEqual([]);
+  expect(context.paths).toEqual([]);
+});
+
+test("complète un poids avec l’intention serveur et les valeurs normalisées", async () => {
+  const context = harness();
+  const form = forgeTechnicalFields(birthWeightForm());
+  form.set("birth_id", technicalId);
+  form.set("animal_id", technicalId);
+  form.set("session_id", technicalId);
+  form.set("litter_id", technicalId);
+  form.set("client_command_id", technicalId);
+  form.set("organization_id", technicalId);
+  form.set("weight_measurement_id", technicalId);
+
+  const state = await recordWhelpingBirthWeightActionCore(
+    birthWeightIntention,
+    initialWhelpingActionState,
+    form,
+    context.dependencies,
+  );
+
+  expect(context.birthWeights).toEqual([{
+    birthId,
+    clientCommandId,
+    weightGrams: 438,
+    measuredAt: "2026-07-19T09:12:00.000Z",
+    note: "Pesée après séchage",
+  }]);
+  expect(state).toEqual({
+    status: "success",
+    message: "Le poids de naissance a été enregistré.",
+    replayed: false,
+  });
+  expect(JSON.stringify(state)).not.toContain(birthId);
+  expect(JSON.stringify(state)).not.toContain(technicalId);
+});
+
+test("refuse les poids obligatoires hors bornes ou non entiers", async () => {
+  for (const weight of ["", "1.5", "0", "-1", "100001"]) {
+    const context = harness();
+    const form = birthWeightForm();
+    form.set("birth_weight_grams", weight);
+    const state = await recordWhelpingBirthWeightActionCore(
+      birthWeightIntention,
+      initialWhelpingActionState,
+      form,
+      context.dependencies,
+    );
+    expect(state).toEqual({
+      status: "error",
+      message: "Le formulaire de poids de naissance est invalide.",
+    });
+    expect(context.birthWeights).toEqual([]);
+    expect(context.paths).toEqual([]);
+  }
+});
+
+test("refuse l’heure sans offset et la note trop longue", async () => {
+  for (const mutate of [
+    (form: FormData) => form.set("measured_at", "2026-07-19T11:12:00"),
+    (form: FormData) => form.set("note", "n".repeat(5_001)),
+  ]) {
+    const context = harness();
+    const form = birthWeightForm();
+    mutate(form);
+    const state = await recordWhelpingBirthWeightActionCore(
+      birthWeightIntention,
+      initialWhelpingActionState,
+      form,
+      context.dependencies,
+    );
+    expect(state.status).toBe("error");
+    expect(context.birthWeights).toEqual([]);
+  }
+});
+
+test("traduit distinctement les erreurs de complément de poids", async () => {
+  const cases: Array<[WhelpingServiceErrorCode, string]> = [
+    ["not_found", "introuvable ou inaccessible"],
+    ["measured_before_birth", "antérieure"],
+    ["birth_weight_already_recorded", "déjà enregistré"],
+    ["invalid_birth_relations", "relations"],
+    ["conflict", "autre intention"],
+    ["forbidden", "droits nécessaires"],
+    ["database_error", "pour le moment"],
+  ];
+
+  for (const [code, expectedMessage] of cases) {
+    const context = harness();
+    context.dependencies.recordBirthWeight = async () => ({
+      outcome: "error",
+      error: { code, message: "SQL secret details" },
+    });
+    const state = await recordWhelpingBirthWeightActionCore(
+      birthWeightIntention,
+      initialWhelpingActionState,
+      birthWeightForm(),
+      context.dependencies,
+    );
+    expect(state.status).toBe("error");
+    expect(state.message).toContain(expectedMessage);
+    expect(state.message).not.toContain("SQL secret details");
+    expect(context.paths).toEqual([]);
+  }
+});
+
+test("revalide exactement les routes du poids après succès", async () => {
+  const context = harness();
+  await recordWhelpingBirthWeightActionCore(
+    birthWeightIntention,
+    initialWhelpingActionState,
+    birthWeightForm(),
+    context.dependencies,
+  );
+  expect(context.paths).toEqual([
+    "/litters/journal",
+    `/litters/${litterId}`,
+    "/animals",
+    `/animals/${technicalId}`,
+  ]);
+});
+
+test("masque une exception technique du complément de poids", async () => {
+  const context = harness();
+  context.dependencies.recordBirthWeight = async () => {
+    throw new Error("SQL connection string");
+  };
+  const state = await recordWhelpingBirthWeightActionCore(
+    birthWeightIntention,
+    initialWhelpingActionState,
+    birthWeightForm(),
+    context.dependencies,
+  );
+  expect(state.status).toBe("error");
+  expect(state.message).not.toContain("SQL");
   expect(context.paths).toEqual([]);
 });
