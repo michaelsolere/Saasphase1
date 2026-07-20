@@ -8,6 +8,10 @@ export type LitterWeighingSchedulePolicy = {
   phases: readonly LitterWeighingSchedulePhase[];
 };
 
+export type ParseLitterWeighingSchedulePolicyResult =
+  | { ok: true; policy: LitterWeighingSchedulePolicy }
+  | { ok: false; error: string };
+
 export const DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY = {
   phases: [
     { startAgeDay: 0, endAgeDay: 30, intervalDays: 1 },
@@ -145,79 +149,140 @@ function formatCivilDay(dayNumber: number): string | null {
   return parseCivilDate(value)?.dayNumber === dayNumber ? value : null;
 }
 
-function validateAndGeneratePolicy(
+export function parseLitterWeighingSchedulePolicy(
   policy: unknown,
-): { days: GeneratedScheduleDay[]; maximumAgeDay: number } | string {
-  if (typeof policy !== "object" || policy === null) {
-    return "policy must be an object";
+): ParseLitterWeighingSchedulePolicyResult {
+  if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+    return { ok: false, error: "policy must be an object" };
   }
 
-  const phases = (policy as { phases?: unknown }).phases;
+  const policyRecord = policy as Record<string, unknown>;
+  if (
+    Object.keys(policyRecord).length !== 1 ||
+    !Object.prototype.hasOwnProperty.call(policyRecord, "phases")
+  ) {
+    return { ok: false, error: "policy must contain only phases" };
+  }
+
+  const phases = policyRecord.phases;
   if (!Array.isArray(phases) || phases.length === 0) {
-    return "policy phases must be a non-empty array";
+    return { ok: false, error: "policy phases must be a non-empty array" };
   }
   if (phases.length > MAX_PHASE_COUNT) {
-    return `policy must contain at most ${MAX_PHASE_COUNT} phases`;
+    return {
+      ok: false,
+      error: `policy must contain at most ${MAX_PHASE_COUNT} phases`,
+    };
   }
 
-  const days: GeneratedScheduleDay[] = [];
-  const generatedAgeDays = new Set<number>();
+  const parsedPhases: LitterWeighingSchedulePhase[] = [];
+  let scheduledCount = 0;
   let previousStartAgeDay = -1;
   let previousEndAgeDay = -1;
 
   for (let phaseIndex = 0; phaseIndex < phases.length; phaseIndex += 1) {
     const phase = phases[phaseIndex];
-    if (typeof phase !== "object" || phase === null) {
-      return `phase ${phaseIndex} must be an object`;
+    if (typeof phase !== "object" || phase === null || Array.isArray(phase)) {
+      return { ok: false, error: `phase ${phaseIndex} must be an object` };
     }
 
-    const { startAgeDay, endAgeDay, intervalDays } = phase as Record<
-      string,
-      unknown
-    >;
+    const phaseRecord = phase as Record<string, unknown>;
+    const phaseKeys = Object.keys(phaseRecord);
+    if (
+      phaseKeys.length !== 3 ||
+      !Object.prototype.hasOwnProperty.call(phaseRecord, "startAgeDay") ||
+      !Object.prototype.hasOwnProperty.call(phaseRecord, "endAgeDay") ||
+      !Object.prototype.hasOwnProperty.call(phaseRecord, "intervalDays")
+    ) {
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} must contain only startAgeDay, endAgeDay and intervalDays`,
+      };
+    }
+
+    const { startAgeDay, endAgeDay, intervalDays } = phaseRecord;
     if (
       !Number.isInteger(startAgeDay) ||
       !Number.isInteger(endAgeDay) ||
       !Number.isInteger(intervalDays)
     ) {
-      return `phase ${phaseIndex} values must be finite integers`;
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} values must be finite integers`,
+      };
     }
 
     const start = startAgeDay as number;
     const end = endAgeDay as number;
     const interval = intervalDays as number;
-    if (start < 0) return `phase ${phaseIndex} startAgeDay must be non-negative`;
+    if (start < 0) {
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} startAgeDay must be non-negative`,
+      };
+    }
     if (end < start) {
-      return `phase ${phaseIndex} endAgeDay must not precede startAgeDay`;
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} endAgeDay must not precede startAgeDay`,
+      };
     }
     if (end > MAX_AGE_DAY) {
-      return `phase ${phaseIndex} endAgeDay must not exceed ${MAX_AGE_DAY}`;
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} endAgeDay must not exceed ${MAX_AGE_DAY}`,
+      };
     }
     if (interval < 1) {
-      return `phase ${phaseIndex} intervalDays must be at least 1`;
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} intervalDays must be at least 1`,
+      };
     }
     if (phaseIndex > 0 && start < previousStartAgeDay) {
-      return `phase ${phaseIndex} is out of order`;
+      return { ok: false, error: `phase ${phaseIndex} is out of order` };
     }
     if (phaseIndex > 0 && start <= previousEndAgeDay) {
-      return `phase ${phaseIndex} overlaps the previous phase`;
+      return {
+        ok: false,
+        error: `phase ${phaseIndex} overlaps the previous phase`,
+      };
     }
 
-    for (let ageDay = start; ageDay <= end; ageDay += interval) {
-      if (generatedAgeDays.has(ageDay)) {
-        return `age day ${ageDay} is generated more than once`;
-      }
-      if (days.length >= MAX_SCHEDULED_COUNT) {
-        return `policy generates more than ${MAX_SCHEDULED_COUNT} schedule items`;
-      }
-      generatedAgeDays.add(ageDay);
-      days.push({ ageDay, phaseIndex, intervalDays: interval });
+    scheduledCount += Math.floor((end - start) / interval) + 1;
+    if (scheduledCount > MAX_SCHEDULED_COUNT) {
+      return {
+        ok: false,
+        error: `policy generates more than ${MAX_SCHEDULED_COUNT} schedule items`,
+      };
     }
 
+    parsedPhases.push({ startAgeDay: start, endAgeDay: end, intervalDays: interval });
     previousStartAgeDay = start;
     previousEndAgeDay = end;
   }
 
+  return { ok: true, policy: { phases: parsedPhases } };
+}
+
+function validateAndGeneratePolicy(
+  policy: unknown,
+): { days: GeneratedScheduleDay[]; maximumAgeDay: number } | string {
+  const parsed = parseLitterWeighingSchedulePolicy(policy);
+  if (!parsed.ok) return parsed.error;
+
+  const days: GeneratedScheduleDay[] = [];
+  parsed.policy.phases.forEach((phase, phaseIndex) => {
+    for (
+      let ageDay = phase.startAgeDay;
+      ageDay <= phase.endAgeDay;
+      ageDay += phase.intervalDays
+    ) {
+      days.push({ ageDay, phaseIndex, intervalDays: phase.intervalDays });
+    }
+  });
+
+  const previousEndAgeDay = parsed.policy.phases.at(-1)?.endAgeDay ?? -1;
   return { days, maximumAgeDay: previousEndAgeDay };
 }
 
