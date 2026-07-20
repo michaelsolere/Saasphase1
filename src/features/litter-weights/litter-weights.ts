@@ -17,6 +17,7 @@ export type {
   ListLitterAgeComparisonResult,
   ListLitterWeightHistoryInput,
   ListLitterWeightHistoryResult,
+  ListLitterWeightHistoryScheduleRequest,
   LitterWeightHistoryAnimal,
   LitterWeightHistoryMeasurement,
   LitterWeightHistorySession,

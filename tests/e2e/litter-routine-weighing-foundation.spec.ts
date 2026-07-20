@@ -6,6 +6,7 @@ import {
   recordLitterRoutineWeightsCore,
   type RecordLitterRoutineWeightsInput,
 } from "../../src/features/litter-weights/litter-weights-core";
+import { DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY } from "../../src/features/litter-weights/litter-weighing-schedule-model";
 import {
   openWhelpingSessionCore,
   recordWhelpingBirthCore,
@@ -614,6 +615,7 @@ test("records collective routine weights atomically, idempotently and without si
     const history = requireSuccess(
       await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
     );
+    expect(history.weighingSchedule).toBeNull();
     expect(history.role).toBe("owner");
     expect(history.animals.map((animal) => animal.birthOrder)).toEqual([1, 2, 3]);
     expect(history.animals.map((animal) => animal.id)).toEqual(created.journalAnimals);
@@ -659,11 +661,101 @@ test("records collective routine weights atomically, idempotently and without si
       expect(dates).toEqual([...dates].sort());
     }
 
+    const scheduleReadStateBefore = {
+      business: stableBusinessState(),
+      writes: writeCounts(ids.journalLitter),
+    };
+    const scheduledHistory = requireSuccess(
+      await listLitterWeightHistoryCore(
+        {
+          litterId: ids.journalLitter,
+          schedule: {
+            todayDate: "2026-07-20",
+            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+          },
+        },
+        owner,
+      ),
+    );
+    expect(scheduledHistory.weighingSchedule?.status).toBe("available");
+    if (scheduledHistory.weighingSchedule?.status !== "available") {
+      throw new Error("Expected an available weighing schedule");
+    }
+    const scheduledObservations = scheduledHistory.weighingSchedule.schedule.flatMap(
+      (item) => item.observations,
+    );
+    expect(scheduledHistory.weighingSchedule.schedule.find(({ ageDay }) => ageDay === 0))
+      .toMatchObject({
+        status: "completed",
+      });
+    expect(scheduledObservations.filter(({ source }) => source === "birth")).toHaveLength(1);
+    expect(scheduledObservations.filter(({ source }) => source === "routine")).toEqual([
+      { observationIndex: 1, observedOn: "2026-07-19", source: "routine" },
+      { observationIndex: 2, observedOn: "2026-07-19", source: "routine" },
+    ]);
+    expect(scheduledHistory.weighingSchedule.schedule.find(({ ageDay }) => ageDay === 0)?.observations)
+      .toHaveLength(3);
+    expect(JSON.stringify(scheduledHistory.weighingSchedule)).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
+
+    const customSchedule = requireSuccess(
+      await listLitterWeightHistoryCore(
+        {
+          litterId: ids.journalLitter,
+          schedule: {
+            todayDate: "2026-07-20",
+            policy: {
+              phases: [{ startAgeDay: 0, endAgeDay: 6, intervalDays: 2 }],
+            },
+          },
+        },
+        owner,
+      ),
+    ).weighingSchedule;
+    expect(customSchedule?.status).toBe("available");
+    if (customSchedule?.status === "available") {
+      expect(customSchedule.schedule.map(({ ageDay }) => ageDay)).toEqual([0, 2, 4, 6]);
+    }
+
+    for (const schedule of [
+      {
+        todayDate: "2026-02-30",
+        policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+      },
+      {
+        todayDate: "2026-07-20",
+        policy: { phases: [] },
+      },
+    ]) {
+      expect(
+        requireSuccess(
+          await listLitterWeightHistoryCore(
+            { litterId: ids.journalLitter, schedule },
+            owner,
+          ),
+        ).weighingSchedule,
+      ).toMatchObject({ status: "invalid_input", schedule: [] });
+    }
+    expect({
+      business: stableBusinessState(),
+      writes: writeCounts(ids.journalLitter),
+    }).toEqual(scheduleReadStateBefore);
+
     try {
       sql(`update public.animals set deleted_at = now()
         where id = ${q(created.journalAnimals[0]!)}::uuid;`);
       const historyAfterSoftDelete = requireSuccess(
-        await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
+        await listLitterWeightHistoryCore(
+          {
+            litterId: ids.journalLitter,
+            schedule: {
+              todayDate: "2026-07-20",
+              policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+            },
+          },
+          owner,
+        ),
       );
       expect(
         historyAfterSoftDelete.animals.some(
@@ -677,6 +769,9 @@ test("records collective routine weights atomically, idempotently and without si
       ).toBe(false);
       expect(historyAfterSoftDelete.latestSessionComparison).toEqual(
         history.latestSessionComparison,
+      );
+      expect(historyAfterSoftDelete.weighingSchedule).toEqual(
+        scheduledHistory.weighingSchedule,
       );
     } finally {
       sql(`update public.animals set deleted_at = null
@@ -722,6 +817,32 @@ test("records collective routine weights atomically, idempotently and without si
     }
 
     const viewerBefore = writeCounts(ids.adminLitter);
+    const viewerHistory = requireSuccess(
+      await listLitterWeightHistoryCore(
+        {
+          litterId: ids.journalLitter,
+          schedule: {
+            todayDate: "2026-07-20",
+            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+          },
+        },
+        viewerOrMember,
+      ),
+    );
+    expect(viewerHistory.role).toBe("viewer");
+    expect(viewerHistory.weighingSchedule).toEqual(scheduledHistory.weighingSchedule);
+    expect(
+      await listLitterWeightHistoryCore(
+        {
+          litterId: ids.foreignLitter,
+          schedule: {
+            todayDate: "2026-07-20",
+            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+          },
+        },
+        viewerOrMember,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
     expect(
       await recordLitterRoutineWeightsCore(
         routineIntent(ids.adminLitter, ids.viewerCommand, "2026-07-19T11:00:00Z", [
