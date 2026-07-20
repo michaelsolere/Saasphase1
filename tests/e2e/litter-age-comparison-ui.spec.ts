@@ -27,6 +27,7 @@ const ids = {
   catLitter: "9f200001-0000-4000-8000-000000000017",
   otherBreedLitter: "9f200001-0000-4000-8000-000000000018",
   foreignLitter: "9f200001-0000-4000-8000-000000000019",
+  emptyBreedLitter: "9f200001-0000-4000-8000-000000000020",
   alphaEligibleAnimal: "9f200001-0000-4000-8000-000000000021",
   alphaExcludedAnimal: "9f200001-0000-4000-8000-000000000022",
   bravoEligibleAnimal: "9f200001-0000-4000-8000-000000000023",
@@ -55,6 +56,7 @@ const litterIds = [
   ids.catLitter,
   ids.otherBreedLitter,
   ids.foreignLitter,
+  ids.emptyBreedLitter,
 ] as const;
 
 const animalIds = [
@@ -235,6 +237,9 @@ function createFixtures() {
       (${q(ids.otherBreedLitter)}::uuid, ${q(organizationId)}::uuid,
        ${q(`${fixtureNamePrefix} Labrador`)}, 'dog', 'Labrador Retriever', null,
        'born', '2026-07-05', null, '2026-07-10T02:00:00Z', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.emptyBreedLitter)}::uuid, ${q(organizationId)}::uuid,
+       ${q(`${fixtureNamePrefix} Race vide`)}, 'dog', '   ', null,
+       'born', '2026-07-05', null, '2026-07-10T01:30:00Z', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.foreignLitter)}::uuid, ${q(ids.foreignOrganization)}::uuid,
        ${q(`${fixtureNamePrefix} Autre organisation`)}, 'dog', 'Golden Retriever', null,
        'born', '2026-07-06', null, '2026-07-10T01:00:00Z', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
@@ -380,6 +385,8 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await expect(page.getByTestId("litter-comparison-result")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Comparer les portées" })).toBeDisabled();
     expect(comparisonPosts).toHaveLength(0);
+    await expect(card(page, "Race vide")).toHaveCount(0);
+    await expect(page.getByText(`${fixtureNamePrefix} Race vide`)).toHaveCount(0);
 
     await card(page, "Alpha").check();
     await expect(page.getByText("1 portée sélectionnée sur 5")).toBeVisible();

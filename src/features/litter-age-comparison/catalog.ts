@@ -68,7 +68,11 @@ export async function loadLitterComparisonCatalog(
     throw new Error("Unable to load the litter comparison catalog.");
   }
 
-  const rows = (result.data ?? []) as LitterCatalogRow[];
+  const rows = ((result.data ?? []) as LitterCatalogRow[]).filter(
+    (row) =>
+      normalizedTaxonomy(row.species) !== "" &&
+      normalizedTaxonomy(row.breed) !== "",
+  );
   const groupLabels = new Map<string, string>();
 
   const publicItems = rows.map((row, selectionIndex) => {
