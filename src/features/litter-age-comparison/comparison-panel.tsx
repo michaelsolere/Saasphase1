@@ -14,6 +14,7 @@ import {
   type LitterComparisonActionState,
   type LitterComparisonCatalogItem,
 } from "./types";
+import { LitterAgeComparisonChart } from "./litter-age-comparison-chart";
 
 type ComparisonAction = (
   state: LitterComparisonActionState,
@@ -65,6 +66,8 @@ function ComparisonResult({
           reprennent la comparaison calculée à partir des pesées enregistrées.
         </p>
       </div>
+
+      <LitterAgeComparisonChart series={result.series} />
 
       <div className="grid gap-5 xl:grid-cols-2">
         {result.series.map((series) => (

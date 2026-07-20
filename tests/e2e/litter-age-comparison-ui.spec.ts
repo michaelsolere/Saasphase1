@@ -370,7 +370,11 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await login(page);
 
     const comparisonPosts: string[] = [];
+    const comparisonRequestUrls: string[] = [];
     page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/litters/journal/comparison") {
+        comparisonRequestUrls.push(request.url());
+      }
       if (
         request.method() === "POST" &&
         new URL(request.url()).pathname === "/litters/journal/comparison"
@@ -383,6 +387,7 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await expect(page.getByRole("heading", { name: "Comparer des portées" })).toBeVisible();
     await expect(page.getByText("0 portée sélectionnée sur 5")).toBeVisible();
     await expect(page.getByTestId("litter-comparison-result")).toHaveCount(0);
+    await expect(page.getByTestId("litter-age-comparison-chart")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Comparer les portées" })).toBeDisabled();
     expect(comparisonPosts).toHaveLength(0);
     await expect(card(page, "Race vide")).toHaveCount(0);
@@ -415,6 +420,45 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await expect(page.getByTestId("litter-comparison-result")).toBeVisible();
     expect(comparisonPosts).toHaveLength(1);
 
+    const chart = page.getByTestId("litter-age-comparison-chart");
+    const chartSvg = page.getByTestId("litter-age-comparison-chart-svg");
+    const weightButton = chart.getByRole("button", { name: "Poids moyen" });
+    const relativeButton = chart.getByRole("button", { name: "Indice base 100" });
+    await expect(chart).toBeVisible();
+    await expect(weightButton).toHaveAttribute("aria-pressed", "true");
+    await expect(relativeButton).toHaveAttribute("aria-pressed", "false");
+    await expect(chartSvg).toHaveAttribute("data-chart-mode", "weight");
+    await expect(chartSvg.locator("[data-comparison-series]")).toHaveCount(2);
+    await expect(chartSvg.locator('[data-comparison-marker="true"]')).toHaveCount(4);
+    await expect(
+      chartSvg.locator('[data-comparison-marker="true"] title'),
+    ).toHaveText([
+      new RegExp(`${fixtureNamePrefix} Alpha · J0 · Poids moyen 400 g · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Alpha · J1 · Poids moyen 600 g · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Bravo · J0 · Poids moyen 500 g · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Bravo · J1 · Poids moyen 750 g · Couverture 1 / 1`),
+    ]);
+    await expect(chart.getByLabel("Légende des portées comparées")).toContainText(
+      `${fixtureNamePrefix} Alpha`,
+    );
+    await expect(chart.getByLabel("Légende des portées comparées")).toContainText(
+      `${fixtureNamePrefix} Bravo`,
+    );
+
+    await relativeButton.click();
+    await expect(weightButton).toHaveAttribute("aria-pressed", "false");
+    await expect(relativeButton).toHaveAttribute("aria-pressed", "true");
+    await expect(chartSvg).toHaveAttribute("data-chart-mode", "relative");
+    await expect(chartSvg.locator("[data-comparison-series]")).toHaveCount(2);
+    await expect(chartSvg.locator('[data-comparison-marker="true"]')).toHaveCount(4);
+    await expect(chartSvg.locator('[data-comparison-marker="true"] title')).toHaveText([
+      new RegExp(`${fixtureNamePrefix} Alpha · J0 · Indice moyen 100 · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Alpha · J1 · Indice moyen 150 · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Bravo · J0 · Indice moyen 100 · Couverture 1 / 1`),
+      new RegExp(`${fixtureNamePrefix} Bravo · J1 · Indice moyen 150 · Couverture 1 / 1`),
+    ]);
+    await expect(page.getByTestId("litter-age-comparison-reference-100")).toBeVisible();
+
     const alpha = resultCard(page, "Alpha");
     await expect(alpha).toContainText("Animaux totaux");
     await expect(alpha).toContainText("Éligibles");
@@ -434,13 +478,21 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await expect(bravo.locator("dd")).toHaveText(["1", "1", "0", "2"]);
     await expect(bravo).toContainText("750 g");
 
-    await card(page, "Bravo").uncheck();
     await card(page, "Sans éligible").check();
+    await expect(page.getByText("3 portées sélectionnées sur 5")).toBeVisible();
     await page.getByRole("button", { name: "Comparer les portées" }).click();
     const noEligible = resultCard(page, "Sans éligible");
     await expect(noEligible).toContainText("Aucun animal éligible");
     await expect(noEligible.locator("dd")).toHaveText(["1", "0", "1", "0"]);
     await expect(noEligible).toContainText("Aucune journée observée n’est disponible");
+    await expect(chartSvg.locator("[data-comparison-series]")).toHaveCount(2);
+    await expect(chartSvg.locator('[data-comparison-marker="true"]')).toHaveCount(4);
+    await expect(page.getByTestId("litter-age-comparison-unplotted-message")).toHaveText(
+      "1 portée sans point observé n’est pas tracée.",
+    );
+    await expect(chart.getByLabel("Légende des portées comparées")).toContainText(
+      `${fixtureNamePrefix} Sans éligible (non tracée)`,
+    );
 
     expect(page.url()).toBe("http://127.0.0.1:3100/litters/journal/comparison");
     const html = await page.content();
@@ -464,6 +516,11 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
         /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
       );
     }
+    for (const requestUrl of comparisonRequestUrls) {
+      expect(requestUrl).not.toMatch(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+      );
+    }
     expect(readOnlyCounts()).toEqual(initialReadOnlyCounts);
 
     setOwnerRole("viewer");
@@ -473,11 +530,21 @@ test("comparaison descriptive inter-portées sans identifiants publics", async (
     await page.getByRole("button", { name: "Comparer les portées" }).click();
     await expect(resultCard(page, "Alpha")).toContainText("600 g");
     await expect(resultCard(page, "Bravo")).toContainText("750 g");
+    await expect(page.getByTestId("litter-age-comparison-chart-svg")).toBeVisible();
+    await expect(
+      page
+        .getByTestId("litter-age-comparison-chart-svg")
+        .locator("[data-comparison-series]"),
+    ).toHaveCount(2);
     expect(readOnlyCounts()).toEqual(initialReadOnlyCounts);
 
     await page.setViewportSize({ width: 375, height: 760 });
     await page.reload();
     await expect(page.getByRole("heading", { name: "Comparer des portées" })).toBeVisible();
+    await card(page, "Alpha").check();
+    await card(page, "Bravo").check();
+    await page.getByRole("button", { name: "Comparer les portées" }).click();
+    await expect(page.getByTestId("litter-age-comparison-chart-svg")).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
