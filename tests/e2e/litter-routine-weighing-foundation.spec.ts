@@ -6,7 +6,6 @@ import {
   recordLitterRoutineWeightsCore,
   type RecordLitterRoutineWeightsInput,
 } from "../../src/features/litter-weights/litter-weights-core";
-import { DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY } from "../../src/features/litter-weights/litter-weighing-schedule-model";
 import {
   openWhelpingSessionCore,
   recordWhelpingBirthCore,
@@ -616,6 +615,7 @@ test("records collective routine weights atomically, idempotently and without si
       await listLitterWeightHistoryCore({ litterId: ids.journalLitter }, owner),
     );
     expect(history.weighingSchedule).toBeNull();
+    expect(history.weighingSchedulePolicy).toBeNull();
     expect(history.role).toBe("owner");
     expect(history.animals.map((animal) => animal.birthOrder)).toEqual([1, 2, 3]);
     expect(history.animals.map((animal) => animal.id)).toEqual(created.journalAnimals);
@@ -671,13 +671,15 @@ test("records collective routine weights atomically, idempotently and without si
           litterId: ids.journalLitter,
           schedule: {
             todayDate: "2026-07-20",
-            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
           },
         },
         owner,
       ),
     );
     expect(scheduledHistory.weighingSchedule?.status).toBe("available");
+    expect(scheduledHistory.weighingSchedulePolicy).toMatchObject({
+      source: "litter_snapshot",
+    });
     if (scheduledHistory.weighingSchedule?.status !== "available") {
       throw new Error("Expected an available weighing schedule");
     }
@@ -699,44 +701,17 @@ test("records collective routine weights atomically, idempotently and without si
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
 
-    const customSchedule = requireSuccess(
-      await listLitterWeightHistoryCore(
-        {
-          litterId: ids.journalLitter,
-          schedule: {
-            todayDate: "2026-07-20",
-            policy: {
-              phases: [{ startAgeDay: 0, endAgeDay: 6, intervalDays: 2 }],
-            },
+    expect(
+      requireSuccess(
+        await listLitterWeightHistoryCore(
+          {
+            litterId: ids.journalLitter,
+            schedule: { todayDate: "2026-02-30" },
           },
-        },
-        owner,
-      ),
-    ).weighingSchedule;
-    expect(customSchedule?.status).toBe("available");
-    if (customSchedule?.status === "available") {
-      expect(customSchedule.schedule.map(({ ageDay }) => ageDay)).toEqual([0, 2, 4, 6]);
-    }
-
-    for (const schedule of [
-      {
-        todayDate: "2026-02-30",
-        policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
-      },
-      {
-        todayDate: "2026-07-20",
-        policy: { phases: [] },
-      },
-    ]) {
-      expect(
-        requireSuccess(
-          await listLitterWeightHistoryCore(
-            { litterId: ids.journalLitter, schedule },
-            owner,
-          ),
-        ).weighingSchedule,
-      ).toMatchObject({ status: "invalid_input", schedule: [] });
-    }
+          owner,
+        ),
+      ).weighingSchedule,
+    ).toMatchObject({ status: "invalid_input", schedule: [] });
     expect({
       business: stableBusinessState(),
       writes: writeCounts(ids.journalLitter),
@@ -751,7 +726,6 @@ test("records collective routine weights atomically, idempotently and without si
             litterId: ids.journalLitter,
             schedule: {
               todayDate: "2026-07-20",
-              policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
             },
           },
           owner,
@@ -823,7 +797,6 @@ test("records collective routine weights atomically, idempotently and without si
           litterId: ids.journalLitter,
           schedule: {
             todayDate: "2026-07-20",
-            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
           },
         },
         viewerOrMember,
@@ -837,7 +810,6 @@ test("records collective routine weights atomically, idempotently and without si
           litterId: ids.foreignLitter,
           schedule: {
             todayDate: "2026-07-20",
-            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
           },
         },
         viewerOrMember,

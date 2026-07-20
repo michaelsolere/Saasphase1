@@ -51,6 +51,77 @@ function validatedPersistentPolicy(
   return parsed.ok ? parsed.policy : null;
 }
 
+export type ResolveAuthorizedLitterWeighingSchedulePolicyInput = {
+  organizationId: string;
+  actualBirthDate: string | null;
+  litterWeighingSchedulePolicySnapshot: unknown;
+};
+
+export async function resolveAuthorizedLitterWeighingSchedulePolicyCore(
+  input: ResolveAuthorizedLitterWeighingSchedulePolicyInput,
+  supabase: Supabase,
+): Promise<ResolveLitterWeighingSchedulePolicyResult> {
+  if (input.actualBirthDate !== null) {
+    const snapshot = validatedPersistentPolicy(
+      input.litterWeighingSchedulePolicySnapshot,
+    );
+    if (!snapshot) {
+      return failure(
+        "inconsistent_data",
+        "Le snapshot de politique de pesée de la portée est invalide.",
+      );
+    }
+    return { outcome: "success", policy: snapshot, source: "litter_snapshot" };
+  }
+
+  const { data: settings, error: settingsError } = await supabase
+    .from("organization_settings")
+    .select("litter_weighing_schedule_policy")
+    .eq("organization_id", input.organizationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (settingsError) {
+    return failure(
+      "database_error",
+      "Une erreur technique empêche la lecture des paramètres de l’organisation.",
+    );
+  }
+
+  if (settings && settings.litter_weighing_schedule_policy !== null) {
+    const organizationPolicy = validatedPersistentPolicy(
+      settings.litter_weighing_schedule_policy,
+    );
+    if (!organizationPolicy) {
+      return failure(
+        "inconsistent_data",
+        "La politique de pesée de l’organisation est invalide.",
+      );
+    }
+    return {
+      outcome: "success",
+      policy: organizationPolicy,
+      source: "organization",
+    };
+  }
+
+  const recommended = parseLitterWeighingSchedulePolicy(
+    DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+  );
+  if (!recommended.ok) {
+    return failure(
+      "inconsistent_data",
+      "La politique de pesée recommandée est invalide.",
+    );
+  }
+
+  return {
+    outcome: "success",
+    policy: recommended.policy,
+    source: "recommended",
+  };
+}
+
 export async function resolveLitterWeighingSchedulePolicyForLitterCore(
   input: { litterId: string },
   supabase: Supabase,
@@ -106,63 +177,13 @@ export async function resolveLitterWeighingSchedulePolicyForLitterCore(
     return failure("not_found", "La portée demandée est introuvable.");
   }
 
-  if (litter.actual_birth_date !== null) {
-    const snapshot = validatedPersistentPolicy(
-      litter.litter_weighing_schedule_policy_snapshot,
-    );
-    if (!snapshot) {
-      return failure(
-        "inconsistent_data",
-        "Le snapshot de politique de pesée de la portée est invalide.",
-      );
-    }
-    return { outcome: "success", policy: snapshot, source: "litter_snapshot" };
-  }
-
-  const { data: settings, error: settingsError } = await supabase
-    .from("organization_settings")
-    .select("litter_weighing_schedule_policy")
-    .eq("organization_id", litter.organization_id)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (settingsError) {
-    return failure(
-      "database_error",
-      "Une erreur technique empêche la lecture des paramètres de l’organisation.",
-    );
-  }
-
-  if (settings && settings.litter_weighing_schedule_policy !== null) {
-    const organizationPolicy = validatedPersistentPolicy(
-      settings.litter_weighing_schedule_policy,
-    );
-    if (!organizationPolicy) {
-      return failure(
-        "inconsistent_data",
-        "La politique de pesée de l’organisation est invalide.",
-      );
-    }
-    return {
-      outcome: "success",
-      policy: organizationPolicy,
-      source: "organization",
-    };
-  }
-
-  const recommended = parseLitterWeighingSchedulePolicy(
-    DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+  return resolveAuthorizedLitterWeighingSchedulePolicyCore(
+    {
+      organizationId: litter.organization_id,
+      actualBirthDate: litter.actual_birth_date,
+      litterWeighingSchedulePolicySnapshot:
+        litter.litter_weighing_schedule_policy_snapshot,
+    },
+    supabase,
   );
-  if (!recommended.ok) {
-    return failure(
-      "inconsistent_data",
-      "La politique de pesée recommandée est invalide.",
-    );
-  }
-
-  return {
-    outcome: "success",
-    policy: recommended.policy,
-    source: "recommended",
-  };
 }

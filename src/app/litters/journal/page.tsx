@@ -36,7 +36,6 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
 import { recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
-import { DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY } from "@/features/litter-weights/litter-weighing-schedule-model";
 
 export const dynamic = "force-dynamic";
 
@@ -111,7 +110,6 @@ export default async function LitterJournalPage({
           litterId,
           schedule: {
             todayDate: litterJournalTodayDate,
-            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
           },
         }),
       ]);
@@ -410,6 +408,9 @@ export default async function LitterJournalPage({
             }
             litterWeightSchedule={
               litterWeightHistoryLoaded?.weighingSchedule ?? null
+            }
+            litterWeightSchedulePolicy={
+              litterWeightHistoryLoaded?.weighingSchedulePolicy ?? null
             }
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}

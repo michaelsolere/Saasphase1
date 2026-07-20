@@ -1,13 +1,25 @@
 /** @jsxImportSource react */
 
 import type {
+  LitterWeighingSchedulePolicy,
   LitterWeighingScheduleItem,
   LitterWeighingScheduleResult,
   LitterWeighingScheduleStatus,
 } from "./litter-weighing-schedule-model";
+import type { LitterWeighingSchedulePolicyMetadata } from "./litter-weights-core";
 
 type Props = {
   schedule: LitterWeighingScheduleResult | null;
+  policy: LitterWeighingSchedulePolicyMetadata | null;
+};
+
+const POLICY_SOURCE_LABELS: Record<
+  LitterWeighingSchedulePolicyMetadata["source"],
+  string
+> = {
+  litter_snapshot: "Cadence figée pour cette portée",
+  organization: "Cadence personnalisée de l’organisation",
+  recommended: "Cadence recommandée du logiciel",
 };
 
 const CIVIL_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -60,28 +72,77 @@ function findLastCompleted(items: readonly LitterWeighingScheduleItem[]) {
   return undefined;
 }
 
-function UnavailableSchedule({ message }: { message: string }) {
+export function formatLitterWeighingSchedulePhaseFr(
+  phase: LitterWeighingSchedulePolicy["phases"][number],
+) {
+  if (phase.startAgeDay === phase.endAgeDay) {
+    return `J${phase.startAgeDay} uniquement`;
+  }
+
+  const ageRange = `J${phase.startAgeDay} à J${phase.endAgeDay}`;
+  const interval =
+    phase.intervalDays === 1
+      ? "tous les jours"
+      : `tous les ${phase.intervalDays} jours`;
+  return `${ageRange} : ${interval}`;
+}
+
+function PolicyDescription({
+  policy,
+}: {
+  policy: LitterWeighingSchedulePolicyMetadata;
+}) {
+  return (
+    <div className="mt-2 text-sm leading-6 text-muted">
+      <p className="font-medium text-foreground">
+        {POLICY_SOURCE_LABELS[policy.source]}
+      </p>
+      <ul className="mt-1 list-disc pl-5">
+        {policy.phases.map((phase, index) => (
+          <li key={`${phase.startAgeDay}-${phase.endAgeDay}-${index}`}>
+            {formatLitterWeighingSchedulePhaseFr(phase)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function UnavailableSchedule({
+  message,
+  policy,
+}: {
+  message: string;
+  policy: LitterWeighingSchedulePolicyMetadata | null;
+}) {
   return (
     <section
       data-testid="litter-weighing-schedule-summary"
       className="mt-4 rounded-xl border bg-secondary/50 p-4"
     >
       <h3 className="font-semibold">Planning des pesées</h3>
+      {policy ? <PolicyDescription policy={policy} /> : null}
       <p className="mt-2 text-sm text-muted">{message}</p>
     </section>
   );
 }
 
-export function LitterWeighingScheduleSummary({ schedule }: Props) {
+export function LitterWeighingScheduleSummary({ schedule, policy }: Props) {
   if (schedule === null || schedule.status === "invalid_input") {
     return (
-      <UnavailableSchedule message="Le planning des pesées ne peut pas être affiché pour le moment." />
+      <UnavailableSchedule
+        message="Le planning des pesées ne peut pas être affiché pour le moment."
+        policy={policy}
+      />
     );
   }
 
   if (schedule.status === "missing_actual_birth_date") {
     return (
-      <UnavailableSchedule message="Renseignez la date réelle de naissance de la portée pour calculer le planning des pesées." />
+      <UnavailableSchedule
+        message="Renseignez la date réelle de naissance de la portée pour calculer le planning des pesées."
+        policy={policy}
+      />
     );
   }
 
@@ -118,10 +179,7 @@ export function LitterWeighingScheduleSummary({ schedule }: Props) {
       className="mt-4 min-w-0 rounded-xl border bg-secondary/50 p-4"
     >
       <h3 className="font-semibold">Planning des pesées</h3>
-      <p className="mt-2 text-sm leading-6 text-muted">
-        Rythme recommandé actuellement appliqué : chaque jour de J0 à J30, puis
-        tous les 3 jours de J31 à J60.
-      </p>
+      {policy ? <PolicyDescription policy={policy} /> : null}
       <p className="mt-1 text-xs leading-5 text-muted">
         Planning descriptif, sans création automatique ni interprétation médicale.
       </p>

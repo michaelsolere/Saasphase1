@@ -22,6 +22,7 @@ export type {
   LitterWeightHistoryMeasurement,
   LitterWeightHistorySession,
   LitterWeightOrganizationRole,
+  LitterWeighingSchedulePolicyMetadata,
   LitterWeightServiceError,
   LitterWeightServiceErrorCode,
   RecordLitterRoutineWeightItemInput,

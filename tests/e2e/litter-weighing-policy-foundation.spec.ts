@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { resolveLitterWeighingSchedulePolicyForLitterCore } from "../../src/features/litter-weights/litter-weighing-policy-core";
+import { listLitterWeightHistoryCore } from "../../src/features/litter-weights/litter-weights-core";
 import {
   DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
   parseLitterWeighingSchedulePolicy,
@@ -109,6 +110,11 @@ function cleanup() {
   sql(`
     alter table public.litters enable trigger litters_freeze_weighing_schedule_policy;
 
+    update public.organization_settings
+    set litter_weighing_schedule_policy = null,
+        deleted_at = null
+    where organization_id = ${q(organizationA)}::uuid;
+
     do $$
     begin
       if not exists (
@@ -122,6 +128,21 @@ function cleanup() {
             litter_weighing_schedule_policy_snapshot is null
             or public.is_valid_litter_weighing_schedule_policy(
               litter_weighing_schedule_policy_snapshot
+            )
+          );
+      end if;
+
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'organization_settings_litter_weighing_schedule_policy_check'
+          and conrelid = 'public.organization_settings'::regclass
+      ) then
+        alter table public.organization_settings
+          add constraint organization_settings_litter_weighing_schedule_policy_check
+          check (
+            litter_weighing_schedule_policy is null
+            or public.is_valid_litter_weighing_schedule_policy(
+              litter_weighing_schedule_policy
             )
           );
       end if;
@@ -396,6 +417,14 @@ function requirePolicySuccess(
   return result;
 }
 
+function requireHistorySuccess(
+  result: Awaited<ReturnType<typeof listLitterWeightHistoryCore>>,
+) {
+  expect(result.outcome).toBe("success");
+  if (result.outcome !== "success") throw new Error("Expected history success");
+  return result;
+}
+
 function snapshot(litterId: string) {
   return JSON.parse(
     sql(`
@@ -484,6 +513,44 @@ test("persists, freezes and securely resolves organization weighing policies", a
       policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
       source: "recommended",
     });
+    const historyWithoutSchedule = requireHistorySuccess(
+      await listLitterWeightHistoryCore({ litterId: ids.unbornA }, owner),
+    );
+    expect(historyWithoutSchedule.weighingSchedule).toBeNull();
+    expect(historyWithoutSchedule.weighingSchedulePolicy).toBeNull();
+
+    const recommendedHistory = requireHistorySuccess(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    );
+    expect(recommendedHistory.weighingSchedule).toMatchObject({
+      status: "missing_actual_birth_date",
+    });
+    expect(recommendedHistory.weighingSchedulePolicy).toEqual({
+      source: "recommended",
+      phases: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY.phases,
+    });
+    expect(JSON.stringify(recommendedHistory.weighingSchedulePolicy)).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
+    );
+
+    sql(`update public.organization_settings set deleted_at = now()
+      where organization_id = ${q(organizationA)}::uuid;`);
+    expect(
+      requireHistorySuccess(
+        await listLitterWeightHistoryCore(
+          { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+          owner,
+        ),
+      ).weighingSchedulePolicy,
+    ).toEqual({
+      source: "recommended",
+      phases: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY.phases,
+    });
+    sql(`update public.organization_settings set deleted_at = null
+      where organization_id = ${q(organizationA)}::uuid;`);
 
     const initialUnborn = snapshot(ids.unbornA);
     expect(initialUnborn).toEqual({
@@ -522,6 +589,19 @@ test("persists, freezes and securely resolves organization weighing policies", a
       unborn_source: null,
       unborn_frozen: null,
     });
+    const historicalHistory = requireHistorySuccess(
+      await listLitterWeightHistoryCore(
+        {
+          litterId: "c0000000-0000-4000-8000-000000000001",
+          schedule: { todayDate: "2026-07-20" },
+        },
+        owner,
+      ),
+    );
+    expect(historicalHistory.weighingSchedulePolicy).toEqual({
+      source: "litter_snapshot",
+      phases: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY.phases,
+    });
 
     const customWrite = await owner
       .from("organization_settings")
@@ -537,6 +617,19 @@ test("persists, freezes and securely resolves organization weighing policies", a
         ),
       ),
     ).toEqual({ outcome: "success", policy: policyA1, source: "organization" });
+    const unbornOrganizationHistory = requireHistorySuccess(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    );
+    expect(unbornOrganizationHistory.weighingSchedule).toMatchObject({
+      status: "missing_actual_birth_date",
+    });
+    expect(unbornOrganizationHistory.weighingSchedulePolicy).toEqual({
+      source: "organization",
+      phases: policyA1.phases,
+    });
 
     expect(snapshot(ids.bornB)).toMatchObject({ policy: policyB, source: "organization" });
     expect(snapshot(ids.bornB).policy).not.toEqual(policyA1);
@@ -548,6 +641,16 @@ test("persists, freezes and securely resolves organization weighing policies", a
     expect(customFreeze.error).toBeNull();
     const frozenCustom = snapshot(ids.customA);
     expect(frozenCustom).toMatchObject({ policy: policyA1, source: "organization" });
+    const frozenCustomHistory = requireHistorySuccess(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.customA, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    );
+    expect(frozenCustomHistory.weighingSchedulePolicy).toEqual({
+      source: "litter_snapshot",
+      phases: policyA1.phases,
+    });
 
     const clearOrganizationPolicy = await owner
       .from("organization_settings")
@@ -596,6 +699,14 @@ test("persists, freezes and securely resolves organization weighing policies", a
       .eq("organization_id", organizationA);
     expect(snapshot(ids.customA)).toEqual(frozenCustom);
     expect(snapshot(ids.journalA)).toEqual(journalSnapshot);
+    expect(
+      requireHistorySuccess(
+        await listLitterWeightHistoryCore(
+          { litterId: ids.customA, schedule: { todayDate: "2026-07-20" } },
+          owner,
+        ),
+      ).weighingSchedulePolicy,
+    ).toEqual({ source: "litter_snapshot", phases: policyA1.phases });
 
     for (const date of ["2026-07-10", "2026-07-12"]) {
       const correction = await owner
@@ -694,6 +805,14 @@ test("persists, freezes and securely resolves organization weighing policies", a
       ),
     );
     expect(viewerRead.source).toBe("organization");
+    const viewerHistory = requireHistorySuccess(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+        viewer,
+      ),
+    );
+    expect(viewerHistory.role).toBe("viewer");
+    expect(viewerHistory.weighingSchedulePolicy?.source).toBe("organization");
     expect(JSON.stringify(viewerRead)).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i,
     );
@@ -728,6 +847,12 @@ test("persists, freezes and securely resolves organization weighing policies", a
         owner,
       ),
     ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    expect(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornB, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
 
     sql(`update public.memberships set status = 'disabled'
       where id = ${q(ids.membership)}::uuid;`);
@@ -737,6 +862,40 @@ test("persists, freezes and securely resolves organization weighing policies", a
         viewer,
       ),
     ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    expect(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+        viewer,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+
+    sql(`
+      alter table public.organization_settings
+        drop constraint organization_settings_litter_weighing_schedule_policy_check;
+      update public.organization_settings
+      set litter_weighing_schedule_policy = '{"phases":[]}'::jsonb,
+          deleted_at = null
+      where organization_id = ${q(organizationA)}::uuid;
+    `);
+    expect(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.unbornA, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "database_error" } });
+    sql(`
+      update public.organization_settings
+      set litter_weighing_schedule_policy = null
+      where organization_id = ${q(organizationA)}::uuid;
+      alter table public.organization_settings
+        add constraint organization_settings_litter_weighing_schedule_policy_check
+        check (
+          litter_weighing_schedule_policy is null
+          or public.is_valid_litter_weighing_schedule_policy(
+            litter_weighing_schedule_policy
+          )
+        );
+    `);
 
     sql(`
       alter table public.litters disable trigger litters_freeze_weighing_schedule_policy;
@@ -753,6 +912,12 @@ test("persists, freezes and securely resolves organization weighing policies", a
         owner,
       ),
     ).toMatchObject({ outcome: "error", error: { code: "inconsistent_data" } });
+    expect(
+      await listLitterWeightHistoryCore(
+        { litterId: ids.directBornA, schedule: { todayDate: "2026-07-20" } },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "database_error" } });
 
     sql(`
       alter table public.litters disable trigger litters_freeze_weighing_schedule_policy;

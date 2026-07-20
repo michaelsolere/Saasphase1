@@ -486,9 +486,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(scheduleSummary).toContainText("À faire aujourd’hui");
     await expect(scheduleSummary).toContainText("En retard");
     await expect(scheduleSummary).toContainText("À venir");
-    await expect(scheduleSummary).toContainText(
-      "Rythme recommandé actuellement appliqué : chaque jour de J0 à J30, puis tous les 3 jours de J31 à J60.",
-    );
+    await expect(scheduleSummary).toContainText("Cadence figée pour cette portée");
+    await expect(scheduleSummary).toContainText("J0 à J30 : tous les jours");
+    await expect(scheduleSummary).toContainText("J31 à J60 : tous les 3 jours");
     await expect(scheduleSummary.locator("button, form, input, textarea")).toHaveCount(0);
     expect(await scheduleSummary.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
@@ -728,6 +728,8 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(scheduleSummary).toContainText("À faire aujourd’hui");
     await expect(scheduleSummary).toContainText("En retard");
     await expect(scheduleSummary).toContainText("À venir");
+    await expect(scheduleSummary).toContainText("Cadence figée pour cette portée");
+    await expect(scheduleSummary).toContainText("J0 à J30 : tous les jours");
     await expect(scheduleSummary.locator("button, form, input, textarea")).toHaveCount(0);
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
     await expect(panel.getByTestId("latest-litter-weight-session-summary")).toContainText(
@@ -773,6 +775,8 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     panel = weightPanel(page);
     scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
     await expect(scheduleSummary).toBeVisible();
+    await expect(scheduleSummary).toContainText("Cadence figée pour cette portée");
+    await expect(scheduleSummary).toContainText("J31 à J60 : tous les 3 jours");
     await expect(panel.getByTestId("latest-litter-weight-session-summary")).toBeVisible();
     await expect(
       panel.getByTestId("latest-litter-weight-session-comparison"),
