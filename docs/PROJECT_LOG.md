@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #339. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #344. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `9b00f63bf76012de7a596816b84a3eec37407f12`.
-- Dernière PR incluse : **PR #339 — comparaison des deux dernières séances de pesée**.
-- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #336 à #339 n’ajoutent aucune migration.
+- SHA de `main` documenté : `d9ee29aa89539bea35df82a8bc90546f599e9d05`.
+- Dernière PR incluse : **PR #344 — Ajouter la comparaison descriptive inter-portées**.
+- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #341 à #344 n’ajoutent aucune migration, RPC, RLS, table, vue ou policy.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -149,6 +149,15 @@ Avec moins de deux séances non vides ou sans animal commun, la comparaison rest
 
 `animal_weight_measurements` demeure la source de vérité. Les mesures réelles `birth` et `routine` sont append-only ; `animals.birth_weight_grams` reste une projection ou un repère déclaré séparé et n’est jamais utilisé comme fallback pour la progression relative. Sans mesure réelle `birth`, l’animal est exclu de la courbe relative avec un état neutre. Ces capacités sont accessibles en lecture seule à `viewer` et ne produisent ni classement, seuil, pourcentage d’évolution entre séances, alerte, diagnostic ou interprétation vétérinaire.
 
+###### Comparaison inter-portées par âge réel
+
+La comparaison inter-portées repose sur les mesures réellement observées et conserve les invariants suivants :
+
+- **PR #341 — normalisation depuis la naissance réelle** : le moteur pur `buildAnimalWeightRelativeSeries` exige exactement une mesure réelle `birth`, valide et strictement positive, sans fallback vers `animals.birth_weight_grams`. Le temps écoulé part du timestamp réel de naissance ; l’indice vaut `poids / poids naissance × 100` et la naissance vaut exactement 100. Les mesures antérieures sont exclues. Le tri est déterministe, sans mutation des entrées ni dépendance à l’heure courante.
+- **PR #342 — modèle par âge réel** : `ageDay = floor(elapsedMilliseconds / 86_400_000)` définit des périodes réelles de 24 heures propres à chaque animal. Un animal contribue au maximum une fois par jour, avec sa dernière mesure réelle du jour. Aucun jour artificiel n’est créé et aucune interpolation, extrapolation ou reprise du dernier poids n’est appliquée. Le poids moyen et l’indice relatif moyen utilisent le même groupe réellement observé ; la couverture distingue explicitement les effectifs total, éligible, exclu et observé.
+- **PR #343 — lecture serveur sécurisée** : la sélection porte sur 2 à 5 portées et l’autorisation globale produit un résultat tout ou rien. Une même organisation, espèce et race est exigée, avec race comparée après `trim()` sans tenir compte de la casse, et une adhésion active est vérifiée. Seuls les animaux `ownership_status = produced` sont lus ; les mort-nés sont exclus, tandis que les animaux produits soft-delete restent dans l’historique. Les animaux sans naissance réelle sont comptés mais exclus du modèle. La lecture est limitée à 150 animaux, paginée par pages de 500 et bornée à 25 000 mesures avec détection du dépassement ; la cohérence entre animal, séance et portée est contrôlée. Le DTO public ne contient aucun UUID ni identifiant technique.
+- **PR #344 — interface descriptive** : la route dédiée `/litters/journal/comparison`, reliée depuis le Journal, charge seulement un catalogue serveur léger ; les taxonomies vides sont exclues avant indexation. La sélection, vide initialement, accepte 2 à 5 portées compatibles et exige une soumission explicite avant tout chargement des poids. Le snapshot privé `index → UUID` est capturé dans la Server Action ; aucun UUID n’apparaît dans le DOM, l’URL, les champs HTML ou l’état React. La synthèse responsive présente les effectifs total, éligible et exclu, les journées réellement observées, la couverture par point, le poids moyen, l’indice relatif moyen base 100 et la progression relative moyenne. Le rôle `viewer` y accède en lecture seule.
+
 ##### Protections
 
 - un ordre de naissance actif est unique dans une portée, et la migration échoue explicitement si son audit détecte des doublons préexistants ;
@@ -163,9 +172,9 @@ Avec moins de deux séances non vides ou sans animal commun, la comparaison rest
 - aucune correction ou suppression d’une mesure n’est disponible ;
 - aucune mesure clinique n’est disponible ;
 - aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
-- aucune comparaison inter-portées n’est disponible ;
-- aucune courbe de référence de race n’est disponible ;
-- aucune alerte ou interprétation vétérinaire n’est disponible ;
+- la comparaison inter-portées est actuellement descriptive ;
+- aucun graphique comparatif inter-portées ni aucune courbe de référence de race n’est encore disponible ;
+- aucune interpolation, alerte, seuil ou interprétation vétérinaire n’est disponible ;
 - aucune saisie vocale n’est disponible ;
 - aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
 - aucune PWA ou application mobile indépendante n’existe ;
@@ -173,7 +182,7 @@ Avec moins de deux séances non vides ou sans animal commun, la comparaison rest
 
 L’interface actuelle est responsive et utilisable sur mobile dans le navigateur, mais elle n’est ni une PWA ni une application mobile indépendante.
 
-##### Synthèse fonctionnelle des PR de mise-bas
+##### Synthèse fonctionnelle des PR du Journal
 
 - **#322** : sessions et événements de mise-bas ;
 - **#324** : naissance atomique, animal et poids de naissance ;
@@ -188,9 +197,15 @@ L’interface actuelle est responsive et utilisable sur mobile dans le navigateu
 - **#336** : repères descriptifs de progression par animal ;
 - **#337** : progression relative et courbes en base 100 ;
 - **#338** : statistiques stables par séance ;
-- **#339** : comparaison des deux dernières séances sur leur groupe commun.
+- **#339** : comparaison des deux dernières séances sur leur groupe commun ;
+- **#341** : moteur de normalisation depuis la naissance réelle ;
+- **#342** : modèle de comparaison par âge réel ;
+- **#343** : lecture serveur sécurisée multi-portées ;
+- **#344** : sélection et synthèse descriptive inter-portées.
 
 Les PR #323, #325, #329 et #335 ont actualisé le présent journal sans ajouter de capacité métier ; la PR #335 a consolidé la documentation après la PR #334.
+
+La **PR #340** était la précédente consolidation documentaire.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -416,7 +431,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- l’historique et les comparaisons inter-portées ;
+- un graphique comparatif inter-portées fondé sur le modèle et le DTO existants ;
 - la planification des pesées et des autres suivis récurrents spécialisés ;
 - la correction ou la suppression encadrée d’une mesure ;
 - la correction ou l’annulation encadrée d’une naissance ;
@@ -425,6 +440,8 @@ Restent notamment à concevoir ou implémenter, sans ordre technique définitive
 - une éventuelle PWA ou application mobile indépendante.
 
 Cette liste reste prudente et ne constitue pas un ordre de réalisation définitivement validé. L’architecture et la priorité de ces évolutions devront être confirmées avant leur mise en œuvre.
+
+La prochaine étape logique est ce graphique comparatif inter-portées, dans un lot séparé, sans introduire d’interpolation, de courbe de référence ou de diagnostic.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
