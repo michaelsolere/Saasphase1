@@ -480,6 +480,19 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     let panel = weightPanel(page);
     await expect(panel.getByRole("heading", { name: "Poids et croissance" })).toBeVisible();
     await expect(panel).toContainText("3 animaux suivis · 2 séances de routine");
+    let scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+    await expect(scheduleSummary.getByRole("heading", { name: "Planning des pesées" })).toBeVisible();
+    await expect(scheduleSummary).toContainText("Réalisées");
+    await expect(scheduleSummary).toContainText("À faire aujourd’hui");
+    await expect(scheduleSummary).toContainText("En retard");
+    await expect(scheduleSummary).toContainText("À venir");
+    await expect(scheduleSummary).toContainText(
+      "Rythme recommandé actuellement appliqué : chaque jour de J0 à J30, puis tous les 3 jours de J31 à J60.",
+    );
+    await expect(scheduleSummary.locator("button, form, input, textarea")).toHaveCount(0);
+    expect(await scheduleSummary.textContent()).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
     const latestSummary = panel.getByTestId("latest-litter-weight-session-summary");
     await expect(latestSummary).toContainText("Synthèse de la dernière séance");
     await expect(latestSummary).toContainText("3 poids enregistrés");
@@ -534,6 +547,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
         where id = ${q(ids.secondAnimal)}::uuid;`);
       await page.reload();
       panel = weightPanel(page);
+      scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+      await expect(scheduleSummary).toBeVisible();
+      await expect(scheduleSummary).toContainText("Planning des pesées");
       await expect(panel).toContainText("2 animaux suivis · 2 séances de routine");
       await expect(panel.getByText("Orion officiel", { exact: true })).toHaveCount(0);
       await expect(
@@ -602,6 +618,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
     await expect(dialog).toBeHidden();
     await expect(panel.getByText("2 poids ont été enregistrés.")).toBeVisible();
+    scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+    await expect(scheduleSummary).toBeVisible();
+    await expect(scheduleSummary).toContainText("Planning des pesées");
     await expect(panel).toContainText("3 séances de routine");
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
     await expect(panel).toContainText("455 g");
@@ -675,6 +694,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
         where id = ${q(ids.secondAnimal)}::uuid;`);
       await page.reload();
       panel = weightPanel(page);
+      await expect(
+        panel.getByTestId("litter-weighing-schedule-summary"),
+      ).toContainText("Planning des pesées");
       await expect(panel.getByText("Orion officiel", { exact: true })).toHaveCount(0);
       await expect(
         panel
@@ -700,6 +722,13 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     setOwnerRole("viewer");
     await page.reload();
     panel = weightPanel(page);
+    scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+    await expect(scheduleSummary).toContainText("Planning des pesées");
+    await expect(scheduleSummary).toContainText("Réalisées");
+    await expect(scheduleSummary).toContainText("À faire aujourd’hui");
+    await expect(scheduleSummary).toContainText("En retard");
+    await expect(scheduleSummary).toContainText("À venir");
+    await expect(scheduleSummary.locator("button, form, input, textarea")).toHaveCount(0);
     await expect(panel).toContainText("Nouvelle séance collective UI E2E.");
     await expect(panel.getByTestId("latest-litter-weight-session-summary")).toContainText(
       "Moyenne",
@@ -718,6 +747,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await page.goto(`/litters/journal?litter=${ids.inconsistentLitter}`);
     panel = weightPanel(page);
     await expect(panel).toContainText("Les poids ne sont pas disponibles pour le moment.");
+    await expect(
+      panel.getByTestId("litter-weighing-schedule-summary"),
+    ).toContainText("Le planning des pesées ne peut pas être affiché pour le moment.");
     await expect(panel.getByRole("button")).toHaveCount(0);
     await expect(panel.locator("form, input, textarea")).toHaveCount(0);
 
@@ -739,12 +771,19 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await page.setViewportSize({ width: 375, height: 760 });
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
     panel = weightPanel(page);
+    scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+    await expect(scheduleSummary).toBeVisible();
     await expect(panel.getByTestId("latest-litter-weight-session-summary")).toBeVisible();
     await expect(
       panel.getByTestId("latest-litter-weight-session-comparison"),
     ).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    ).toBe(true);
+    expect(
+      await scheduleSummary.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
     ).toBe(true);
     await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
     await expect(page.getByRole("dialog", { name: "Nouvelle pesée" })).toBeVisible();
