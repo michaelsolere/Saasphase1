@@ -75,10 +75,11 @@ function findLastCompleted(items: readonly LitterWeighingScheduleItem[]) {
 export function formatLitterWeighingSchedulePhaseFr(
   phase: LitterWeighingSchedulePolicy["phases"][number],
 ) {
-  const ageRange =
-    phase.startAgeDay === phase.endAgeDay
-      ? `J${phase.startAgeDay} uniquement`
-      : `J${phase.startAgeDay} à J${phase.endAgeDay}`;
+  if (phase.startAgeDay === phase.endAgeDay) {
+    return `J${phase.startAgeDay} uniquement`;
+  }
+
+  const ageRange = `J${phase.startAgeDay} à J${phase.endAgeDay}`;
   const interval =
     phase.intervalDays === 1
       ? "tous les jours"

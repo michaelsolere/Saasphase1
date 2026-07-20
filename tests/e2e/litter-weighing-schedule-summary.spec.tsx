@@ -209,9 +209,16 @@ test("formate en français les intervalles et les phases d’un seul jour", () =
     formatLitterWeighingSchedulePhaseFr({
       startAgeDay: 45,
       endAgeDay: 45,
+      intervalDays: 1,
+    }),
+  ).toBe("J45 uniquement");
+  expect(
+    formatLitterWeighingSchedulePhaseFr({
+      startAgeDay: 45,
+      endAgeDay: 45,
       intervalDays: 2,
     }),
-  ).toBe("J45 uniquement : tous les 2 jours");
+  ).toBe("J45 uniquement");
 });
 
 test("affiche les phases personnalisées et leur source sans texte recommandé codé en dur", () => {
