@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #344. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet après la PR #346. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `d9ee29aa89539bea35df82a8bc90546f599e9d05`.
-- Dernière PR incluse : **PR #344 — Ajouter la comparaison descriptive inter-portées**.
-- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #341 à #344 n’ajoutent aucune migration, RPC, RLS, table, vue ou policy.
+- SHA de `main` documenté : `04fe02de144441348e2ad478b538ce0e0a467f33`.
+- Dernière PR incluse : **PR #346 — Ajouter le graphique comparatif inter-portées**.
+- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #341 à #346 n’ajoutent aucune migration, RPC, RLS, table, vue ou policy.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -157,6 +157,7 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 - **PR #342 — modèle par âge réel** : `ageDay = floor(elapsedMilliseconds / 86_400_000)` définit des périodes réelles de 24 heures propres à chaque animal. Un animal contribue au maximum une fois par jour, avec sa dernière mesure réelle du jour. Aucun jour artificiel n’est créé et aucune interpolation, extrapolation ou reprise du dernier poids n’est appliquée. Le poids moyen et l’indice relatif moyen utilisent le même groupe réellement observé ; la couverture distingue explicitement les effectifs total, éligible, exclu et observé.
 - **PR #343 — lecture serveur sécurisée** : la sélection porte sur 2 à 5 portées et l’autorisation globale produit un résultat tout ou rien. Une même organisation, espèce et race est exigée, avec race comparée après `trim()` sans tenir compte de la casse, et une adhésion active est vérifiée. Seuls les animaux `ownership_status = produced` sont lus ; les mort-nés sont exclus, tandis que les animaux produits soft-delete restent dans l’historique. Les animaux sans naissance réelle sont comptés mais exclus du modèle. La lecture est limitée à 150 animaux, paginée par pages de 500 et bornée à 25 000 mesures avec détection du dépassement ; la cohérence entre animal, séance et portée est contrôlée. Le DTO public ne contient aucun UUID ni identifiant technique.
 - **PR #344 — interface descriptive** : la route dédiée `/litters/journal/comparison`, reliée depuis le Journal, charge seulement un catalogue serveur léger ; les taxonomies vides sont exclues avant indexation. La sélection, vide initialement, accepte 2 à 5 portées compatibles et exige une soumission explicite avant tout chargement des poids. Le snapshot privé `index → UUID` est capturé dans la Server Action ; aucun UUID n’apparaît dans le DOM, l’URL, les champs HTML ou l’état React. La synthèse responsive présente les effectifs total, éligible et exclu, les journées réellement observées, la couverture par point, le poids moyen, l’indice relatif moyen base 100 et la progression relative moyenne. Le rôle `viewer` y accède en lecture seule.
+- **PR #346 — graphique comparatif inter-portées** : après soumission, `/litters/journal/comparison` affiche avant les tableaux descriptifs conservés un SVG React fondé exclusivement sur le DTO déjà retourné, sans nouvelle lecture serveur ni modification de ce DTO. Un modèle graphique pur et déterministe construit les domaines, graduations et projections pour les vues **Poids moyen** et **Indice base 100**. L’axe horizontal utilise les `ageDay` réellement présents ; chaque portée produit une série, avec un marqueur par journée observée et des segments uniquement entre les points réellement fournis. Aucune interpolation, extrapolation, reprise du dernier poids ou valeur artificielle n’est créée. Le repère horizontal 100 est une base strictement mathématique, sans signification clinique. Couleurs, motifs de trait et formes de marqueur distinguent les séries ; chaque point porte un titre accessible avec la portée, le jour, la valeur et la couverture. Une portée sans point est signalée mais non tracée. Le rôle `viewer` reste en lecture seule et aucun UUID n’apparaît dans le DOM, l’URL ou les données publiques.
 
 ##### Protections
 
@@ -172,8 +173,7 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 - aucune correction ou suppression d’une mesure n’est disponible ;
 - aucune mesure clinique n’est disponible ;
 - aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
-- la comparaison inter-portées est actuellement descriptive ;
-- aucun graphique comparatif inter-portées ni aucune courbe de référence de race n’est encore disponible ;
+- la comparaison inter-portées dispose désormais d’une synthèse descriptive et de graphiques en poids moyen et indice base 100 ; aucune courbe de référence de race n’est disponible ;
 - aucune interpolation, alerte, seuil ou interprétation vétérinaire n’est disponible ;
 - aucune saisie vocale n’est disponible ;
 - aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
@@ -201,11 +201,12 @@ L’interface actuelle est responsive et utilisable sur mobile dans le navigateu
 - **#341** : moteur de normalisation depuis la naissance réelle ;
 - **#342** : modèle de comparaison par âge réel ;
 - **#343** : lecture serveur sécurisée multi-portées ;
-- **#344** : sélection et synthèse descriptive inter-portées.
+- **#344** : sélection et synthèse descriptive inter-portées ;
+- **#346** : graphique comparatif inter-portées, poids moyen et indice base 100.
 
 Les PR #323, #325, #329 et #335 ont actualisé le présent journal sans ajouter de capacité métier ; la PR #335 a consolidé la documentation après la PR #334.
 
-La **PR #340** était la précédente consolidation documentaire.
+La **PR #345** a consolidé la documentation après la PR #344 ; la PR #340 était la consolidation documentaire antérieure.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -431,8 +432,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- un graphique comparatif inter-portées fondé sur le modèle et le DTO existants ;
-- la planification des pesées et des autres suivis récurrents spécialisés ;
+- la planification descriptive des pesées et des autres suivis récurrents spécialisés ;
 - la correction ou la suppression encadrée d’une mesure ;
 - la correction ou l’annulation encadrée d’une naissance ;
 - d’éventuelles mesures cliniques ;
@@ -441,7 +441,9 @@ Restent notamment à concevoir ou implémenter, sans ordre technique définitive
 
 Cette liste reste prudente et ne constitue pas un ordre de réalisation définitivement validé. L’architecture et la priorité de ces évolutions devront être confirmées avant leur mise en œuvre.
 
-La prochaine étape logique est ce graphique comparatif inter-portées, dans un lot séparé, sans introduire d’interpolation, de courbe de référence ou de diagnostic.
+La prochaine direction logique est la conception d’une **planification descriptive des pesées**, sans décider encore d’une implémentation complète. Un futur premier lot pourrait décrire une cadence quotidienne pendant le premier mois, puis une cadence tous les trois jours pendant le deuxième mois, calculées depuis la date réelle de naissance. Il pourrait préparer le rapprochement avec les séances réellement enregistrées et exposer des états descriptifs tels que **réalisée**, **à faire aujourd’hui**, **en retard** et **à venir**.
+
+Ces règles ne sont pas implémentées. Ce futur premier lot ne créerait automatiquement aucune séance et n’introduirait ni notification, ni tâche, ni cron, ni diagnostic vétérinaire.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
