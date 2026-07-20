@@ -337,9 +337,14 @@ export default async function LitterJournalPage({
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Journal des portées</h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">Suivez le contexte, les observations et les tâches de chaque portée active.</p>
           </div>
-          <Link href="/litters" className="text-sm font-semibold text-accent hover:underline">
-            Retour aux portées
-          </Link>
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">
+            <Link href="/litters/journal/comparison" className="text-accent hover:underline">
+              Comparer des portées
+            </Link>
+            <Link href="/litters" className="text-accent hover:underline">
+              Retour aux portées
+            </Link>
+          </div>
         </div>
       </header>
 
