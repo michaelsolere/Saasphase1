@@ -9,7 +9,12 @@ import {
   updateOrganizationIdentity,
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
+import {
+  DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+  parseLitterWeighingSchedulePolicy,
+} from "@/features/litter-weights/litter-weighing-schedule-model";
 import { brevoTransactionalTemplateConfigs } from "@/features/settings/brevo-template-registry";
+import { LitterWeighingPolicySettings } from "@/features/settings/litter-weighing-policy-settings";
 import { OrganizationLogoSettings } from "@/features/settings/organization-logo-settings";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
@@ -26,6 +31,11 @@ const legalFormOptions = [
 ] as const;
 
 type StatusValue = "success" | "error" | undefined;
+type LitterWeighingPolicyStatusValue =
+  | "success"
+  | "reset"
+  | "error"
+  | undefined;
 type BrandingErrorValue =
   | "invalid_dimensions"
   | "too_large"
@@ -113,6 +123,35 @@ function BrevoStatusMessage({
       }`}
     >
       {messages[value]}
+    </section>
+  );
+}
+
+function LitterWeighingPolicyStatusMessage({
+  value,
+}: {
+  value: LitterWeighingPolicyStatusValue;
+}) {
+  if (!value) return null;
+
+  const isSuccess = value !== "error";
+  const message =
+    value === "success"
+      ? "La cadence personnalisée a bien été enregistrée."
+      : value === "reset"
+        ? "La cadence recommandée du logiciel est désormais utilisée."
+        : "Impossible de modifier la cadence. Vérifiez les phases saisies puis réessayez.";
+
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-6 py-5 text-sm ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {message}
     </section>
   );
 }
@@ -261,6 +300,7 @@ export default async function OrganizationSettingsPage({
     brevo_status?: BrevoStatusValue;
     branding_status?: "success" | "removed" | "error";
     branding_error?: BrandingErrorValue;
+    litter_weighing_policy_status?: LitterWeighingPolicyStatusValue;
   }>;
 }) {
   const query = await searchParams;
@@ -336,10 +376,10 @@ export default async function OrganizationSettingsPage({
     .is("deleted_at", null)
     .maybeSingle();
 
-  const { data: animalPriceSettings } = await supabase
+  const { data: organizationSettings, error: organizationSettingsError } = await supabase
     .from("organization_settings")
     .select(
-      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents",
+      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy",
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
@@ -418,6 +458,23 @@ export default async function OrganizationSettingsPage({
   const configuredBrevoTemplateCount = brevoTransactionalTemplateConfigs.filter(
     (config) => brevoTemplatesByKey.get(config.templateKey)?.brevo_template_id,
   ).length;
+  const recommendedPolicyResult = parseLitterWeighingSchedulePolicy(
+    DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+  );
+  if (!recommendedPolicyResult.ok) {
+    throw new Error("Invalid built-in litter weighing schedule policy");
+  }
+  const persistedPolicyResult =
+    organizationSettings?.litter_weighing_schedule_policy === null ||
+    organizationSettings?.litter_weighing_schedule_policy === undefined
+      ? null
+      : parseLitterWeighingSchedulePolicy(
+          organizationSettings.litter_weighing_schedule_policy,
+        );
+  const customLitterWeighingPolicy =
+    persistedPolicyResult?.ok === true ? persistedPolicyResult.policy : null;
+  const hasInvalidPersistedLitterWeighingPolicy =
+    Boolean(organizationSettingsError) || persistedPolicyResult?.ok === false;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -473,6 +530,9 @@ export default async function OrganizationSettingsPage({
           error="Impossible de mettre à jour le modèle transactionnel Brevo."
         />
         <BrevoStatusMessage value={query.brevo_status} />
+        <LitterWeighingPolicyStatusMessage
+          value={query.litter_weighing_policy_status}
+        />
         <StatusMessage
           value={query.branding_status === "removed" ? "success" : query.branding_status}
           success={query.branding_status === "removed" ? "Le logo actif a été retiré. Les versions précédentes et les PDF existants sont conservés." : "Le logo de l’organisation a bien été importé."}
@@ -530,7 +590,7 @@ export default async function OrganizationSettingsPage({
             inputMode="decimal"
             autoComplete="off"
             defaultValue={formatEuroInputValue(
-              animalPriceSettings?.default_male_puppy_price_cents,
+              organizationSettings?.default_male_puppy_price_cents,
             )}
             disabled={!canEdit}
           />
@@ -541,7 +601,7 @@ export default async function OrganizationSettingsPage({
             inputMode="decimal"
             autoComplete="off"
             defaultValue={formatEuroInputValue(
-              animalPriceSettings?.default_female_puppy_price_cents,
+              organizationSettings?.default_female_puppy_price_cents,
             )}
             disabled={!canEdit}
           />
@@ -552,7 +612,7 @@ export default async function OrganizationSettingsPage({
             inputMode="decimal"
             autoComplete="off"
             defaultValue={formatEuroInputValue(
-              animalPriceSettings?.default_puppy_price_cents,
+              organizationSettings?.default_puppy_price_cents,
             )}
             disabled={!canEdit}
           />
@@ -567,6 +627,14 @@ export default async function OrganizationSettingsPage({
           label="Enregistrer les tarifs"
         />
       </form>
+
+      <LitterWeighingPolicySettings
+        organizationId={organization.id}
+        canEdit={canEdit}
+        customPolicy={customLitterWeighingPolicy}
+        recommendedPolicy={recommendedPolicyResult.policy}
+        hasInvalidPersistedPolicy={hasInvalidPersistedLitterWeighingPolicy}
+      />
 
       <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">

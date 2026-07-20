@@ -9,8 +9,10 @@ import {
   uploadOrganizationLogo,
 } from "@/features/settings/organization-logo-service";
 import type { OrganizationLogoValidationCode } from "@/features/settings/organization-logo-image";
+import { parseLitterWeighingSchedulePolicy } from "@/features/litter-weights/litter-weighing-schedule-model";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
+import type { Json } from "@/types/database.types";
 
 const settingsPath = "/settings/organization";
 const postgresIntegerMax = BigInt("2147483647");
@@ -84,6 +86,12 @@ export async function retireOrganizationLogoAction(formData: FormData) {
 
 function animalPricesStatusUrl(outcome: "success" | "error") {
   return statusUrl("animal_prices_status", outcome, "animal-prices");
+}
+
+function litterWeighingPolicyStatusUrl(
+  outcome: "success" | "reset" | "error",
+) {
+  return `${settingsPath}?litter_weighing_policy_status=${outcome}#litter-weighing-policy`;
 }
 
 function brevoStatusUrl(outcome: string) {
@@ -260,6 +268,126 @@ export async function updateOrganizationAnimalPrices(formData: FormData) {
 
   revalidatePath(settingsPath);
   redirect(animalPricesStatusUrl("success"));
+}
+
+export async function updateLitterWeighingSchedulePolicy(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const intent = normalizeOptionalText(formData.get("intent"), 32);
+  if (
+    !organizationId ||
+    (intent !== "save_custom" && intent !== "reset_recommended")
+  ) {
+    redirect(litterWeighingPolicyStatusUrl("error"));
+  }
+
+  let policy: Json | null = null;
+  if (intent === "save_custom") {
+    const policyJson = formData.get("policy_json");
+    if (typeof policyJson !== "string") {
+      redirect(litterWeighingPolicyStatusUrl("error"));
+    }
+
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(policyJson);
+    } catch {
+      redirect(litterWeighingPolicyStatusUrl("error"));
+    }
+    const parsedPolicy = parseLitterWeighingSchedulePolicy(parsedJson);
+    if (!parsedPolicy.ok) {
+      redirect(litterWeighingPolicyStatusUrl("error"));
+    }
+    policy = JSON.parse(JSON.stringify(parsedPolicy.policy)) as Json;
+  }
+
+  const { supabase, userId } = await requireAdminOrganization(
+    organizationId,
+    "litter_weighing_policy_status",
+    "litter-weighing-policy",
+  );
+  const timestamp = new Date().toISOString();
+
+  const { data: existingSettings, error: readError } = await supabase
+    .from("organization_settings")
+    .select("id, deleted_at")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (readError) {
+    redirect(litterWeighingPolicyStatusUrl("error"));
+  }
+
+  if (intent === "reset_recommended") {
+    if (existingSettings && existingSettings.deleted_at === null) {
+      const { error } = await supabase
+        .from("organization_settings")
+        .update({
+          litter_weighing_schedule_policy: null,
+          updated_by: userId,
+          updated_at: timestamp,
+        })
+        .eq("id", existingSettings.id)
+        .eq("organization_id", organizationId)
+        .is("deleted_at", null);
+      if (error) redirect(litterWeighingPolicyStatusUrl("error"));
+    }
+
+    revalidatePath(settingsPath);
+    revalidatePath("/litters/journal");
+    redirect(litterWeighingPolicyStatusUrl("reset"));
+  }
+
+  const updatePayload = {
+    litter_weighing_schedule_policy: policy,
+    deleted_at: null,
+    updated_by: userId,
+    updated_at: timestamp,
+  };
+
+  if (existingSettings) {
+    const { error } = await supabase
+      .from("organization_settings")
+      .update(updatePayload)
+      .eq("id", existingSettings.id)
+      .eq("organization_id", organizationId);
+    if (error) redirect(litterWeighingPolicyStatusUrl("error"));
+  } else {
+    const { error: insertError } = await supabase
+      .from("organization_settings")
+      .insert({
+        organization_id: organizationId,
+        ...updatePayload,
+        created_by: userId,
+      });
+
+    if (insertError?.code === "23505") {
+      // A concurrent creator may have won the unique organization_id race.
+      // Re-read once, then update that exact row; never retry in a loop.
+      const { data: concurrentSettings, error: retryReadError } = await supabase
+        .from("organization_settings")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (retryReadError || !concurrentSettings) {
+        redirect(litterWeighingPolicyStatusUrl("error"));
+      }
+
+      const { error: retryUpdateError } = await supabase
+        .from("organization_settings")
+        .update(updatePayload)
+        .eq("id", concurrentSettings.id)
+        .eq("organization_id", organizationId);
+      if (retryUpdateError) {
+        redirect(litterWeighingPolicyStatusUrl("error"));
+      }
+    } else if (insertError) {
+      redirect(litterWeighingPolicyStatusUrl("error"));
+    }
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath("/litters/journal");
+  redirect(litterWeighingPolicyStatusUrl("success"));
 }
 
 async function requireCurrentAdminOrganization(errorOutcome: string) {
