@@ -36,6 +36,10 @@ import {
   litterWeightAnimalName,
 } from "./litter-weight-animal-identity";
 import { LitterGrowthCharts } from "./litter-growth-charts";
+import {
+  getRoutineWeightEligibility,
+  type RoutineWeightEligibilityReason,
+} from "./routine-weight-eligibility";
 
 type RecordAction = (
   previousState: LitterRoutineWeightsActionState,
@@ -249,11 +253,58 @@ function LatestSessionComparison({
   );
 }
 
-function eligibleForRoutineWeight(animal: LitterWeightHistoryAnimal) {
+function routineWeightEligibilityReasonMessage(
+  reason: RoutineWeightEligibilityReason,
+  animal: LitterWeightHistoryAnimal,
+) {
+  switch (reason) {
+    case "current_ownership_not_produced":
+      return animal.ownershipStatus === "adopted_out"
+        ? "Adopté administrativement : la saisie de nouvelle pesée est actuellement indisponible."
+        : "Statut de propriété actuel incompatible avec une nouvelle pesée.";
+    case "missing_birth_date":
+      return "Date de naissance manquante.";
+    case "stillborn":
+      return "Animal déclaré mort-né.";
+  }
+}
+
+function IneligibleRoutineWeightAnimals({
+  animals,
+}: {
+  animals: Array<{
+    animal: LitterWeightHistoryAnimal;
+    reasons: RoutineWeightEligibilityReason[];
+  }>;
+}) {
+  if (animals.length === 0) return null;
+
   return (
-    animal.ownershipStatus === "produced" &&
-    animal.birthDate !== null &&
-    animal.status !== "stillborn"
+    <section
+      data-testid="ineligible-routine-weight-animals"
+      aria-labelledby="ineligible-routine-weight-animals-title"
+      className="mt-4 min-w-0 rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-950"
+    >
+      <h3 id="ineligible-routine-weight-animals-title" className="font-semibold">
+        Animaux non proposés pour cette pesée
+      </h3>
+      <ul className="mt-3 space-y-3">
+        {animals.map(({ animal, reasons }) => (
+          <li key={animal.id} className="min-w-0 rounded-lg bg-background/80 px-3 py-3">
+            <p className="break-words text-sm font-semibold">
+              {litterWeightAnimalName(animal)}
+            </p>
+            <ul className="mt-1 space-y-1 text-sm leading-5">
+              {reasons.map((reason) => (
+                <li key={reason} className="break-words">
+                  {routineWeightEligibilityReasonMessage(reason, animal)}
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -553,7 +604,16 @@ export function LitterWeightPanel({
   loadError: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
-  const eligibleAnimals = animals.filter(eligibleForRoutineWeight);
+  const animalsWithEligibility = animals.map((animal) => ({
+    animal,
+    eligibility: getRoutineWeightEligibility(animal),
+  }));
+  const eligibleAnimals = animalsWithEligibility.flatMap(({ animal, eligibility }) =>
+    eligibility.eligible ? [animal] : [],
+  );
+  const ineligibleAnimals = animalsWithEligibility.flatMap(({ animal, eligibility }) =>
+    eligibility.eligible ? [] : [{ animal, reasons: eligibility.reasons }],
+  );
   const canWrite =
     action !== null &&
     (role === "owner" || role === "admin" || role === "member") &&
@@ -600,6 +660,7 @@ export function LitterWeightPanel({
           />
         ) : null}
       </div>
+      <IneligibleRoutineWeightAnimals animals={ineligibleAnimals} />
       <LitterWeighingScheduleSummary
         schedule={weighingSchedule}
         policy={weighingSchedulePolicy}

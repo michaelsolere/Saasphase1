@@ -131,6 +131,7 @@ function cleanup() {
       and profile_id = ${q(ownerId)}::uuid;
     set session_replication_role = origin;
   `);
+
 }
 
 function remainingCounts() {
@@ -348,6 +349,12 @@ function createFixtures() {
     );
     set session_replication_role = origin;
   `);
+
+  sql(`
+    update public.animals
+    set status = 'adopted', ownership_status = 'adopted_out'
+    where id = ${q(ids.thirdAnimal)}::uuid;
+  `);
 }
 
 function setOwnerRole(role: "owner" | "viewer") {
@@ -493,6 +500,26 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     expect(await scheduleSummary.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
+    try {
+      sql(`update public.animals
+        set status = 'adopted', ownership_status = 'adopted_out'
+        where id in (${q(ids.firstAnimal)}::uuid, ${q(ids.secondAnimal)}::uuid);`);
+      await page.reload();
+      panel = weightPanel(page);
+      scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+      await expect(scheduleSummary.getByText("Réalisées").locator("..")).toContainText("2");
+      await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
+      await expect(
+        panel.getByTestId("ineligible-routine-weight-animals").locator(":scope > ul > li"),
+      ).toHaveCount(3);
+    } finally {
+      sql(`update public.animals
+        set status = 'born', ownership_status = 'produced'
+        where id in (${q(ids.firstAnimal)}::uuid, ${q(ids.secondAnimal)}::uuid);`);
+      await page.reload();
+      panel = weightPanel(page);
+      scheduleSummary = panel.getByTestId("litter-weighing-schedule-summary");
+    }
     const latestSummary = panel.getByTestId("latest-litter-weight-session-summary");
     await expect(latestSummary).toContainText("Synthèse de la dernière séance");
     await expect(latestSummary).toContainText("3 poids enregistrés");
@@ -538,6 +565,15 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(panel).toContainText("440 g");
     await expect(panel).toContainText("450 g");
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toBeVisible();
+    const ineligibleAnimals = panel.getByTestId("ineligible-routine-weight-animals");
+    await expect(ineligibleAnimals).toContainText("Animaux non proposés pour cette pesée");
+    await expect(ineligibleAnimals).toContainText("Chiot n° 3");
+    await expect(ineligibleAnimals).toContainText(
+      "Adopté administrativement : la saisie de nouvelle pesée est actuellement indisponible.",
+    );
+    await expect(panel.getByTestId("litter-weight-animals-history")).toContainText(
+      "Chiot n° 3",
+    );
     expect(await panel.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
@@ -572,7 +608,7 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
       await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
       const softDeleteDialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
-      await expect(softDeleteDialog.getByRole("group")).toHaveCount(2);
+      await expect(softDeleteDialog.getByRole("group")).toHaveCount(1);
       await expect(softDeleteDialog).not.toContainText("Orion officiel");
       await softDeleteDialog.getByRole("button", { name: "Annuler" }).click();
       await expect(softDeleteDialog).toBeHidden();
@@ -587,10 +623,9 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     let dialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
     await expect(dialog).toBeVisible();
     const groups = dialog.getByRole("group");
-    await expect(groups).toHaveCount(3);
+    await expect(groups).toHaveCount(2);
     await expect(groups.nth(0)).toContainText("Naya");
     await expect(groups.nth(1)).toContainText("Orion officiel");
-    await expect(groups.nth(2)).toContainText("Chiot n° 3");
     const fieldNames = await dialog.locator("input, textarea").evaluateAll((elements) =>
       elements.map((element) => element.getAttribute("name")).filter(Boolean),
     );
@@ -602,8 +637,6 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
       "item_note_0",
       "weight_1",
       "item_note_1",
-      "weight_2",
-      "item_note_2",
     ]);
     expect(await dialog.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
@@ -757,6 +790,27 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
 
     await page.goto(`/litters/journal?litter=${ids.noSessionLitter}`);
     panel = weightPanel(page);
+    try {
+      sql(`update public.animals
+        set status = 'adopted', ownership_status = 'adopted_out'
+        where id = ${q(ids.noSessionAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+      await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);
+      await expect(panel.getByRole("dialog", { name: "Nouvelle pesée" })).toHaveCount(0);
+      await expect(panel.getByTestId("ineligible-routine-weight-animals")).toContainText(
+        "Solo administratif",
+      );
+      await expect(panel.getByTestId("ineligible-routine-weight-animals")).toContainText(
+        "Adopté administrativement",
+      );
+    } finally {
+      sql(`update public.animals
+        set status = 'born', ownership_status = 'produced'
+        where id = ${q(ids.noSessionAnimal)}::uuid;`);
+      await page.reload();
+      panel = weightPanel(page);
+    }
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toBeVisible();
     expect(sql(`select count(*) from public.whelping_sessions where litter_id = ${q(ids.noSessionLitter)}::uuid;`)).toBe("0");
     await panel.getByRole("button", { name: "Nouvelle pesée" }).click();
@@ -781,6 +835,7 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(
       panel.getByTestId("latest-litter-weight-session-comparison"),
     ).toBeVisible();
+    await expect(panel.getByTestId("ineligible-routine-weight-animals")).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
