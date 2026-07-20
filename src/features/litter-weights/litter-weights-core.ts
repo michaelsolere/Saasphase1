@@ -13,8 +13,11 @@ import {
 import { buildLitterWeighingSessionStatistics } from "./litter-weighing-session-statistics";
 import {
   buildLitterWeighingScheduleFromHistory,
-  type LitterWeighingScheduleHistoryRequest,
 } from "./litter-weighing-schedule-history-adapter";
+import {
+  resolveAuthorizedLitterWeighingSchedulePolicyCore,
+  type ResolveLitterWeighingSchedulePolicySource,
+} from "./litter-weighing-policy-core";
 import type {
   LitterWeighingSchedulePolicy,
   LitterWeighingScheduleResult,
@@ -121,10 +124,14 @@ export type LitterWeightHistoryMeasurement = {
   createdAt: string;
 };
 
-export type ListLitterWeightHistoryScheduleRequest =
-  LitterWeighingScheduleHistoryRequest & {
-    policy: LitterWeighingSchedulePolicy;
-  };
+export type ListLitterWeightHistoryScheduleRequest = {
+  todayDate: string;
+};
+
+export type LitterWeighingSchedulePolicyMetadata = {
+  source: ResolveLitterWeighingSchedulePolicySource;
+  phases: LitterWeighingSchedulePolicy["phases"];
+};
 
 export type ListLitterWeightHistoryInput = {
   litterId: string;
@@ -164,6 +171,7 @@ export type ListLitterWeightHistoryResult =
       measurements: LitterWeightHistoryMeasurement[];
       latestSessionComparison: LitterWeightLatestSessionComparison;
       weighingSchedule: LitterWeighingScheduleResult | null;
+      weighingSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
     }
   | ErrorResult;
 
@@ -305,6 +313,7 @@ async function authorizeLitterRead(
       organizationId: string;
       role: LitterWeightOrganizationRole;
       actualBirthDate: string | null;
+      litterWeighingSchedulePolicySnapshot: Json | null;
     }
   | ErrorResult
 > {
@@ -318,7 +327,9 @@ async function authorizeLitterRead(
 
   const litter = await supabase
     .from("litters")
-    .select("id, organization_id, actual_birth_date")
+    .select(
+      "id, organization_id, actual_birth_date, litter_weighing_schedule_policy_snapshot",
+    )
     .eq("id", litterId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -354,6 +365,8 @@ async function authorizeLitterRead(
     organizationId: litter.data.organization_id,
     role: membership.data.role,
     actualBirthDate: litter.data.actual_birth_date,
+    litterWeighingSchedulePolicySnapshot:
+      litter.data.litter_weighing_schedule_policy_snapshot,
   };
 }
 
@@ -885,10 +898,33 @@ export async function listLitterWeightHistoryCore(
   );
 
   let weighingSchedule: LitterWeighingScheduleResult | null = null;
+  let weighingSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null = null;
   if (input.schedule) {
+    const policyResolution =
+      await resolveAuthorizedLitterWeighingSchedulePolicyCore(
+        {
+          organizationId: authorization.organizationId,
+          actualBirthDate: authorization.actualBirthDate,
+          litterWeighingSchedulePolicySnapshot:
+            authorization.litterWeighingSchedulePolicySnapshot,
+        },
+        supabase,
+      );
+    if (policyResolution.outcome === "error") {
+      return databaseFailure("litter_weight_history_policy_resolution_failed", {
+        code: policyResolution.error.code,
+      });
+    }
+    weighingSchedulePolicy = {
+      source: policyResolution.source,
+      phases: policyResolution.policy.phases.map((phase) => ({ ...phase })),
+    };
     const scheduleResult = buildLitterWeighingScheduleFromHistory({
       actualBirthDate: authorization.actualBirthDate,
-      request: input.schedule,
+      request: {
+        todayDate: input.schedule.todayDate,
+        policy: policyResolution.policy,
+      },
       hasBirthMeasurement: (historicalBirthMeasurements.data ?? []).length > 0,
       sessions: (sessions.data ?? []).map((session) => ({
         internalId: session.id,
@@ -905,7 +941,11 @@ export async function listLitterWeightHistoryCore(
       });
     }
     weighingSchedule = scheduleResult.weighingSchedule;
-    if (UUID_IN_TEXT_PATTERN.test(JSON.stringify(weighingSchedule))) {
+    if (
+      UUID_IN_TEXT_PATTERN.test(
+        JSON.stringify({ weighingSchedule, weighingSchedulePolicy }),
+      )
+    ) {
       return databaseFailure("litter_weight_history_schedule_identifier_leak", {
         litterId: authorization.litterId,
       });
@@ -917,6 +957,7 @@ export async function listLitterWeightHistoryCore(
     role: authorization.role,
     latestSessionComparison,
     weighingSchedule,
+    weighingSchedulePolicy,
     animals: animalRows.map((animal) => ({
       id: animal.id,
       ownershipStatus: animal.ownership_status,

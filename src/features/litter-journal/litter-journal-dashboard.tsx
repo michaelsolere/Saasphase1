@@ -39,6 +39,7 @@ import type {
   LitterWeightHistoryMeasurement,
   LitterWeightHistorySession,
   LitterWeightOrganizationRole,
+  LitterWeighingSchedulePolicyMetadata,
 } from "@/features/litter-weights/litter-weights-core";
 import type { LitterWeightLatestSessionComparison } from "@/features/litter-weights/litter-weighing-session-comparison";
 import type { LitterWeighingScheduleResult } from "@/features/litter-weights/litter-weighing-schedule-model";
@@ -208,6 +209,7 @@ export function LitterJournalDashboard({
   litterWeightMeasurements,
   litterWeightLatestSessionComparison,
   litterWeightSchedule,
+  litterWeightSchedulePolicy,
   litterWeightRole,
   litterWeightAction,
   litterWeightsLoadError,
@@ -271,6 +273,7 @@ export function LitterJournalDashboard({
   litterWeightMeasurements: LitterWeightHistoryMeasurement[];
   litterWeightLatestSessionComparison: LitterWeightLatestSessionComparison;
   litterWeightSchedule: LitterWeighingScheduleResult | null;
+  litterWeightSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
   litterWeightRole: LitterWeightOrganizationRole | null;
   litterWeightAction: ((
     previousState: LitterRoutineWeightsActionState,
@@ -353,6 +356,7 @@ export function LitterJournalDashboard({
         measurements={litterWeightMeasurements}
         latestSessionComparison={litterWeightLatestSessionComparison}
         weighingSchedule={litterWeightSchedule}
+        weighingSchedulePolicy={litterWeightSchedulePolicy}
         role={litterWeightRole}
         action={litterWeightAction}
         loadError={litterWeightsLoadError}
