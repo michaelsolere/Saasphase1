@@ -11,6 +11,14 @@ import {
   type LitterWeightLatestSessionComparison,
 } from "./litter-weighing-session-comparison";
 import { buildLitterWeighingSessionStatistics } from "./litter-weighing-session-statistics";
+import {
+  buildLitterWeighingScheduleFromHistory,
+  type LitterWeighingScheduleHistoryRequest,
+} from "./litter-weighing-schedule-history-adapter";
+import type {
+  LitterWeighingSchedulePolicy,
+  LitterWeighingScheduleResult,
+} from "./litter-weighing-schedule-model";
 
 type Supabase = SupabaseClient<Database>;
 export type LitterWeightOrganizationRole =
@@ -113,7 +121,15 @@ export type LitterWeightHistoryMeasurement = {
   createdAt: string;
 };
 
-export type ListLitterWeightHistoryInput = { litterId: string };
+export type ListLitterWeightHistoryScheduleRequest =
+  LitterWeighingScheduleHistoryRequest & {
+    policy: LitterWeighingSchedulePolicy;
+  };
+
+export type ListLitterWeightHistoryInput = {
+  litterId: string;
+  schedule?: ListLitterWeightHistoryScheduleRequest;
+};
 
 export type ListLitterAgeComparisonInput = {
   litterIds: string[];
@@ -147,11 +163,15 @@ export type ListLitterWeightHistoryResult =
       sessions: LitterWeightHistorySession[];
       measurements: LitterWeightHistoryMeasurement[];
       latestSessionComparison: LitterWeightLatestSessionComparison;
+      weighingSchedule: LitterWeighingScheduleResult | null;
     }
   | ErrorResult;
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_IN_TEXT_PATTERN =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const LITTER_WEIGHT_HISTORY_MAX_HISTORICAL_ANIMALS = 500;
 const LITTER_COMPARISON_MIN_LITTERS = 2;
 const LITTER_COMPARISON_MAX_LITTERS = 5;
 const LITTER_COMPARISON_MAX_ANIMALS = 150;
@@ -284,6 +304,7 @@ async function authorizeLitterRead(
       litterId: string;
       organizationId: string;
       role: LitterWeightOrganizationRole;
+      actualBirthDate: string | null;
     }
   | ErrorResult
 > {
@@ -297,7 +318,7 @@ async function authorizeLitterRead(
 
   const litter = await supabase
     .from("litters")
-    .select("id, organization_id")
+    .select("id, organization_id, actual_birth_date")
     .eq("id", litterId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -332,6 +353,7 @@ async function authorizeLitterRead(
     litterId: litter.data.id,
     organizationId: litter.data.organization_id,
     role: membership.data.role,
+    actualBirthDate: litter.data.actual_birth_date,
   };
 }
 
@@ -735,7 +757,36 @@ export async function listLitterWeightHistoryCore(
   }
 
   const sessionIds = (sessions.data ?? []).map((session) => session.id);
-  const [measurements, sessionMeasurements] = await Promise.all([
+  const historicalAnimals = input.schedule
+    ? await supabase
+        .from("animals")
+        .select("id")
+        .eq("organization_id", authorization.organizationId)
+        .eq("litter_id", authorization.litterId)
+        .eq("ownership_status", "produced")
+        .order("id", { ascending: true })
+        .range(0, LITTER_WEIGHT_HISTORY_MAX_HISTORICAL_ANIMALS)
+    : { data: [], error: null };
+
+  if (historicalAnimals.error) {
+    return databaseFailure(
+      "litter_weight_history_historical_animals_read_failed",
+      historicalAnimals.error,
+    );
+  }
+  const historicalAnimalRows = historicalAnimals.data ?? [];
+  if (
+    historicalAnimalRows.length > LITTER_WEIGHT_HISTORY_MAX_HISTORICAL_ANIMALS
+  ) {
+    return databaseFailure("litter_weight_history_historical_animals_too_large", {
+      litterId: authorization.litterId,
+      maximum: LITTER_WEIGHT_HISTORY_MAX_HISTORICAL_ANIMALS,
+    });
+  }
+  const historicalAnimalIds = historicalAnimalRows.map((animal) => animal.id);
+
+  const [measurements, sessionMeasurements, historicalBirthMeasurements] =
+    await Promise.all([
     animalIds.length === 0
       ? Promise.resolve({ data: [], error: null })
       : supabase
@@ -757,12 +808,26 @@ export async function listLitterWeightHistoryCore(
           .eq("organization_id", authorization.organizationId)
           .eq("measurement_kind", "routine")
           .in("litter_weighing_session_id", sessionIds),
+    !input.schedule || historicalAnimalIds.length === 0
+      ? Promise.resolve({ data: [], error: null })
+      : supabase
+          .from("animal_weight_measurements")
+          .select("id")
+          .eq("organization_id", authorization.organizationId)
+          .eq("measurement_kind", "birth")
+          .in("animal_id", historicalAnimalIds)
+          .range(0, 0),
   ]);
 
-  if (measurements.error || sessionMeasurements.error) {
+  if (
+    measurements.error ||
+    sessionMeasurements.error ||
+    historicalBirthMeasurements.error
+  ) {
     return databaseFailure("litter_weight_history_relations_read_failed", {
       measurements: measurements.error,
       sessionMeasurements: sessionMeasurements.error,
+      historicalBirthMeasurements: historicalBirthMeasurements.error,
     });
   }
 
@@ -819,10 +884,39 @@ export async function listLitterWeightHistoryCore(
     ),
   );
 
+  let weighingSchedule: LitterWeighingScheduleResult | null = null;
+  if (input.schedule) {
+    const scheduleResult = buildLitterWeighingScheduleFromHistory({
+      actualBirthDate: authorization.actualBirthDate,
+      request: input.schedule,
+      hasBirthMeasurement: (historicalBirthMeasurements.data ?? []).length > 0,
+      sessions: (sessions.data ?? []).map((session) => ({
+        internalId: session.id,
+        measuredAt: session.measured_at,
+        timezoneName: session.timezone_name,
+        createdAt: session.created_at,
+        routineMeasurementCount:
+          statisticsBySession.get(session.id)?.measurementCount ?? 0,
+      })),
+    });
+    if (scheduleResult.outcome === "invalid_persisted_history") {
+      return databaseFailure("litter_weight_history_schedule_invalid_history", {
+        litterId: authorization.litterId,
+      });
+    }
+    weighingSchedule = scheduleResult.weighingSchedule;
+    if (UUID_IN_TEXT_PATTERN.test(JSON.stringify(weighingSchedule))) {
+      return databaseFailure("litter_weight_history_schedule_identifier_leak", {
+        litterId: authorization.litterId,
+      });
+    }
+  }
+
   return {
     outcome: "success",
     role: authorization.role,
     latestSessionComparison,
+    weighingSchedule,
     animals: animalRows.map((animal) => ({
       id: animal.id,
       ownershipStatus: animal.ownership_status,
