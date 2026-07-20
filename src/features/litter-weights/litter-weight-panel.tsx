@@ -28,6 +28,8 @@ import type {
   LitterWeightOrganizationRole,
 } from "./litter-weights-core";
 import type { LitterWeightLatestSessionComparison } from "./litter-weighing-session-comparison";
+import type { LitterWeighingScheduleResult } from "./litter-weighing-schedule-model";
+import { LitterWeighingScheduleSummary } from "./litter-weighing-schedule-summary";
 import {
   litterWeightAnimalDetails,
   litterWeightAnimalName,
@@ -533,6 +535,7 @@ export function LitterWeightPanel({
   sessions,
   measurements,
   latestSessionComparison,
+  weighingSchedule,
   role,
   action,
   loadError,
@@ -541,6 +544,7 @@ export function LitterWeightPanel({
   sessions: LitterWeightHistorySession[];
   measurements: LitterWeightHistoryMeasurement[];
   latestSessionComparison: LitterWeightLatestSessionComparison;
+  weighingSchedule: LitterWeighingScheduleResult | null;
   role: LitterWeightOrganizationRole | null;
   action: RecordAction | null;
   loadError: boolean;
@@ -561,6 +565,7 @@ export function LitterWeightPanel({
           <Scale aria-hidden="true" className="text-accent" />
           <h2 className="text-lg font-semibold">Poids et croissance</h2>
         </div>
+        <LitterWeighingScheduleSummary schedule={weighingSchedule} />
         <p className="mt-4 text-sm text-muted">
           Les poids ne sont pas disponibles pour le moment. Les autres éléments du journal restent accessibles.
         </p>
@@ -589,6 +594,7 @@ export function LitterWeightPanel({
           />
         ) : null}
       </div>
+      <LitterWeighingScheduleSummary schedule={weighingSchedule} />
       {lastSession ? (
         <section
           data-testid="latest-litter-weight-session-summary"

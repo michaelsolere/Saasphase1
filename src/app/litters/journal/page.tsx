@@ -17,6 +17,7 @@ import {
   planLitterCareTaskGeneration,
 } from "@/features/litter-journal/litter-care-tasks";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
+import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import {
   closeWhelpingSessionAction,
@@ -35,6 +36,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
 import { recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
+import { DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY } from "@/features/litter-weights/litter-weighing-schedule-model";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,9 @@ export default async function LitterJournalPage({
   if (!user) {
     redirect("/login");
   }
+
+  const litterJournalTodayDate =
+    formatLitterJournalBusinessDate(new Date());
 
   let journal: LitterJournalSelection | null = null;
   let hasLoadingError = false;
@@ -102,7 +107,13 @@ export default async function LitterJournalPage({
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
         listWhelpingSessionsForLitter({ litterId }),
-        listLitterWeightHistory({ litterId }),
+        listLitterWeightHistory({
+          litterId,
+          schedule: {
+            todayDate: litterJournalTodayDate,
+            policy: DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
+          },
+        }),
       ]);
 
     maternalObservations =
@@ -396,6 +407,9 @@ export default async function LitterJournalPage({
               litterWeightHistoryLoaded?.latestSessionComparison ?? {
                 status: "insufficient_sessions",
               }
+            }
+            litterWeightSchedule={
+              litterWeightHistoryLoaded?.weighingSchedule ?? null
             }
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
