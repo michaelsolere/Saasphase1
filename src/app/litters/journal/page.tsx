@@ -36,6 +36,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
 import { recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
+import { getRoutineWeightEligibility } from "@/features/litter-weights/routine-weight-eligibility";
 
 export const dynamic = "force-dynamic";
 
@@ -314,10 +315,7 @@ export default async function LitterJournalPage({
     litterWeightHistory?.outcome === "success" ? litterWeightHistory : null;
   const eligibleLitterWeightAnimals =
     litterWeightHistoryLoaded?.animals.filter(
-      (animal) =>
-        animal.ownershipStatus === "produced" &&
-        animal.birthDate !== null &&
-        animal.status !== "stillborn",
+      (animal) => getRoutineWeightEligibility(animal).eligible,
     ) ?? [];
   const litterWeightCanWrite =
     litterWeightHistoryLoaded?.role === "owner" ||

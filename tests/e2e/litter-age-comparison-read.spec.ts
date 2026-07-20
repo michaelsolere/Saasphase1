@@ -40,6 +40,7 @@ const ids = {
   firstStillbornAnimal: "9f190009-0000-4000-8000-000000000024",
   firstNotProducedAnimal: "9f190009-0000-4000-8000-000000000025",
   secondActiveAnimal: "9f190009-0000-4000-8000-000000000026",
+  firstExternalAnimal: "9f190009-0000-4000-8000-000000000027",
   foreignOrganization: "9f190009-0000-4000-8000-000000000091",
   viewerUser: "9f190009-0000-4000-8000-000000000081",
   viewerIdentity: "9f190009-0000-4000-8000-000000000082",
@@ -290,7 +291,16 @@ function createFixtures() {
        ${q(ids.secondLitter)}::uuid, ${q(ids.mother)}::uuid,
        'dog', 'Golden Retriever', 'female', 'born',
        'produced', ${q(`${fixtureNamePrefix} second`)}, '2026-01-01', '09:00', 1,
+       null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.firstExternalAnimal)}::uuid, ${q(organizationId)}::uuid,
+       ${q(ids.firstLitter)}::uuid, ${q(ids.mother)}::uuid,
+       'dog', 'Golden Retriever', 'male', 'born',
+       'external_stud', ${q(`${fixtureNamePrefix} external`)}, '2026-01-01', '08:30', 6,
        null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+
+    update public.animals
+    set is_external = true
+    where id = ${q(ids.firstExternalAnimal)}::uuid;
 
     insert into public.animals (
       id, organization_id, litter_id, mother_id, species, breed, sex, status,
@@ -443,7 +453,7 @@ function createFixtures() {
       id, organization_id, litter_id, measured_at, timezone_name, created_by
     ) values
       ('9f190009-2000-4000-8000-000000000001', ${q(organizationId)}::uuid,
-       ${q(ids.firstLitter)}::uuid, '2026-01-02T08:00:00Z', 'Europe/Paris',
+       ${q(ids.firstLitter)}::uuid, '2026-01-02T09:00:00Z', 'Europe/Paris',
        ${q(ownerId)}::uuid),
       ('9f190009-2000-4000-8000-000000000002', ${q(organizationId)}::uuid,
        ${q(ids.secondLitter)}::uuid, '2026-01-02T09:00:00Z', 'Europe/Paris',
@@ -455,11 +465,15 @@ function createFixtures() {
     ) values
       ('9f190009-8000-4000-8000-000000000001', ${q(organizationId)}::uuid,
        ${q(ids.firstActiveAnimal)}::uuid,
-       '9f190009-2000-4000-8000-000000000001', '2026-01-02T08:00:00Z', 600,
+       '9f190009-2000-4000-8000-000000000001', '2026-01-02T09:00:00Z', 600,
        'routine', ${q(ownerId)}::uuid),
       ('9f190009-8000-4000-8000-000000000002', ${q(organizationId)}::uuid,
        ${q(ids.firstDeletedAnimal)}::uuid,
-       '9f190009-2000-4000-8000-000000000001', '2026-01-02T08:00:00Z', 450,
+       '9f190009-2000-4000-8000-000000000001', '2026-01-02T09:00:00Z', 450,
+       'routine', ${q(ownerId)}::uuid),
+      ('9f190009-8000-4000-8000-000000000005', ${q(organizationId)}::uuid,
+       ${q(ids.firstNotProducedAnimal)}::uuid,
+       '9f190009-2000-4000-8000-000000000001', '2026-01-02T09:00:00Z', 675,
        'routine', ${q(ownerId)}::uuid),
       ('9f190009-8000-4000-8000-000000000006', ${q(organizationId)}::uuid,
        ${q(ids.secondActiveAnimal)}::uuid,
@@ -494,8 +508,11 @@ function createFixtures() {
 
   sql(`
     update public.animals
-    set ownership_status = 'owned'
-    where id = ${q(ids.firstNotProducedAnimal)}::uuid;
+    set ownership_status = 'adopted_out', status = 'adopted'
+    where id in (
+      ${q(ids.firstNotProducedAnimal)}::uuid,
+      ${q(ids.firstNoBirthAnimal)}::uuid
+    );
   `);
 }
 
@@ -590,7 +607,7 @@ test("lecture serveur bornée, globale, paginée et sans identité technique", a
       expect(firstSeries.points.find((point) => point.ageDay === 1)).toEqual({
         ageDay: 1,
         observedAnimalCount: 2,
-        averageGrams: 525,
+        averageGrams: 637.5,
         averageRelativeIndex: 150,
         averageRelativeProgressPercentage: 50,
       });
