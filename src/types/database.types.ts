@@ -2265,6 +2265,9 @@ export type Database = {
           father_id: string | null
           id: string
           litter_group_id: string | null
+          litter_weighing_schedule_policy_frozen_at: string | null
+          litter_weighing_schedule_policy_snapshot: Json | null
+          litter_weighing_schedule_policy_source: string | null
           mating_date: string | null
           mating_date_2: string | null
           mother_id: string | null
@@ -2295,6 +2298,9 @@ export type Database = {
           father_id?: string | null
           id?: string
           litter_group_id?: string | null
+          litter_weighing_schedule_policy_frozen_at?: string | null
+          litter_weighing_schedule_policy_snapshot?: Json | null
+          litter_weighing_schedule_policy_source?: string | null
           mating_date?: string | null
           mating_date_2?: string | null
           mother_id?: string | null
@@ -2325,6 +2331,9 @@ export type Database = {
           father_id?: string | null
           id?: string
           litter_group_id?: string | null
+          litter_weighing_schedule_policy_frozen_at?: string | null
+          litter_weighing_schedule_policy_snapshot?: Json | null
+          litter_weighing_schedule_policy_source?: string | null
           mating_date?: string | null
           mating_date_2?: string | null
           mother_id?: string | null
@@ -3633,6 +3642,7 @@ export type Database = {
           dog_ultrasound_min_day: number
           dog_xray_day: number
           id: string
+          litter_weighing_schedule_policy: Json | null
           organization_id: string
           post_adoption_follow_up_1_days: number
           post_adoption_follow_up_2_months: number
@@ -3660,6 +3670,7 @@ export type Database = {
           dog_ultrasound_min_day?: number
           dog_xray_day?: number
           id?: string
+          litter_weighing_schedule_policy?: Json | null
           organization_id: string
           post_adoption_follow_up_1_days?: number
           post_adoption_follow_up_2_months?: number
@@ -3687,6 +3698,7 @@ export type Database = {
           dog_ultrasound_min_day?: number
           dog_xray_day?: number
           id?: string
+          litter_weighing_schedule_policy?: Json | null
           organization_id?: string
           post_adoption_follow_up_1_days?: number
           post_adoption_follow_up_2_months?: number
@@ -5485,6 +5497,21 @@ export type Database = {
           reason: string | null
           replayed: boolean
           session_id: string | null
+        }[]
+      }
+      is_valid_litter_weighing_schedule_policy: {
+        Args: { p_policy: Json }
+        Returns: boolean
+      }
+      recommended_litter_weighing_schedule_policy: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      resolve_litter_weighing_policy_for_freeze: {
+        Args: { p_organization_id: string }
+        Returns: {
+          policy: Json
+          source: string
         }[]
       }
       publish_document_template_version: {
