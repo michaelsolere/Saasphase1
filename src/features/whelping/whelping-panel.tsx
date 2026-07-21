@@ -1056,7 +1056,7 @@ export function WhelpingPanel({
 
           {canCompleteClosedBirthWeights ? (
             <p className="mt-5 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
-              La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés.
+              La session est clôturée. Les poids de naissance manquants peuvent encore être renseignés ; rouvrez la session pour reprendre la mise-bas.
             </p>
           ) : null}
 
