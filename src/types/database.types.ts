@@ -37,6 +37,9 @@ export type Database = {
       animal_weight_measurements: {
         Row: {
           animal_id: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
           created_by: string
           grams: number
@@ -46,10 +49,14 @@ export type Database = {
           measurement_kind: string
           note: string | null
           organization_id: string
+          revision_no: number
           source_birth_id: string | null
         }
         Insert: {
           animal_id: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by: string
           grams: number
@@ -59,10 +66,14 @@ export type Database = {
           measurement_kind: string
           note?: string | null
           organization_id: string
+          revision_no?: number
           source_birth_id?: string | null
         }
         Update: {
           animal_id?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by?: string
           grams?: number
@@ -72,6 +83,7 @@ export type Database = {
           measurement_kind?: string
           note?: string | null
           organization_id?: string
+          revision_no?: number
           source_birth_id?: string | null
         }
         Relationships: [
@@ -81,6 +93,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "animals"
             referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "animal_weight_measurements_cancelled_by_membership_fk"
+            columns: ["organization_id", "cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
           },
           {
             foreignKeyName: "animal_weight_measurements_created_by_fkey"
@@ -2106,6 +2125,9 @@ export type Database = {
       }
       litter_weighing_sessions: {
         Row: {
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
           created_by: string
           id: string
@@ -2113,9 +2135,13 @@ export type Database = {
           measured_at: string
           note: string | null
           organization_id: string
+          revision_no: number
           timezone_name: string
         }
         Insert: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by: string
           id?: string
@@ -2123,9 +2149,13 @@ export type Database = {
           measured_at: string
           note?: string | null
           organization_id: string
+          revision_no?: number
           timezone_name: string
         }
         Update: {
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by?: string
           id?: string
@@ -2133,9 +2163,17 @@ export type Database = {
           measured_at?: string
           note?: string | null
           organization_id?: string
+          revision_no?: number
           timezone_name?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "litter_weighing_sessions_cancelled_by_membership_fk"
+            columns: ["organization_id", "cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
           {
             foreignKeyName: "litter_weighing_sessions_created_by_fkey"
             columns: ["created_by"]
@@ -2163,6 +2201,118 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_weight_adjustment_commands: {
+        Row: {
+          affected_measurement_count: number
+          animal_id: string | null
+          before_snapshot: Json
+          client_command_id: string
+          command_type: string
+          created_at: string
+          created_by: string
+          expected_revision_no: number
+          id: string
+          cancelled_at: string | null
+          input_grams: number | null
+          input_note: string | null
+          litter_id: string
+          litter_weighing_session_id: string
+          measurement_id: string | null
+          organization_id: string
+          previous_revision_no: number
+          reason: string
+          result_revision_no: number
+          after_snapshot: Json
+        }
+        Insert: {
+          affected_measurement_count?: number
+          animal_id?: string | null
+          before_snapshot: Json
+          client_command_id: string
+          command_type: string
+          created_at?: string
+          created_by: string
+          expected_revision_no: number
+          id?: string
+          cancelled_at?: string | null
+          input_grams?: number | null
+          input_note?: string | null
+          litter_id: string
+          litter_weighing_session_id: string
+          measurement_id?: string | null
+          organization_id: string
+          previous_revision_no: number
+          reason: string
+          result_revision_no: number
+          after_snapshot: Json
+        }
+        Update: {
+          affected_measurement_count?: number
+          animal_id?: string | null
+          before_snapshot?: Json
+          client_command_id?: string
+          command_type?: string
+          created_at?: string
+          created_by?: string
+          expected_revision_no?: number
+          id?: string
+          cancelled_at?: string | null
+          input_grams?: number | null
+          input_note?: string | null
+          litter_id?: string
+          litter_weighing_session_id?: string
+          measurement_id?: string | null
+          organization_id?: string
+          previous_revision_no?: number
+          reason?: string
+          result_revision_no?: number
+          after_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_animal_organization_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_measurement_organization_fk"
+            columns: ["organization_id", "measurement_id"]
+            isOneToOne: false
+            referencedRelation: "animal_weight_measurements"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_session_organization_fk"
+            columns: ["organization_id", "litter_weighing_session_id"]
+            isOneToOne: false
+            referencedRelation: "litter_weighing_sessions"
+            referencedColumns: ["organization_id", "id"]
           },
         ]
       }
@@ -5549,6 +5699,58 @@ export type Database = {
           p_version_id: string
         }
         Returns: string
+      }
+      cancel_litter_routine_weight: {
+        Args: {
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_measurement_id: string
+          p_reason: string
+        }
+        Returns: {
+          litter_weighing_session_id: string | null
+          measurement_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+        }[]
+      }
+      cancel_litter_weighing_session: {
+        Args: {
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string
+          p_session_id: string
+        }
+        Returns: {
+          affected_measurement_count: number | null
+          litter_weighing_session_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+        }[]
+      }
+      correct_litter_routine_weight: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_grams: number
+          p_measurement_id: string
+          p_note: string | null
+          p_reason: string
+        }
+        Returns: {
+          litter_weighing_session_id: string | null
+          measurement_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+        }[]
       }
       record_litter_routine_weights: {
         Args: {

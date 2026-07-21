@@ -44,6 +44,13 @@ export type LitterWeightServiceErrorCode =
   | "measured_before_birth"
   | "measured_after_death"
   | "measurement_already_recorded"
+  | "measurement_not_found"
+  | "session_not_found"
+  | "measurement_cancelled"
+  | "session_cancelled"
+  | "stale_revision"
+  | "no_change"
+  | "last_measurement_requires_session_cancellation"
   | "command_conflict"
   | "inconsistent_relations"
   | "database_error";
@@ -80,6 +87,53 @@ export type RecordLitterRoutineWeightsResult =
       sessionId: string;
       measurementIds: string[];
       measurementCount: number;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
+export type CorrectLitterRoutineWeightInput = {
+  measurementId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  grams: number;
+  note?: string | null;
+  reason: string;
+};
+
+export type CorrectLitterRoutineWeightResult =
+  | {
+      outcome: "success";
+      measurementId: string;
+      sessionId: string;
+      revisionNo: number;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
+export type CancelLitterRoutineWeightInput = {
+  measurementId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  cancelledAt: string;
+  reason: string;
+};
+
+export type CancelLitterRoutineWeightResult = CorrectLitterRoutineWeightResult;
+
+export type CancelLitterWeighingSessionInput = {
+  sessionId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  cancelledAt: string;
+  reason: string;
+};
+
+export type CancelLitterWeighingSessionResult =
+  | {
+      outcome: "success";
+      sessionId: string;
+      revisionNo: number;
+      affectedMeasurementCount: number;
       replayed: boolean;
     }
   | ErrorResult;
@@ -258,6 +312,23 @@ function commandFailure(reason: string | null): ErrorResult {
     case "litter_not_found":
     case "animal_not_found":
       return failure("not_found", "La portée ou l’animal demandé est introuvable.");
+    case "measurement_not_found":
+      return failure("measurement_not_found", "La mesure demandée est introuvable.");
+    case "session_not_found":
+      return failure("session_not_found", "La séance demandée est introuvable.");
+    case "measurement_cancelled":
+      return failure("measurement_cancelled", "Cette mesure est annulée.");
+    case "session_cancelled":
+      return failure("session_cancelled", "Cette séance est annulée.");
+    case "stale_revision":
+      return failure("stale_revision", "Cette donnée a été modifiée depuis son affichage.");
+    case "no_change":
+      return failure("no_change", "La correction ne contient aucun changement.");
+    case "last_measurement_requires_session_cancellation":
+      return failure(
+        "last_measurement_requires_session_cancellation",
+        "La dernière mesure active doit être annulée avec la séance entière.",
+      );
     case "too_many_animals":
       return failure("too_many_animals", "Une séance est limitée à 30 animaux.");
     case "duplicate_animal":
@@ -530,6 +601,7 @@ async function listComparisonSessions(
       .select("id, litter_id")
       .eq("organization_id", authorization.organizationId)
       .in("litter_id", authorization.litterIds)
+      .is("cancelled_at", null)
       .order("id", { ascending: true })
       .range(offset, offset + LITTER_COMPARISON_PAGE_SIZE - 1);
 
@@ -611,6 +683,7 @@ async function listComparisonMeasurements(
       .eq("organization_id", organizationId)
       .in("animal_id", animalIds)
       .in("measurement_kind", ["birth", "routine"])
+      .is("cancelled_at", null)
       .order("animal_id", { ascending: true })
       .order("measured_at", { ascending: true })
       .order("created_at", { ascending: true })
@@ -733,6 +806,125 @@ export async function recordLitterRoutineWeightsCore(
   };
 }
 
+export async function correctLitterRoutineWeightCore(
+  input: CorrectLitterRoutineWeightInput,
+  supabase: Supabase,
+): Promise<CorrectLitterRoutineWeightResult> {
+  const measurementId = normalizeUuid(input.measurementId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const note = normalizeOptionalText(input.note, 5_000);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (
+    !measurementId ||
+    !clientCommandId ||
+    !Number.isInteger(input.expectedRevisionNo) ||
+    input.expectedRevisionNo < 0 ||
+    !Number.isInteger(input.grams) ||
+    input.grams < 1 ||
+    input.grams > 100_000 ||
+    note === undefined ||
+    !reason
+  ) {
+    return invalidInput();
+  }
+
+  const adjusted = await supabase.rpc("correct_litter_routine_weight", {
+    p_measurement_id: measurementId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_grams: input.grams,
+    p_note: note,
+    p_reason: reason,
+  });
+  if (adjusted.error) {
+    return databaseFailure("litter_routine_weight_correction_failed", adjusted.error);
+  }
+  const result = adjusted.data?.[0];
+  if (!result || result.outcome !== "success" || !result.measurement_id ||
+    !result.litter_weighing_session_id || result.revision_no === null) {
+    return commandFailure(result?.reason ?? null);
+  }
+  return {
+    outcome: "success",
+    measurementId: result.measurement_id,
+    sessionId: result.litter_weighing_session_id,
+    revisionNo: result.revision_no,
+    replayed: result.replayed === true,
+  };
+}
+
+export async function cancelLitterRoutineWeightCore(
+  input: CancelLitterRoutineWeightInput,
+  supabase: Supabase,
+): Promise<CancelLitterRoutineWeightResult> {
+  const measurementId = normalizeUuid(input.measurementId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const cancelledAt = normalizeTimestamp(input.cancelledAt);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (!measurementId || !clientCommandId || !cancelledAt || !reason ||
+    !Number.isInteger(input.expectedRevisionNo) || input.expectedRevisionNo < 0) {
+    return invalidInput();
+  }
+  const adjusted = await supabase.rpc("cancel_litter_routine_weight", {
+    p_measurement_id: measurementId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_cancelled_at: cancelledAt,
+    p_reason: reason,
+  });
+  if (adjusted.error) {
+    return databaseFailure("litter_routine_weight_cancellation_failed", adjusted.error);
+  }
+  const result = adjusted.data?.[0];
+  if (!result || result.outcome !== "success" || !result.measurement_id ||
+    !result.litter_weighing_session_id || result.revision_no === null) {
+    return commandFailure(result?.reason ?? null);
+  }
+  return {
+    outcome: "success",
+    measurementId: result.measurement_id,
+    sessionId: result.litter_weighing_session_id,
+    revisionNo: result.revision_no,
+    replayed: result.replayed === true,
+  };
+}
+
+export async function cancelLitterWeighingSessionCore(
+  input: CancelLitterWeighingSessionInput,
+  supabase: Supabase,
+): Promise<CancelLitterWeighingSessionResult> {
+  const sessionId = normalizeUuid(input.sessionId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const cancelledAt = normalizeTimestamp(input.cancelledAt);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (!sessionId || !clientCommandId || !cancelledAt || !reason ||
+    !Number.isInteger(input.expectedRevisionNo) || input.expectedRevisionNo < 0) {
+    return invalidInput();
+  }
+  const adjusted = await supabase.rpc("cancel_litter_weighing_session", {
+    p_session_id: sessionId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_cancelled_at: cancelledAt,
+    p_reason: reason,
+  });
+  if (adjusted.error) {
+    return databaseFailure("litter_weighing_session_cancellation_failed", adjusted.error);
+  }
+  const result = adjusted.data?.[0];
+  if (!result || result.outcome !== "success" || !result.litter_weighing_session_id ||
+    result.revision_no === null || result.affected_measurement_count === null) {
+    return commandFailure(result?.reason ?? null);
+  }
+  return {
+    outcome: "success",
+    sessionId: result.litter_weighing_session_id,
+    revisionNo: result.revision_no,
+    affectedMeasurementCount: result.affected_measurement_count,
+    replayed: result.replayed === true,
+  };
+}
+
 export async function listLitterWeightHistoryCore(
   input: ListLitterWeightHistoryInput,
   supabase: Supabase,
@@ -762,6 +954,7 @@ export async function listLitterWeightHistoryCore(
     .select("id, measured_at, timezone_name, note, created_by, created_at")
     .eq("organization_id", authorization.organizationId)
     .eq("litter_id", authorization.litterId)
+    .is("cancelled_at", null)
     .order("measured_at", { ascending: false })
     .order("created_at", { ascending: false });
 
@@ -814,6 +1007,7 @@ export async function listLitterWeightHistoryCore(
           .eq("organization_id", authorization.organizationId)
           .in("animal_id", animalIds)
           .in("measurement_kind", ["birth", "routine"])
+          .is("cancelled_at", null)
           .order("animal_id", { ascending: true })
           .order("measured_at", { ascending: true })
           .order("created_at", { ascending: true }),
@@ -824,6 +1018,7 @@ export async function listLitterWeightHistoryCore(
           .select("litter_weighing_session_id, animal_id, grams")
           .eq("organization_id", authorization.organizationId)
           .eq("measurement_kind", "routine")
+          .is("cancelled_at", null)
           .in("litter_weighing_session_id", sessionIds),
     !input.schedule || historicalAnimalIds.length === 0
       ? Promise.resolve({ data: [], error: null })
@@ -832,6 +1027,7 @@ export async function listLitterWeightHistoryCore(
           .select("id")
           .eq("organization_id", authorization.organizationId)
           .eq("measurement_kind", "birth")
+          .is("cancelled_at", null)
           .in("animal_id", historicalAnimalIds)
           .range(0, 0),
   ]);

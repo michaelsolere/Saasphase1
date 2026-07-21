@@ -3,6 +3,9 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  cancelLitterRoutineWeightCore,
+  cancelLitterWeighingSessionCore,
+  correctLitterRoutineWeightCore,
   listLitterAgeComparisonCore,
   listLitterWeightHistoryCore,
   recordLitterRoutineWeightsCore,
@@ -13,6 +16,12 @@ import type { Database } from "@/types/database.types";
 type Supabase = SupabaseClient<Database>;
 
 export type {
+  CancelLitterRoutineWeightInput,
+  CancelLitterRoutineWeightResult,
+  CancelLitterWeighingSessionInput,
+  CancelLitterWeighingSessionResult,
+  CorrectLitterRoutineWeightInput,
+  CorrectLitterRoutineWeightResult,
   ListLitterAgeComparisonInput,
   ListLitterAgeComparisonResult,
   ListLitterWeightHistoryInput,
@@ -44,6 +53,27 @@ export async function recordLitterRoutineWeights(
     input,
     await serverClient(suppliedClient),
   );
+}
+
+export async function correctLitterRoutineWeight(
+  input: Parameters<typeof correctLitterRoutineWeightCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return correctLitterRoutineWeightCore(input, await serverClient(suppliedClient));
+}
+
+export async function cancelLitterRoutineWeight(
+  input: Parameters<typeof cancelLitterRoutineWeightCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return cancelLitterRoutineWeightCore(input, await serverClient(suppliedClient));
+}
+
+export async function cancelLitterWeighingSession(
+  input: Parameters<typeof cancelLitterWeighingSessionCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return cancelLitterWeighingSessionCore(input, await serverClient(suppliedClient));
 }
 
 export async function listLitterWeightHistory(

@@ -132,6 +132,10 @@ La RPC atomique accepte de 1 à 30 animaux et autorise une séance partielle. El
 
 La **PR #333** ajoute le formulaire collectif mobile-first et les historiques. Aucun UUID structurant n’est transmis par les champs HTML : les animaux restent liés à l’intention serveur. Le panneau présente l’historique des séances et l’historique individuel de chaque animal. Le poids de naissance déclaré dans `animals.birth_weight_grams` reste affiché séparément des mesures réelles. Le compteur historique d’une séance reste stable lorsqu’un animal est ensuite soft-delete.
 
+La migration `202607200003_litter_weight_adjustment_foundation` prépare la rectification sécurisée des seules mesures `routine`. Une correction conserve l’identifiant, l’animal, la séance et l’heure de mesure ; elle modifie uniquement le poids ou la note et incrémente une révision optimiste. Une annulation individuelle ou collective ne supprime aucune ligne : elle marque la mesure ou la séance, conserve ses valeurs originales et incrémente les révisions concernées.
+
+Chaque commande est atomique, strictement idempotente et inscrite dans un registre privé append-only avec son motif et ses snapshots avant/après. Les séances et mesures annulées sont exclues des historiques courants, statistiques, comparaisons de séances, planning, tableaux, graphiques et comparaison inter-portées. L’heure d’une séance n’est pas modifiable dans ce lot : une heure erronée se traite par annulation complète puis recréation, possible au même instant. Aucune interface de correction, d’annulation ou d’historique des rectifications n’est encore exposée.
+
 ##### Courbes de croissance
 
 La **PR #334** ajoute les premières courbes de croissance avec deux vues : **Portée entière** et **Un animal**. Le rendu utilise un SVG React natif, sans bibliothèque graphique. Seules les mesures réelles `birth` et `routine` sont tracées ; `animals.birth_weight_grams` ne crée jamais de point fictif.
@@ -149,7 +153,7 @@ Le suivi complète les courbes par une architecture descriptive cohérente, sans
 
 Avec moins de deux séances non vides ou sans animal commun, la comparaison reste dans un état neutre. Les valeurs historiques par séance et leur comparaison sont calculées depuis le relevé complet des mesures liées aux séances, indépendamment de la liste des animaux actuellement visibles : compteurs, statistiques et comparaison restent donc stables après le soft-delete d’un animal. Les séances partielles restent valides.
 
-`animal_weight_measurements` demeure la source de vérité. Les mesures réelles `birth` et `routine` sont append-only ; `animals.birth_weight_grams` reste une projection ou un repère déclaré séparé et n’est jamais utilisé comme fallback pour la progression relative. Sans mesure réelle `birth`, l’animal est exclu de la courbe relative avec un état neutre. Ces capacités sont accessibles en lecture seule à `viewer` et ne produisent ni classement, seuil, pourcentage d’évolution entre séances, alerte, diagnostic ou interprétation vétérinaire.
+`animal_weight_measurements` demeure la source de vérité. Les mesures réelles `birth` restent append-only ; une mesure `routine` ne peut être corrigée ou annulée que par les RPC auditées et révisionnées dédiées, sans suppression physique. `animals.birth_weight_grams` reste une projection ou un repère déclaré séparé et n’est jamais utilisé comme fallback pour la progression relative. Sans mesure réelle `birth`, l’animal est exclu de la courbe relative avec un état neutre. Ces capacités sont accessibles en lecture seule à `viewer` et ne produisent ni classement, seuil, pourcentage d’évolution entre séances, alerte, diagnostic ou interprétation vétérinaire.
 
 ###### Comparaison inter-portées par âge réel
 
@@ -172,7 +176,7 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 
 ##### Limites actuelles
 
-- aucune correction ou suppression d’une mesure n’est disponible ;
+- aucune interface de correction, d’annulation ou de consultation de l’audit des mesures n’est encore disponible ;
 - aucune mesure clinique n’est disponible ;
 - aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
 - la comparaison inter-portées dispose désormais d’une synthèse descriptive et de graphiques en poids moyen et indice base 100 ; aucune courbe de référence de race n’est disponible ;
@@ -434,7 +438,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- la correction ou la suppression encadrée d’une mesure ;
+- l’interface de correction, d’annulation et de consultation de l’audit d’une mesure `routine` ;
 - la correction ou l’annulation encadrée d’une naissance ;
 - d’éventuelles mesures cliniques ;
 - la saisie vocale ;
