@@ -9,7 +9,12 @@
     "lint": "eslint",
     "test:e2e": "node scripts/e2e/run.mjs",
     "test:e2e:reuse": "node scripts/e2e/run.mjs --reuse",
-    "test:e2e:stop": "node scripts/e2e/run.mjs --stop"
+    "test:e2e:stop": "node scripts/e2e/run.mjs --stop",
+    "demo:e2e:start": "node scripts/e2e/demo.mjs start",
+    "demo:e2e:create": "node scripts/e2e/demo.mjs create",
+    "demo:e2e:status": "node scripts/e2e/demo.mjs status",
+    "demo:e2e:cleanup": "node scripts/e2e/demo.mjs cleanup",
+    "demo:e2e:stop": "node scripts/e2e/demo.mjs stop"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.17",
