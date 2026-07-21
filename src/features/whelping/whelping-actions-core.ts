@@ -12,6 +12,8 @@ import type {
   RecordWhelpingBirthWeightResult,
   RecordWhelpingEventInput,
   RecordWhelpingEventResult,
+  ReopenWhelpingSessionInput,
+  ReopenWhelpingSessionResult,
   WhelpingBirthSex,
   WhelpingBirthViability,
   WhelpingServiceError,
@@ -23,6 +25,7 @@ const ISO_WITH_OFFSET_SCHEMA = z.string().datetime({ offset: true });
 const MAX_TIMEZONE_LENGTH = 255;
 const MAX_COLOR_LENGTH = 255;
 const MAX_NOTE_LENGTH = 5_000;
+const MAX_REOPEN_REASON_LENGTH = 500;
 const MAX_BIRTH_WEIGHT_GRAMS = 100_000;
 
 const GENERIC_EVENT_TYPES = [
@@ -75,6 +78,7 @@ export type RecordWhelpingEventIntention = {
 
 export type RecordWhelpingBirthIntention = RecordWhelpingEventIntention;
 export type CloseWhelpingSessionIntention = RecordWhelpingEventIntention;
+export type ReopenWhelpingSessionIntention = RecordWhelpingEventIntention;
 export type RecordWhelpingBirthWeightIntention = RecordWhelpingEventIntention & {
   birthId: string;
 };
@@ -95,6 +99,9 @@ export type WhelpingActionDependencies = {
   closeSession: (
     input: CloseWhelpingSessionInput,
   ) => Promise<CloseWhelpingSessionResult>;
+  reopenSession: (
+    input: ReopenWhelpingSessionInput,
+  ) => Promise<ReopenWhelpingSessionResult>;
   revalidatePath: (path: string) => void;
 };
 
@@ -488,6 +495,47 @@ export async function closeWhelpingSessionActionCore(
     return {
       status: "success",
       message: "La session de mise-bas a été clôturée.",
+      replayed: result.replayed,
+    };
+  } catch {
+    return invalidState("L’opération ne peut pas être réalisée pour le moment.");
+  }
+}
+
+export async function reopenWhelpingSessionActionCore(
+  intention: ReopenWhelpingSessionIntention,
+  _previousState: WhelpingActionState,
+  formData: FormData,
+  dependencies: WhelpingActionDependencies,
+): Promise<WhelpingActionState> {
+  if (!isSessionIntention(intention)) return invalidState();
+
+  const reopenedAt = normalizeTimestamp(formData, "reopened_at");
+  const reason = normalizeOptionalText(
+    formData,
+    "reason",
+    MAX_REOPEN_REASON_LENGTH,
+  );
+  if (!reopenedAt || !reason) {
+    return invalidState("Le motif et l’horodatage de réouverture sont obligatoires.");
+  }
+
+  try {
+    const result = await dependencies.reopenSession({
+      sessionId: intention.sessionId,
+      clientCommandId: intention.clientCommandId,
+      reopenedAt,
+      reason,
+    });
+    if (result.outcome === "error") {
+      return { status: "error", message: whelpingErrorMessage(result.error) };
+    }
+
+    dependencies.revalidatePath("/litters/journal");
+    dependencies.revalidatePath(`/litters/${intention.litterId}`);
+    return {
+      status: "success",
+      message: "La session de mise-bas a été rouverte.",
       replayed: result.replayed,
     };
   } catch {

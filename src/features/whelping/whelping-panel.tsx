@@ -701,7 +701,7 @@ function CloseSessionDialog({
         <DialogHeader>
           <DialogTitle>Clôturer la mise-bas</DialogTitle>
           <DialogDescription>
-            Cette clôture est irréversible. Aucune réouverture n’est disponible dans l’état actuel du produit.
+            La clôture sera ajoutée à la chronologie et restera visible en cas de réouverture ultérieure.
           </DialogDescription>
         </DialogHeader>
         <form action={formAction} onSubmit={prepareSubmission} className="space-y-4">
@@ -736,6 +736,86 @@ function CloseSessionDialog({
               idleLabel="Clôturer la mise-bas"
               pendingLabel="Clôture..."
               variant="destructive"
+            />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReopenSessionDialog({
+  action,
+  onSuccess,
+}: {
+  action: SimpleAction;
+  onSuccess: (message: string) => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const reopenedAtIsoRef = useRef<HTMLInputElement>(null);
+  const submitAction = useCallback(
+    async (previousState: WhelpingActionState, formData: FormData) => {
+      const nextState = await action(previousState, formData);
+      if (nextState.status === "success" && nextState.message) {
+        setOpen(false);
+        onSuccess(nextState.message);
+        router.refresh();
+      }
+      return nextState;
+    },
+    [action, onSuccess, router],
+  );
+  const [state, formAction] = useActionState(
+    submitAction,
+    initialWhelpingActionState,
+  );
+
+  function prepareSubmission() {
+    if (reopenedAtIsoRef.current) {
+      reopenedAtIsoRef.current.value = new Date().toISOString();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" className="min-h-11">
+          Rouvrir la session
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Rouvrir la session</DialogTitle>
+          <DialogDescription>
+            Confirmez la réouverture. L’ancienne clôture restera visible dans la chronologie.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} onSubmit={prepareSubmission} className="space-y-4">
+          <input ref={reopenedAtIsoRef} type="hidden" name="reopened_at" />
+          <div>
+            <label className={labelClass} htmlFor="whelping-reopen-reason">
+              Motif de la réouverture
+            </label>
+            <textarea
+              id="whelping-reopen-reason"
+              className={inputClass}
+              name="reason"
+              rows={3}
+              maxLength={500}
+              required
+            />
+          </div>
+          <ActionMessage state={state} />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline" className="min-h-11">
+                Annuler
+              </Button>
+            </DialogClose>
+            <SubmitButton
+              idleLabel="Confirmer la réouverture"
+              pendingLabel="Réouverture..."
             />
           </DialogFooter>
         </form>
@@ -786,7 +866,9 @@ function Timeline({
             ? `Naissance n° ${birth.birthOrder}`
             : "Naissance"
           : event.eventType === "session_closed"
-            ? "Mise-bas clôturée"
+            ? "Session clôturée"
+            : event.eventType === "session_reopened"
+              ? "Session rouverte"
             : eventLabels[event.eventType];
 
         return (
@@ -883,6 +965,7 @@ export function WhelpingPanel({
   birthAction,
   birthWeightActions,
   closeAction,
+  reopenAction,
 }: {
   session: WhelpingSessionSummary | null;
   events: WhelpingEventSummary[];
@@ -894,6 +977,7 @@ export function WhelpingPanel({
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
   closeAction: SimpleAction | null;
+  reopenAction: SimpleAction | null;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
@@ -990,6 +1074,15 @@ export function WhelpingPanel({
           {sessionIsOpen && canWrite && closeAction ? (
             <div className="mt-6 border-t pt-5">
               <CloseSessionDialog action={closeAction} onSuccess={setConfirmation} />
+            </div>
+          ) : null}
+
+          {!sessionIsOpen && canWrite && reopenAction ? (
+            <div className="mt-6 border-t pt-5">
+              <ReopenSessionDialog
+                action={reopenAction}
+                onSuccess={setConfirmation}
+              />
             </div>
           ) : null}
         </>

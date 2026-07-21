@@ -5271,6 +5271,22 @@ export type Database = {
           session_id: string | null
         }[]
       }
+      reopen_whelping_session: {
+        Args: {
+          p_client_command_id: string
+          p_reason: string
+          p_reopened_at: string
+          p_session_id: string
+        }
+        Returns: {
+          event_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          sequence_no: number | null
+          session_id: string | null
+        }[]
+      }
       build_contact_display_name: {
         Args: {
           fallback?: string

@@ -204,6 +204,7 @@ export function LitterJournalDashboard({
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightActions,
   closeWhelpingSessionAction,
+  reopenWhelpingSessionAction,
   litterWeightAnimals,
   litterWeightSessions,
   litterWeightMeasurements,
@@ -265,6 +266,10 @@ export function LitterJournalDashboard({
   ) => Promise<WhelpingBirthActionState>) | null;
   recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[];
   closeWhelpingSessionAction: ((
+    previousState: WhelpingActionState,
+    formData: FormData,
+  ) => Promise<WhelpingActionState>) | null;
+  reopenWhelpingSessionAction: ((
     previousState: WhelpingActionState,
     formData: FormData,
   ) => Promise<WhelpingActionState>) | null;
@@ -349,6 +354,7 @@ export function LitterJournalDashboard({
         birthAction={recordWhelpingBirthAction}
         birthWeightActions={recordWhelpingBirthWeightActions}
         closeAction={closeWhelpingSessionAction}
+        reopenAction={reopenWhelpingSessionAction}
       />
       <LitterWeightPanel
         animals={litterWeightAnimals}

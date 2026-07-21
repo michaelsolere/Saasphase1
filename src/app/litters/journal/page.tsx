@@ -25,6 +25,7 @@ import {
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightAction,
   recordWhelpingEventAction,
+  reopenWhelpingSessionAction,
 } from "@/features/whelping/whelping-actions";
 import type { WhelpingBirthWeightAction } from "@/features/whelping/whelping-panel";
 import {
@@ -252,6 +253,7 @@ export default async function LitterJournalPage({
   const eventWhelpingClientCommandId = crypto.randomUUID();
   const birthWhelpingClientCommandId = crypto.randomUUID();
   const closeWhelpingClientCommandId = crypto.randomUUID();
+  const reopenWhelpingClientCommandId = crypto.randomUUID();
   const selectedLitterId = journal?.selectedLitter?.id ?? null;
   const selectedSessionId = selectedWhelpingSession?.id ?? null;
   const openWhelpingAction =
@@ -291,6 +293,18 @@ export default async function LitterJournalPage({
         clientCommandId: closeWhelpingClientCommandId,
       })
     : null;
+  const reopenWhelpingAction =
+    selectedLitterId !== null &&
+    selectedSessionId !== null &&
+    selectedWhelpingSession?.status === "closed" &&
+    whelpingDataReliable &&
+    whelpingCanWrite
+      ? reopenWhelpingSessionAction.bind(null, {
+          litterId: selectedLitterId,
+          sessionId: selectedSessionId,
+          clientCommandId: reopenWhelpingClientCommandId,
+        })
+      : null;
   const recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[] =
     selectedLitterId !== null &&
     selectedSessionId !== null &&
@@ -396,6 +410,7 @@ export default async function LitterJournalPage({
             recordWhelpingBirthAction={recordWhelpingBirth}
             recordWhelpingBirthWeightActions={recordWhelpingBirthWeightActions}
             closeWhelpingSessionAction={closeWhelpingAction}
+            reopenWhelpingSessionAction={reopenWhelpingAction}
             litterWeightAnimals={litterWeightHistoryLoaded?.animals ?? []}
             litterWeightSessions={litterWeightHistoryLoaded?.sessions ?? []}
             litterWeightMeasurements={litterWeightHistoryLoaded?.measurements ?? []}
