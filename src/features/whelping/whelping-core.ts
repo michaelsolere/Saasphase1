@@ -20,6 +20,8 @@ export const WHELPING_EVENT_TYPES = [
   "birth",
   "session_closed",
   "session_reopened",
+  "birth_corrected",
+  "birth_cancelled",
 ] as const;
 export type WhelpingEventType = (typeof WHELPING_EVENT_TYPES)[number];
 
@@ -50,6 +52,13 @@ export type WhelpingServiceErrorCode =
   | "measured_before_birth"
   | "birth_weight_already_recorded"
   | "invalid_birth_relations"
+  | "birth_cancelled"
+  | "stale_revision"
+  | "no_change"
+  | "later_active_birth_exists"
+  | "birth_has_downstream_data"
+  | "birth_time_out_of_order"
+  | "birth_weight_inconsistent"
   | "database_error";
 
 export type WhelpingServiceError = {
@@ -135,6 +144,11 @@ export type WhelpingBirthSummary = {
   sex: WhelpingBirthSex;
   viability: WhelpingBirthViability;
   initialCollarColor: string | null;
+  revisionNo: number;
+  occurredAt: string;
+  note: string | null;
+  cancelledAt: string | null;
+  cancellationReason: string | null;
   createdAt: string;
   createdBy: string;
   event: WhelpingEventSummary;
@@ -254,6 +268,42 @@ export type RecordWhelpingBirthWeightResult =
       birthId: string;
       animalId: string;
       weightMeasurementId: string;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
+export type CorrectWhelpingBirthInput = {
+  birthId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  occurredAt: string;
+  sex: WhelpingBirthSex;
+  viability: WhelpingBirthViability;
+  initialCollarColor?: string | null;
+  birthNote?: string | null;
+  weightGrams?: number | null;
+  weightMeasuredAt?: string | null;
+  weightNote?: string | null;
+  reason: string;
+};
+
+export type CancelWhelpingBirthInput = {
+  birthId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  cancelledAt: string;
+  reason: string;
+};
+
+export type WhelpingBirthAdjustmentResult =
+  | {
+      outcome: "success";
+      birthId: string;
+      animalId: string;
+      eventId: string;
+      weightMeasurementId: string | null;
+      revisionNo: number;
+      eventSequenceNo: number;
       replayed: boolean;
     }
   | ErrorResult;
@@ -598,6 +648,18 @@ function commandFailure(reason: string | null): ErrorResult {
       return failure("session_closed", "Cette session est déjà clôturée.");
     case "client_command_conflict":
       return failure("conflict", "Cette commande a déjà été utilisée.");
+    case "birth_cancelled":
+      return failure("birth_cancelled", "Cette naissance a déjà été annulée.");
+    case "stale_revision":
+      return failure("stale_revision", "Cette naissance a été modifiée depuis son affichage.");
+    case "no_change":
+      return failure("no_change", "Aucune modification n’a été détectée.");
+    case "later_active_birth_exists":
+      return failure("later_active_birth_exists", "Seule la dernière naissance active peut être annulée.");
+    case "birth_has_downstream_data":
+      return failure("birth_has_downstream_data", "Cette naissance possède des données ultérieures et ne peut pas être annulée.");
+    case "birth_time_out_of_order":
+      return failure("birth_time_out_of_order", "L’heure de naissance est incompatible avec la chronologie.");
     case "measured_before_birth":
       return failure(
         "measured_before_birth",
@@ -800,6 +862,11 @@ export async function listWhelpingBirthsForSessionCore(
         sex: birth.sex as WhelpingBirthSex,
         viability: birth.viability as WhelpingBirthViability,
         initialCollarColor: birth.initial_collar_color,
+        revisionNo: birth.revision_no,
+        occurredAt: birth.occurred_at,
+        note: birth.note,
+        cancelledAt: birth.cancelled_at,
+        cancellationReason: birth.cancellation_reason,
         createdAt: birth.created_at,
         createdBy: birth.created_by,
         event: mapEvent(eventsById.get(birth.event_id)!),
@@ -1003,6 +1070,12 @@ export async function recordWhelpingBirthWeightCore(
     return databaseFailure("whelping_birth_weight_record_failed", recorded.error);
   }
   const result = recorded.data?.[0];
+  if (result?.outcome !== "success" && result?.reason === "birth_weight_inconsistent") {
+    return failure(
+      "birth_weight_inconsistent",
+      "Les données de poids liées à cette naissance sont incohérentes.",
+    );
+  }
   if (
     !result ||
     result.outcome !== "success" ||
@@ -1020,6 +1093,111 @@ export async function recordWhelpingBirthWeightCore(
     weightMeasurementId: result.weight_measurement_id,
     replayed: result.replayed === true,
   };
+}
+
+function mapBirthAdjustmentResult(result: {
+  outcome: string;
+  birth_id: string | null;
+  animal_id: string | null;
+  event_id: string | null;
+  weight_measurement_id: string | null;
+  revision_no: number | null;
+  event_sequence_no: number | null;
+  replayed: boolean;
+  reason: string | null;
+} | undefined): WhelpingBirthAdjustmentResult {
+  if (result?.outcome !== "success" && result?.reason === "birth_weight_inconsistent") {
+    return failure(
+      "birth_weight_inconsistent",
+      "Les données de poids liées à cette naissance sont incohérentes.",
+    );
+  }
+  if (
+    !result || result.outcome !== "success" || !result.birth_id ||
+    !result.animal_id || !result.event_id || result.revision_no === null ||
+    result.event_sequence_no === null
+  ) {
+    if (result?.reason === "technical_error") {
+      console.error("whelping_birth_adjustment_command_failed");
+    }
+    return commandFailure(result?.reason ?? null);
+  }
+  return {
+    outcome: "success",
+    birthId: result.birth_id,
+    animalId: result.animal_id,
+    eventId: result.event_id,
+    weightMeasurementId: result.weight_measurement_id,
+    revisionNo: result.revision_no,
+    eventSequenceNo: result.event_sequence_no,
+    replayed: result.replayed === true,
+  };
+}
+
+export async function correctWhelpingBirthCore(
+  input: CorrectWhelpingBirthInput,
+  supabase: Supabase,
+): Promise<WhelpingBirthAdjustmentResult> {
+  const birthId = normalizeUuid(input.birthId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const occurredAt = normalizeTimestamp(input.occurredAt);
+  const initialCollarColor = normalizeOptionalText(input.initialCollarColor, 255);
+  const birthNote = normalizeOptionalText(input.birthNote, 5_000);
+  const weightGrams = normalizeOptionalWeight(input.weightGrams);
+  const weightMeasuredAt = input.weightMeasuredAt == null
+    ? null
+    : normalizeTimestamp(input.weightMeasuredAt);
+  const weightNote = normalizeOptionalText(input.weightNote, 5_000);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (!birthId || !clientCommandId || !Number.isInteger(input.expectedRevisionNo) || input.expectedRevisionNo < 0 ||
+    !occurredAt || !isBirthSex(input.sex) || !isBirthViability(input.viability) ||
+    initialCollarColor === undefined || birthNote === undefined || weightGrams === undefined ||
+    weightMeasuredAt === undefined || weightNote === undefined || !reason ||
+    (weightGrams === null && (weightMeasuredAt !== null || weightNote !== null)) ||
+    (weightGrams !== null && weightMeasuredAt === null)) return invalidInput();
+  if (!(await authenticatedUserId(supabase))) {
+    return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+  }
+  const adjusted = await supabase.rpc("correct_whelping_birth", {
+    p_birth_id: birthId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_occurred_at: occurredAt,
+    p_sex: input.sex,
+    p_viability: input.viability,
+    p_initial_collar_color: initialCollarColor,
+    p_birth_note: birthNote,
+    p_weight_grams: weightGrams,
+    p_weight_measured_at: weightMeasuredAt,
+    p_weight_note: weightNote,
+    p_reason: reason,
+  });
+  if (adjusted.error) return databaseFailure("whelping_birth_correction_failed", adjusted.error);
+  return mapBirthAdjustmentResult(adjusted.data?.[0]);
+}
+
+export async function cancelWhelpingBirthCore(
+  input: CancelWhelpingBirthInput,
+  supabase: Supabase,
+): Promise<WhelpingBirthAdjustmentResult> {
+  const birthId = normalizeUuid(input.birthId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const cancelledAt = normalizeTimestamp(input.cancelledAt);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (!birthId || !clientCommandId || !Number.isInteger(input.expectedRevisionNo) || input.expectedRevisionNo < 0 ||
+    !cancelledAt || !reason) return invalidInput();
+  if (!(await authenticatedUserId(supabase))) {
+    return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+  }
+  const adjusted = await supabase.rpc("cancel_whelping_birth", {
+    p_birth_id: birthId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_cancelled_at: cancelledAt,
+    p_reason: reason,
+  });
+  if (adjusted.error) return databaseFailure("whelping_birth_cancellation_failed", adjusted.error);
+  return mapBirthAdjustmentResult(adjusted.data?.[0]);
 }
 
 export async function closeWhelpingSessionCore(

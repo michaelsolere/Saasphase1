@@ -4896,12 +4896,18 @@ export type Database = {
         Row: {
           animal_id: string
           birth_order: number
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
           created_at: string
           created_by: string
           event_id: string
           id: string
           initial_collar_color: string | null
+          note: string | null
+          occurred_at: string
           organization_id: string
+          revision_no: number
           session_id: string
           sex: string
           viability: string
@@ -4909,12 +4915,18 @@ export type Database = {
         Insert: {
           animal_id: string
           birth_order: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by: string
           event_id: string
           id?: string
           initial_collar_color?: string | null
+          note?: string | null
+          occurred_at?: string
           organization_id: string
+          revision_no?: number
           session_id: string
           sex: string
           viability: string
@@ -4922,17 +4934,30 @@ export type Database = {
         Update: {
           animal_id?: string
           birth_order?: number
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           created_at?: string
           created_by?: string
           event_id?: string
           id?: string
           initial_collar_color?: string | null
+          note?: string | null
+          occurred_at?: string
           organization_id?: string
+          revision_no?: number
           session_id?: string
           sex?: string
           viability?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whelping_births_cancelled_by_membership_fk"
+            columns: ["organization_id", "cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
           {
             foreignKeyName: "whelping_births_animal_organization_fk"
             columns: ["organization_id", "animal_id"]
@@ -5828,6 +5853,53 @@ export type Database = {
           reason: string
           replayed: boolean
           sequence_no: number
+        }[]
+      }
+      cancel_whelping_birth: {
+        Args: {
+          p_birth_id: string
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string
+        }
+        Returns: {
+          animal_id: string | null
+          birth_id: string | null
+          event_id: string | null
+          event_sequence_no: number | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          weight_measurement_id: string | null
+        }[]
+      }
+      correct_whelping_birth: {
+        Args: {
+          p_birth_id: string
+          p_birth_note: string | null
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_initial_collar_color: string | null
+          p_occurred_at: string
+          p_reason: string
+          p_sex: string
+          p_viability: string
+          p_weight_grams: number | null
+          p_weight_measured_at: string | null
+          p_weight_note: string | null
+        }
+        Returns: {
+          animal_id: string | null
+          birth_id: string | null
+          event_id: string | null
+          event_sequence_no: number | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          weight_measurement_id: string | null
         }[]
       }
       record_whelping_birth: {

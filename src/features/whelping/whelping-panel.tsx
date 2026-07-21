@@ -859,17 +859,25 @@ function Timeline({
           ? birthsByEventId.get(event.id)
           : undefined;
         const birthWeightAction = birth
-          ? weightActionsByBirthId.get(birth.id)
+          ? birth.cancelledAt === null
+            ? weightActionsByBirthId.get(birth.id)
+            : undefined
           : undefined;
         const title = event.eventType === "birth"
           ? birth
-            ? `Naissance n° ${birth.birthOrder}`
+            ? birth.cancelledAt
+              ? `Naissance n° ${birth.birthOrder} annulée`
+              : `Naissance n° ${birth.birthOrder}`
             : "Naissance"
           : event.eventType === "session_closed"
             ? "Session clôturée"
             : event.eventType === "session_reopened"
               ? "Session rouverte"
-            : eventLabels[event.eventType];
+              : event.eventType === "birth_corrected"
+                ? "Naissance corrigée"
+                : event.eventType === "birth_cancelled"
+                  ? "Naissance annulée"
+                  : eventLabels[event.eventType];
 
         return (
           <li key={event.id} className="min-w-0 rounded-xl border bg-background p-4 sm:p-5">
@@ -880,12 +888,15 @@ function Timeline({
                   {title}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  {formatDateTime(event.occurredAt, session.timezoneName)}
+                  {formatDateTime(
+                    birth ? birth.occurredAt : event.occurredAt,
+                    session.timezoneName,
+                  )}
                 </p>
               </div>
               {birth ? (
                 <span className="w-fit shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold">
-                  {viabilityLabels[birth.viability]}
+                  {birth.cancelledAt ? "Annulée" : viabilityLabels[birth.viability]}
                 </span>
               ) : null}
             </div>
@@ -923,6 +934,11 @@ function Timeline({
                       </span>
                     </dd>
                   </div>
+                ) : birth.cancelledAt ? (
+                  <div>
+                    <dt className="text-muted">Poids de naissance</dt>
+                    <dd className="text-muted">Naissance annulée</dd>
+                  </div>
                 ) : (
                   <div>
                     <dt className="text-muted">Poids de naissance</dt>
@@ -942,9 +958,9 @@ function Timeline({
                 )}
               </dl>
             ) : null}
-            {event.note ? (
+            {(birth ? birth.note : event.note) ? (
               <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted">
-                {event.note}
+                {birth ? birth.note : event.note}
               </p>
             ) : null}
           </li>
@@ -1043,7 +1059,9 @@ export function WhelpingPanel({
             <div className="mt-5 rounded-xl border bg-background p-4 sm:p-5">
               <p className="text-sm text-muted">
                 Naissances enregistrées
-                <span className="ml-2 text-lg font-semibold text-foreground">{births.length}</span>
+                <span className="ml-2 text-lg font-semibold text-foreground">
+                  {births.filter((birth) => birth.cancelledAt === null).length}
+                </span>
               </p>
               {canWrite && birthAction && eventAction ? (
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">

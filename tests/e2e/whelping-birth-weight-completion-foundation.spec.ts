@@ -633,7 +633,7 @@ test("completes one missing birth weight idempotently without changing the timel
     );
     expect(inconsistentProjection).toMatchObject({
       outcome: "error",
-      error: { code: "invalid_birth_relations" },
+      error: { code: "birth_weight_inconsistent" },
     });
 
     const directInsert = await owner.from("animal_weight_measurements").insert({

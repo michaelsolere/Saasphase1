@@ -314,7 +314,10 @@ export default async function LitterJournalPage({
     whelpingDataReliable &&
     whelpingCanWrite
       ? (whelpingBirthsLoaded?.births ?? [])
-          .filter((birth) => birth.birthWeightMeasurement === null)
+          .filter(
+            (birth) =>
+              birth.cancelledAt === null && birth.birthWeightMeasurement === null,
+          )
           .map((birth) => {
             const birthWeightClientCommandId = crypto.randomUUID();
             return {
