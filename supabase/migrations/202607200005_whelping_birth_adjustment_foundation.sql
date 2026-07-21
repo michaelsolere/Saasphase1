@@ -793,36 +793,93 @@ grant execute on function public.cancel_whelping_birth(uuid,uuid,integer,timesta
 
 -- Keep the creation RPC compatible with cancelled births without duplicating it.
 do $$
-declare v_definition text;
+declare
+  v_definition text;
+  v_fragment text;
+  v_replacement text;
+  v_occurrences integer;
 begin
   v_definition:=pg_get_functiondef('public.record_whelping_birth(uuid,uuid,timestamptz,text,text,text,integer,timestamptz,text)'::regprocedure);
-  v_definition:=replace(v_definition,
-    E'  if found then\n    if v_existing_command.command_type',
-    E'  if found then\n    if v_existing_command.command_type');
-  v_definition:=replace(v_definition,
-    E'    outcome := ''success'';\n    birth_id := v_existing_command.birth_id;',
-    E'    if exists (select 1 from public.whelping_births replay_birth where replay_birth.organization_id = v_session.organization_id and replay_birth.id = v_existing_command.birth_id and replay_birth.cancelled_at is not null) then\n      reason := ''birth_cancelled'';\n      return next;\n      return;\n    end if;\n\n    outcome := ''success'';\n    birth_id := v_existing_command.birth_id;');
-  v_definition:=replace(v_definition,
-    E'    and session.litter_id = v_litter.id;',
-    E'    and session.litter_id = v_litter.id\n    and birth.cancelled_at is null;');
-  v_definition:=replace(v_definition,
-    E'    and session.litter_id = v_litter.id\n    order by birth.birth_order, event.sequence_no',
-    E'    and session.litter_id = v_litter.id\n      and birth.cancelled_at is null\n    order by birth.birth_order, event.sequence_no');
-  v_definition:=replace(v_definition,
-    E'  if v_existing_birth_count = 0\n    and v_litter.actual_birth_date is not null',
-    E'  if v_existing_birth_count = 0\n    and not exists (select 1 from public.whelping_births historical_birth join public.whelping_sessions historical_session on historical_session.organization_id=historical_birth.organization_id and historical_session.id=historical_birth.session_id where historical_session.organization_id=v_litter.organization_id and historical_session.litter_id=v_litter.id)\n    and v_litter.actual_birth_date is not null');
-  v_definition:=replace(v_definition,
-    E'    select (event.occurred_at at time zone session.timezone_name)::date as local_date',
-    E'    select (birth.occurred_at at time zone session.timezone_name)::date as local_date');
-  v_definition:=replace(v_definition,
-    E'    join public.whelping_events event\n      on event.organization_id = birth.organization_id\n     and event.id = birth.event_id\n', E'');
-  v_definition:=replace(v_definition,E'    order by birth.birth_order, event.sequence_no',E'    order by birth.birth_order, birth.occurred_at, birth.id');
+
+  v_fragment:=E'    outcome := ''success'';\n    birth_id := v_existing_command.birth_id;';
+  v_replacement:=E'    if exists (select 1 from public.whelping_births replay_birth where replay_birth.organization_id = v_session.organization_id and replay_birth.id = v_existing_command.birth_id and replay_birth.cancelled_at is not null) then\n      reason := ''birth_cancelled'';\n      return next;\n      return;\n    end if;\n\n    outcome := ''success'';\n    birth_id := v_existing_command.birth_id;';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected replay success fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    and session.litter_id = v_litter.id;';
+  v_replacement:=E'    and session.litter_id = v_litter.id\n    and birth.cancelled_at is null;';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 2 then raise exception 'record_whelping_birth adaptation failed: expected active birth count fragment twice, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    and session.litter_id = v_litter.id\n    order by birth.birth_order, event.sequence_no';
+  v_replacement:=E'    and session.litter_id = v_litter.id\n      and birth.cancelled_at is null\n    order by birth.birth_order, event.sequence_no';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected first active birth fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'  if v_existing_birth_count = 0\n    and v_litter.actual_birth_date is not null';
+  v_replacement:=E'  if v_existing_birth_count = 0\n    and not exists (select 1 from public.whelping_births historical_birth join public.whelping_sessions historical_session on historical_session.organization_id=historical_birth.organization_id and historical_session.id=historical_birth.session_id where historical_session.organization_id=v_litter.organization_id and historical_session.litter_id=v_litter.id)\n    and v_litter.actual_birth_date is not null';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected actual birth date guard fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    select (event.occurred_at at time zone session.timezone_name)::date as local_date';
+  v_replacement:=E'    select (birth.occurred_at at time zone session.timezone_name)::date as local_date';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected effective birth date projection fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    join public.whelping_events event\n      on event.organization_id = birth.organization_id\n     and event.id = birth.event_id\n';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected original event join fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,E'');
+
+  v_fragment:=E'    order by birth.birth_order, event.sequence_no';
+  v_replacement:=E'    order by birth.birth_order, birth.occurred_at, birth.id';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth adaptation failed: expected first birth ordering fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
   execute v_definition;
 
   v_definition:=pg_get_functiondef('public.record_whelping_birth_weight(uuid,uuid,integer,timestamptz,text)'::regprocedure);
-  v_definition:=replace(v_definition,
-    E'  if p_measured_at < v_event.occurred_at then',
-    E'  if v_birth.cancelled_at is not null then\n    reason := ''birth_cancelled'';\n    return next;\n    return;\n  end if;\n\n  if p_measured_at < v_birth.occurred_at then');
+
+  v_fragment:=E'    outcome := ''success'';\n    animal_id := v_existing_command.animal_id;';
+  v_replacement:=E'    if v_birth.cancelled_at is not null then\n      reason := ''birth_cancelled'';\n      return next;\n      return;\n    end if;\n\n    select measurement.*\n    into v_existing_measurement\n    from public.animal_weight_measurements measurement\n    where measurement.organization_id = v_birth.organization_id\n      and measurement.id = v_existing_command.weight_measurement_id\n    for share;\n\n    if not found\n      or v_existing_measurement.source_birth_id is distinct from v_birth.id\n      or v_existing_measurement.animal_id is distinct from v_birth.animal_id\n      or v_existing_measurement.measurement_kind is distinct from ''birth''\n      or v_existing_measurement.cancelled_at is not null\n      or v_existing_measurement.grams is distinct from v_existing_command.weight_grams\n      or v_existing_measurement.measured_at is distinct from v_existing_command.measured_at\n      or v_existing_measurement.note is distinct from v_existing_command.note\n      or v_animal.birth_weight_grams is distinct from v_existing_command.weight_grams then\n      reason := ''birth_weight_inconsistent'';\n      return next;\n      return;\n    end if;\n\n    outcome := ''success'';\n    animal_id := v_existing_command.animal_id;';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected replay success fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'      or v_existing_measurement.animal_id is distinct from v_birth.animal_id\n      or v_existing_measurement.measurement_kind';
+  v_replacement:=E'      or v_existing_measurement.animal_id is distinct from v_birth.animal_id\n      or v_existing_command.animal_id is distinct from v_birth.animal_id\n      or v_existing_measurement.measurement_kind';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected replay animal consistency fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    or v_animal.deleted_at is not null\n    or v_animal.litter_id';
+  v_replacement:=E'    or (v_animal.deleted_at is not null and v_birth.cancelled_at is null)\n    or v_animal.litter_id';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected active animal relation fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'  if v_session.id is null\n    or v_session.status not in (''open'', ''closed'')';
+  v_replacement:=E'  if (v_session.id is null\n    or v_session.status not in (''open'', ''closed'')';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected relation validation opening fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'    or v_animal.sex is distinct from v_birth.sex then\n    reason := ''birth_relations_inconsistent'';';
+  v_replacement:=E'    or v_animal.sex is distinct from v_birth.sex)\n    and not exists (\n      select 1\n      from public.whelping_commands replay_command\n      where replay_command.organization_id = v_birth.organization_id\n        and replay_command.client_command_id = p_client_command_id\n    ) then\n    reason := ''birth_relations_inconsistent'';';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected relation validation closing fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
+
+  v_fragment:=E'  if p_measured_at < v_event.occurred_at then';
+  v_replacement:=E'  if v_birth.cancelled_at is not null then\n    reason := ''birth_cancelled'';\n    return next;\n    return;\n  end if;\n\n  if p_measured_at < v_birth.occurred_at then';
+  v_occurrences:=(length(v_definition)-length(replace(v_definition,v_fragment,'')))/length(v_fragment);
+  if v_occurrences <> 1 then raise exception 'record_whelping_birth_weight adaptation failed: expected birth timestamp validation fragment once, found %',v_occurrences; end if;
+  v_definition:=replace(v_definition,v_fragment,v_replacement);
   execute v_definition;
 end;
 $$;

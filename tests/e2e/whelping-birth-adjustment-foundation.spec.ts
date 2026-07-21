@@ -6,6 +6,7 @@ import {
   correctWhelpingBirthCore,
   listWhelpingBirthsForSessionCore,
   recordWhelpingBirthCore,
+  recordWhelpingBirthWeightCore,
 } from "../../src/features/whelping/whelping-core";
 import { createAuthenticatedSupabaseClient, runE2eSqlSync } from "./helpers/supabase";
 import type { Database } from "../../src/types/database.types";
@@ -56,6 +57,7 @@ function cleanup() {
     delete from public.litters where id=${q(ids.litter)}::uuid or name like 'E2E birth adjustment 202607200005%';
     delete from public.animals where id in (${q(ids.father)}::uuid,${q(ids.mother)}::uuid);
     delete from public.memberships where id::text like '9f200005-%';
+    delete from public.profiles where id::text like '9f200005-%';
     delete from auth.identities where user_id::text like '9f200005-%';
     delete from auth.users where id::text like '9f200005-%';
     delete from public.organizations where id=${q(ids.foreignOrganization)}::uuid;
@@ -172,26 +174,43 @@ test("corrects and cancels births atomically while preserving every source row",
     const anonymous = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     expect(await correctWhelpingBirthCore(correction(one.birthId, crypto.randomUUID(), 1), anonymous)).toMatchObject({ outcome: "error", error: { code: "unauthenticated" } });
 
-    const added = await correctWhelpingBirthCore(correction(one.birthId, ids.addWeight, 1, { weightGrams: 410, weightMeasuredAt: "2026-07-20T20:31:00Z", weightNote: "Initial" }), owner);
-    expect(added).toMatchObject({ outcome: "success", revisionNo: 2 });
-    if (added.outcome !== "success" || !added.weightMeasurementId) throw new Error("weight add failed");
-    created.events.push(added.eventId); created.weights.push(added.weightMeasurementId);
-    const weightId = added.weightMeasurementId;
-    const changed = await correctWhelpingBirthCore(correction(one.birthId, ids.changeWeight, 2, { weightGrams: 420, weightMeasuredAt: "2026-07-20T20:32:00Z", weightNote: "Corrigé" }), owner);
-    expect(changed).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 3 });
+    const completedWeightInput = {
+      birthId: one.birthId,
+      clientCommandId: ids.addWeight,
+      weightGrams: 410,
+      measuredAt: "2026-07-20T22:41:00Z",
+      note: "Initial",
+    };
+    const completedWeight = await recordWhelpingBirthWeightCore(completedWeightInput, owner);
+    expect(completedWeight).toMatchObject({ outcome: "success", replayed: false });
+    if (completedWeight.outcome !== "success") throw new Error("weight completion failed");
+    created.weights.push(completedWeight.weightMeasurementId);
+    const weightId = completedWeight.weightMeasurementId;
+    expect(await recordWhelpingBirthWeightCore(completedWeightInput, owner)).toEqual({ ...completedWeight, replayed: true });
+
+    const changed = await correctWhelpingBirthCore(correction(one.birthId, ids.changeWeight, 1, { weightGrams: 420, weightMeasuredAt: "2026-07-20T22:42:00Z", weightNote: "Corrigé" }), owner);
+    expect(changed).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 2 });
     if (changed.outcome === "success") created.events.push(changed.eventId);
-    const removed = await correctWhelpingBirthCore(correction(one.birthId, ids.removeWeight, 3), owner);
-    expect(removed).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 4 });
+    const correctedWeightState = sql(`select json_build_object('measurement',row_to_json(measurement),'animal_birth_weight',animal.birth_weight_grams)::text from public.animal_weight_measurements measurement join public.animals animal on animal.organization_id=measurement.organization_id and animal.id=measurement.animal_id where measurement.id=${q(weightId)}::uuid;`);
+    expect(await recordWhelpingBirthWeightCore(completedWeightInput, owner)).toMatchObject({ outcome: "error", error: { code: "birth_weight_inconsistent" } });
+    expect(sql(`select json_build_object('measurement',row_to_json(measurement),'animal_birth_weight',animal.birth_weight_grams)::text from public.animal_weight_measurements measurement join public.animals animal on animal.organization_id=measurement.organization_id and animal.id=measurement.animal_id where measurement.id=${q(weightId)}::uuid;`)).toBe(correctedWeightState);
+
+    const removed = await correctWhelpingBirthCore(correction(one.birthId, ids.removeWeight, 2), owner);
+    expect(removed).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 3 });
     if (removed.outcome === "success") created.events.push(removed.eventId);
     expect(sql(`select count(*)||':'||(cancelled_at is not null)::text from public.animal_weight_measurements where id=${q(weightId)}::uuid group by cancelled_at;`)).toBe("1:true");
-    const restored = await correctWhelpingBirthCore(correction(one.birthId, ids.restoreWeight, 4, { weightGrams: 430, weightMeasuredAt: "2026-07-20T20:33:00Z", weightNote: "Réactivé" }), owner);
-    expect(restored).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 5 });
+    const removedWeightState = sql(`select json_build_object('measurement',row_to_json(measurement),'animal_birth_weight',animal.birth_weight_grams)::text from public.animal_weight_measurements measurement join public.animals animal on animal.organization_id=measurement.organization_id and animal.id=measurement.animal_id where measurement.id=${q(weightId)}::uuid;`);
+    expect(await recordWhelpingBirthWeightCore(completedWeightInput, owner)).toMatchObject({ outcome: "error", error: { code: "birth_weight_inconsistent" } });
+    expect(sql(`select json_build_object('measurement',row_to_json(measurement),'animal_birth_weight',animal.birth_weight_grams)::text from public.animal_weight_measurements measurement join public.animals animal on animal.organization_id=measurement.organization_id and animal.id=measurement.animal_id where measurement.id=${q(weightId)}::uuid;`)).toBe(removedWeightState);
+
+    const restored = await correctWhelpingBirthCore(correction(one.birthId, ids.restoreWeight, 3, { weightGrams: 430, weightMeasuredAt: "2026-07-20T22:43:00Z", weightNote: "Réactivé" }), owner);
+    expect(restored).toMatchObject({ outcome: "success", weightMeasurementId: weightId, revisionNo: 4 });
     if (restored.outcome === "success") created.events.push(restored.eventId);
     expect(sql(`select count(*)||':'||(cancelled_at is null)::text from public.animal_weight_measurements where id=${q(weightId)}::uuid group by cancelled_at;`)).toBe("1:true");
 
-    expect(await correctWhelpingBirthCore(correction(one.birthId, ids.noChange, 5, { weightGrams: 430, weightMeasuredAt: "2026-07-20T20:33:00Z", weightNote: "Réactivé" }), owner)).toMatchObject({ outcome: "error", error: { code: "no_change" } });
-    expect(await correctWhelpingBirthCore(correction(one.birthId, ids.stale, 4, { birthNote: "Ne doit pas passer" }), owner)).toMatchObject({ outcome: "error", error: { code: "stale_revision" } });
-    expect(await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelNotLast, expectedRevisionNo: 5, cancelledAt: "2026-07-20T21:00:00Z", reason: "Ordre" }, owner)).toMatchObject({ outcome: "error", error: { code: "later_active_birth_exists" } });
+    expect(await correctWhelpingBirthCore(correction(one.birthId, ids.noChange, 4, { weightGrams: 430, weightMeasuredAt: "2026-07-20T22:43:00Z", weightNote: "Réactivé" }), owner)).toMatchObject({ outcome: "error", error: { code: "no_change" } });
+    expect(await correctWhelpingBirthCore(correction(one.birthId, ids.stale, 3, { birthNote: "Ne doit pas passer" }), owner)).toMatchObject({ outcome: "error", error: { code: "stale_revision" } });
+    expect(await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelNotLast, expectedRevisionNo: 4, cancelledAt: "2026-07-20T21:00:00Z", reason: "Ordre" }, owner)).toMatchObject({ outcome: "error", error: { code: "later_active_birth_exists" } });
 
     const cancelledTwo = await cancelWhelpingBirthCore({ birthId: two.birthId, clientCommandId: ids.cancelTwo, expectedRevisionNo: 0, cancelledAt: "2026-07-20T21:01:00Z", reason: "Dernière naissance erronée" }, owner);
     expect(cancelledTwo).toMatchObject({ outcome: "success", revisionNo: 1 });
@@ -216,12 +235,15 @@ test("corrects and cancels births atomically while preserving every source row",
     sql(`insert into public.animal_weight_measurements(id,organization_id,animal_id,measured_at,grams,measurement_kind,created_by)
       values(${q(ids.routine)}::uuid,${q(organizationId)}::uuid,${q(one.animalId)}::uuid,'2026-07-20T21:02:00Z',500,'clinical',${q(ownerId)}::uuid);`);
     created.weights.push(ids.routine);
-    expect(await correctWhelpingBirthCore(correction(one.birthId, crypto.randomUUID(), 5, { viability: "stillborn", weightGrams: 430, weightMeasuredAt: "2026-07-20T20:33:00Z", weightNote: "Réactivé" }), owner)).toMatchObject({ outcome: "error", error: { code: "birth_has_downstream_data" } });
-    expect(await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelBlocked, expectedRevisionNo: 5, cancelledAt: "2026-07-20T21:03:00Z", reason: "Donnée ultérieure" }, owner)).toMatchObject({ outcome: "error", error: { code: "birth_has_downstream_data" } });
+    expect(await correctWhelpingBirthCore(correction(one.birthId, crypto.randomUUID(), 4, { viability: "stillborn", weightGrams: 430, weightMeasuredAt: "2026-07-20T22:43:00Z", weightNote: "Réactivé" }), owner)).toMatchObject({ outcome: "error", error: { code: "birth_has_downstream_data" } });
+    expect(await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelBlocked, expectedRevisionNo: 4, cancelledAt: "2026-07-20T21:03:00Z", reason: "Donnée ultérieure" }, owner)).toMatchObject({ outcome: "error", error: { code: "birth_has_downstream_data" } });
     sql(`delete from public.animal_weight_measurements where id=${q(ids.routine)}::uuid;`);
-    const cancelledOne = await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelOne, expectedRevisionNo: 5, cancelledAt: "2026-07-20T21:04:00Z", reason: "Annulation finale" }, owner);
-    expect(cancelledOne).toMatchObject({ outcome: "success", revisionNo: 6 });
+    const cancelledOne = await cancelWhelpingBirthCore({ birthId: one.birthId, clientCommandId: ids.cancelOne, expectedRevisionNo: 4, cancelledAt: "2026-07-20T21:04:00Z", reason: "Annulation finale" }, owner);
+    expect(cancelledOne).toMatchObject({ outcome: "success", revisionNo: 5 });
     if (cancelledOne.outcome === "success") created.events.push(cancelledOne.eventId);
+    const cancelledBirthState = sql(`select json_build_object('birth',row_to_json(birth),'measurement',row_to_json(measurement),'animal',row_to_json(animal))::text from public.whelping_births birth join public.animals animal on animal.organization_id=birth.organization_id and animal.id=birth.animal_id join public.animal_weight_measurements measurement on measurement.organization_id=birth.organization_id and measurement.source_birth_id=birth.id where birth.id=${q(one.birthId)}::uuid;`);
+    expect(await recordWhelpingBirthWeightCore(completedWeightInput, owner)).toMatchObject({ outcome: "error", error: { code: "birth_cancelled" } });
+    expect(sql(`select json_build_object('birth',row_to_json(birth),'measurement',row_to_json(measurement),'animal',row_to_json(animal))::text from public.whelping_births birth join public.animals animal on animal.organization_id=birth.organization_id and animal.id=birth.animal_id join public.animal_weight_measurements measurement on measurement.organization_id=birth.organization_id and measurement.source_birth_id=birth.id where birth.id=${q(one.birthId)}::uuid;`)).toBe(cancelledBirthState);
     expect(JSON.parse(sql(`select json_build_object('total',born_total_count,'male',born_male_count,'female',born_female_count,'alive',alive_count,'date',actual_birth_date) from public.litters where id=${q(ids.litter)}::uuid;`))).toEqual({ total: 0, male: 0, female: 0, alive: 0, date: "2026-07-20" });
 
     const three = await recordWhelpingBirthCore(recordInput(ids.birthThreeCommand, "2026-07-21T20:20:00.000Z"), owner);
@@ -252,7 +274,7 @@ test("corrects and cancels births atomically while preserving every source row",
     }
 
     const audit = JSON.parse(sql(`select json_build_object('count',count(*),'snapshots',bool_and(snapshot_before ? 'birth' and snapshot_after ? 'litter'),'types',array_agg(distinct command_type)) from public.whelping_birth_adjustment_commands where client_command_id::text like '9f200005-%';`));
-    expect(audit.count).toBeGreaterThanOrEqual(8); expect(audit.snapshots).toBe(true);
+    expect(audit.count).toBeGreaterThanOrEqual(7); expect(audit.snapshots).toBe(true);
     expect(audit.types.sort()).toEqual(["cancel_birth", "correct_birth"]);
     expect(sql(`select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth';`)).toBe("3");
   } finally {

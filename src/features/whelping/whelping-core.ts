@@ -1070,6 +1070,12 @@ export async function recordWhelpingBirthWeightCore(
     return databaseFailure("whelping_birth_weight_record_failed", recorded.error);
   }
   const result = recorded.data?.[0];
+  if (result?.outcome !== "success" && result?.reason === "birth_weight_inconsistent") {
+    return failure(
+      "birth_weight_inconsistent",
+      "Les données de poids liées à cette naissance sont incohérentes.",
+    );
+  }
   if (
     !result ||
     result.outcome !== "success" ||
