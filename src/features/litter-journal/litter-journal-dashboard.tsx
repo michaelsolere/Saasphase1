@@ -34,10 +34,12 @@ import type {
   WhelpingSessionSummary,
 } from "@/features/whelping/whelping-core";
 import { LitterWeightPanel } from "@/features/litter-weights/litter-weight-panel";
+import type { LitterWeightMeasurementAdjustmentAction, LitterWeightSessionCancellationAction } from "@/features/litter-weights/litter-weight-panel";
 import type {
   LitterWeightHistoryAnimal,
   LitterWeightHistoryMeasurement,
   LitterWeightHistorySession,
+  LitterWeightAdjustmentHistoryEntry,
   LitterWeightOrganizationRole,
   LitterWeighingSchedulePolicyMetadata,
 } from "@/features/litter-weights/litter-weights-core";
@@ -213,6 +215,10 @@ export function LitterJournalDashboard({
   litterWeightSchedulePolicy,
   litterWeightRole,
   litterWeightAction,
+  litterWeightMeasurementAdjustmentActions,
+  litterWeightSessionCancellationActions,
+  litterWeightAdjustmentHistory,
+  litterWeightAdjustmentHistoryLoadError,
   litterWeightsLoadError,
 }: {
   litters: LitterJournalListItem[];
@@ -284,6 +290,10 @@ export function LitterJournalDashboard({
     previousState: LitterRoutineWeightsActionState,
     formData: FormData,
   ) => Promise<LitterRoutineWeightsActionState>) | null;
+  litterWeightMeasurementAdjustmentActions: LitterWeightMeasurementAdjustmentAction[];
+  litterWeightSessionCancellationActions: LitterWeightSessionCancellationAction[];
+  litterWeightAdjustmentHistory: LitterWeightAdjustmentHistoryEntry[];
+  litterWeightAdjustmentHistoryLoadError: boolean;
   litterWeightsLoadError: boolean;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
@@ -365,6 +375,10 @@ export function LitterJournalDashboard({
         weighingSchedulePolicy={litterWeightSchedulePolicy}
         role={litterWeightRole}
         action={litterWeightAction}
+        measurementAdjustmentActions={litterWeightMeasurementAdjustmentActions}
+        sessionCancellationActions={litterWeightSessionCancellationActions}
+        adjustmentHistory={litterWeightAdjustmentHistory}
+        adjustmentHistoryLoadError={litterWeightAdjustmentHistoryLoadError}
         loadError={litterWeightsLoadError}
       />
       <MaternalObservationsPanel

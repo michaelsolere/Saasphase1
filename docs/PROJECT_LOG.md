@@ -503,3 +503,9 @@ Les tests ciblés et E2E pertinents s’ajoutent selon le risque du lot.
 - Vérifier explicitement les erreurs de suppression, puis compter avec `count(*)` toutes les tables et objets Storage concernés, sans filtre `deleted_at`. Un soft delete, un reset de base ou un test vert ne prouve pas le nettoyage.
 - Nettoyer aussi les reliquats historiques identifiables sans ambiguïté ; ne jamais supprimer une donnée potentiellement réelle.
 - Le rapport final doit lister les données temporaires créées et supprimées avec leurs identifiants et le résultat du contrôle final, ou indiquer explicitement qu’aucune donnée temporaire n’a été créée.
+## Lot du 2026-07-21 — Rectification des pesées de routine
+
+- Le Journal permet désormais de corriger le poids ou la note d’une mesure de routine, d’annuler une mesure dans une séance multiple et d’annuler une séance entière. Les lignes sont conservées : aucune suppression physique n’est réalisée par ces opérations.
+- Les identifiants, commandes et révisions sont liés aux Server Actions côté serveur. Une révision périmée conserve le dialogue ouvert et demande un rechargement, sans écraser la modification concurrente.
+- L’historique actif reste limité aux séances et mesures non annulées. Un historique replié des rectifications expose uniquement des libellés et valeurs métier, via une lecture `security definer` bornée à 100 entrées et accessible aux rôles `owner`, `admin`, `member` et `viewer`.
+- L’heure commune d’une séance n’est pas modifiable. Une heure erronée nécessite l’annulation complète de la séance, puis sa recréation.

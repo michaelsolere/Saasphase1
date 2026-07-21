@@ -35,8 +35,8 @@ import {
   type WhelpingSessionSummary,
 } from "@/features/whelping/whelping";
 import { createClient } from "@/lib/supabase/server";
-import { listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
-import { recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
+import { listLitterWeightAdjustmentHistory, listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
+import { cancelLitterRoutineWeightAction, cancelLitterWeighingSessionAction, correctLitterRoutineWeightAction, recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
 import { getRoutineWeightEligibility } from "@/features/litter-weights/routine-weight-eligibility";
 
 export const dynamic = "force-dynamic";
@@ -93,6 +93,7 @@ export default async function LitterJournalPage({
   let litterWeightHistory: Awaited<
     ReturnType<typeof listLitterWeightHistory>
   > | null = null;
+  let litterWeightAdjustmentHistory: Awaited<ReturnType<typeof listLitterWeightAdjustmentHistory>> | null = null;
 
   try {
     journal = await loadLitterJournal(supabase, requestedLitterId);
@@ -102,7 +103,7 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult] =
+    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult, adjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
@@ -114,6 +115,7 @@ export default async function LitterJournalPage({
             todayDate: litterJournalTodayDate,
           },
         }),
+        listLitterWeightAdjustmentHistory({ litterId, limit: 100 }),
       ]);
 
     maternalObservations =
@@ -128,6 +130,7 @@ export default async function LitterJournalPage({
       sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
     litterWeightHistory =
       weightsResult.status === "fulfilled" ? weightsResult.value : null;
+    litterWeightAdjustmentHistory = adjustmentHistoryResult.status === "fulfilled" ? adjustmentHistoryResult.value : null;
 
     if (whelpingSessions?.outcome === "success") {
       selectedWhelpingSession =
@@ -348,6 +351,27 @@ export default async function LitterJournalPage({
           animalIds: eligibleLitterWeightAnimals.map((animal) => animal.id),
         })
       : null;
+  const litterWeightAdjustmentHistoryLoaded = litterWeightAdjustmentHistory?.outcome === "success" ? litterWeightAdjustmentHistory : null;
+  const routineMeasurements = litterWeightHistoryLoaded?.measurements.filter((measurement) => measurement.type === "routine" && measurement.sessionId !== null) ?? [];
+  const measurementAdjustmentActions = litterWeightCanWrite && selectedLitterId
+    ? routineMeasurements.map((measurement) => {
+        const session = litterWeightHistoryLoaded?.sessions.find((item) => item.id === measurement.sessionId);
+        if (!session) return null;
+        const activeCount = routineMeasurements.filter((item) => item.sessionId === session.id).length;
+        const base = { litterId: selectedLitterId, sessionId: session.id, measurementId: measurement.id, animalId: measurement.animalId, expectedRevisionNo: measurement.revisionNo };
+        return {
+          measurementId: measurement.id,
+          correctAction: correctLitterRoutineWeightAction.bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
+          cancelAction: activeCount >= 2 ? cancelLitterRoutineWeightAction.bind(null, { ...base, clientCommandId: crypto.randomUUID() }) : null,
+        };
+      }).filter((item): item is NonNullable<typeof item> => item !== null)
+    : [];
+  const sessionCancellationActions = litterWeightCanWrite && selectedLitterId
+    ? (litterWeightHistoryLoaded?.sessions ?? []).map((session) => ({
+        sessionId: session.id,
+        action: cancelLitterWeighingSessionAction.bind(null, { litterId: selectedLitterId, sessionId: session.id, expectedRevisionNo: session.revisionNo, clientCommandId: crypto.randomUUID() }),
+      }))
+    : [];
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
@@ -427,6 +451,10 @@ export default async function LitterJournalPage({
             }
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
+            litterWeightMeasurementAdjustmentActions={measurementAdjustmentActions}
+            litterWeightSessionCancellationActions={sessionCancellationActions}
+            litterWeightAdjustmentHistory={litterWeightAdjustmentHistoryLoaded?.entries ?? []}
+            litterWeightAdjustmentHistoryLoadError={litterWeightAdjustmentHistoryLoaded === null}
             litterWeightsLoadError={litterWeightHistoryLoaded === null}
           />
         ) : (

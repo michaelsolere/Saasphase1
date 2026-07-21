@@ -5752,6 +5752,22 @@ export type Database = {
           revision_no: number | null
         }[]
       }
+      list_litter_weight_adjustment_history: {
+        Args: { p_limit?: number; p_litter_id: string }
+        Returns: {
+          affected_measurement_count: number
+          after_grams: number | null
+          after_note: string | null
+          animal_label: string | null
+          before_grams: number | null
+          before_note: string | null
+          command_type: string
+          created_at: string
+          reason: string
+          session_measured_at: string
+          session_timezone_name: string
+        }[]
+      }
       record_litter_routine_weights: {
         Args: {
           p_client_command_id: string

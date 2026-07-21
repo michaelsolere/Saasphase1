@@ -6,6 +6,7 @@ import {
   cancelLitterWeighingSessionCore,
   correctLitterRoutineWeightCore,
   listLitterAgeComparisonCore,
+  listLitterWeightAdjustmentHistoryCore,
   listLitterWeightHistoryCore,
   recordLitterRoutineWeightsCore,
 } from "../../src/features/litter-weights/litter-weights-core";
@@ -40,6 +41,8 @@ const ids = {
   measurementTen: `${prefix}53`, measurementEleven: `${prefix}54`, measurementTwelve: `${prefix}55`,
   comparisonMeasurement: `${prefix}56`, foreignMeasurement: `${prefix}57`, clinicalMeasurement: `${prefix}58`,
   viewerUser: `${prefix}61`, viewerIdentity: `${prefix}62`, viewerMembership: `${prefix}63`,
+  adminUser: `${prefix}64`, adminIdentity: `${prefix}65`, adminMembership: `${prefix}66`,
+  memberUser: `${prefix}67`, memberIdentity: `${prefix}68`, memberMembership: `${prefix}69`,
   correctCommand: `${prefix}71`, cancelMeasurementCommand: `${prefix}72`, cancelSessionCommand: `${prefix}73`,
   recreateCommand: `${prefix}74`, viewerCommand: `${prefix}75`, anonymousCommand: `${prefix}76`,
   foreignCommand: `${prefix}77`, birthCommand: `${prefix}78`, clinicalCommand: `${prefix}79`,
@@ -51,6 +54,7 @@ const viewer = {
   email: "litter-weight-adjustment-viewer@saasphase1.invalid",
   password: "LitterWeightAdjustmentViewer-2026!",
 } as const;
+const rolePassword = "LitterWeightAdjustmentRoles-2026!";
 
 function q(value: string) {
   return `'${value.replaceAll("'", "''")}'`;
@@ -130,6 +134,20 @@ function setup() {
     insert into public.memberships (id, organization_id, profile_id, role, status, created_by, updated_by)
     values (${q(ids.viewerMembership)}::uuid, ${q(organizationId)}::uuid, ${q(ids.viewerUser)}::uuid,
       'viewer', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+    insert into auth.users (
+      id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+      confirmation_token, recovery_token, email_change_token_new, email_change,
+      phone_change, phone_change_token, email_change_token_current,
+      reauthentication_token, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+    ) values
+      (${q(ids.adminUser)}::uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'litter-weight-admin@saasphase1.invalid', extensions.crypt(${q(rolePassword)}, extensions.gen_salt('bf')), now(), '', '', '', '', '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()),
+      (${q(ids.memberUser)}::uuid, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'litter-weight-member@saasphase1.invalid', extensions.crypt(${q(rolePassword)}, extensions.gen_salt('bf')), now(), '', '', '', '', '', '', '', '', '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now());
+    insert into auth.identities (id, provider_id, user_id, identity_data, provider, created_at, updated_at) values
+      (${q(ids.adminIdentity)}::uuid, 'litter-weight-admin@saasphase1.invalid', ${q(ids.adminUser)}::uuid, jsonb_build_object('sub', ${q(ids.adminUser)}, 'email', 'litter-weight-admin@saasphase1.invalid', 'email_verified', true), 'email', now(), now()),
+      (${q(ids.memberIdentity)}::uuid, 'litter-weight-member@saasphase1.invalid', ${q(ids.memberUser)}::uuid, jsonb_build_object('sub', ${q(ids.memberUser)}, 'email', 'litter-weight-member@saasphase1.invalid', 'email_verified', true), 'email', now(), now());
+    insert into public.memberships (id, organization_id, profile_id, role, status, created_by, updated_by) values
+      (${q(ids.adminMembership)}::uuid, ${q(organizationId)}::uuid, ${q(ids.adminUser)}::uuid, 'admin', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.memberMembership)}::uuid, ${q(organizationId)}::uuid, ${q(ids.memberUser)}::uuid, 'member', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
 
     insert into public.organizations (id, name, slug)
     values (${q(ids.foreignOrganization)}::uuid, ${q(`${namePrefix} foreign`)}, 'e2e-weight-adjustment-foreign');
@@ -209,6 +227,13 @@ async function viewerClient() {
   return client;
 }
 
+async function roleClient(email: string) {
+  const client = createClient<Database>(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+  const auth = await client.auth.signInWithPassword({ email, password: rolePassword });
+  if (auth.error) throw auth.error;
+  return client;
+}
+
 function requireSuccess<T extends { outcome: string }>(result: T) {
   expect(result.outcome).toBe("success");
   if (result.outcome !== "success") throw new Error("Expected success");
@@ -223,6 +248,8 @@ test("audits corrections and cancellations while active reads remain coherent", 
     console.log(JSON.stringify({ litterWeightAdjustmentFixtures: { created: { prefix: "9f200003-", ids } } }));
     const owner = await createAuthenticatedSupabaseClient();
     const viewerRole = await viewerClient();
+    const adminRole = await roleClient("litter-weight-admin@saasphase1.invalid");
+    const memberRole = await roleClient("litter-weight-member@saasphase1.invalid");
     const anonymous = createAnonymousSupabaseClient();
 
     const immutableBefore = JSON.parse(sql(`select row_to_json(value)::text from (
@@ -254,8 +281,8 @@ test("audits corrections and cancellations while active reads remain coherent", 
     expect((await owner.from("litter_weight_adjustment_commands").select("id")).error).not.toBeNull();
 
     const history = requireSuccess(await listLitterWeightHistoryCore({ litterId: ids.mainLitter, schedule: { todayDate: "2026-07-18" } }, owner));
-    expect(history.measurements.find(({ id }) => id === ids.measurementOne)).toMatchObject({ grams: 550, note: "Après contrôle" });
-    expect(history.sessions.find(({ id }) => id === ids.sessionOne)).toMatchObject({ averageGrams: 535, minimumGrams: 520, maximumGrams: 550 });
+    expect(history.measurements.find(({ id }) => id === ids.measurementOne)).toMatchObject({ grams: 550, note: "Après contrôle", revisionNo: 1 });
+    expect(history.sessions.find(({ id }) => id === ids.sessionOne)).toMatchObject({ averageGrams: 535, minimumGrams: 520, maximumGrams: 550, revisionNo: 0 });
     const comparison = requireSuccess(await listLitterAgeComparisonCore({ litterIds: [ids.mainLitter, ids.comparisonLitter] }, owner));
     expect(comparison.model.series[0]?.points.find(({ ageDay }) => ageDay === 1)?.averageGrams).toBe(585);
 
@@ -300,6 +327,19 @@ test("audits corrections and cancellations while active reads remain coherent", 
     )::text from public.litter_weight_adjustment_commands where client_command_id = ${q(ids.cancelSessionCommand)}::uuid;`)))
       .toEqual({ before_count: 2, after_count: 2, before_session_cancelled: null, after_session_cancelled: "2026-07-20T08:02:00+00:00" });
     expect(Number(sql(`select count(*) from public.animal_weight_measurements where id::text like '9f200003-%';`))).toBe(countBeforeSessionCancellation);
+    const ownerAudit = requireSuccess(await listLitterWeightAdjustmentHistoryCore({ litterId: ids.mainLitter }, owner));
+    expect(ownerAudit.entries).toHaveLength(3);
+    expect(ownerAudit.entries.map((entry) => entry.commandType)).toEqual(["cancel_session", "cancel_measurement", "correct_measurement"]);
+    expect(ownerAudit.entries.find((entry) => entry.commandType === "correct_measurement")).toMatchObject({ animalLabel: "Adjustment A", beforeGrams: 500, afterGrams: 550, beforeNote: "Avant", afterNote: "Après contrôle", affectedMeasurementCount: 1 });
+    expect(ownerAudit.entries.find((entry) => entry.commandType === "cancel_measurement")).toMatchObject({ animalLabel: "Adjustment A", beforeGrams: 600, afterGrams: null, beforeNote: null, afterNote: null, affectedMeasurementCount: 1 });
+    expect(ownerAudit.entries.find((entry) => entry.commandType === "cancel_session")).toMatchObject({ animalLabel: null, beforeGrams: null, afterGrams: null, affectedMeasurementCount: 2 });
+    expect(requireSuccess(await listLitterWeightAdjustmentHistoryCore({ litterId: ids.mainLitter, limit: 2 }, owner)).entries).toEqual(ownerAudit.entries.slice(0, 2));
+    for (const client of [adminRole, memberRole, viewerRole]) expect(requireSuccess(await listLitterWeightAdjustmentHistoryCore({ litterId: ids.mainLitter }, client)).entries).toHaveLength(3);
+    expect((await listLitterWeightAdjustmentHistoryCore({ litterId: ids.mainLitter }, anonymous)).outcome).toBe("error");
+    expect((await listLitterWeightAdjustmentHistoryCore({ litterId: ids.foreignLitter }, owner)).outcome).toBe("error");
+    const serializedAudit = JSON.stringify(ownerAudit.entries);
+    expect(serializedAudit).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
+    expect(serializedAudit).not.toMatch(/snapshot|client_command|measurement_id|session_id/i);
     const afterSession = requireSuccess(await listLitterWeightHistoryCore({ litterId: ids.mainLitter, schedule: { todayDate: "2026-07-18" } }, owner));
     expect(afterSession.sessions.some(({ id }) => id === ids.sessionThree)).toBe(false);
     expect(afterSession.measurements.some(({ sessionId }) => sessionId === ids.sessionThree)).toBe(false);

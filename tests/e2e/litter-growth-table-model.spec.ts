@@ -21,7 +21,7 @@ function animal(id: string, name: string): LitterWeightHistoryAnimal {
 
 function session(id: string, day: number): LitterWeightHistorySession {
   return {
-    id, measuredAt: `2026-07-${String(day + 1).padStart(2, "0")}T14:00:00Z`,
+    id, revisionNo: 0, measuredAt: `2026-07-${String(day + 1).padStart(2, "0")}T14:00:00Z`,
     timezoneName: "Europe/Paris", note: null, measurementCount: 0,
     averageGrams: null, minimumGrams: null, maximumGrams: null,
     createdBy: "author", createdAt: "2026-07-01T00:00:00Z",
@@ -32,7 +32,7 @@ function measurement(
   id: string, animalId: string, grams: number, measuredAt: string,
   type: "birth" | "routine", sessionId: string | null,
 ): LitterWeightHistoryMeasurement {
-  return { id, animalId, sessionId, type, grams, measuredAt, note: null, createdBy: "author", createdAt: measuredAt };
+  return { id, revisionNo: 0, animalId, sessionId, type, grams, measuredAt, note: null, createdBy: "author", createdAt: measuredAt };
 }
 
 test("sépare naissance et routine J0 et calcule gain et indice sur la vraie naissance", () => {
