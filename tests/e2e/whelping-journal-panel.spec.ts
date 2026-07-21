@@ -418,11 +418,20 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await expect(summary.getByText("Nombre vivant").locator("..").locator("dd")).toHaveText("1");
     await expect(summary.getByText("Animaux liés").locator("..").locator("dd")).toHaveText("1");
 
+    dialog = await openDialog(panel, /ENREGISTRER UNE NAISSANCE/);
+    await dialog.getByLabel("Date et heure de naissance").fill("2026-07-19T09:45");
+    await dialog.getByLabel("Sexe").selectOption("male");
+    await dialog.getByLabel("Note (facultative)").fill("Poids de naissance à compléter E2E.");
+    await dialog.getByRole("button", { name: "Enregistrer la naissance" }).click();
+    await expect(panel.getByText("Naissance n° 2 enregistrée")).toBeVisible();
+    await expect(panel.getByText("Naissances enregistrées")).toContainText("2");
+
     await page.reload();
     panel = whelpingPanel(page);
     await expect(panel.getByText("Contractions régulières E2E.")).toBeVisible();
     await expect(panel.getByText("Naissance vivante E2E.")).toBeVisible();
-    await expect(panel.locator("ol > li")).toHaveCount(2);
+    await expect(panel.getByText("Poids de naissance à compléter E2E.")).toBeVisible();
+    await expect(panel.locator("ol > li")).toHaveCount(3);
 
     setOwnerRole("viewer");
     await page.reload();
@@ -436,21 +445,59 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await page.reload();
     panel = whelpingPanel(page);
     dialog = await openDialog(panel, "Clôturer la mise-bas");
-    await expect(dialog).toContainText("Cette clôture est irréversible");
-    await expect(dialog).toContainText("Aucune réouverture n’est disponible");
+    await expect(dialog).toContainText("restera visible en cas de réouverture");
     await dialog.getByLabel("Date et heure de fin").fill("2026-07-19T10:30");
     await dialog.getByLabel("Note (facultative)").fill("Fin de mise-bas E2E.");
     await dialog.getByRole("button", { name: "Clôturer la mise-bas" }).click();
 
     await expect(panel.getByText("Clôturée", { exact: true })).toBeVisible();
-    await expect(panel.getByText("Mise-bas clôturée")).toBeVisible();
+    await expect(panel.getByText("Session clôturée")).toBeVisible();
     await expect(panel.getByText("Fin de mise-bas E2E.")).toBeVisible();
-    await expect(panel.locator("ol > li")).toHaveCount(3);
+    await expect(panel.locator("ol > li")).toHaveCount(4);
     await expect(panel.getByRole("button", { name: /ENREGISTRER UNE NAISSANCE/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Ajouter un événement" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Démarrer la mise-bas" })).toHaveCount(0);
+    await expect(panel.getByText(
+      "La session est clôturée. Les poids de naissance manquants peuvent encore être renseignés ; rouvrez la session pour reprendre la mise-bas.",
+    )).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
+
+    setOwnerRole("viewer");
+    await page.reload();
+    panel = whelpingPanel(page);
+    await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toHaveCount(0);
+
+    setOwnerRole("owner");
+    await page.reload();
+    panel = whelpingPanel(page);
+    dialog = await openDialog(panel, "Rouvrir la session");
+    await expect(dialog).toContainText("L’ancienne clôture restera visible");
+    await expect(dialog.getByLabel("Motif de la réouverture")).toHaveAttribute("required", "");
+    await dialog.getByLabel("Motif de la réouverture").fill("Une naissance restait à enregistrer.");
+    await dialog.getByRole("button", { name: "Confirmer la réouverture" }).click();
+
+    await expect(panel.getByText("La session de mise-bas a été rouverte.")).toBeVisible();
+    await expect(panel.getByText("En cours", { exact: true })).toBeVisible();
+    await expect(panel.getByText("Session clôturée")).toBeVisible();
+    await expect(panel.getByText("Session rouverte")).toBeVisible();
+    await expect(panel.getByText("Une naissance restait à enregistrer.")).toBeVisible();
+    await expect(panel.locator("ol > li")).toHaveCount(5);
+    await expect(panel.getByRole("button", { name: /ENREGISTRER UNE NAISSANCE/ })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Ajouter un événement" })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toBeVisible();
+    expect(await panel.textContent()).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
+
+    dialog = await openDialog(panel, "Clôturer la mise-bas");
+    await dialog.getByLabel("Date et heure de fin").fill("2026-07-19T11:00");
+    await dialog.getByLabel("Note (facultative)").fill("Clôture finale E2E.");
+    await dialog.getByRole("button", { name: "Clôturer la mise-bas" }).click();
+    await expect(panel.getByText("Clôturée", { exact: true })).toBeVisible();
+    await expect(panel.getByText("Session clôturée")).toHaveCount(2);
+    await expect(panel.locator("ol > li")).toHaveCount(6);
 
     createIncompleteSessionFixture();
     await page.goto(`/litters/journal?litter=${ids.incompleteLitter}`);
@@ -463,6 +510,7 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
     panel = whelpingPanel(page);
     await expect(panel).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);

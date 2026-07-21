@@ -8,12 +8,14 @@ import {
   recordWhelpingBirthActionCore,
   recordWhelpingBirthWeightActionCore,
   recordWhelpingEventActionCore,
+  reopenWhelpingSessionActionCore,
   whelpingErrorMessage,
   type CloseWhelpingSessionIntention,
   type OpenWhelpingSessionIntention,
   type RecordWhelpingBirthIntention,
   type RecordWhelpingBirthWeightIntention,
   type RecordWhelpingEventIntention,
+  type ReopenWhelpingSessionIntention,
   type WhelpingActionDependencies,
 } from "../../src/features/whelping/whelping-actions-core";
 import type {
@@ -22,6 +24,7 @@ import type {
   RecordWhelpingBirthInput,
   RecordWhelpingBirthWeightInput,
   RecordWhelpingEventInput,
+  ReopenWhelpingSessionInput,
   WhelpingServiceErrorCode,
 } from "../../src/features/whelping/whelping-core";
 
@@ -80,6 +83,13 @@ function closeForm() {
   return formData;
 }
 
+function reopenForm() {
+  const formData = new FormData();
+  formData.set("reopened_at", "2026-07-19T15:10:00+02:00");
+  formData.set("reason", " Clôture trop précoce ");
+  return formData;
+}
+
 function birthWeightForm() {
   const formData = new FormData();
   formData.set("birth_weight_grams", " 438 ");
@@ -94,6 +104,7 @@ function harness() {
   const births: RecordWhelpingBirthInput[] = [];
   const birthWeights: RecordWhelpingBirthWeightInput[] = [];
   const closed: CloseWhelpingSessionInput[] = [];
+  const reopened: ReopenWhelpingSessionInput[] = [];
   const paths: string[] = [];
   const dependencies: WhelpingActionDependencies = {
     openSession: async (input) => {
@@ -149,9 +160,19 @@ function harness() {
         replayed: false,
       };
     },
+    reopenSession: async (input) => {
+      reopened.push(input);
+      return {
+        outcome: "success",
+        sessionId,
+        eventId: technicalId,
+        sequenceNo: 6,
+        replayed: false,
+      };
+    },
     revalidatePath: (path) => paths.push(path),
   };
-  return { dependencies, opened, events, births, birthWeights, closed, paths };
+  return { dependencies, opened, events, births, birthWeights, closed, reopened, paths };
 }
 
 function forgeTechnicalFields(formData: FormData) {
@@ -243,6 +264,49 @@ test("transmet les quatre payloads normalisés et utilise les intentions liées"
   ]);
 });
 
+test("transmet la réouverture normalisée sans identifiant navigateur", async () => {
+  const context = harness();
+  const state = await reopenWhelpingSessionActionCore(
+    sessionIntention as ReopenWhelpingSessionIntention,
+    initialWhelpingActionState,
+    forgeTechnicalFields(reopenForm()),
+    context.dependencies,
+  );
+
+  expect(context.reopened).toEqual([{
+    sessionId,
+    clientCommandId,
+    reopenedAt: "2026-07-19T13:10:00.000Z",
+    reason: "Clôture trop précoce",
+  }]);
+  expect(state).toEqual({
+    status: "success",
+    message: "La session de mise-bas a été rouverte.",
+    replayed: false,
+  });
+  expect(JSON.stringify(state)).not.toContain(technicalId);
+});
+
+test("refuse un motif de réouverture vide, trop long ou un timestamp sans offset", async () => {
+  for (const mutate of [
+    (form: FormData) => form.set("reason", "   "),
+    (form: FormData) => form.set("reason", "r".repeat(501)),
+    (form: FormData) => form.set("reopened_at", "2026-07-19T15:10:00"),
+  ]) {
+    const context = harness();
+    const form = reopenForm();
+    mutate(form);
+    expect((await reopenWhelpingSessionActionCore(
+      sessionIntention,
+      initialWhelpingActionState,
+      form,
+      context.dependencies,
+    )).status).toBe("error");
+    expect(context.reopened).toEqual([]);
+    expect(context.paths).toEqual([]);
+  }
+});
+
 test("refuse tout timestamp sans décalage explicite", async () => {
   const cases = [
     async (context: ReturnType<typeof harness>) => {
@@ -313,7 +377,7 @@ test("accepte exclusivement les huit types d'événement générique", async () 
     expect(context.events[0].eventType).toBe(eventType);
   }
 
-  for (const eventType of ["birth", "session_closed", "unknown"]) {
+  for (const eventType of ["birth", "session_closed", "session_reopened", "unknown"]) {
     const context = harness();
     expect(
       (await recordWhelpingEventActionCore(sessionIntention, initialWhelpingActionState, eventForm(eventType), context.dependencies)).status,
@@ -502,6 +566,10 @@ test("revalide exactement les routes utiles après chaque succès", async () => 
   const closed = harness();
   await closeWhelpingSessionActionCore(sessionIntention, initialWhelpingActionState, closeForm(), closed.dependencies);
   expect(closed.paths).toEqual(["/litters/journal", `/litters/${litterId}`]);
+
+  const reopened = harness();
+  await reopenWhelpingSessionActionCore(sessionIntention, initialWhelpingActionState, reopenForm(), reopened.dependencies);
+  expect(reopened.paths).toEqual(["/litters/journal", `/litters/${litterId}`]);
 });
 
 test("ne revalide rien après une erreur métier", async () => {

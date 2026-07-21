@@ -19,6 +19,7 @@ export const WHELPING_EVENT_TYPES = [
   "observation",
   "birth",
   "session_closed",
+  "session_reopened",
 ] as const;
 export type WhelpingEventType = (typeof WHELPING_EVENT_TYPES)[number];
 
@@ -265,6 +266,23 @@ export type CloseWhelpingSessionInput = {
 };
 
 export type CloseWhelpingSessionResult =
+  | {
+      outcome: "success";
+      sessionId: string;
+      eventId: string;
+      sequenceNo: number;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
+export type ReopenWhelpingSessionInput = {
+  sessionId: string;
+  clientCommandId: string;
+  reopenedAt: string;
+  reason: string;
+};
+
+export type ReopenWhelpingSessionResult =
   | {
       outcome: "success";
       sessionId: string;
@@ -1025,6 +1043,48 @@ export async function closeWhelpingSessionCore(
 
   if (closed.error) return databaseFailure("whelping_session_close_failed", closed.error);
   const result = closed.data?.[0];
+  if (
+    !result ||
+    result.outcome !== "success" ||
+    !result.session_id ||
+    !result.event_id ||
+    !result.sequence_no
+  ) {
+    return commandFailure(result?.reason ?? null);
+  }
+  return {
+    outcome: "success",
+    sessionId: result.session_id,
+    eventId: result.event_id,
+    sequenceNo: result.sequence_no,
+    replayed: result.replayed === true,
+  };
+}
+
+export async function reopenWhelpingSessionCore(
+  input: ReopenWhelpingSessionInput,
+  supabase: Supabase,
+): Promise<ReopenWhelpingSessionResult> {
+  const sessionId = normalizeUuid(input.sessionId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const reopenedAt = normalizeTimestamp(input.reopenedAt);
+  const reason = normalizeOptionalText(input.reason, 500);
+
+  if (!sessionId || !clientCommandId || !reopenedAt || !reason) {
+    return invalidInput();
+  }
+
+  const reopened = await supabase.rpc("reopen_whelping_session", {
+    p_session_id: sessionId,
+    p_client_command_id: clientCommandId,
+    p_reopened_at: reopenedAt,
+    p_reason: reason,
+  });
+
+  if (reopened.error) {
+    return databaseFailure("whelping_session_reopen_failed", reopened.error);
+  }
+  const result = reopened.data?.[0];
   if (
     !result ||
     result.outcome !== "success" ||
