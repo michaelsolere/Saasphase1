@@ -48,6 +48,15 @@ function ComparisonResult({
 }: {
   result: Extract<LitterComparisonActionState, { status: "success" }>["result"];
 }) {
+  const ageDays = [...new Set(result.series.flatMap((series) => series.points.map((point) => point.ageDay)))]
+    .sort((left, right) => left - right);
+  const pointsBySeries = new Map(
+    result.series.map((series) => [
+      series.seriesIndex,
+      new Map(series.points.map((point) => [point.ageDay, point])),
+    ]),
+  );
+
   return (
     <section
       aria-labelledby="comparison-result-title"
@@ -69,87 +78,55 @@ function ComparisonResult({
 
       <LitterAgeComparisonChart series={result.series} />
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        {result.series.map((series) => (
-          <article
-            key={series.seriesIndex}
-            className="min-w-0 rounded-2xl border bg-surface p-5 shadow-sm"
-          >
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                  Portée comparée
-                </p>
-                <h3 className="mt-1 text-xl font-semibold">{series.publicLabel}</h3>
-              </div>
-              {series.status === "no_eligible_animals" ? (
-                <span className="w-fit rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted">
-                  Aucun animal éligible
-                </span>
-              ) : null}
-            </div>
+      <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl border" data-testid="comparison-summary-table">
+        <table className="w-full min-w-[760px] text-left text-sm">
+          <thead className="bg-muted-soft text-xs text-muted"><tr>
+            <th scope="col" className="px-4 py-3 font-medium">Nom public</th>
+            <th scope="col" className="px-4 py-3 font-medium">Date de naissance</th>
+            <th scope="col" className="px-4 py-3 font-medium">Animaux totaux</th>
+            <th scope="col" className="px-4 py-3 font-medium">Éligibles</th>
+            <th scope="col" className="px-4 py-3 font-medium">Exclus</th>
+            <th scope="col" className="px-4 py-3 font-medium">Journées observées</th>
+          </tr></thead>
+          <tbody className="divide-y">{result.series.map((series) => <tr key={series.seriesIndex}>
+            <th scope="row" className="px-4 py-3 font-semibold">{series.publicLabel}</th>
+            <td className="whitespace-nowrap px-4 py-3">{series.birthDate ? formatLitterDate(series.birthDate) : "—"}</td>
+            <td className="px-4 py-3">{series.totalAnimalCount}</td><td className="px-4 py-3">{series.eligibleAnimalCount}</td>
+            <td className="px-4 py-3">{series.excludedAnimalCount}</td><td className="px-4 py-3">{series.points.length}</td>
+          </tr>)}</tbody>
+        </table>
+      </div>
 
-            <dl className="mt-5 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div className="rounded-xl bg-muted-soft p-3">
-                <dt className="text-xs text-muted">Animaux totaux</dt>
-                <dd className="mt-1 text-lg font-semibold">{series.totalAnimalCount}</dd>
-              </div>
-              <div className="rounded-xl bg-muted-soft p-3">
-                <dt className="text-xs text-muted">Éligibles</dt>
-                <dd className="mt-1 text-lg font-semibold">{series.eligibleAnimalCount}</dd>
-              </div>
-              <div className="rounded-xl bg-muted-soft p-3">
-                <dt className="text-xs text-muted">Exclus</dt>
-                <dd className="mt-1 text-lg font-semibold">{series.excludedAnimalCount}</dd>
-              </div>
-              <div className="rounded-xl bg-muted-soft p-3">
-                <dt className="text-xs text-muted">Journées observées</dt>
-                <dd className="mt-1 text-lg font-semibold">{series.points.length}</dd>
-              </div>
-            </dl>
-
-            {series.points.length > 0 ? (
-              <div className="mt-5 overflow-x-auto rounded-xl border">
-                <table className="w-full min-w-[680px] text-left text-sm">
-                  <thead className="bg-muted-soft text-xs text-muted">
-                    <tr>
-                      <th scope="col" className="px-4 py-3 font-medium">Jour d’âge</th>
-                      <th scope="col" className="px-4 py-3 font-medium">Couverture</th>
-                      <th scope="col" className="px-4 py-3 font-medium">Poids moyen</th>
-                      <th scope="col" className="px-4 py-3 font-medium">Indice base 100</th>
-                      <th scope="col" className="px-4 py-3 font-medium">Progression relative</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {series.points.map((point) => (
-                      <tr key={point.ageDay}>
-                        <th scope="row" className="whitespace-nowrap px-4 py-3 font-semibold">
-                          J{point.ageDay}
-                        </th>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {point.observedAnimalCount} / {series.eligibleAnimalCount}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {formatNumber(point.averageGrams)} g
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {formatNumber(point.averageRelativeIndex)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {formatProgress(point.averageRelativeProgressPercentage)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="mt-5 rounded-xl border bg-background px-4 py-5 text-sm text-muted">
-                Aucune journée observée n’est disponible pour cette portée.
-              </p>
-            )}
-          </article>
-        ))}
+      <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-xl border" data-testid="comparison-day-matrix">
+        <table className="min-w-max border-separate border-spacing-0 text-left text-sm">
+          <thead className="bg-muted-soft text-xs text-muted">
+            <tr>
+              <th scope="col" rowSpan={2} className="sticky left-0 z-30 min-w-28 border-r bg-muted-soft px-4 py-3 font-medium">Jour d’âge</th>
+              {result.series.map((series) => <th key={series.seriesIndex} scope="colgroup" colSpan={3} className="max-w-72 border-r px-4 py-3 font-semibold text-foreground">{series.publicLabel}</th>)}
+            </tr>
+            <tr>{result.series.flatMap((series) => [
+              <th key={`${series.seriesIndex}-coverage`} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">Couverture</th>,
+              <th key={`${series.seriesIndex}-weight`} scope="col" className="whitespace-nowrap px-4 py-3 font-medium">Poids moyen</th>,
+              <th key={`${series.seriesIndex}-index`} scope="col" className="whitespace-nowrap border-r px-4 py-3 font-medium">Indice base 100</th>,
+            ])}</tr>
+          </thead>
+          <tbody>{ageDays.map((ageDay) => <tr key={ageDay}>
+            <th scope="row" className="sticky left-0 z-20 border-r border-t bg-surface px-4 py-3 font-semibold">J{ageDay}</th>
+            {result.series.flatMap((series) => {
+              const point = pointsBySeries.get(series.seriesIndex)?.get(ageDay);
+              if (!point) return [
+                <td key={`${series.seriesIndex}-${ageDay}-coverage`} className="border-t px-4 py-3 text-muted">—</td>,
+                <td key={`${series.seriesIndex}-${ageDay}-weight`} className="border-t px-4 py-3 text-muted">—</td>,
+                <td key={`${series.seriesIndex}-${ageDay}-index`} className="border-r border-t px-4 py-3 text-muted">—</td>,
+              ];
+              return [
+                <td key={`${series.seriesIndex}-${ageDay}-coverage`} className="whitespace-nowrap border-t px-4 py-3">{point.observedAnimalCount} / {series.eligibleAnimalCount}</td>,
+                <td key={`${series.seriesIndex}-${ageDay}-weight`} className="whitespace-nowrap border-t px-4 py-3">{formatNumber(point.averageGrams)} g</td>,
+                <td key={`${series.seriesIndex}-${ageDay}-index`} className="whitespace-nowrap border-r border-t px-4 py-3"><span className="block font-medium">{formatNumber(point.averageRelativeIndex)}</span><span className="block text-xs text-muted">{formatProgress(point.averageRelativeProgressPercentage)}</span></td>,
+              ];
+            })}
+          </tr>)}</tbody>
+        </table>
       </div>
     </section>
   );

@@ -25,6 +25,7 @@ export type LitterComparisonActionState =
         breed: string;
         series: Array<{
           publicLabel: string;
+          birthDate: string | null;
           seriesIndex: number;
           totalAnimalCount: number;
           eligibleAnimalCount: number;

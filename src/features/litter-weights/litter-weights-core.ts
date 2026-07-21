@@ -151,6 +151,7 @@ export type ListLitterAgeComparisonResult =
       model: {
         series: Array<{
           publicLabel: string;
+          birthDate: string | null;
           seriesIndex: number;
           totalAnimalCount: number;
           eligibleAnimalCount: number;
@@ -376,6 +377,7 @@ type LitterComparisonLitter = {
   name: string;
   species: string;
   breed: string;
+  actual_birth_date: string | null;
 };
 
 type LitterComparisonAuthorization = {
@@ -426,7 +428,7 @@ async function authorizeLitterComparisonRead(
 
   const litterResult = await supabase
     .from("litters")
-    .select("id, organization_id, name, species, breed")
+    .select("id, organization_id, name, species, breed, actual_birth_date")
     .in("id", litterIds)
     .is("deleted_at", null);
 
@@ -1121,6 +1123,8 @@ export async function listLitterAgeComparisonCore(
     model: {
       series: internalModel.series.map((series) => ({
         publicLabel: series.publicLabel,
+        birthDate:
+          authorization.litters[series.seriesIndex]?.actual_birth_date ?? null,
         seriesIndex: series.seriesIndex,
         totalAnimalCount: series.totalAnimalCount,
         eligibleAnimalCount: series.eligibleAnimalCount,

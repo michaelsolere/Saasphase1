@@ -36,6 +36,7 @@ import {
   litterWeightAnimalName,
 } from "./litter-weight-animal-identity";
 import { LitterGrowthCharts } from "./litter-growth-charts";
+import { LitterGrowthTable } from "./litter-growth-table";
 import {
   getRoutineWeightEligibility,
   type RoutineWeightEligibilityReason,
@@ -687,6 +688,11 @@ export function LitterWeightPanel({
         </p>
       ) : null}
       <LitterGrowthCharts animals={animals} measurements={measurements} />
+      <LitterGrowthTable
+        animals={animals}
+        sessions={sessions}
+        measurements={measurements}
+      />
       <div className="mt-6 grid min-w-0 gap-8 lg:grid-cols-2">
         <SessionsHistory sessions={sessions} />
         <AnimalsHistory animals={animals} measurements={measurements} sessions={sessions} />
