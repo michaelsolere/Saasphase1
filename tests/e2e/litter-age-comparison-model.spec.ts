@@ -250,13 +250,15 @@ test("retourne un état explicite lorsqu’aucun animal n’est éligible", () =
   });
 });
 
-test("respecte le dernier point du tri partagé à timestamp identique", () => {
+test("réserve J0 à la vraie naissance même avec une routine le même jour", () => {
   const timestamp = "2026-07-01T10:00:00.000Z";
   const measurements = [
-    measurement("routine-b", timestamp, 370),
+    measurement("routine-b", measuredAt(timestamp, 6 * HOUR_MS), 370),
     measurement("birth", timestamp, 340, "birth"),
-    measurement("routine-a", timestamp, 360),
+    measurement("routine-a", measuredAt(timestamp, 2 * HOUR_MS), 360),
+    measurement("j1", measuredAt(timestamp, DAY_MS + HOUR_MS), 400),
   ];
+  const sourceSnapshot = structuredClone(measurements);
   const forward = buildLitterAgeComparisonModel([
     litter("same-timestamp", [animal("animal-a", measurements)]),
   ]);
@@ -269,11 +271,20 @@ test("respecte le dernier point du tri partagé à timestamp identique", () => {
     {
       ageDay: 0,
       observedAnimalCount: 1,
-      averageGrams: 370,
-      averageRelativeIndex: (370 / 340) * 100,
-      averageRelativeProgressPercentage: (370 / 340) * 100 - 100,
+      averageGrams: 340,
+      averageRelativeIndex: 100,
+      averageRelativeProgressPercentage: 0,
+    },
+    {
+      ageDay: 1,
+      observedAnimalCount: 1,
+      averageGrams: 400,
+      averageRelativeIndex: (400 / 340) * 100,
+      averageRelativeProgressPercentage: (400 / 340) * 100 - 100,
     },
   ]);
+  expect(measurements).toEqual(sourceSnapshot);
+  expect(measurements.filter((item) => item.type === "routine")).toHaveLength(3);
 });
 
 test("reste déterministe, ne mute aucune entrée et ne lit pas l’heure courante", () => {

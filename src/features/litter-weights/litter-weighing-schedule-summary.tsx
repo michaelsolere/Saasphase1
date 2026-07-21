@@ -93,7 +93,7 @@ function PolicyDescription({
   policy: LitterWeighingSchedulePolicyMetadata;
 }) {
   return (
-    <div className="mt-2 text-sm leading-6 text-muted">
+    <div className="mt-3 text-sm leading-6 text-muted">
       <p className="font-medium text-foreground">
         {POLICY_SOURCE_LABELS[policy.source]}
       </p>
@@ -118,11 +118,18 @@ function UnavailableSchedule({
   return (
     <section
       data-testid="litter-weighing-schedule-summary"
-      className="mt-4 rounded-xl border bg-secondary/50 p-4"
+      className="mt-4 rounded-xl border p-4"
     >
       <h3 className="font-semibold">Planning des pesées</h3>
-      {policy ? <PolicyDescription policy={policy} /> : null}
       <p className="mt-2 text-sm text-muted">{message}</p>
+      {policy ? (
+        <details className="mt-3 border-t pt-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Politique et cadence
+          </summary>
+          <PolicyDescription policy={policy} />
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -146,66 +153,32 @@ export function LitterWeighingScheduleSummary({ schedule, policy }: Props) {
     );
   }
 
-  const indicators = [
-    {
-      label: "Réalisées",
-      count: schedule.summary.completedCount,
-      description: "Dernière réalisée",
-      item: findLastCompleted(schedule.schedule),
-    },
-    {
-      label: "À faire aujourd’hui",
-      count: schedule.summary.dueTodayCount,
-      description: "Échéance du jour",
-      item: findFirstByStatus(schedule.schedule, "due_today"),
-    },
-    {
-      label: "En retard",
-      count: schedule.summary.overdueCount,
-      description: "Première à rattraper",
-      item: findFirstByStatus(schedule.schedule, "overdue"),
-    },
-    {
-      label: "À venir",
-      count: schedule.summary.upcomingCount,
-      description: "Prochaine échéance",
-      item: findFirstByStatus(schedule.schedule, "upcoming"),
-    },
-  ] as const;
+  const next = findFirstByStatus(schedule.schedule, "upcoming");
 
   return (
     <section
       data-testid="litter-weighing-schedule-summary"
-      className="mt-4 min-w-0 rounded-xl border bg-secondary/50 p-4"
+      className="mt-4 min-w-0 rounded-xl border p-4"
     >
       <h3 className="font-semibold">Planning des pesées</h3>
-      {policy ? <PolicyDescription policy={policy} /> : null}
-      <p className="mt-1 text-xs leading-5 text-muted">
-        Planning descriptif, sans création automatique ni interprétation médicale.
-      </p>
-      <dl className="mt-4 grid min-w-0 grid-cols-1 gap-3 min-[360px]:grid-cols-2 lg:grid-cols-4">
-        {indicators.map((indicator) => (
-          <div
-            key={indicator.label}
-            className="min-w-0 rounded-xl border bg-surface px-3 py-3"
-          >
-            <dt className="text-sm font-medium text-muted">{indicator.label}</dt>
-            <dd className="mt-1 text-2xl font-semibold">{indicator.count}</dd>
-            <dd className="mt-2 text-xs leading-5 text-muted">
-              <span className="block font-medium text-foreground">
-                {indicator.description}
-              </span>
-              {formatScheduleItem(indicator.item)}
-            </dd>
-          </div>
-        ))}
+      <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <div className="flex gap-1"><dt className="font-medium">Aujourd’hui :</dt><dd>{schedule.summary.dueTodayCount}</dd></div>
+        <div className="flex gap-1"><dt className="font-medium">En retard :</dt><dd>{schedule.summary.overdueCount}</dd></div>
+        <div className="flex gap-1"><dt className="font-medium">Prochaine :</dt><dd>{formatScheduleItem(next)}</dd></div>
+        <div className="flex gap-1"><dt className="font-medium">Réalisées :</dt><dd>{schedule.summary.completedCount}</dd></div>
       </dl>
-      {schedule.summary.extraObservationCount > 0 ? (
-        <p className="mt-4 rounded-lg border bg-surface px-3 py-2 text-sm text-muted">
-          {schedule.summary.extraObservationCount} observation(s) de pesée
-          enregistrée(s) hors échéances planifiées.
-        </p>
-      ) : null}
+      <details className="mt-4 border-t pt-3" data-testid="litter-weighing-schedule-details">
+        <summary className="cursor-pointer text-sm font-medium">
+          Politique, cadence et observations secondaires
+        </summary>
+        {policy ? <PolicyDescription policy={policy} /> : null}
+        <div className="mt-3 space-y-1 text-sm text-muted">
+          <p>Dernière réalisée : {formatScheduleItem(findLastCompleted(schedule.schedule))}</p>
+          <p>Première échéance du jour : {formatScheduleItem(findFirstByStatus(schedule.schedule, "due_today"))}</p>
+          <p>Première échéance en retard : {formatScheduleItem(findFirstByStatus(schedule.schedule, "overdue"))}</p>
+          <p>Observations hors planning : {schedule.summary.extraObservationCount}</p>
+        </div>
+      </details>
     </section>
   );
 }

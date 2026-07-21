@@ -79,6 +79,10 @@ function buildLitterSeries(
       const ageDay = Math.floor(
         point.elapsedMilliseconds / AGE_DAY_MILLISECONDS,
       );
+      // J0 is the immutable birth reference. A routine measurement recorded
+      // later on the civil birth day remains part of the source history, but
+      // must never replace the real birth measurement in this comparison.
+      if (ageDay === 0 && point.type !== "birth") continue;
       latestContributionByAgeDay.set(ageDay, {
         grams: point.grams,
         index: point.index,
@@ -100,8 +104,10 @@ function buildLitterSeries(
         contributions.reduce((sum, contribution) => sum + contribution.grams, 0) /
         observedAnimalCount;
       const averageRelativeIndex =
-        contributions.reduce((sum, contribution) => sum + contribution.index, 0) /
-        observedAnimalCount;
+        ageDay === 0
+          ? 100
+          : contributions.reduce((sum, contribution) => sum + contribution.index, 0) /
+            observedAnimalCount;
 
       return {
         ageDay,

@@ -15,11 +15,17 @@ pnpm demo:e2e:start
 # Créer explicitement une démonstration et laisser serveur + données actifs.
 pnpm demo:e2e:create -- technical-lifecycle
 
+# Créer les deux portées durables du scénario comparatif en une seule commande.
+pnpm demo:e2e:create -- growth-comparison
+
 # Afficher l’URL, le PID, le manifeste, l’inventaire et les compteurs réels.
 pnpm demo:e2e:status
 
 # Après validation humaine, hard-delete du seul scénario enregistré.
 pnpm demo:e2e:cleanup -- technical-lifecycle
+
+# Après validation explicite de la démonstration comparative.
+pnpm demo:e2e:cleanup -- growth-comparison
 
 # Possible uniquement lorsqu’aucune démonstration n’est active.
 pnpm demo:e2e:stop
@@ -54,3 +60,19 @@ relancer un runner destructif ou d’arrêter la session. Un port occupé sans P
 de démonstration fiable, un PID vivant sans port `3100`, une stack partielle ou
 un manifeste illisible provoquent également un refus sans réparation
 destructive automatique.
+
+## Scénario croissance et comparaison
+
+`growth-comparison` crée ensemble « Démonstration croissance — Nova × Orion »
+et « Démonstration comparaison — Vega × Sirius ». Les deux Journaux sont
+accessibles par les URL indiquées dans `pnpm demo:e2e:status`; le comparateur se
+trouve sur `/litters/journal/comparison`. Une vérification visuelle en lecture
+seule peut être relancée tant que le scénario est actif :
+
+```bash
+pnpm demo:e2e:verify:growth
+```
+
+Cette vérification ne passe pas par le runner Playwright destructif, ne crée
+aucune donnée et contrôle les Journaux, la sélection par nom, les couvertures
+réelles `4 / 5`, les profils absolu/relatif et la largeur mobile à 375 px.

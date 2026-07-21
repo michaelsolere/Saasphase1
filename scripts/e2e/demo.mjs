@@ -37,6 +37,13 @@ import {
   stopE2eStack,
   workdir,
 } from "./shared.mjs";
+import {
+  growthCleanupSql,
+  growthComparisonScenario,
+  growthCountsSql,
+  growthCreateSql,
+  growthIntegritySql,
+} from "./growth-comparison-scenario.mjs";
 
 const serverStatePath = resolve(workdir, "demo-server.json");
 const serverLogPath = resolve(workdir, "demo-server.log");
@@ -53,12 +60,14 @@ const scenarioDefinitions = {
     applicationId: "d3e70002-0000-4000-8000-000000000001",
     cleanupOrder: ["applications", "contact_roles", "contacts"],
   },
+  [growthComparisonScenario.scenarioId]: growthComparisonScenario,
 };
 
 function usage() {
   console.log(`Usage:
   pnpm demo:e2e:start
   pnpm demo:e2e:create -- technical-lifecycle
+  pnpm demo:e2e:create -- growth-comparison
   pnpm demo:e2e:status
   pnpm demo:e2e:cleanup -- technical-lifecycle
   pnpm demo:e2e:stop`);
@@ -291,6 +300,9 @@ async function startSession() {
 }
 
 function scenarioCounts(scenario, manifest = null) {
+  if (scenario.scenarioId === growthComparisonScenario.scenarioId) {
+    return JSON.parse(runSql(growthCountsSql()));
+  }
   const generatedRoleIds = manifest?.serverGeneratedIds?.contact_roles ?? [];
   const roleIdPredicate = generatedRoleIds.length > 0
     ? `id in (${generatedRoleIds.map((id) => `${sqlLiteral(id)}::uuid`).join(", ")}) or`
@@ -309,6 +321,10 @@ function scenarioCounts(scenario, manifest = null) {
       );
     `),
   );
+}
+
+function objectsEqual(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function arraysEqual(left, right) {
@@ -510,10 +526,111 @@ function createTechnicalScenario(scenario, server) {
   console.log(JSON.stringify({ manifestPath: path, manifest, counts }, null, 2));
 }
 
+function assertGrowthManifestExact(scenario, manifest) {
+  if (!registryHasExactKeys(manifest.directIds, Object.keys(scenario.directIds))) {
+    throw new Error("Refusing cleanup before DELETE: growth-comparison direct-ID table inventory is not exact");
+  }
+  for (const [table, expectedIds] of Object.entries(scenario.directIds)) {
+    if (!arraysEqual(manifest.directIds[table], expectedIds)) {
+      throw new Error(`Refusing cleanup before DELETE: ${table} IDs do not exactly match growth-comparison`);
+    }
+  }
+  if (
+    !registryHasExactKeys(manifest.serverGeneratedIds, []) ||
+    manifest.reserved.uuidPrefix !== scenario.uuidPrefix ||
+    manifest.reserved.labelPrefix !== scenario.labelPrefix ||
+    !arraysEqual(manifest.cleanupOrder, scenario.cleanupOrder)
+  ) {
+    throw new Error("Refusing cleanup before DELETE: growth-comparison registry, prefixes, or cleanup order differ");
+  }
+}
+
+function assertGrowthDatabaseExact(scenario, manifest) {
+  assertGrowthManifestExact(scenario, manifest);
+  const counts = scenarioCounts(scenario, manifest);
+  if (!objectsEqual(counts, scenario.expectedCounts)) {
+    throw new Error(`Refusing cleanup before DELETE: growth-comparison counts differ: ${JSON.stringify(counts)}`);
+  }
+  const integrity = JSON.parse(runSql(growthIntegritySql()));
+  const expectedIntegrity = {
+    invalidLitters: 0,
+    invalidParents: 0,
+    invalidPuppies: 0,
+    invalidWhelpingSessions: 0,
+    invalidBirths: 0,
+    invalidBirthMeasurements: 0,
+    invalidRoutineSessions: 0,
+    invalidRoutineMeasurements: 0,
+    litterASessions: 31,
+    litterARoutine: 124,
+    litterBSessions: 31,
+    litterBRoutine: 153,
+    litterBCoverage4Days: 2,
+    litterBWrongCoverageDays: 0,
+    litterAAnimals: 4,
+    litterBAnimals: 5,
+  };
+  if (!objectsEqual(integrity, expectedIntegrity)) {
+    throw new Error(`Refusing cleanup before DELETE: growth-comparison relations differ: ${JSON.stringify(integrity)}`);
+  }
+  return { counts, integrity };
+}
+
+function createGrowthScenario(scenario, server) {
+  const path = manifestPath(scenario.scenarioId);
+  if (existsSync(path) && readDemoManifest(path).status === "active") {
+    throw new Error(`Demonstration ${scenario.scenarioId} is already active`);
+  }
+  const before = scenarioCounts(scenario);
+  if (Object.values(before).some((count) => Number(count) !== 0)) {
+    throw new Error(`Reserved growth-comparison data already exists: ${JSON.stringify(before)}`);
+  }
+
+  runSql(growthCreateSql());
+  const manifest = {
+    version: 1,
+    scenarioId: scenario.scenarioId,
+    status: "active",
+    createdAt: new Date().toISOString(),
+    url: `http://127.0.0.1:${appPort}/litters/journal?litter=${scenario.litters[0].id}`,
+    urls: {
+      litterA: `http://127.0.0.1:${appPort}/litters/journal?litter=${scenario.litters[0].id}`,
+      litterB: `http://127.0.0.1:${appPort}/litters/journal?litter=${scenario.litters[1].id}`,
+      comparison: `http://127.0.0.1:${appPort}/litters/journal/comparison`,
+    },
+    directIds: scenario.directIds,
+    serverGeneratedIds: {},
+    idempotencyKeys: [],
+    storageObjects: [],
+    cleanupOrder: scenario.cleanupOrder,
+    reserved: { uuidPrefix: scenario.uuidPrefix, labelPrefix: scenario.labelPrefix },
+    server: {
+      state: server.state,
+      pid: server.pid,
+      baseUrl: server.baseUrl,
+      logPath: server.logPath,
+      checkedAt: new Date().toISOString(),
+    },
+  };
+
+  try {
+    assertGrowthDatabaseExact(scenario, manifest);
+    writeJsonAtomic(path, manifest);
+  } catch (error) {
+    runSql(growthCleanupSql());
+    throw error;
+  }
+  console.log(JSON.stringify({ manifestPath: path, manifest, counts: scenarioCounts(scenario, manifest) }, null, 2));
+}
+
 async function createScenario(scenarioId) {
   const scenario = scenarioFor(scenarioId);
   const server = await startSession();
-  createTechnicalScenario(scenario, server);
+  if (scenario.scenarioId === growthComparisonScenario.scenarioId) {
+    createGrowthScenario(scenario, server);
+  } else {
+    createTechnicalScenario(scenario, server);
+  }
 }
 
 async function status() {
@@ -551,6 +668,18 @@ function cleanupScenario(scenarioId) {
   const manifest = readDemoManifest(path);
   if (manifest.status !== "active") {
     throw new Error(`Demonstration ${scenarioId} is not active (status: ${manifest.status})`);
+  }
+  if (scenario.scenarioId === growthComparisonScenario.scenarioId) {
+    assertGrowthDatabaseExact(scenario, manifest);
+    runSql(growthCleanupSql());
+    const counts = scenarioCounts(scenario, manifest);
+    if (Object.values(counts).some((count) => Number(count) !== 0)) {
+      throw new Error(`Hard-delete verification failed for ${scenarioId}: ${JSON.stringify(counts)}`);
+    }
+    const cleaned = { ...manifest, status: "cleaned", cleanedAt: new Date().toISOString(), finalCounts: counts };
+    writeJsonAtomic(path, cleaned);
+    console.log(JSON.stringify({ manifestPath: path, deleted: manifest.directIds, finalCounts: counts }, null, 2));
+    return;
   }
   const contactIds = manifest.directIds?.contacts ?? [];
   const applicationIds = manifest.directIds?.applications ?? [];

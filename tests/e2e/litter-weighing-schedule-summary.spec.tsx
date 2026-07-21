@@ -112,7 +112,7 @@ function render(
   );
 }
 
-test("affiche les compteurs, les repères et les observations hors planning", () => {
+test("affiche un planning compact et replie la politique et les observations", () => {
   const before = JSON.stringify(availableSchedule);
   const html = render(availableSchedule);
 
@@ -120,21 +120,20 @@ test("affiche les compteurs, les repères et les observations hors planning", ()
   expect(html).toContain("Cadence recommandée du logiciel");
   expect(html).toContain("J0 à J30 : tous les jours");
   expect(html).toContain("J31 à J60 : tous les 3 jours");
-  expect(html).toContain("Réalisées</dt><dd class=\"mt-1 text-2xl font-semibold\">2");
-  expect(html).toContain("À faire aujourd’hui</dt><dd class=\"mt-1 text-2xl font-semibold\">1");
-  expect(html).toContain("En retard</dt><dd class=\"mt-1 text-2xl font-semibold\">2");
-  expect(html).toContain("À venir</dt><dd class=\"mt-1 text-2xl font-semibold\">2");
-  expect(html).toContain("Dernière réalisée");
+  expect(html).toContain("Aujourd’hui :</dt><dd>1");
+  expect(html).toContain("En retard :</dt><dd>2");
+  expect(html).toContain("Réalisées :</dt><dd>2");
+  expect(html).toContain("Prochaine :</dt><dd>J16 · 5 août 2026");
+  expect(html).toContain("<details");
+  expect(html).not.toContain("<details open");
+  expect(html).toContain("Politique, cadence et observations secondaires");
+  expect(html).toContain("Dernière réalisée :");
   expect(html).toContain("J12 · 1 août 2026");
-  expect(html).toContain("Échéance du jour");
+  expect(html).toContain("Première échéance du jour :");
   expect(html).toContain("J15 · 4 août 2026");
-  expect(html).toContain("Première à rattraper");
+  expect(html).toContain("Première échéance en retard :");
   expect(html).toContain("J13 · 2 août 2026");
-  expect(html).toContain("Prochaine échéance");
-  expect(html).toContain("J16 · 5 août 2026");
-  expect(html).toContain(
-    "1 observation(s) de pesée enregistrée(s) hors échéances planifiées.",
-  );
+  expect(html).toContain("Observations hors planning : 1");
   expect(html).not.toMatch(
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
   );

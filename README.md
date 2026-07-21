@@ -63,8 +63,10 @@ données après la fin de la commande de création, jusqu’au cleanup demandé 
 
 ```bash
 pnpm demo:e2e:create -- technical-lifecycle
+pnpm demo:e2e:create -- growth-comparison
 pnpm demo:e2e:status
 pnpm demo:e2e:cleanup -- technical-lifecycle
+pnpm demo:e2e:cleanup -- growth-comparison
 pnpm demo:e2e:stop
 ```
 
