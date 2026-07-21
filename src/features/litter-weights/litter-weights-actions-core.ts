@@ -137,6 +137,14 @@ export function litterRoutineWeightsErrorMessage(
       return "La pesée ne peut pas être postérieure au décès.";
     case "measurement_already_recorded":
       return "Une mesure existe déjà pour un animal à cet instant.";
+    case "measurement_not_found":
+    case "session_not_found":
+    case "measurement_cancelled":
+    case "session_cancelled":
+    case "stale_revision":
+    case "no_change":
+    case "last_measurement_requires_session_cancellation":
+      return "Une erreur technique empêche momentanément l’enregistrement.";
     case "command_conflict":
       return "Cette pesée entre en conflit avec une tentative précédente.";
     case "inconsistent_relations":

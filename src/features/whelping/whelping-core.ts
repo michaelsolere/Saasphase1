@@ -755,6 +755,7 @@ export async function listWhelpingBirthsForSessionCore(
       .select("*")
       .eq("organization_id", authorization.session.organization_id)
       .eq("measurement_kind", "birth")
+      .is("cancelled_at", null)
       .in(
         "source_birth_id",
         birthRows.map((birth) => birth.id),
