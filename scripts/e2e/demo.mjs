@@ -27,6 +27,7 @@ import {
   listDockerNames,
   prepareE2eWorkdir,
   projectId,
+  readDemoManifest,
   readDemoManifests,
   readStatusEnv,
   removeE2eVolumes,
@@ -50,6 +51,7 @@ const scenarioDefinitions = {
     uuidPrefix: "d3e7000",
     contactId: "d3e70001-0000-4000-8000-000000000001",
     applicationId: "d3e70002-0000-4000-8000-000000000001",
+    cleanupOrder: ["applications", "contact_roles", "contacts"],
   },
 };
 
@@ -309,9 +311,113 @@ function scenarioCounts(scenario, manifest = null) {
   );
 }
 
+function arraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function registryHasExactKeys(registry, expectedKeys) {
+  return arraysEqual(Object.keys(registry).sort(), [...expectedKeys].sort());
+}
+
+function assertTechnicalCleanupPreflight(scenario, manifest, path) {
+  const expectedContactMarker = `${scenario.labelPrefix} cleanup-registry proof`;
+  const expectedApplicationMarker = `${scenario.labelPrefix} linked-application`;
+  const expectedRoleMarker = `${scenario.labelPrefix} server-generated-id`;
+
+  if (
+    !registryHasExactKeys(manifest.directIds, ["contacts", "applications"]) ||
+    !arraysEqual(manifest.directIds.contacts, [scenario.contactId]) ||
+    !arraysEqual(manifest.directIds.applications, [scenario.applicationId])
+  ) {
+    throw new Error(`Refusing cleanup before DELETE: direct IDs do not match scenario ${scenario.scenarioId}`);
+  }
+  if (
+    !registryHasExactKeys(manifest.serverGeneratedIds, ["contact_roles"]) ||
+    manifest.serverGeneratedIds.contact_roles.length !== 1
+  ) {
+    throw new Error(`Refusing cleanup before DELETE: generated role inventory is not exact in ${path}`);
+  }
+  if (
+    manifest.reserved.uuidPrefix !== scenario.uuidPrefix ||
+    manifest.reserved.labelPrefix !== scenario.labelPrefix ||
+    !arraysEqual(manifest.cleanupOrder, scenario.cleanupOrder)
+  ) {
+    throw new Error(`Refusing cleanup before DELETE: reserved prefixes or cleanup order do not match the scenario`);
+  }
+
+  const roleId = manifest.serverGeneratedIds.contact_roles[0];
+  const inventory = JSON.parse(
+    runSql(`
+      select json_build_object(
+        'contact', (
+          select json_build_object(
+            'id', id,
+            'organizationId', organization_id,
+            'internalComment', internal_comment
+          )
+          from public.contacts
+          where id = ${sqlLiteral(scenario.contactId)}::uuid
+        ),
+        'application', (
+          select json_build_object(
+            'id', id,
+            'organizationId', organization_id,
+            'contactId', contact_id,
+            'internalComment', internal_comment
+          )
+          from public.applications
+          where id = ${sqlLiteral(scenario.applicationId)}::uuid
+        ),
+        'role', (
+          select json_build_object(
+            'id', id,
+            'organizationId', organization_id,
+            'contactId', contact_id,
+            'notes', notes
+          )
+          from public.contact_roles
+          where id = ${sqlLiteral(roleId)}::uuid
+        )
+      );
+    `),
+  );
+
+  const expected = {
+    contact: {
+      id: scenario.contactId,
+      organizationId,
+      internalComment: expectedContactMarker,
+    },
+    application: {
+      id: scenario.applicationId,
+      organizationId,
+      contactId: scenario.contactId,
+      internalComment: expectedApplicationMarker,
+    },
+    role: {
+      id: roleId,
+      organizationId,
+      contactId: scenario.contactId,
+      notes: expectedRoleMarker,
+    },
+  };
+  for (const relation of ["contact", "application", "role"]) {
+    if (JSON.stringify(inventory[relation]) !== JSON.stringify(expected[relation])) {
+      throw new Error(
+        `Refusing cleanup before DELETE: ${relation} is missing, has an unexpected marker, organization, or relation`,
+      );
+    }
+  }
+
+  const counts = scenarioCounts(scenario, manifest);
+  if (Object.values(counts).some((count) => Number(count) !== 1)) {
+    throw new Error(`Refusing cleanup before DELETE: scenario inventory is not exactly one row per table: ${JSON.stringify(counts)}`);
+  }
+}
+
 function createTechnicalScenario(scenario, server) {
   const path = manifestPath(scenario.scenarioId);
-  if (existsSync(path) && readJson(path).status === "active") {
+  if (existsSync(path) && readDemoManifest(path).status === "active") {
     throw new Error(`Demonstration ${scenario.scenarioId} is already active`);
   }
   const before = scenarioCounts(scenario);
@@ -379,7 +485,7 @@ function createTechnicalScenario(scenario, server) {
     },
     idempotencyKeys: [],
     storageObjects: [],
-    cleanupOrder: ["applications", "contact_roles", "contacts"],
+    cleanupOrder: scenario.cleanupOrder,
     reserved: { uuidPrefix: scenario.uuidPrefix, labelPrefix: scenario.labelPrefix },
     server: {
       state: server.state,
@@ -442,16 +548,14 @@ function cleanupScenario(scenarioId) {
   if (!existsSync(path)) {
     throw new Error(`No cleanup manifest found for demonstration ${scenarioId}`);
   }
-  const manifest = readJson(path);
+  const manifest = readDemoManifest(path);
   if (manifest.status !== "active") {
     throw new Error(`Demonstration ${scenarioId} is not active (status: ${manifest.status})`);
   }
   const contactIds = manifest.directIds?.contacts ?? [];
   const applicationIds = manifest.directIds?.applications ?? [];
   const roleIds = manifest.serverGeneratedIds?.contact_roles ?? [];
-  if (contactIds.length !== 1 || applicationIds.length !== 1 || roleIds.length !== 1) {
-    throw new Error(`Refusing cleanup with an incomplete or unexpected manifest inventory: ${path}`);
-  }
+  assertTechnicalCleanupPreflight(scenario, manifest, path);
 
   runSql(`
     begin;

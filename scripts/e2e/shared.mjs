@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import net from "node:net";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -232,6 +232,134 @@ export function removeE2eVolumes() {
   }
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const tableNamePattern = /^[a-z][a-z0-9_]*$/;
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertUniqueArray(values, label, path) {
+  if (new Set(values.map((value) => JSON.stringify(value))).size !== values.length) {
+    throw new Error(`Invalid demonstration manifest ${path}: ${label} contains duplicate entries`);
+  }
+}
+
+function validateIdRegistry(value, label, path) {
+  if (!isPlainObject(value)) {
+    throw new Error(`Invalid demonstration manifest ${path}: ${label} must be an object`);
+  }
+
+  for (const [table, ids] of Object.entries(value)) {
+    if (!tableNamePattern.test(table) || !Array.isArray(ids)) {
+      throw new Error(`Invalid demonstration manifest ${path}: ${label}.${table} must be a UUID array`);
+    }
+    if (ids.some((id) => typeof id !== "string" || !uuidPattern.test(id))) {
+      throw new Error(`Invalid demonstration manifest ${path}: ${label}.${table} contains an invalid UUID`);
+    }
+    assertUniqueArray(ids, `${label}.${table}`, path);
+  }
+}
+
+export function validateDemoManifest(path, manifest) {
+  if (!isPlainObject(manifest)) {
+    throw new Error(`Invalid demonstration manifest ${path}: root must be a non-null JSON object`);
+  }
+  if (manifest.version !== 1) {
+    throw new Error(`Invalid demonstration manifest ${path}: version must equal 1`);
+  }
+
+  const expectedScenarioId = basename(path, ".json");
+  if (typeof manifest.scenarioId !== "string" || manifest.scenarioId.trim() === "") {
+    throw new Error(`Invalid demonstration manifest ${path}: scenarioId must be a non-empty string`);
+  }
+  if (manifest.scenarioId !== expectedScenarioId) {
+    throw new Error(
+      `Invalid demonstration manifest ${path}: scenarioId ${manifest.scenarioId} does not match filename ${expectedScenarioId}`,
+    );
+  }
+  if (manifest.status !== "active" && manifest.status !== "cleaned") {
+    throw new Error(`Invalid demonstration manifest ${path}: status must be active or cleaned`);
+  }
+
+  validateIdRegistry(manifest.directIds, "directIds", path);
+  validateIdRegistry(manifest.serverGeneratedIds, "serverGeneratedIds", path);
+
+  if (!Array.isArray(manifest.idempotencyKeys) || manifest.idempotencyKeys.some((key) => typeof key !== "string" || key.trim() === "")) {
+    throw new Error(`Invalid demonstration manifest ${path}: idempotencyKeys must be an array of non-empty strings`);
+  }
+  assertUniqueArray(manifest.idempotencyKeys, "idempotencyKeys", path);
+
+  if (!Array.isArray(manifest.storageObjects)) {
+    throw new Error(`Invalid demonstration manifest ${path}: storageObjects must be an array`);
+  }
+  for (const object of manifest.storageObjects) {
+    if (
+      !isPlainObject(object) ||
+      typeof object.bucket !== "string" ||
+      object.bucket.trim() === "" ||
+      typeof object.path !== "string" ||
+      object.path.trim() === ""
+    ) {
+      throw new Error(`Invalid demonstration manifest ${path}: storageObjects entries require bucket and path strings`);
+    }
+  }
+  assertUniqueArray(
+    manifest.storageObjects.map((object) => `${object.bucket}\u0000${object.path}`),
+    "storageObjects",
+    path,
+  );
+
+  if (
+    !Array.isArray(manifest.cleanupOrder) ||
+    manifest.cleanupOrder.length === 0 ||
+    manifest.cleanupOrder.some((table) => typeof table !== "string" || !tableNamePattern.test(table))
+  ) {
+    throw new Error(`Invalid demonstration manifest ${path}: cleanupOrder must be a non-empty table-name array`);
+  }
+  assertUniqueArray(manifest.cleanupOrder, "cleanupOrder", path);
+
+  if (
+    !isPlainObject(manifest.reserved) ||
+    typeof manifest.reserved.uuidPrefix !== "string" ||
+    manifest.reserved.uuidPrefix.trim() === "" ||
+    typeof manifest.reserved.labelPrefix !== "string" ||
+    manifest.reserved.labelPrefix.trim() === ""
+  ) {
+    throw new Error(`Invalid demonstration manifest ${path}: reserved requires uuidPrefix and labelPrefix strings`);
+  }
+
+  if (
+    !isPlainObject(manifest.server) ||
+    typeof manifest.server.state !== "string" ||
+    manifest.server.state.trim() === "" ||
+    !Number.isInteger(manifest.server.pid) ||
+    manifest.server.pid <= 1 ||
+    typeof manifest.server.baseUrl !== "string" ||
+    manifest.server.baseUrl.trim() === "" ||
+    typeof manifest.server.logPath !== "string" ||
+    manifest.server.logPath.trim() === "" ||
+    typeof manifest.server.checkedAt !== "string" ||
+    manifest.server.checkedAt.trim() === ""
+  ) {
+    throw new Error(
+      `Invalid demonstration manifest ${path}: server requires state, positive pid, baseUrl, logPath, and checkedAt`,
+    );
+  }
+
+  return manifest;
+}
+
+export function readDemoManifest(path) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    throw new Error(`Refusing to ignore unreadable demonstration manifest ${path}: ${error.message}`);
+  }
+  return validateDemoManifest(path, manifest);
+}
+
 export function readDemoManifests() {
   if (!existsSync(demoManifestDir)) {
     return [];
@@ -242,11 +370,7 @@ export function readDemoManifests() {
     .sort()
     .map((name) => {
       const path = resolve(demoManifestDir, name);
-      try {
-        return { path, manifest: JSON.parse(readFileSync(path, "utf8")) };
-      } catch (error) {
-        throw new Error(`Refusing to ignore unreadable demonstration manifest ${path}: ${error.message}`);
-      }
+      return { path, manifest: readDemoManifest(path) };
     });
 }
 

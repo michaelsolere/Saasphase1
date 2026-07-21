@@ -1,13 +1,13 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet sur `main` au SHA documenté. Il privilégie les invariants, les capacités réellement disponibles et les limites connues à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet autour du SHA de base vérifié. Il privilégie les invariants, les capacités réellement disponibles et les limites connues à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `51801f575d8084a0c5a1cf89f5cbbd00c1b74cf2`.
-- Dernière PR incluse : **PR #354 — Préserver les chiots adoptés dans l’historique des pesées**.
+- SHA de base vérifié avant ce lot : `51801f575d8084a0c5a1cf89f5cbbd00c1b74cf2`.
+- Dernière PR fusionnée avant ce lot : **PR #354 — Préserver les chiots adoptés dans l’historique des pesées**.
 - La dernière migration incluse est `202607200001_litter_weighing_schedule_policy_foundation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
