@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   closeWhelpingSessionCore,
+  correctWhelpingBirthCore,
+  cancelWhelpingBirthCore,
   getOpenWhelpingSessionForLitterCore,
   listWhelpingEventsForSessionCore,
   listWhelpingBirthsForSessionCore,
@@ -42,6 +44,9 @@ export type {
   ReopenWhelpingSessionInput,
   ReopenWhelpingSessionResult,
   BirthWeightMeasurementSummary,
+  CorrectWhelpingBirthInput,
+  CancelWhelpingBirthInput,
+  WhelpingBirthAdjustmentResult,
   WhelpingBirthAnimalSummary,
   WhelpingBirthSex,
   WhelpingBirthSummary,
@@ -115,6 +120,20 @@ export async function recordWhelpingBirthWeight(
     input,
     await serverClient(suppliedClient),
   );
+}
+
+export async function correctWhelpingBirth(
+  input: Parameters<typeof correctWhelpingBirthCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return correctWhelpingBirthCore(input, await serverClient(suppliedClient));
+}
+
+export async function cancelWhelpingBirth(
+  input: Parameters<typeof cancelWhelpingBirthCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return cancelWhelpingBirthCore(input, await serverClient(suppliedClient));
 }
 
 export async function closeWhelpingSession(

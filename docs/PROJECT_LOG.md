@@ -6,9 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `feaf525462abce08b8140d4f331135eb4a5b4a96`.
-- Dernière PR fusionnée avant ce lot : **PR #355 — Infrastructure locale de démonstrations E2E durables**.
-- La dernière migration incluse est `202607200001_litter_weighing_schedule_policy_foundation`.
+- SHA de base vérifié avant ce lot : `19e25023253d728639754eec5cfdf8bdf0d72bd3`.
+- La dernière migration incluse est `202607200005_whelping_birth_adjustment_foundation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -123,6 +122,14 @@ Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `bor
 Un poids manquant peut être complété après la naissance, y compris lorsque la session de mise-bas est clôturée. Seul le passage `null → valeur` est autorisé : la commande ajoute l’unique mesure `birth` et sa projection de compatibilité, sans créer ni modifier d’événement, d’ordre, de compteur ou de statut de portée. Un rejeu strictement identique est idempotent ; la réutilisation de l’intention avec une valeur différente est refusée. Les rôles `owner`, `admin` et `member` peuvent effectuer le complément, tandis que `viewer` reste en lecture seule.
 
 La **PR #330** apporte cette fondation serveur et la migration `202607190004_whelping_birth_weight_completion`. La **PR #331** expose l’interface de complément du poids depuis le panneau de mise-bas.
+
+##### Rectification des naissances
+
+La migration `202607200005_whelping_birth_adjustment_foundation` ajoute deux commandes serveur atomiques et idempotentes. Une correction met à jour l’état effectif de la naissance, les projections de l’Animal, l’unique ligne de poids de naissance et les agrégats de portée, tout en laissant strictement intact l’événement `birth` initial. Chaque rectification ajoute un événement spécialisé et une entrée dans un registre privé append-only avec révisions optimistes et snapshots avant/après.
+
+Une annulation est limitée à la dernière naissance active de toute la portée et ne modifie jamais son ordre. Elle soft-delete l’Animal, annule le poids de naissance et recalcule les compteurs sans suppression physique d’aucune ligne métier. Toute donnée ultérieure liée à l’Animal bloque l’opération ; les dépendances vers `animals` sont inventoriées par un test de schéma qui échoue si une FK non classée apparaît. L’ordre de naissance et l’événement initial restent immuables. Une prochaine naissance peut reprendre l’ordre libéré.
+
+Le panneau actuel distingue les naissances annulées, utilise l’heure et les données effectives et exclut ces naissances du compteur actif. L’interface complète de correction et d’annulation reste à réaliser dans un lot ultérieur ; aucun bouton, dialogue ni Server Action n’est ajouté ici.
 
 ##### Pesées collectives et historique
 

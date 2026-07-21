@@ -764,7 +764,10 @@ test("records atomic idempotent births and protects journal projections", async 
           'events', (select count(*) from public.whelping_events where session_id = ${q(ids.mainSession)}::uuid and event_type = 'birth'),
           'births', (select count(*) from public.whelping_births where session_id = ${q(ids.mainSession)}::uuid),
           'animals', (select count(*) from public.animals where litter_id = ${q(ids.mainLitter)}::uuid),
-          'weights', (select count(*) from public.animal_weight_measurements where source_birth_id is not null)
+          'weights', (select count(*) from public.animal_weight_measurements
+            where source_birth_id in (
+              select id from public.whelping_births where session_id = ${q(ids.mainSession)}::uuid
+            ))
         )::text;
       `),
     );

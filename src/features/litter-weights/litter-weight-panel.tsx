@@ -344,13 +344,29 @@ function CorrectionDialog({ measurement, animalLabel, session, action, onSuccess
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(action, initialLitterWeightAdjustmentActionState);
   const router = useRouter();
-  useEffect(() => { if (state.status === "success") { setOpen(false); onSuccess(state.message ?? "La mesure a été corrigée."); router.refresh(); } }, [state, onSuccess, router]);
+  useEffect(() => {
+    if (state.status !== "success") return;
+    const timeout = window.setTimeout(() => {
+      setOpen(false);
+      onSuccess(state.message ?? "La mesure a été corrigée.");
+      router.refresh();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [state, onSuccess, router]);
   return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button type="button" size="sm" variant="outline"><Pencil className="size-4" aria-hidden="true" />Corriger</Button></DialogTrigger><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Corriger la pesée de {animalLabel}</DialogTitle><DialogDescription>Séance du {formatDateTime(session.measuredAt, session.timezoneName)}. L’heure de la séance reste inchangée.</DialogDescription></DialogHeader><form action={formAction} className="space-y-4"><label className={labelClass}>Poids (g)<input className={inputClass} name="grams" inputMode="numeric" required defaultValue={measurement.grams} /></label><label className={labelClass}>Note individuelle<textarea className={inputClass} name="note" rows={3} defaultValue={measurement.note ?? ""} /></label><label className={labelClass}>Motif de la correction<textarea className={inputClass} name="reason" rows={3} maxLength={500} required /></label><AdjustmentState state={state} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button disabled={pending} type="submit">{pending ? "Correction…" : "Enregistrer la correction"}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
 
 function CancellationDialog({ kind, animalLabel, measurement, session, measurementCount, action, onSuccess }: { kind: "measurement" | "session"; animalLabel?: string; measurement?: LitterWeightHistoryMeasurement; session: LitterWeightHistorySession; measurementCount: number; action: AdjustmentAction; onSuccess: (message: string) => void }) {
   const [open, setOpen] = useState(false); const [state, formAction, pending] = useActionState(action, initialLitterWeightAdjustmentActionState); const cancelledAt = useRef<HTMLInputElement>(null); const router = useRouter();
-  useEffect(() => { if (state.status === "success") { setOpen(false); onSuccess(state.message ?? "L’annulation a été enregistrée."); router.refresh(); } }, [state, onSuccess, router]);
+  useEffect(() => {
+    if (state.status !== "success") return;
+    const timeout = window.setTimeout(() => {
+      setOpen(false);
+      onSuccess(state.message ?? "L’annulation a été enregistrée.");
+      router.refresh();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [state, onSuccess, router]);
   const isSession = kind === "session";
   return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button type="button" size="sm" variant="outline" className={isSession ? "text-destructive" : ""}><Trash2 className="size-4" aria-hidden="true" />{isSession ? "Annuler la séance" : "Annuler la mesure"}</Button></DialogTrigger><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{isSession ? "Annuler toute la séance" : `Annuler la mesure de ${animalLabel}`}</DialogTitle><DialogDescription>{formatDateTime(session.measuredAt, session.timezoneName)}{measurement ? ` · ${formatGrams(measurement.grams)}` : ` · ${measurementCount} mesures actives`}</DialogDescription></DialogHeader><form action={formAction} onSubmit={() => { if (cancelledAt.current) cancelledAt.current.value = new Date().toISOString(); }} className="space-y-4"><input ref={cancelledAt} type="hidden" name="cancelled_at" />{isSession ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><p>La séance et toutes ses mesures seront exclues des tableaux, graphiques, statistiques et du planning. Rien ne sera supprimé.</p><p className="mt-2">Si l’heure est erronée, créez ensuite une nouvelle séance à la bonne heure.</p></div> : <p className="text-sm text-muted">La séance restera active et apparaîtra avec une couverture partielle.</p>}<label className={labelClass}>Motif de l’annulation<textarea className={inputClass} name="reason" rows={3} maxLength={500} required /></label><AdjustmentState state={state} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline">Conserver</Button></DialogClose><Button disabled={pending} type="submit" variant="destructive">{pending ? "Annulation…" : isSession ? "Confirmer l’annulation de la séance" : "Confirmer l’annulation"}</Button></DialogFooter></form></DialogContent></Dialog>;
 }
