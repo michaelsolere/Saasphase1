@@ -1,14 +1,14 @@
 # Journal de reprise — SaaS élevage
 
-Ce document décrit l’état utile du projet après la PR #346. Il privilégie les invariants, les capacités réellement disponibles, les limites connues et la prochaine étape fonctionnelle à une chronologie exhaustive des PR.
+Ce document décrit l’état utile du projet sur `main` au SHA documenté. Il privilégie les invariants, les capacités réellement disponibles et les limites connues à une chronologie exhaustive des PR.
 
 ## Référence du projet
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de `main` documenté : `04fe02de144441348e2ad478b538ce0e0a467f33`.
-- Dernière PR incluse : **PR #346 — Ajouter le graphique comparatif inter-portées**.
-- La dernière migration incluse reste `202607190005_litter_routine_weighing_foundation` ; les PR #341 à #346 n’ajoutent aucune migration, RPC, RLS, table, vue ou policy.
+- SHA de `main` documenté : `51801f575d8084a0c5a1cf89f5cbbd00c1b74cf2`.
+- Dernière PR incluse : **PR #354 — Préserver les chiots adoptés dans l’historique des pesées**.
+- La dernière migration incluse est `202607200001_litter_weighing_schedule_policy_foundation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -428,11 +428,10 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 - Le retour signé est consultable par une route privée et apparaît comme artefact séparé dans l’historique de la version d’origine.
 - Il n’existe qu’un retour signé par document. Une fois archivé, il ne peut être ni substitué, ni supprimé, ni déplacé vers une autre version ; l’original n’est jamais remplacé.
 
-## Limites actuelles et feuille de route immédiate
+## Limites actuelles
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- la planification descriptive des pesées et des autres suivis récurrents spécialisés ;
 - la correction ou la suppression encadrée d’une mesure ;
 - la correction ou l’annulation encadrée d’une naissance ;
 - d’éventuelles mesures cliniques ;
@@ -440,10 +439,6 @@ Restent notamment à concevoir ou implémenter, sans ordre technique définitive
 - une éventuelle PWA ou application mobile indépendante.
 
 Cette liste reste prudente et ne constitue pas un ordre de réalisation définitivement validé. L’architecture et la priorité de ces évolutions devront être confirmées avant leur mise en œuvre.
-
-La prochaine direction logique est la conception d’une **planification descriptive des pesées**, sans décider encore d’une implémentation complète. Un futur premier lot pourrait décrire une cadence quotidienne pendant le premier mois, puis une cadence tous les trois jours pendant le deuxième mois, calculées depuis la date réelle de naissance. Il pourrait préparer le rapprochement avec les séances réellement enregistrées et exposer des états descriptifs tels que **réalisée**, **à faire aujourd’hui**, **en retard** et **à venir**.
-
-Ces règles ne sont pas implémentées. Ce futur premier lot ne créerait automatiquement aucune séance et n’introduirait ni notification, ni tâche, ni cron, ni diagnostic vétérinaire.
 
 Les contrats V1, les certificats d’engagement, les snapshots historiques, les retours signés, les règles RLS et permissions ainsi que la génération individuelle actuelle depuis une Réservation restent compatibles et inchangés.
 
@@ -464,6 +459,17 @@ La PR #301 ajoute deux commandes complémentaires :
 
 - `pnpm test:e2e:reuse -- <specs>` : réutilise une stack E2E déjà démarrée pour accélérer les itérations ciblées, sans redémarrage ni reset systématique tant que la session de réutilisation est valide ;
 - `pnpm test:e2e:stop` : arrête explicitement la stack `saasphase1-e2e` et nettoie ses volumes ainsi que le workdir `.supabase-e2e`.
+
+Les démonstrations visuelles durables utilisent désormais un cycle séparé de
+Playwright : `demo:e2e:start`, `demo:e2e:create`, `demo:e2e:status`,
+`demo:e2e:cleanup` et `demo:e2e:stop`. Leur serveur Next reste actif sur `3100`
+après la commande de création et leur inventaire de cleanup est conservé dans
+un manifeste JSON ignoré sous `.supabase-e2e/demos`. Tant qu’un manifeste est
+actif, les trois runners E2E refusent de réinitialiser, arrêter ou supprimer la
+stack et ses volumes. Le cleanup dédié hard-delete exclusivement les IDs
+enregistrés, dans l’ordre inverse des dépendances, puis exige des compteurs
+`count(*)` sans filtre `deleted_at` à zéro. Le guide opérationnel est
+`docs/E2E_DURABLE_DEMOS.md`.
 
 Avant livraison d’un lot, exécuter au minimum :
 
