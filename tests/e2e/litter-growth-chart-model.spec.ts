@@ -45,6 +45,7 @@ function measurement(
 ): LitterWeightHistoryMeasurement {
   return {
     id,
+    revisionNo: 0,
     animalId,
     sessionId: type === "routine" ? "session" : null,
     type,

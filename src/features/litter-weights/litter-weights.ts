@@ -7,6 +7,7 @@ import {
   cancelLitterWeighingSessionCore,
   correctLitterRoutineWeightCore,
   listLitterAgeComparisonCore,
+  listLitterWeightAdjustmentHistoryCore,
   listLitterWeightHistoryCore,
   recordLitterRoutineWeightsCore,
 } from "./litter-weights-core";
@@ -24,6 +25,9 @@ export type {
   CorrectLitterRoutineWeightResult,
   ListLitterAgeComparisonInput,
   ListLitterAgeComparisonResult,
+  ListLitterWeightAdjustmentHistoryInput,
+  ListLitterWeightAdjustmentHistoryResult,
+  LitterWeightAdjustmentHistoryEntry,
   ListLitterWeightHistoryInput,
   ListLitterWeightHistoryResult,
   ListLitterWeightHistoryScheduleRequest,
@@ -81,6 +85,13 @@ export async function listLitterWeightHistory(
   suppliedClient?: Supabase,
 ) {
   return listLitterWeightHistoryCore(input, await serverClient(suppliedClient));
+}
+
+export async function listLitterWeightAdjustmentHistory(
+  input: Parameters<typeof listLitterWeightAdjustmentHistoryCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return listLitterWeightAdjustmentHistoryCore(input, await serverClient(suppliedClient));
 }
 
 export async function listLitterAgeComparison(

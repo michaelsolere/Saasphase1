@@ -1,7 +1,7 @@
 "use client";
 
-import { Plus, Scale } from "lucide-react";
-import { useActionState, useCallback, useRef, useState } from "react";
+import { Pencil, Plus, Scale, Trash2 } from "lucide-react";
+import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -19,12 +19,15 @@ import {
 
 import {
   initialLitterRoutineWeightsActionState,
+  initialLitterWeightAdjustmentActionState,
+  type LitterWeightAdjustmentActionState,
   type LitterRoutineWeightsActionState,
 } from "./litter-weights-actions-core";
 import type {
   LitterWeightHistoryAnimal,
   LitterWeightHistoryMeasurement,
   LitterWeightHistorySession,
+  LitterWeightAdjustmentHistoryEntry,
   LitterWeightOrganizationRole,
   LitterWeighingSchedulePolicyMetadata,
 } from "./litter-weights-core";
@@ -46,6 +49,9 @@ type RecordAction = (
   previousState: LitterRoutineWeightsActionState,
   formData: FormData,
 ) => Promise<LitterRoutineWeightsActionState>;
+type AdjustmentAction = (previousState: LitterWeightAdjustmentActionState, formData: FormData) => Promise<LitterWeightAdjustmentActionState>;
+export type LitterWeightMeasurementAdjustmentAction = { measurementId: string; correctAction: AdjustmentAction; cancelAction: AdjustmentAction | null };
+export type LitterWeightSessionCancellationAction = { sessionId: string; action: AdjustmentAction };
 
 const inputClass =
   "mt-2 min-h-11 w-full min-w-0 rounded-xl border bg-background px-3 py-2 text-base outline-none transition focus:border-accent focus:ring-1 focus:ring-accent sm:text-sm";
@@ -329,14 +335,40 @@ function RoutineWeightDialog({
   );
 }
 
+function AdjustmentState({ state }: { state: LitterWeightAdjustmentActionState }) {
+  if (state.status === "idle") return null;
+  return <p role={state.status === "error" ? "alert" : "status"} className={`rounded-lg border px-3 py-2 text-sm ${state.status === "error" ? "border-rose-200 bg-rose-50 text-rose-950" : "border-emerald-200 bg-emerald-50 text-emerald-950"}`}>{state.message}{state.stale ? <> <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>Recharger la page</button></> : null}</p>;
+}
+
+function CorrectionDialog({ measurement, animalLabel, session, action, onSuccess }: { measurement: LitterWeightHistoryMeasurement; animalLabel: string; session: LitterWeightHistorySession; action: AdjustmentAction; onSuccess: (message: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState(action, initialLitterWeightAdjustmentActionState);
+  const router = useRouter();
+  useEffect(() => { if (state.status === "success") { setOpen(false); onSuccess(state.message ?? "La mesure a été corrigée."); router.refresh(); } }, [state, onSuccess, router]);
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button type="button" size="sm" variant="outline"><Pencil className="size-4" aria-hidden="true" />Corriger</Button></DialogTrigger><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Corriger la pesée de {animalLabel}</DialogTitle><DialogDescription>Séance du {formatDateTime(session.measuredAt, session.timezoneName)}. L’heure de la séance reste inchangée.</DialogDescription></DialogHeader><form action={formAction} className="space-y-4"><label className={labelClass}>Poids (g)<input className={inputClass} name="grams" inputMode="numeric" required defaultValue={measurement.grams} /></label><label className={labelClass}>Note individuelle<textarea className={inputClass} name="note" rows={3} defaultValue={measurement.note ?? ""} /></label><label className={labelClass}>Motif de la correction<textarea className={inputClass} name="reason" rows={3} maxLength={500} required /></label><AdjustmentState state={state} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose><Button disabled={pending} type="submit">{pending ? "Correction…" : "Enregistrer la correction"}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
+function CancellationDialog({ kind, animalLabel, measurement, session, measurementCount, action, onSuccess }: { kind: "measurement" | "session"; animalLabel?: string; measurement?: LitterWeightHistoryMeasurement; session: LitterWeightHistorySession; measurementCount: number; action: AdjustmentAction; onSuccess: (message: string) => void }) {
+  const [open, setOpen] = useState(false); const [state, formAction, pending] = useActionState(action, initialLitterWeightAdjustmentActionState); const cancelledAt = useRef<HTMLInputElement>(null); const router = useRouter();
+  useEffect(() => { if (state.status === "success") { setOpen(false); onSuccess(state.message ?? "L’annulation a été enregistrée."); router.refresh(); } }, [state, onSuccess, router]);
+  const isSession = kind === "session";
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button type="button" size="sm" variant="outline" className={isSession ? "text-destructive" : ""}><Trash2 className="size-4" aria-hidden="true" />{isSession ? "Annuler la séance" : "Annuler la mesure"}</Button></DialogTrigger><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{isSession ? "Annuler toute la séance" : `Annuler la mesure de ${animalLabel}`}</DialogTitle><DialogDescription>{formatDateTime(session.measuredAt, session.timezoneName)}{measurement ? ` · ${formatGrams(measurement.grams)}` : ` · ${measurementCount} mesures actives`}</DialogDescription></DialogHeader><form action={formAction} onSubmit={() => { if (cancelledAt.current) cancelledAt.current.value = new Date().toISOString(); }} className="space-y-4"><input ref={cancelledAt} type="hidden" name="cancelled_at" />{isSession ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950"><p>La séance et toutes ses mesures seront exclues des tableaux, graphiques, statistiques et du planning. Rien ne sera supprimé.</p><p className="mt-2">Si l’heure est erronée, créez ensuite une nouvelle séance à la bonne heure.</p></div> : <p className="text-sm text-muted">La séance restera active et apparaîtra avec une couverture partielle.</p>}<label className={labelClass}>Motif de l’annulation<textarea className={inputClass} name="reason" rows={3} maxLength={500} required /></label><AdjustmentState state={state} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline">Conserver</Button></DialogClose><Button disabled={pending} type="submit" variant="destructive">{pending ? "Annulation…" : isSession ? "Confirmer l’annulation de la séance" : "Confirmer l’annulation"}</Button></DialogFooter></form></DialogContent></Dialog>;
+}
+
 function SessionsHistory({
   sessions,
   measurements,
   animals,
+  measurementActions,
+  sessionActions,
+  onSuccess,
 }: {
   sessions: LitterWeightHistorySession[];
   measurements: LitterWeightHistoryMeasurement[];
   animals: LitterWeightHistoryAnimal[];
+  measurementActions: LitterWeightMeasurementAdjustmentAction[];
+  sessionActions: LitterWeightSessionCancellationAction[];
+  onSuccess: (message: string) => void;
 }) {
   const animalNameById = new Map(
     animals.map((animal) => [animal.id, litterWeightAnimalName(animal)]),
@@ -359,30 +391,26 @@ function SessionsHistory({
                 measurement.type === "routine" &&
                 measurement.sessionId === session.id,
             );
+            const sessionAction = sessionActions.find((item) => item.sessionId === session.id);
             return (
               <li key={session.id} className="rounded-lg border p-3 text-sm">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-semibold">
                     {formatDateTime(session.measuredAt, session.timezoneName)}
                   </p>
                   <p className="text-muted">
-                    {sessionMeasurements.length} / {animals.length}
+                    Couverture : {sessionMeasurements.length} / {animals.length}
                   </p>
+                  {sessionAction ? <CancellationDialog kind="session" session={session} measurementCount={sessionMeasurements.length} action={sessionAction.action} onSuccess={onSuccess} /> : null}
                 </div>
                 {session.note ? (
                   <p className="mt-2 whitespace-pre-wrap text-muted">{session.note}</p>
                 ) : null}
                 {sessionMeasurements.length > 0 ? (
-                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted">
-                    {sessionMeasurements.map((measurement) => (
-                      <li key={measurement.id}>
-                        <span className="font-medium text-foreground">
-                          {animalNameById.get(measurement.animalId) ?? "Animal"}
-                        </span>{" "}
-                        · {formatGrams(measurement.grams)}
-                        {measurement.note ? ` · ${measurement.note}` : ""}
-                      </li>
-                    ))}
+                  <ul className="mt-3 space-y-2 text-muted">
+                    {sessionMeasurements.map((measurement) => { const linked = measurementActions.find((item) => item.measurementId === measurement.id); const animalLabel = animalNameById.get(measurement.animalId) ?? "Animal"; return (
+                      <li key={measurement.id} className="flex min-w-0 flex-col gap-2 rounded-lg bg-secondary/40 p-3 sm:flex-row sm:items-center sm:justify-between"><p className="min-w-0 break-words"><span className="font-medium text-foreground">{animalLabel}</span> · {formatGrams(measurement.grams)}{measurement.note ? ` · ${measurement.note}` : ""}</p>{linked ? <div className="flex flex-wrap gap-2"><CorrectionDialog measurement={measurement} animalLabel={animalLabel} session={session} action={linked.correctAction} onSuccess={onSuccess} />{linked.cancelAction ? <CancellationDialog kind="measurement" animalLabel={animalLabel} measurement={measurement} session={session} measurementCount={sessionMeasurements.length} action={linked.cancelAction} onSuccess={onSuccess} /> : <p className="max-w-xs text-xs text-muted">Dernière mesure de la séance : utilisez « Annuler la séance ».</p>}</div> : null}</li>
+                    );})}
                   </ul>
                 ) : null}
               </li>
@@ -392,6 +420,10 @@ function SessionsHistory({
       )}
     </details>
   );
+}
+
+function AdjustmentHistory({ entries, loadError }: { entries: LitterWeightAdjustmentHistoryEntry[]; loadError: boolean }) {
+  return <details className="mt-3 rounded-xl border px-4 py-3" data-testid="litter-weight-adjustment-history"><summary className="cursor-pointer font-semibold">Historique des rectifications</summary>{loadError ? <p className="mt-3 text-sm text-muted">L’historique des rectifications n’est pas disponible pour le moment.</p> : entries.length === 0 ? <p className="mt-3 text-sm text-muted">Aucune rectification enregistrée.</p> : <ol className="mt-3 space-y-3">{entries.map((entry, index) => <li key={`${entry.createdAt}-${index}`} className="rounded-lg border p-3 text-sm"><div className="flex flex-wrap justify-between gap-2"><p className="font-semibold">{entry.commandType === "correct_measurement" ? "Poids corrigé" : entry.commandType === "cancel_measurement" ? "Mesure annulée" : "Séance annulée"}</p><time className="text-muted">{formatDateTime(entry.createdAt)}</time></div><p className="mt-1 text-muted">Séance du {formatDateTime(entry.sessionMeasuredAt, entry.sessionTimezoneName)}{entry.animalLabel ? ` · ${entry.animalLabel}` : ""}</p><p className="mt-2 whitespace-pre-wrap">Motif : {entry.reason}</p>{entry.commandType === "correct_measurement" ? <><p className="mt-1">{formatGrams(entry.beforeGrams ?? 0)} → {formatGrams(entry.afterGrams ?? 0)}</p>{entry.beforeNote !== entry.afterNote ? <p className="mt-1 text-muted">Note : {entry.beforeNote || "Aucune"} → {entry.afterNote || "Aucune"}</p> : null}</> : entry.commandType === "cancel_measurement" ? <p className="mt-1">Poids d’origine : {formatGrams(entry.beforeGrams ?? 0)}</p> : <p className="mt-1">{entry.affectedMeasurementCount} mesure{entry.affectedMeasurementCount > 1 ? "s" : ""} concernée{entry.affectedMeasurementCount > 1 ? "s" : ""}</p>}</li>)}</ol>}</details>;
 }
 
 type LitterWeightMainView = "table" | "charts" | "schedule";
@@ -455,6 +487,10 @@ export function LitterWeightPanel({
   weighingSchedulePolicy,
   role,
   action,
+  measurementAdjustmentActions,
+  sessionCancellationActions,
+  adjustmentHistory,
+  adjustmentHistoryLoadError,
   loadError,
 }: {
   animals: LitterWeightHistoryAnimal[];
@@ -465,6 +501,10 @@ export function LitterWeightPanel({
   weighingSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
   role: LitterWeightOrganizationRole | null;
   action: RecordAction | null;
+  measurementAdjustmentActions: LitterWeightMeasurementAdjustmentAction[];
+  sessionCancellationActions: LitterWeightSessionCancellationAction[];
+  adjustmentHistory: LitterWeightAdjustmentHistoryEntry[];
+  adjustmentHistoryLoadError: boolean;
   loadError: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -571,7 +611,11 @@ export function LitterWeightPanel({
         sessions={sessions}
         measurements={measurements}
         animals={animals}
+        measurementActions={measurementAdjustmentActions}
+        sessionActions={sessionCancellationActions}
+        onSuccess={setConfirmation}
       />
+      <AdjustmentHistory entries={adjustmentHistory} loadError={adjustmentHistoryLoadError} />
     </section>
   );
 }

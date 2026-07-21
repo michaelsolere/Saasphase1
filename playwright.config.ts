@@ -20,7 +20,7 @@ export default defineConfig({
     command:
       "NEXT_DEV_DIR=${NEXT_DEV_DIR:-.next-playwright} node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
     url: "http://127.0.0.1:3100",
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.E2E_REUSE_EXISTING_SERVER === "1",
     timeout: 120_000,
   },
 });

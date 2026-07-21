@@ -155,6 +155,7 @@ export type LitterWeightHistoryAnimal = {
 
 export type LitterWeightHistorySession = {
   id: string;
+  revisionNo: number;
   measuredAt: string;
   timezoneName: string;
   note: string | null;
@@ -168,6 +169,7 @@ export type LitterWeightHistorySession = {
 
 export type LitterWeightHistoryMeasurement = {
   id: string;
+  revisionNo: number;
   animalId: string;
   sessionId: string | null;
   type: "birth" | "routine";
@@ -177,6 +179,29 @@ export type LitterWeightHistoryMeasurement = {
   createdBy: string;
   createdAt: string;
 };
+
+export type LitterWeightAdjustmentHistoryEntry = {
+  commandType: "correct_measurement" | "cancel_measurement" | "cancel_session";
+  createdAt: string;
+  reason: string;
+  sessionMeasuredAt: string;
+  sessionTimezoneName: string;
+  animalLabel: string | null;
+  beforeGrams: number | null;
+  afterGrams: number | null;
+  beforeNote: string | null;
+  afterNote: string | null;
+  affectedMeasurementCount: number;
+};
+
+export type ListLitterWeightAdjustmentHistoryInput = {
+  litterId: string;
+  limit?: number;
+};
+
+export type ListLitterWeightAdjustmentHistoryResult =
+  | { outcome: "success"; entries: LitterWeightAdjustmentHistoryEntry[] }
+  | ErrorResult;
 
 export type ListLitterWeightHistoryScheduleRequest = {
   todayDate: string;
@@ -951,7 +976,7 @@ export async function listLitterWeightHistoryCore(
   const animalIds = animalRows.map((animal) => animal.id);
   const sessions = await supabase
     .from("litter_weighing_sessions")
-    .select("id, measured_at, timezone_name, note, created_by, created_at")
+    .select("id, revision_no, measured_at, timezone_name, note, created_by, created_at")
     .eq("organization_id", authorization.organizationId)
     .eq("litter_id", authorization.litterId)
     .is("cancelled_at", null)
@@ -1002,7 +1027,7 @@ export async function listLitterWeightHistoryCore(
       : supabase
           .from("animal_weight_measurements")
           .select(
-            "id, animal_id, litter_weighing_session_id, measurement_kind, grams, measured_at, note, created_by, created_at",
+            "id, revision_no, animal_id, litter_weighing_session_id, measurement_kind, grams, measured_at, note, created_by, created_at",
           )
           .eq("organization_id", authorization.organizationId)
           .in("animal_id", animalIds)
@@ -1176,6 +1201,7 @@ export async function listLitterWeightHistoryCore(
       const statistics = statisticsBySession.get(session.id);
       return {
         id: session.id,
+        revisionNo: session.revision_no,
         measuredAt: session.measured_at,
         timezoneName: session.timezone_name,
         note: session.note,
@@ -1189,6 +1215,7 @@ export async function listLitterWeightHistoryCore(
     }),
     measurements: measurementRows.map((measurement) => ({
       id: measurement.id,
+      revisionNo: measurement.revision_no,
       animalId: measurement.animal_id,
       sessionId: measurement.litter_weighing_session_id,
       type: measurement.measurement_kind as "birth" | "routine",
@@ -1197,6 +1224,41 @@ export async function listLitterWeightHistoryCore(
       note: measurement.note,
       createdBy: measurement.created_by,
       createdAt: measurement.created_at,
+    })),
+  };
+}
+
+export async function listLitterWeightAdjustmentHistoryCore(
+  input: ListLitterWeightAdjustmentHistoryInput,
+  supabase: Supabase,
+): Promise<ListLitterWeightAdjustmentHistoryResult> {
+  const limit = input?.limit ?? 100;
+  if (!UUID_PATTERN.test(input?.litterId ?? "") || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return invalidInput();
+  }
+
+  const response = await supabase.rpc("list_litter_weight_adjustment_history", {
+    p_litter_id: input.litterId.trim().toLowerCase(),
+    p_limit: limit,
+  });
+  if (response.error) {
+    return databaseFailure("litter_weight_adjustment_history_read_failed", response.error);
+  }
+
+  return {
+    outcome: "success",
+    entries: (response.data ?? []).map((entry) => ({
+      commandType: entry.command_type as LitterWeightAdjustmentHistoryEntry["commandType"],
+      createdAt: entry.created_at,
+      reason: entry.reason,
+      sessionMeasuredAt: entry.session_measured_at,
+      sessionTimezoneName: entry.session_timezone_name,
+      animalLabel: entry.animal_label,
+      beforeGrams: entry.before_grams,
+      afterGrams: entry.after_grams,
+      beforeNote: entry.before_note,
+      afterNote: entry.after_note,
+      affectedMeasurementCount: entry.affected_measurement_count,
     })),
   };
 }
