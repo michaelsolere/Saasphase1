@@ -101,159 +101,6 @@ function formatGramDifference(value: number) {
   return `${value > 0 ? "+" : ""}${gramsFormatter.format(value)} g`;
 }
 
-function measurementCountLabel(count: number) {
-  return `${count} poids enregistré${count > 1 ? "s" : ""}`;
-}
-
-function SessionStatistics({
-  session,
-  compact = false,
-}: {
-  session: LitterWeightHistorySession;
-  compact?: boolean;
-}) {
-  const { averageGrams, minimumGrams, maximumGrams } = session;
-  if (
-    session.measurementCount === 0 ||
-    averageGrams === null ||
-    minimumGrams === null ||
-    maximumGrams === null
-  ) {
-    return (
-      <p className={compact ? "mt-3 text-sm text-muted" : "mt-2 text-sm text-muted"}>
-        Statistiques indisponibles pour cette séance.
-      </p>
-    );
-  }
-
-  return (
-    <div className={compact ? "mt-3" : "mt-2"}>
-      <p className="text-sm text-muted">
-        {session.measurementCount} poids enregistré
-        {session.measurementCount > 1 ? "s" : ""}
-      </p>
-      <dl
-        className={
-          compact
-            ? "mt-3 grid min-w-0 grid-cols-1 gap-2 text-sm min-[360px]:grid-cols-3"
-            : "mt-2 grid min-w-0 gap-1 text-sm"
-        }
-      >
-        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
-          <dt className="font-medium">Moyenne{compact ? "" : " :"}</dt>
-          <dd className={compact ? "mt-1 break-words" : "break-words"}>
-            {formatGrams(averageGrams)}
-          </dd>
-        </div>
-        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
-          <dt className="font-medium">Minimum{compact ? "" : " :"}</dt>
-          <dd className={compact ? "mt-1 break-words" : "break-words"}>
-            {formatGrams(minimumGrams)}
-          </dd>
-        </div>
-        <div className={compact ? "min-w-0 rounded-lg bg-background px-3 py-2" : "flex min-w-0 gap-1"}>
-          <dt className="font-medium">Maximum{compact ? "" : " :"}</dt>
-          <dd className={compact ? "mt-1 break-words" : "break-words"}>
-            {formatGrams(maximumGrams)}
-          </dd>
-        </div>
-      </dl>
-      <p className="mt-2 text-xs leading-5 text-muted">
-        Calculé sur les poids enregistrés pendant cette séance.
-      </p>
-    </div>
-  );
-}
-
-function LatestSessionComparison({
-  comparison,
-}: {
-  comparison: LitterWeightLatestSessionComparison;
-}) {
-  return (
-    <section
-      data-testid="latest-litter-weight-session-comparison"
-      aria-labelledby="latest-litter-weight-session-comparison-title"
-      className="mt-4 min-w-0 rounded-xl border p-4"
-    >
-      <h3
-        id="latest-litter-weight-session-comparison-title"
-        className="font-semibold"
-      >
-        Évolution entre les deux dernières séances
-      </h3>
-      {comparison.status === "insufficient_sessions" ? (
-        <p className="mt-3 text-sm leading-6 text-muted">
-          Deux séances comportant des poids sont nécessaires pour afficher une
-          évolution.
-        </p>
-      ) : comparison.status === "no_common_animals" ? (
-        <p className="mt-3 text-sm leading-6 text-muted">
-          Les deux dernières séances ne comportent aucun animal pesé en commun ;
-          leur évolution moyenne n’est donc pas comparée.
-        </p>
-      ) : (
-        <div className="mt-3 min-w-0 space-y-4 text-sm">
-          <div className="space-y-1 text-muted">
-            <p className="break-words">
-              <span className="font-medium text-foreground">Séance précédente :</span>{" "}
-              {formatDateTime(
-                comparison.previousMeasuredAt,
-                comparison.previousTimezoneName,
-              )}{" "}
-              · {measurementCountLabel(comparison.previousMeasurementCount)}
-            </p>
-            <p className="break-words">
-              <span className="font-medium text-foreground">Dernière séance :</span>{" "}
-              {formatDateTime(
-                comparison.currentMeasuredAt,
-                comparison.currentTimezoneName,
-              )}{" "}
-              · {measurementCountLabel(comparison.currentMeasurementCount)}
-            </p>
-          </div>
-          <p className="font-medium">
-            {comparison.commonAnimalCount}{" "}
-            {comparison.commonAnimalCount > 1 ? "animaux" : "animal"} pesé
-            {comparison.commonAnimalCount > 1 ? "s" : ""} lors des deux séances
-          </p>
-          <dl className="grid min-w-0 gap-3 sm:grid-cols-2">
-            <div className="min-w-0 rounded-lg bg-secondary/50 p-3">
-              <dt className="font-medium">Poids moyen des animaux communs</dt>
-              <dd className="mt-2 break-words text-base font-semibold">
-                {formatGrams(comparison.previousCommonAverageGrams)} →{" "}
-                {formatGrams(comparison.currentCommonAverageGrams)}
-              </dd>
-              <dd className="mt-1 break-words text-muted">
-                Évolution : {formatGramDifference(comparison.averageDifferenceGrams)}
-              </dd>
-            </div>
-            <div className="min-w-0 rounded-lg bg-secondary/50 p-3">
-              <dt className="font-medium">
-                Amplitude des poids des animaux communs
-              </dt>
-              <dd className="mt-1 text-xs leading-5 text-muted">
-                Écart entre le poids minimum et le poids maximum.
-              </dd>
-              <dd className="mt-2 break-words text-base font-semibold">
-                {formatGrams(comparison.previousCommonRangeGrams)} →{" "}
-                {formatGrams(comparison.currentCommonRangeGrams)}
-              </dd>
-              <dd className="mt-1 break-words text-muted">
-                Évolution : {formatGramDifference(comparison.rangeDifferenceGrams)}
-              </dd>
-            </div>
-          </dl>
-          <p className="text-xs leading-5 text-muted">
-            Comparaison calculée uniquement sur les animaux pesés lors des deux
-            séances.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
 function routineWeightEligibilityReasonMessage(
   reason: RoutineWeightEligibilityReason,
   animal: LitterWeightHistoryAnimal,
@@ -482,104 +329,120 @@ function RoutineWeightDialog({
   );
 }
 
-function SessionsHistory({ sessions }: { sessions: LitterWeightHistorySession[] }) {
+function SessionsHistory({
+  sessions,
+  measurements,
+  animals,
+}: {
+  sessions: LitterWeightHistorySession[];
+  measurements: LitterWeightHistoryMeasurement[];
+  animals: LitterWeightHistoryAnimal[];
+}) {
+  const animalNameById = new Map(
+    animals.map((animal) => [animal.id, litterWeightAnimalName(animal)]),
+  );
   return (
-    <div data-testid="litter-weight-sessions-history">
-      <h3 className="text-base font-semibold">Séances</h3>
+    <details
+      className="mt-6 rounded-xl border px-4 py-3"
+      data-testid="litter-weight-sessions-history"
+    >
+      <summary className="cursor-pointer font-semibold">
+        Historique détaillé des séances
+      </summary>
       {sessions.length === 0 ? (
         <p className="mt-3 text-sm text-muted">Aucune pesée de routine enregistrée.</p>
       ) : (
         <ol className="mt-3 space-y-3">
-          {sessions.map((session) => (
-            <li key={session.id} className="rounded-xl border p-4 text-sm">
-              <p className="font-semibold">
-                {formatDateTime(session.measuredAt, session.timezoneName)}
-              </p>
-              <SessionStatistics session={session} />
-              {session.note ? <p className="mt-2 whitespace-pre-wrap">{session.note}</p> : null}
-            </li>
-          ))}
+          {sessions.map((session) => {
+            const sessionMeasurements = measurements.filter(
+              (measurement) =>
+                measurement.type === "routine" &&
+                measurement.sessionId === session.id,
+            );
+            return (
+              <li key={session.id} className="rounded-lg border p-3 text-sm">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="font-semibold">
+                    {formatDateTime(session.measuredAt, session.timezoneName)}
+                  </p>
+                  <p className="text-muted">
+                    {sessionMeasurements.length} / {animals.length}
+                  </p>
+                </div>
+                {session.note ? (
+                  <p className="mt-2 whitespace-pre-wrap text-muted">{session.note}</p>
+                ) : null}
+                {sessionMeasurements.length > 0 ? (
+                  <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted">
+                    {sessionMeasurements.map((measurement) => (
+                      <li key={measurement.id}>
+                        <span className="font-medium text-foreground">
+                          {animalNameById.get(measurement.animalId) ?? "Animal"}
+                        </span>{" "}
+                        · {formatGrams(measurement.grams)}
+                        {measurement.note ? ` · ${measurement.note}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </li>
+            );
+          })}
         </ol>
       )}
-    </div>
+    </details>
   );
 }
 
-function AnimalsHistory({
-  animals,
-  measurements,
-  sessions,
+type LitterWeightMainView = "table" | "charts" | "schedule";
+
+function compactScheduleState(schedule: LitterWeighingScheduleResult | null) {
+  if (!schedule || schedule.status !== "available") return "Planning indisponible";
+  const item = schedule.summary.firstIncomplete;
+  if (!item) return "Planning à jour";
+  const date = new Intl.DateTimeFormat("fr-FR", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  }).format(new Date(`${item.scheduledOn}T00:00:00Z`));
+  if (item.status === "overdue") return `En retard : J${item.ageDay}`;
+  if (item.status === "due_today") return `Aujourd’hui : J${item.ageDay}`;
+  return `Prochaine : J${item.ageDay} · ${date}`;
+}
+
+function LatestWeightBanner({
+  session,
+  animalCount,
+  comparison,
+  schedule,
 }: {
-  animals: LitterWeightHistoryAnimal[];
-  measurements: LitterWeightHistoryMeasurement[];
-  sessions: LitterWeightHistorySession[];
+  session: LitterWeightHistorySession | null;
+  animalCount: number;
+  comparison: LitterWeightLatestSessionComparison;
+  schedule: LitterWeighingScheduleResult | null;
 }) {
-  const timezoneBySession = new Map(
-    sessions.map((session) => [session.id, session.timezoneName]),
-  );
+  const latestCompleted =
+    schedule?.status === "available"
+      ? schedule.schedule.filter((item) => item.status === "completed").at(-1)
+      : null;
   return (
-    <div data-testid="litter-weight-animals-history">
-      <h3 className="text-base font-semibold">Animaux</h3>
-      <div className="mt-3 space-y-4">
-        {animals.map((animal) => {
-          const animalMeasurements = measurements.filter(
-            (measurement) => measurement.animalId === animal.id,
-          );
-          return (
-            <article key={animal.id} className="rounded-2xl border p-4 sm:p-5">
-              <h4 className="break-words font-semibold">{litterWeightAnimalName(animal)}</h4>
-              {litterWeightAnimalDetails(animal) ? (
-                <p className="mt-1 break-words text-xs leading-5 text-muted">
-                  {litterWeightAnimalDetails(animal)}
-                </p>
-              ) : null}
-              {animal.birthWeightGrams !== null ? (
-                <p className="mt-3 rounded-lg bg-secondary px-3 py-2 text-sm">
-                  <span className="font-medium">Repère déclaré à la naissance :</span>{" "}
-                  {animal.birthWeightGrams} g
-                </p>
-              ) : null}
-              {animalMeasurements.length === 0 ? (
-                <p className="mt-3 text-sm text-muted">Aucune mesure enregistrée.</p>
-              ) : (
-                <ol className="mt-3 space-y-2">
-                  {animalMeasurements.map((measurement, index) => {
-                    const latest = index === animalMeasurements.length - 1;
-                    const timezoneName = measurement.sessionId
-                      ? timezoneBySession.get(measurement.sessionId)
-                      : undefined;
-                    return (
-                      <li
-                        key={measurement.id}
-                        className={
-                          latest
-                            ? "rounded-xl border border-accent/40 bg-accent/5 px-3 py-3 text-sm"
-                            : "rounded-xl border px-3 py-3 text-sm"
-                        }
-                      >
-                        <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <p className="font-semibold">{measurement.grams} g</p>
-                          <p className="text-xs text-muted">
-                            {formatDateTime(measurement.measuredAt, timezoneName)}
-                          </p>
-                        </div>
-                        <p className="mt-1 text-xs text-muted">
-                          {measurement.type === "birth" ? "Mesure de naissance" : "Pesée de routine"}
-                          {latest ? " · Dernière mesure" : ""}
-                        </p>
-                        {measurement.note ? (
-                          <p className="mt-2 whitespace-pre-wrap">{measurement.note}</p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-            </article>
-          );
-        })}
-      </div>
-    </div>
+    <section
+      className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border bg-secondary/50 px-4 py-3 text-sm"
+      data-testid="latest-litter-weight-banner"
+      aria-label="Dernière pesée"
+    >
+      <span className="font-semibold">
+        {session
+          ? `${latestCompleted ? `J${latestCompleted.ageDay} · ` : ""}${formatDateTime(session.measuredAt, session.timezoneName)}`
+          : "Aucune séance"}
+      </span>
+      <span>Couverture : {session ? `${session.measurementCount} / ${Math.max(animalCount, session.measurementCount)}` : "—"}</span>
+      <span>Poids moyen : {session?.averageGrams !== null && session?.averageGrams !== undefined ? formatGrams(session.averageGrams) : "—"}</span>
+      <span>
+        Variation moyenne : {comparison.status === "available" ? formatGramDifference(comparison.averageDifferenceGrams) : "—"}
+      </span>
+      <span className="text-muted">{compactScheduleState(schedule)}</span>
+    </section>
   );
 }
 
@@ -605,6 +468,7 @@ export function LitterWeightPanel({
   loadError: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
+  const [mainView, setMainView] = useState<LitterWeightMainView>("table");
   const animalsWithEligibility = animals.map((animal) => ({
     animal,
     eligibility: getRoutineWeightEligibility(animal),
@@ -629,10 +493,6 @@ export function LitterWeightPanel({
           <Scale aria-hidden="true" className="text-accent" />
           <h2 className="text-lg font-semibold">Poids et croissance</h2>
         </div>
-        <LitterWeighingScheduleSummary
-          schedule={weighingSchedule}
-          policy={weighingSchedulePolicy}
-        />
         <p className="mt-4 text-sm text-muted">
           Les poids ne sont pas disponibles pour le moment. Les autres éléments du journal restent accessibles.
         </p>
@@ -651,6 +511,7 @@ export function LitterWeightPanel({
           <p className="mt-3 text-sm text-muted">
             {animals.length} {animals.length > 1 ? "animaux suivis" : "animal suivi"}
             {" · "}{sessions.length} séance{sessions.length > 1 ? "s" : ""} de routine
+            {" · "}{lastSession ? `Dernière pesée le ${formatDateTime(lastSession.measuredAt, lastSession.timezoneName)}` : "Aucune séance"}
           </p>
         </div>
         {canWrite ? (
@@ -662,41 +523,55 @@ export function LitterWeightPanel({
         ) : null}
       </div>
       <IneligibleRoutineWeightAnimals animals={ineligibleAnimals} />
-      <LitterWeighingScheduleSummary
+      <LatestWeightBanner
+        session={lastSession}
+        animalCount={animals.length}
+        comparison={latestSessionComparison}
         schedule={weighingSchedule}
-        policy={weighingSchedulePolicy}
       />
-      {lastSession ? (
-        <section
-          data-testid="latest-litter-weight-session-summary"
-          aria-labelledby="latest-litter-weight-session-summary-title"
-          className="mt-4 min-w-0 rounded-xl border bg-secondary/50 p-4"
-        >
-          <h3 id="latest-litter-weight-session-summary-title" className="font-semibold">
-            Synthèse de la dernière séance
-          </h3>
-          <p className="mt-1 text-sm text-muted">
-            {formatDateTime(lastSession.measuredAt, lastSession.timezoneName)}
-          </p>
-          <SessionStatistics session={lastSession} compact />
-        </section>
-      ) : null}
-      <LatestSessionComparison comparison={latestSessionComparison} />
       {confirmation ? (
         <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}
         </p>
       ) : null}
-      <LitterGrowthCharts animals={animals} measurements={measurements} />
-      <LitterGrowthTable
-        animals={animals}
+      <nav className="mt-5 flex w-fit max-w-full overflow-x-auto rounded-lg border p-1" aria-label="Vue poids et croissance">
+        {(["table", "charts", "schedule"] as const).map((view) => (
+          <button
+            key={view}
+            type="button"
+            aria-pressed={mainView === view}
+            onClick={() => setMainView(view)}
+            className={`whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium ${
+              mainView === view
+                ? "bg-accent text-accent-foreground"
+                : "text-muted"
+            }`}
+          >
+            {view === "table" ? "Tableau" : view === "charts" ? "Graphiques" : "Planning"}
+          </button>
+        ))}
+      </nav>
+      <div data-testid={`litter-weight-main-view-${mainView}`}>
+        {mainView === "table" ? (
+          <LitterGrowthTable
+            animals={animals}
+            sessions={sessions}
+            measurements={measurements}
+          />
+        ) : mainView === "charts" ? (
+          <LitterGrowthCharts animals={animals} measurements={measurements} />
+        ) : (
+          <LitterWeighingScheduleSummary
+            schedule={weighingSchedule}
+            policy={weighingSchedulePolicy}
+          />
+        )}
+      </div>
+      <SessionsHistory
         sessions={sessions}
         measurements={measurements}
+        animals={animals}
       />
-      <div className="mt-6 grid min-w-0 gap-8 lg:grid-cols-2">
-        <SessionsHistory sessions={sessions} />
-        <AnimalsHistory animals={animals} measurements={measurements} sessions={sessions} />
-      </div>
     </section>
   );
 }
