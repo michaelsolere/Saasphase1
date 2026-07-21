@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `51801f575d8084a0c5a1cf89f5cbbd00c1b74cf2`.
-- Dernière PR fusionnée avant ce lot : **PR #354 — Préserver les chiots adoptés dans l’historique des pesées**.
+- SHA de base vérifié avant ce lot : `feaf525462abce08b8140d4f331135eb4a5b4a96`.
+- Dernière PR fusionnée avant ce lot : **PR #355 — Infrastructure locale de démonstrations E2E durables**.
 - La dernière migration incluse est `202607200001_litter_weighing_schedule_policy_foundation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -470,6 +470,13 @@ stack et ses volumes. Le cleanup dédié hard-delete exclusivement les IDs
 enregistrés, dans l’ordre inverse des dépendances, puis exige des compteurs
 `count(*)` sans filtre `deleted_at` à zéro. Le guide opérationnel est
 `docs/E2E_DURABLE_DEMOS.md`.
+
+Le scénario `growth-comparison` ajoute une démonstration métier réutilisable,
+créée en une commande : deux portées complètes avec parents, mise-bas clôturée,
+naissances structurées, mesures réelles de naissance et séances quotidiennes
+J0–J30. Il est contrôlé par le même manifeste strict et le même cleanup ciblé
+que le scénario technique. Sa vérification visuelle en lecture seule couvre les
+deux Journaux, le comparateur par âge et la largeur mobile à 375 px.
 
 Avant livraison d’un lot, exécuter au minimum :
 

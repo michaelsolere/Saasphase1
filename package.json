@@ -13,6 +13,7 @@
     "demo:e2e:start": "node scripts/e2e/demo.mjs start",
     "demo:e2e:create": "node scripts/e2e/demo.mjs create",
     "demo:e2e:status": "node scripts/e2e/demo.mjs status",
+    "demo:e2e:verify:growth": "node scripts/e2e/verify-growth-comparison.mjs",
     "demo:e2e:cleanup": "node scripts/e2e/demo.mjs cleanup",
     "demo:e2e:stop": "node scripts/e2e/demo.mjs stop"
   },
