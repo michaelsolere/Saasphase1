@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 import {
   correctWhelpingBirthCore,
+  isRoutineQuickCompletionEvent,
+  QUICK_WHELPING_COMPLETION_REASON,
   quickCompleteWhelpingBirthCore,
   recordWhelpingBirthCore,
 } from "../../src/features/whelping/whelping-core";
@@ -10,6 +12,25 @@ import { createAuthenticatedSupabaseClient, runE2eSqlSync } from "./helpers/supa
 import type { Database } from "../../src/types/database.types";
 
 test.setTimeout(240_000);
+
+test("classe uniquement le complément rapide exact comme événement de routine", () => {
+  expect(isRoutineQuickCompletionEvent({
+    eventType: "birth_corrected",
+    note: QUICK_WHELPING_COMPLETION_REASON,
+  })).toBe(true);
+  expect(isRoutineQuickCompletionEvent({
+    eventType: "birth_corrected",
+    note: "Correction manuelle du poids",
+  })).toBe(false);
+  expect(isRoutineQuickCompletionEvent({
+    eventType: "birth_cancelled",
+    note: QUICK_WHELPING_COMPLETION_REASON,
+  })).toBe(false);
+  expect(isRoutineQuickCompletionEvent({
+    eventType: "birth_corrected",
+    note: `${QUICK_WHELPING_COMPLETION_REASON} `,
+  })).toBe(false);
+});
 
 const fixturePrefix = "WHELPING_QUICK_COMPLETION_V1_20260722_01";
 const ids = {
@@ -203,8 +224,8 @@ test("complète rapidement via la rectification auditée sans doublon ni écrase
     const state = JSON.parse(sql(`select json_build_object(
       'births',(select count(*) from public.whelping_births where session_id=${q(ids.session)}::uuid),
       'birth_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth'),
-      'quick_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth_corrected' and note='Complément rapide du poids et du collier'),
-      'quick_commands',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason='Complément rapide du poids et du collier'),
+      'quick_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth_corrected' and note=${q(QUICK_WHELPING_COMPLETION_REASON)}),
+      'quick_commands',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason=${q(QUICK_WHELPING_COMPLETION_REASON)}),
       'active_birth_measurements',(select count(*) from public.animal_weight_measurements where source_birth_id in (${q(missingBoth.birthId)}::uuid,${q(colorOnly.birthId)}::uuid,${q(weightOnly.birthId)}::uuid,${q(complete.birthId)}::uuid) and measurement_kind='birth' and cancelled_at is null),
       'duplicate_measurements',(select count(*) from (select source_birth_id from public.animal_weight_measurements where source_birth_id is not null and measurement_kind='birth' and cancelled_at is null group by source_birth_id having count(*)>1) duplicate),
       'preserved',(select json_build_object('sex',b.sex,'viability',b.viability,'occurred_at',b.occurred_at,'note',b.note,'animal_id',b.animal_id,'birth_order',b.birth_order,'animal_initial',a.collar_color_initial,'animal_current',a.collar_color_current,'animal_weight',a.birth_weight_grams) from public.whelping_births b join public.animals a on a.id=b.animal_id where b.id=${q(missingBoth.birthId)}::uuid),

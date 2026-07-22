@@ -279,8 +279,8 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     await expect(birthCard(whelping, 1)).toContainText("État effectif final");
     await expect(birthCard(whelping, 1)).not.toContainText("État effectif intermédiaire");
     await expect(birthCard(whelping, 1)).toContainText("435 g");
-    await whelping.getByText("Historique des rectifications").click();
-    const auditItems = await whelping.locator("details").filter({ hasText: "Historique des rectifications" }).locator("ol > li").allTextContents();
+    await whelping.getByText("Historique des compléments et rectifications").click();
+    const auditItems = await whelping.locator("details").filter({ hasText: "Historique des compléments et rectifications" }).locator("ol > li").allTextContents();
     expect(auditItems[0]).toContain("Seconde rectification fermée");
     expect(auditItems[1]).toContain("Première rectification fermée");
 
@@ -348,7 +348,7 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     whelping = whelpingPanel(page);
     weights = weightPanel(page);
     await expect(whelping).toContainText("Naissance n° 3 annulée");
-    await whelping.getByText("Historique des rectifications").click();
+    await whelping.getByText("Historique des compléments et rectifications").click();
     await expect(whelping).toContainText("Doublon confirmé");
     await expect(weights).toContainText("Routine après consolidation");
     for (const button of [/ENREGISTRER UNE NAISSANCE/, "Ajouter un événement", "Clôturer la mise-bas", "Rouvrir la session", "Renseigner le poids", /Corriger|Compléter la naissance/, "Annuler la naissance"]) {

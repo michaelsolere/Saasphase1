@@ -25,14 +25,16 @@ import {
   type WhelpingBirthActionState,
   type WhelpingBirthAdjustmentActionState,
 } from "./whelping-actions-core";
-import type {
-  GenericWhelpingEventType,
-  WhelpingBirthSex,
-  WhelpingBirthAdjustmentHistoryEntry,
-  WhelpingBirthSummary,
-  WhelpingBirthViability,
-  WhelpingEventSummary,
-  WhelpingSessionSummary,
+import {
+  isRoutineQuickCompletionEvent,
+  QUICK_WHELPING_COMPLETION_REASON,
+  type GenericWhelpingEventType,
+  type WhelpingBirthSex,
+  type WhelpingBirthAdjustmentHistoryEntry,
+  type WhelpingBirthSummary,
+  type WhelpingBirthViability,
+  type WhelpingEventSummary,
+  type WhelpingSessionSummary,
 } from "./whelping-core";
 import {
   WhelpingQuickCompletion,
@@ -1201,8 +1203,11 @@ function Timeline({
   const adjustmentActionsByBirthId = new Map(
     birthAdjustmentActions.map((entry) => [entry.birthId, entry]),
   );
+  const visibleEvents = events.filter((event) =>
+    !isRoutineQuickCompletionEvent(event)
+  );
 
-  if (events.length === 0) {
+  if (visibleEvents.length === 0) {
     return (
       <p className="mt-5 text-sm text-muted">
         Aucun événement enregistré dans cette chronologie.
@@ -1212,7 +1217,7 @@ function Timeline({
 
   return (
     <ol className="mt-5 space-y-3">
-      {events.map((event) => {
+      {visibleEvents.map((event, visibleIndex) => {
         const birth = event.eventType === "birth"
           ? birthsByEventId.get(event.id)
           : undefined;
@@ -1245,7 +1250,7 @@ function Timeline({
             <div className="flex min-w-0 flex-col justify-between gap-2 sm:flex-row sm:items-start">
               <div className="min-w-0">
                 <p className="break-words font-semibold">
-                  <span className="mr-2 text-sm text-muted">#{event.sequenceNo}</span>
+                  <span className="mr-2 text-sm text-muted">#{visibleIndex + 1}</span>
                   {title}
                 </p>
                 <p className="mt-1 text-sm text-muted">
@@ -1343,6 +1348,21 @@ function historyText(value: string | null) {
   return value || "Non renseigné";
 }
 
+function birthAdjustmentHistoryTitle(
+  entry: WhelpingBirthAdjustmentHistoryEntry,
+) {
+  if (entry.adjustmentType === "cancellation") return "Naissance annulée";
+  if (entry.reason !== QUICK_WHELPING_COMPLETION_REASON) return "Naissance corrigée";
+
+  const weightAdded = entry.weightChangeType === "added";
+  const collarAdded = entry.beforeInitialCollarColor === null &&
+    entry.afterInitialCollarColor !== null;
+  if (weightAdded && collarAdded) return "Poids et collier ajoutés";
+  if (weightAdded) return "Poids de naissance ajouté";
+  if (collarAdded) return "Couleur du collier ajoutée";
+  return "Informations de naissance complétées";
+}
+
 function BirthAdjustmentHistory({
   entries,
   loadError,
@@ -1352,11 +1372,11 @@ function BirthAdjustmentHistory({
 }) {
   return (
     <details className="mt-6 rounded-xl border px-4 py-3">
-      <summary className="cursor-pointer font-semibold">Historique des rectifications</summary>
+      <summary className="cursor-pointer font-semibold">Historique des compléments et rectifications</summary>
       {loadError ? (
-        <p className="mt-3 text-sm text-muted">L’historique des rectifications n’est pas disponible pour le moment.</p>
+        <p className="mt-3 text-sm text-muted">L’historique des compléments et rectifications n’est pas disponible pour le moment.</p>
       ) : entries.length === 0 ? (
-        <p className="mt-3 text-sm text-muted">Aucune rectification enregistrée.</p>
+        <p className="mt-3 text-sm text-muted">Aucun complément ou rectification enregistré.</p>
       ) : (
         <ol className="mt-3 space-y-3">
           {entries.map((entry, index) => {
@@ -1379,7 +1399,7 @@ function BirthAdjustmentHistory({
             return (
               <li key={`${entry.actionAt}-${index}`} className="rounded-lg border p-3 text-sm">
                 <div className="flex flex-wrap justify-between gap-2">
-                  <p className="font-semibold">{entry.adjustmentType === "correction" ? "Naissance corrigée" : "Naissance annulée"}</p>
+                  <p className="font-semibold">{birthAdjustmentHistoryTitle(entry)}</p>
                   <time className="text-muted">{formatDateTime(entry.actionAt, entry.sessionTimezoneName)}</time>
                 </div>
                 <p className="mt-1 text-muted">Naissance n° {entry.birthOrder}</p>

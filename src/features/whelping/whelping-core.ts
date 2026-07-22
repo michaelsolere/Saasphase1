@@ -25,6 +25,16 @@ export const WHELPING_EVENT_TYPES = [
 ] as const;
 export type WhelpingEventType = (typeof WHELPING_EVENT_TYPES)[number];
 
+export const QUICK_WHELPING_COMPLETION_REASON =
+  "Complément rapide du poids et du collier";
+
+export function isRoutineQuickCompletionEvent(
+  event: Pick<WhelpingEventSummary, "eventType" | "note">,
+) {
+  return event.eventType === "birth_corrected" &&
+    event.note === QUICK_WHELPING_COMPLETION_REASON;
+}
+
 export const GENERIC_WHELPING_EVENT_TYPES = [
   "labor_started",
   "contractions",
@@ -1307,7 +1317,7 @@ export async function quickCompleteWhelpingBirthCore(
       weightGrams: requestedWeight,
       weightMeasuredAt: requestedMeasuredAt,
       weightNote: requestedWeightNote,
-      reason: "Complément rapide du poids et du collier",
+      reason: QUICK_WHELPING_COMPLETION_REASON,
     }, supabase);
     if (corrected.outcome === "error") return corrected;
     return {
