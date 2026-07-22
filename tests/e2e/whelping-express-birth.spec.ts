@@ -247,13 +247,41 @@ test("enregistre et complète les naissances express sans doublon", async ({ pag
     await page.reload();
     const expressActions = panel(page).getByTestId("express-birth-actions");
     const expressButtons = expressActions.getByRole("button");
+    const maleButton = expressActions.getByRole("button", { name: "+ NAISSANCE MÂLE", exact: true });
+    const femaleButton = expressActions.getByRole("button", { name: "+ NAISSANCE FEMELLE", exact: true });
     const availableWidth = (await expressActions.boundingBox())?.width ?? 0;
     expect(await expressButtons.count()).toBe(2);
-    for (const button of await expressButtons.all()) {
-      const box = await button.boundingBox();
-      expect(box?.height).toBeGreaterThanOrEqual(56);
-      expect(box?.width).toBeGreaterThanOrEqual(availableWidth - 1);
-    }
+    await expect(maleButton).toHaveText("+ NAISSANCE MÂLE");
+    await expect(femaleButton).toHaveText("+ NAISSANCE FEMELLE");
+
+    const visualClassGroups = await Promise.all(
+      [maleButton, femaleButton].map(async (button) => {
+        const classes = await button.evaluate((element) => Array.from(element.classList));
+        const matching = (patterns: RegExp[]) =>
+          classes.filter((className) => patterns.some((pattern) => pattern.test(className))).sort();
+
+        return {
+          background: matching([/^bg-/, /^hover:bg-/]),
+          border: matching([/^border(?:-|$)/]),
+          shadow: matching([/^shadow(?:-|$)/]),
+          typography: matching([/^font-/, /^text-/, /^tracking-/, /^sm:text-/]),
+        };
+      }),
+    );
+    expect(visualClassGroups[0]).toEqual(visualClassGroups[1]);
+    expect(visualClassGroups[0].background).toContain("bg-primary");
+    expect(visualClassGroups[0].shadow).toContain("shadow");
+    expect(visualClassGroups[0].border).not.toEqual(expect.arrayContaining(["border", "border-2", "border-input"]));
+    expect(visualClassGroups[0].typography).toEqual(
+      expect.arrayContaining(["font-bold", "text-primary-foreground", "text-sm", "tracking-wide", "sm:text-base"]),
+    );
+
+    const maleBox = await maleButton.boundingBox();
+    const femaleBox = await femaleButton.boundingBox();
+    expect(maleBox?.height).toBeGreaterThanOrEqual(56);
+    expect(maleBox?.width).toBeGreaterThanOrEqual(availableWidth - 1);
+    expect(femaleBox?.height).toBeCloseTo(maleBox?.height ?? 0, 5);
+    expect(femaleBox?.width).toBeCloseTo(maleBox?.width ?? 0, 5);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     expect(await page.evaluate(async () => "serviceWorker" in navigator ? (await navigator.serviceWorker.getRegistrations()).length : 0)).toBe(0);
 

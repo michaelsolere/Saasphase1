@@ -387,9 +387,8 @@ function ExpressBirthActions({
         <Button
           type="submit"
           size="lg"
-          variant="outline"
           disabled={submitting}
-          className="min-h-14 w-full border-2 text-sm font-bold tracking-wide sm:text-base"
+          className="min-h-14 w-full text-sm font-bold tracking-wide sm:text-base"
         >
           <Baby aria-hidden="true" />
           {submittingSex === "female" ? "ENREGISTREMENT…" : "+ NAISSANCE FEMELLE"}
