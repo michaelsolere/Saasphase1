@@ -1558,14 +1558,16 @@ export function WhelpingPanel({
                 displayMode === "mobile" && expressMaleBirthAction && expressFemaleBirthAction ? (
                   <div className="mt-4 flex flex-col items-stretch gap-3">
                     <ExpressBirthActions
-                      key={births.filter((birth) => birth.cancelledAt === null).length}
+                      key={`express-birth-actions:${activeBirths.length}`}
                       maleAction={expressMaleBirthAction}
                       femaleAction={expressFemaleBirthAction}
                       timezoneName={session.timezoneName}
                       onSuccess={setConfirmation}
                     />
                     <WhelpingQuickCompletion
-                      key={quickCompletionItems.map(({ birthOrder }) => birthOrder).join("-")}
+                      key={`quick-completion:${quickCompletionItems
+                        .map(({ birthOrder, occurredAt, sex }) => `${birthOrder}:${occurredAt}:${sex}`)
+                        .join("|")}`}
                       items={quickCompletionItems}
                       timezoneName={session.timezoneName}
                       onSuccess={setConfirmation}
