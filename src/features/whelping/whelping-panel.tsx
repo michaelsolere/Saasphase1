@@ -1301,8 +1301,10 @@ export function WhelpingPanel({
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
   const sessionIsOpen = session?.status === "open";
-  const canCompleteClosedBirthWeights =
-    session?.status === "closed" && birthWeightActions.length > 0;
+  const canRectifyClosedSession =
+    session?.status === "closed" &&
+    canWrite &&
+    (birthAdjustmentActions.length > 0 || birthWeightActions.length > 0);
 
   return (
     <section className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
@@ -1375,9 +1377,9 @@ export function WhelpingPanel({
             </div>
           ) : null}
 
-          {canCompleteClosedBirthWeights ? (
+          {canRectifyClosedSession ? (
             <p className="mt-5 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
-              La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés. Rouvrez la session pour reprendre la mise-bas.
+              La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés. Rouvrez la session pour ajouter une nouvelle naissance ou un nouvel événement.
             </p>
           ) : null}
 

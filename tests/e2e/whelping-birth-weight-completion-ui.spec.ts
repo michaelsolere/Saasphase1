@@ -362,8 +362,11 @@ test("complète après clôture un poids manquant avec sécurité UI et cleanup 
     let panel = whelpingPanel(page);
     await expect(panel.getByText("Clôturée", { exact: true })).toBeVisible();
     await expect(panel.getByText(
-      "La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés.",
+      "La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés.",
     )).toBeVisible();
+    await expect(panel).not.toContainText(
+      "Seuls les poids de naissance manquants peuvent encore être renseignés",
+    );
     await expect(panel.getByRole("button", { name: /ENREGISTRER UNE NAISSANCE/ })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Ajouter un événement" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toHaveCount(0);

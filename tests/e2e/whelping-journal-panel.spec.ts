@@ -203,6 +203,31 @@ function createIncompleteSessionFixture() {
   `);
 }
 
+function createClosedSessionWithoutBirthFixture() {
+  sql(`
+    insert into public.whelping_sessions (
+      id, organization_id, litter_id, mother_id, status, started_at, ended_at,
+      timezone_name, created_by, updated_by
+    ) values (
+      ${q(ids.incompleteSession)}::uuid, ${q(organizationId)}::uuid,
+      ${q(ids.incompleteLitter)}::uuid, ${q(ids.mother)}::uuid, 'closed',
+      '2026-07-19T07:00:00.000Z'::timestamptz,
+      '2026-07-19T08:00:00.000Z'::timestamptz, 'Europe/Paris',
+      ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+  `);
+}
+
+function deleteClosedSessionWithoutBirthFixture() {
+  sql(`
+    delete from public.whelping_sessions
+    where id = ${q(ids.incompleteSession)}::uuid;
+  `);
+  expect(
+    sql(`select count(*) from public.whelping_sessions where id = ${q(ids.incompleteSession)}::uuid;`),
+  ).toBe("0");
+}
+
 function setOwnerRole(role: "owner" | "viewer") {
   sql(`
     set session_replication_role = replica;
@@ -333,15 +358,30 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
   const createdFixtureIds = {
     mothers: [ids.mother, ids.father],
     litters: [ids.mainLitter, ids.incompleteLitter],
+    closedSessionWithoutBirth: ids.incompleteSession,
   };
 
   try {
     createFixtures();
     const outOfScopeBefore = outOfScopeCounts();
     await login(page);
+
+    createClosedSessionWithoutBirthFixture();
+    await page.goto(`/litters/journal?litter=${ids.incompleteLitter}`);
+    let panel = whelpingPanel(page);
+    await expect(panel.getByText("Clôturée", { exact: true })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
+    await expect(panel).not.toContainText(
+      "Les informations des naissances peuvent encore être rectifiées",
+    );
+    await expect(panel.getByRole("button", { name: "Corriger" })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Annuler" })).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Renseigner le poids" })).toHaveCount(0);
+    deleteClosedSessionWithoutBirthFixture();
+
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
 
-    let panel = whelpingPanel(page);
+    panel = whelpingPanel(page);
     await expect(panel.getByText("Aucune session démarrée")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Démarrer la mise-bas" })).toBeVisible();
 
@@ -460,8 +500,11 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Démarrer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByText(
-      "La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés. Rouvrez la session pour reprendre la mise-bas.",
+      "La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés. Rouvrez la session pour ajouter une nouvelle naissance ou un nouvel événement.",
     )).toBeVisible();
+    await expect(panel).not.toContainText(
+      "Seuls les poids de naissance manquants peuvent encore être renseignés",
+    );
     await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
 

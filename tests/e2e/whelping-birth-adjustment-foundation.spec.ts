@@ -251,6 +251,9 @@ test("corrects and cancels births atomically while preserving every source row",
     expect(three).toMatchObject({ outcome: "success", birthOrder: 1 });
     if (three.outcome !== "success") throw new Error("replacement birth failed");
     created.births.push(three.birthId); created.animals.push(three.animalId); created.events.push(three.eventId);
+    expect(JSON.parse(sql(`select json_build_object('total',born_total_count,'male',born_male_count,'female',born_female_count,'alive',alive_count) from public.litters where id=${q(ids.litter)}::uuid;`)))
+      .toEqual({ total: 1, male: 1, female: 0, alive: 1 });
+    expect(sql(`select actual_birth_date from public.litters where id=${q(ids.litter)}::uuid;`)).toBe("2026-07-21");
     sql(`update public.whelping_sessions set status='closed',ended_at='2026-07-21T22:00:00Z' where id=${q(ids.session)}::uuid;`);
     const concurrent = await Promise.all([
       correctWhelpingBirthCore(correction(three.birthId, ids.concurrentOne, 0, { occurredAt: "2026-07-21T20:21:00Z", sex: "male", viability: "alive", birthNote: "A" }), owner),
