@@ -7,7 +7,7 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
 - SHA de base vérifié avant ce lot : `4969ce94b46f00cb728fb97aa849e4888f029640`.
-- La dernière migration incluse est `202607220002_whelping_birth_replacement_projection_fix`.
+- La dernière migration incluse est `202607220003_maternal_temperature_drop_policy`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier

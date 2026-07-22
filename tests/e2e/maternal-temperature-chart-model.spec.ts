@@ -371,6 +371,24 @@ test("distingue une baisse inférieure, égale ou supérieure au seuil", () => {
   expect(marker(37.5).observedDropCelsius).toBeCloseTo(0.7, 12);
 });
 
+test("compense l'imprécision flottante sans créer de tolérance métier", () => {
+  const marker = (latest: number) =>
+    buildMaternalTemperatureChartModel(
+      temperatureSeries([37.8, 37.8, 37.8, latest]),
+      policy,
+    ).dropMarker;
+
+  const exactThreshold = marker(37.1);
+  expect(exactThreshold.referenceCelsius).toBe(37.8);
+  expect(exactThreshold.observedDropCelsius).toBeCloseTo(0.7, 12);
+  expect(exactThreshold.status).toBe("reached");
+
+  const belowThreshold = marker(37.101);
+  expect(belowThreshold.referenceCelsius).toBe(37.8);
+  expect(belowThreshold.observedDropCelsius).toBeCloseTo(0.699, 12);
+  expect(belowThreshold.status).toBe("not_reached");
+});
+
 test("une température stable ou en hausse produit une baisse observée nulle", () => {
   for (const latest of [38.2, 38.6]) {
     const marker = buildMaternalTemperatureChartModel(

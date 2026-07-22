@@ -83,6 +83,8 @@ const SEVERITIES = new Set<MaternalObservationSeverity>([
 ]);
 const HALF_HOUR_MS = 30 * 60 * 1_000;
 const TICK_COUNT = 5;
+// Compense uniquement l'imprécision IEEE-754 lors de la comparaison au seuil.
+const TEMPERATURE_COMPARISON_EPSILON_CELSIUS = 1e-9;
 
 function isValidTimezone(timezoneName: string) {
   if (!timezoneName.trim()) return false;
@@ -293,12 +295,12 @@ export function buildMaternalTemperatureDropMarker(
   const referenceCelsius = median(referencePoints.map((point) => point.celsius));
   const differenceFromReferenceCelsius = latest.celsius - referenceCelsius;
   const observedDropCelsius = Math.max(0, referenceCelsius - latest.celsius);
+  const thresholdReached =
+    observedDropCelsius + TEMPERATURE_COMPARISON_EPSILON_CELSIUS >=
+    policy.dropThresholdCelsius;
 
   return {
-    status:
-      observedDropCelsius >= policy.dropThresholdCelsius
-        ? "reached"
-        : "not_reached",
+    status: thresholdReached ? "reached" : "not_reached",
     referenceCelsius,
     latestCelsius: latest.celsius,
     differenceFromReferenceCelsius,
