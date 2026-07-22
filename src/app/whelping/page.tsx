@@ -8,6 +8,7 @@ import {
   WhelpingMobileSelector,
 } from "@/features/whelping/whelping-mobile-selector";
 import { readWhelpingMobileSelection } from "@/features/whelping/whelping-mobile-selection-server";
+import { parsePublicLitterIndex } from "@/features/whelping/whelping-mobile-selection";
 import { WhelpingPanel } from "@/features/whelping/whelping-panel";
 import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -44,7 +45,14 @@ export default async function WhelpingMobilePage({
   if (!user) {
     redirect("/login?next=%2Fwhelping");
   }
-  if (Object.keys(query).length > 0) {
+  const queryKeys = Object.keys(query);
+  const legacyLitterIndex = queryKeys.length === 1 && queryKeys[0] === "litter" && typeof query.litter === "string"
+    ? parsePublicLitterIndex(query.litter)
+    : null;
+  if (legacyLitterIndex !== null) {
+    redirect(`/whelping/selection?litter=${legacyLitterIndex}`);
+  }
+  if (queryKeys.length > 0) {
     redirect("/whelping");
   }
 

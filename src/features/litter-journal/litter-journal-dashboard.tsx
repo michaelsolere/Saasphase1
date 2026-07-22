@@ -340,7 +340,7 @@ export function LitterJournalDashboard({
             </h2>
             {publicMobileLitterIndex >= 0 ? (
               <Link
-                href={`/whelping?litter=${publicMobileLitterIndex}`}
+                href={`/whelping/selection?litter=${publicMobileLitterIndex}`}
                 className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline"
               >
                 Ouvrir le mode mobile de mise-bas

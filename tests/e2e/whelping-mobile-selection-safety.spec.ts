@@ -140,6 +140,50 @@ test("verrouille la course et conserve une sélection serveur stable", async ({ 
     await expect(page.getByText("Mère :").locator("..")).toContainText("Salomé sécurité");
     await expect(page.getByText("Session :").locator("..")).toContainText("En cours");
 
+    const rosiePublicIndex = await page.getByLabel("Portée affichée").locator("option").filter({ hasText: /Rosie$/ }).getAttribute("value");
+    expect(rosiePublicIndex).toMatch(/^\d+$/);
+
+    // Le Journal de Rosie doit remplacer la sélection Salomé par une sélection serveur révisionnée.
+    await page.goto(`/litters/journal?litter=${ids.rosieLitter}`);
+    const mobileLink = page.getByRole("link", { name: "Ouvrir le mode mobile de mise-bas" });
+    const mobileHref = await mobileLink.getAttribute("href");
+    expect(mobileHref).toBe(`/whelping/selection?litter=${rosiePublicIndex}`);
+    expect(mobileHref).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    await mobileLink.click();
+    await expect(page).toHaveURL(/\/whelping$/);
+    expect(`${new URL(page.url()).pathname}${new URL(page.url()).search}`).toBe("/whelping");
+    await expect(page.getByRole("heading", { name: `${prefix} Rosie` })).toBeVisible();
+    await expect(page.getByText("Mère :").locator("..")).toContainText("Rosie sécurité");
+    await expect(page.getByText("Session :").locator("..")).toContainText("Non démarrée");
+    await expect(page.getByRole("button", { name: "Démarrer la mise-bas" })).toBeVisible();
+    expect(state()).toMatchObject({
+      salomeSessions: 1, salomeCommands: 0, salomeEvents: 0, salomeBirths: 0, salomeAnimals: 0,
+      rosieSessions: 0, rosieCommands: 0, rosieEvents: 0, rosieBirths: 0, rosieAnimals: 0,
+    });
+
+    // Un ancien favori indexé doit aussi renouveler le cookie avant de revenir à l'URL canonique.
+    await chooseLitter(page, /Salomé$/);
+    await expect(page.getByRole("heading", { name: `${prefix} Salomé` })).toBeVisible();
+    const cookieBeforeLegacyUrl = (await context.cookies()).find(
+      (cookie) => cookie.name === "whelping_mobile_selection",
+    );
+    expect(cookieBeforeLegacyUrl).toBeDefined();
+    await page.goto(`/whelping?litter=${rosiePublicIndex}`);
+    await expect(page).toHaveURL(/\/whelping$/);
+    expect(`${new URL(page.url()).pathname}${new URL(page.url()).search}`).toBe("/whelping");
+    await expect(page.getByRole("heading", { name: `${prefix} Rosie` })).toBeVisible();
+    const cookieAfterLegacyUrl = (await context.cookies()).find(
+      (cookie) => cookie.name === "whelping_mobile_selection",
+    );
+    expect(cookieAfterLegacyUrl?.value).not.toBe(cookieBeforeLegacyUrl?.value);
+    expect(state()).toMatchObject({
+      salomeSessions: 1, salomeCommands: 0, salomeEvents: 0, salomeBirths: 0, salomeAnimals: 0,
+      rosieSessions: 0, rosieCommands: 0, rosieEvents: 0, rosieBirths: 0, rosieAnimals: 0,
+    });
+
+    await chooseLitter(page, /Salomé$/);
+    await expect(page.getByRole("heading", { name: `${prefix} Salomé` })).toBeVisible();
+
     const oldMaleButton = page.getByRole("button", { name: "+ NAISSANCE MÂLE" });
     const oldMaleHandle = await oldMaleButton.elementHandle();
     let delayFirstSelection = true;
