@@ -264,6 +264,13 @@ export default async function LitterJournalPage({
             }
             maternalObservationAction={maternalObservationAction}
             maternalObservationsLoadError={maternalObservationsLoaded === null}
+            maternalTemperatureDropPolicy={
+              maternalObservationsLoaded?.temperatureDropPolicy ?? null
+            }
+            maternalTemperatureDropPolicyUnavailable={
+              maternalObservationsLoaded?.temperatureDropPolicyUnavailable ??
+              false
+            }
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
             litterCareTaskRole={litterCareTasksLoaded?.role ?? null}
             litterCareTaskGenerationEntries={

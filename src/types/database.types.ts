@@ -3800,6 +3800,7 @@ export type Database = {
           dog_xray_day: number
           id: string
           litter_weighing_schedule_policy: Json | null
+          maternal_temperature_drop_policy: Json | null
           organization_id: string
           post_adoption_follow_up_1_days: number
           post_adoption_follow_up_2_months: number
@@ -3828,6 +3829,7 @@ export type Database = {
           dog_xray_day?: number
           id?: string
           litter_weighing_schedule_policy?: Json | null
+          maternal_temperature_drop_policy?: Json | null
           organization_id: string
           post_adoption_follow_up_1_days?: number
           post_adoption_follow_up_2_months?: number
@@ -3856,6 +3858,7 @@ export type Database = {
           dog_xray_day?: number
           id?: string
           litter_weighing_schedule_policy?: Json | null
+          maternal_temperature_drop_policy?: Json | null
           organization_id?: string
           post_adoption_follow_up_1_days?: number
           post_adoption_follow_up_2_months?: number
@@ -6028,6 +6031,10 @@ export type Database = {
       }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
       is_valid_litter_weighing_schedule_policy: {
+        Args: { p_policy: Json }
+        Returns: boolean
+      }
+      is_valid_maternal_temperature_drop_policy: {
         Args: { p_policy: Json }
         Returns: boolean
       }

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
+import {
+  parseMaternalTemperatureDropPolicy,
+  type MaternalTemperatureDropPolicyV1,
+} from "./maternal-temperature-drop-policy";
 
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
@@ -80,6 +84,8 @@ export type ListMaternalObservationsForLitterResult =
       outcome: "success";
       role: OrganizationRole;
       observations: MaternalObservationSummary[];
+      temperatureDropPolicy: MaternalTemperatureDropPolicyV1 | null;
+      temperatureDropPolicyUnavailable: boolean;
     }
   | ErrorResult;
 
@@ -315,13 +321,21 @@ export async function listMaternalObservationsForLitterCore(
   const authorization = await authorizeLitterRead(supabase, input.litterId);
   if ("outcome" in authorization) return authorization;
 
-  const observations = await supabase
-    .from("maternal_observations")
-    .select("*")
-    .eq("organization_id", authorization.litter.organization_id)
-    .eq("litter_id", authorization.litter.id)
-    .order("observed_at", { ascending: false })
-    .order("created_at", { ascending: false });
+  const [observations, settings] = await Promise.all([
+    supabase
+      .from("maternal_observations")
+      .select("*")
+      .eq("organization_id", authorization.litter.organization_id)
+      .eq("litter_id", authorization.litter.id)
+      .order("observed_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("organization_settings")
+      .select("maternal_temperature_drop_policy")
+      .eq("organization_id", authorization.litter.organization_id)
+      .is("deleted_at", null)
+      .maybeSingle(),
+  ]);
 
   if (observations.error) {
     return databaseFailure(
@@ -330,10 +344,29 @@ export async function listMaternalObservationsForLitterCore(
     );
   }
 
+  const persistedPolicy = settings.data?.maternal_temperature_drop_policy;
+  const parsedPolicy =
+    persistedPolicy === null || persistedPolicy === undefined
+      ? null
+      : parseMaternalTemperatureDropPolicy(persistedPolicy);
+  const temperatureDropPolicyUnavailable =
+    Boolean(settings.error) || parsedPolicy?.ok === false;
+  if (settings.error) {
+    console.error("maternal_temperature_drop_policy_read_failed", settings.error);
+  } else if (parsedPolicy?.ok === false) {
+    console.error(
+      "maternal_temperature_drop_policy_invalid",
+      parsedPolicy.error,
+    );
+  }
+
   return {
     outcome: "success",
     role: authorization.role,
     observations: (observations.data ?? []).map(mapObservation),
+    temperatureDropPolicy:
+      parsedPolicy?.ok === true ? parsedPolicy.policy : null,
+    temperatureDropPolicyUnavailable,
   };
 }
 

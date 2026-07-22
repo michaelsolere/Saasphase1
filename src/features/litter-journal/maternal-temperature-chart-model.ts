@@ -3,6 +3,7 @@ import type {
   MaternalObservationTemperatureUnit,
   MaternalObservationType,
 } from "./maternal-observations-core";
+import type { MaternalTemperatureDropPolicyV1 } from "./maternal-temperature-drop-policy";
 
 export type MaternalObservationPanelItem = {
   publicSourceIndex: number;
@@ -47,6 +48,24 @@ export type MaternalTemperatureChartModel = {
   minimumCelsius: number | null;
   maximumCelsius: number | null;
   domain: MaternalTemperatureChartDomain | null;
+  dropMarker: MaternalTemperatureDropMarker;
+};
+
+export type MaternalTemperatureDropMarker = {
+  status:
+    | "disabled"
+    | "policy_unavailable"
+    | "insufficient_history"
+    | "not_reached"
+    | "reached";
+  referenceCelsius: number | null;
+  latestCelsius: number | null;
+  differenceFromReferenceCelsius: number | null;
+  observedDropCelsius: number | null;
+  thresholdCelsius: number | null;
+  requiredReferenceMeasurementCount: number | null;
+  usedReferenceMeasurementCount: number;
+  referencePointPublicIndexes: number[];
 };
 
 export type MaternalTemperatureChartPlotArea = {
@@ -139,6 +158,8 @@ export function buildMaternalTemperatureChartDomain(
 
 export function buildMaternalTemperatureChartModel(
   observations: readonly MaternalObservationPanelItem[],
+  dropPolicy: MaternalTemperatureDropPolicyV1 | null = null,
+  dropPolicyUnavailable = false,
 ): MaternalTemperatureChartModel {
   const points = observations
     .flatMap((observation) => {
@@ -196,6 +217,11 @@ export function buildMaternalTemperatureChartModel(
   const latest = points.at(-1) ?? null;
   const previous = points.at(-2) ?? null;
   const temperatures = points.map((point) => point.celsius);
+  const dropMarker = buildMaternalTemperatureDropMarker(
+    points,
+    dropPolicy,
+    dropPolicyUnavailable,
+  );
 
   return {
     status: points.length === 0 ? "empty" : "available",
@@ -212,6 +238,72 @@ export function buildMaternalTemperatureChartModel(
     maximumCelsius:
       temperatures.length > 0 ? Math.max(...temperatures) : null,
     domain: buildMaternalTemperatureChartDomain(points),
+    dropMarker,
+  };
+}
+
+function median(values: readonly number[]) {
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 0
+    ? (ordered[middle - 1] + ordered[middle]) / 2
+    : ordered[middle];
+}
+
+export function buildMaternalTemperatureDropMarker(
+  points: readonly MaternalTemperatureChartPoint[],
+  policy: MaternalTemperatureDropPolicyV1 | null,
+  policyUnavailable = false,
+): MaternalTemperatureDropMarker {
+  const latest = points.at(-1) ?? null;
+  const neutral = {
+    referenceCelsius: null,
+    latestCelsius: latest?.celsius ?? null,
+    differenceFromReferenceCelsius: null,
+    observedDropCelsius: null,
+    thresholdCelsius: null,
+    requiredReferenceMeasurementCount: null,
+    usedReferenceMeasurementCount: 0,
+    referencePointPublicIndexes: [],
+  };
+
+  if (policyUnavailable) return { status: "policy_unavailable", ...neutral };
+  if (!policy) return { status: "disabled", ...neutral };
+
+  const precedingPoints = points.slice(0, -1);
+  const referencePoints = precedingPoints.slice(-policy.referenceMeasurementCount);
+  const configured = {
+    thresholdCelsius: policy.dropThresholdCelsius,
+    requiredReferenceMeasurementCount: policy.referenceMeasurementCount,
+    usedReferenceMeasurementCount: referencePoints.length,
+    referencePointPublicIndexes: referencePoints.map((point) => point.publicIndex),
+  };
+
+  if (!latest || referencePoints.length < policy.referenceMeasurementCount) {
+    return {
+      status: "insufficient_history",
+      referenceCelsius: null,
+      latestCelsius: latest?.celsius ?? null,
+      differenceFromReferenceCelsius: null,
+      observedDropCelsius: null,
+      ...configured,
+    };
+  }
+
+  const referenceCelsius = median(referencePoints.map((point) => point.celsius));
+  const differenceFromReferenceCelsius = latest.celsius - referenceCelsius;
+  const observedDropCelsius = Math.max(0, referenceCelsius - latest.celsius);
+
+  return {
+    status:
+      observedDropCelsius >= policy.dropThresholdCelsius
+        ? "reached"
+        : "not_reached",
+    referenceCelsius,
+    latestCelsius: latest.celsius,
+    differenceFromReferenceCelsius,
+    observedDropCelsius,
+    ...configured,
   };
 }
 

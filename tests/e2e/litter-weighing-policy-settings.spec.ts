@@ -168,10 +168,12 @@ test("configure la cadence, sécurise les mutations et préserve les snapshots",
     expect(settingsCount()).toBe(1);
 
     await page.goto(`/litters/journal?litter=${unbornLitterId}`);
+    await page.getByTestId("litter-weight-panel").getByRole("button", { name: "Planning" }).click();
     await expect(page.getByTestId("litter-weighing-schedule-summary")).toContainText(
       "Cadence personnalisée de l’organisation",
     );
     await page.goto(`/litters/journal?litter=${bornLitterId}`);
+    await page.getByTestId("litter-weight-panel").getByRole("button", { name: "Planning" }).click();
     await expect(page.getByTestId("litter-weighing-schedule-summary")).toContainText(
       "Cadence figée pour cette portée",
     );
@@ -186,6 +188,7 @@ test("configure la cadence, sécurise les mutations et préserve les snapshots",
     expect(sql(`select litter_weighing_schedule_policy_snapshot::text from public.litters where id = ${q(bornLitterId)}::uuid;`))
       .toBe(bornSnapshotBefore);
     await page.goto(`/litters/journal?litter=${unbornLitterId}`);
+    await page.getByTestId("litter-weight-panel").getByRole("button", { name: "Planning" }).click();
     await expect(page.getByTestId("litter-weighing-schedule-summary")).toContainText(
       "Cadence recommandée du logiciel",
     );

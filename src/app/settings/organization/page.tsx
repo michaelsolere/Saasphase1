@@ -13,8 +13,10 @@ import {
   DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
   parseLitterWeighingSchedulePolicy,
 } from "@/features/litter-weights/litter-weighing-schedule-model";
+import { parseMaternalTemperatureDropPolicy } from "@/features/litter-journal/maternal-temperature-drop-policy";
 import { brevoTransactionalTemplateConfigs } from "@/features/settings/brevo-template-registry";
 import { LitterWeighingPolicySettings } from "@/features/settings/litter-weighing-policy-settings";
+import { MaternalTemperatureDropPolicySettings } from "@/features/settings/maternal-temperature-drop-policy-settings";
 import { OrganizationLogoSettings } from "@/features/settings/organization-logo-settings";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
@@ -34,6 +36,11 @@ type StatusValue = "success" | "error" | undefined;
 type LitterWeighingPolicyStatusValue =
   | "success"
   | "reset"
+  | "error"
+  | undefined;
+type MaternalTemperatureDropPolicyStatusValue =
+  | "success"
+  | "disabled"
   | "error"
   | undefined;
 type BrandingErrorValue =
@@ -142,6 +149,33 @@ function LitterWeighingPolicyStatusMessage({
         ? "La cadence recommandée du logiciel est désormais utilisée."
         : "Impossible de modifier la cadence. Vérifiez les phases saisies puis réessayez.";
 
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-6 py-5 text-sm ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {message}
+    </section>
+  );
+}
+
+function MaternalTemperatureDropPolicyStatusMessage({
+  value,
+}: {
+  value: MaternalTemperatureDropPolicyStatusValue;
+}) {
+  if (!value) return null;
+  const isSuccess = value !== "error";
+  const message =
+    value === "success"
+      ? "Le repère personnel de baisse a bien été enregistré."
+      : value === "disabled"
+        ? "Le repère personnel de baisse est désormais désactivé."
+        : "Impossible de modifier le repère. Vérifiez les valeurs saisies puis réessayez.";
   return (
     <section
       role={isSuccess ? "status" : "alert"}
@@ -301,6 +335,7 @@ export default async function OrganizationSettingsPage({
     branding_status?: "success" | "removed" | "error";
     branding_error?: BrandingErrorValue;
     litter_weighing_policy_status?: LitterWeighingPolicyStatusValue;
+    maternal_temperature_drop_policy_status?: MaternalTemperatureDropPolicyStatusValue;
   }>;
 }) {
   const query = await searchParams;
@@ -379,7 +414,7 @@ export default async function OrganizationSettingsPage({
   const { data: organizationSettings, error: organizationSettingsError } = await supabase
     .from("organization_settings")
     .select(
-      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy",
+      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy, maternal_temperature_drop_policy",
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
@@ -475,6 +510,20 @@ export default async function OrganizationSettingsPage({
     persistedPolicyResult?.ok === true ? persistedPolicyResult.policy : null;
   const hasInvalidPersistedLitterWeighingPolicy =
     Boolean(organizationSettingsError) || persistedPolicyResult?.ok === false;
+  const persistedTemperatureDropPolicyResult =
+    organizationSettings?.maternal_temperature_drop_policy === null ||
+    organizationSettings?.maternal_temperature_drop_policy === undefined
+      ? null
+      : parseMaternalTemperatureDropPolicy(
+          organizationSettings.maternal_temperature_drop_policy,
+        );
+  const maternalTemperatureDropPolicy =
+    persistedTemperatureDropPolicyResult?.ok === true
+      ? persistedTemperatureDropPolicyResult.policy
+      : null;
+  const hasInvalidPersistedMaternalTemperatureDropPolicy =
+    Boolean(organizationSettingsError) ||
+    persistedTemperatureDropPolicyResult?.ok === false;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -532,6 +581,9 @@ export default async function OrganizationSettingsPage({
         <BrevoStatusMessage value={query.brevo_status} />
         <LitterWeighingPolicyStatusMessage
           value={query.litter_weighing_policy_status}
+        />
+        <MaternalTemperatureDropPolicyStatusMessage
+          value={query.maternal_temperature_drop_policy_status}
         />
         <StatusMessage
           value={query.branding_status === "removed" ? "success" : query.branding_status}
@@ -634,6 +686,14 @@ export default async function OrganizationSettingsPage({
         customPolicy={customLitterWeighingPolicy}
         recommendedPolicy={recommendedPolicyResult.policy}
         hasInvalidPersistedPolicy={hasInvalidPersistedLitterWeighingPolicy}
+      />
+
+      <MaternalTemperatureDropPolicySettings
+        canEdit={canEdit}
+        policy={maternalTemperatureDropPolicy}
+        hasInvalidPersistedPolicy={
+          hasInvalidPersistedMaternalTemperatureDropPolicy
+        }
       />
 
       <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">
