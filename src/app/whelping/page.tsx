@@ -3,15 +3,14 @@ import { redirect } from "next/navigation";
 
 import { getLitterJournalStatusLabel } from "@/features/litter-journal/stage";
 import { loadLitterJournalCatalog } from "@/features/litter-journal/loader";
-import { WhelpingMobileSelector } from "@/features/whelping/whelping-mobile-selector";
 import {
-  parsePublicLitterIndex,
-  resolveMobileLitterIndex,
-  selectDefaultMobileLitterIndex,
-} from "@/features/whelping/whelping-mobile-selection";
+  WhelpingMobileSelectionBoundary,
+  WhelpingMobileSelector,
+} from "@/features/whelping/whelping-mobile-selector";
+import { readWhelpingMobileSelection } from "@/features/whelping/whelping-mobile-selection-server";
+import { parsePublicLitterIndex } from "@/features/whelping/whelping-mobile-selection";
 import { WhelpingPanel } from "@/features/whelping/whelping-panel";
 import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
-import { listWhelpingSessionsForLitter } from "@/features/whelping/whelping";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -35,19 +34,26 @@ function MobileLoadError() {
 export default async function WhelpingMobilePage({
   searchParams,
 }: {
-  searchParams: Promise<{ litter?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
-  const requestedIndex = parsePublicLitterIndex(params.litter);
-  const safeReturnPath =
-    requestedIndex === null ? "/whelping" : `/whelping?litter=${requestedIndex}`;
+  const query = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect(`/login?next=${encodeURIComponent(safeReturnPath)}`);
+    redirect("/login?next=%2Fwhelping");
+  }
+  const queryKeys = Object.keys(query);
+  const legacyLitterIndex = queryKeys.length === 1 && queryKeys[0] === "litter" && typeof query.litter === "string"
+    ? parsePublicLitterIndex(query.litter)
+    : null;
+  if (legacyLitterIndex !== null) {
+    redirect(`/whelping/selection?litter=${legacyLitterIndex}`);
+  }
+  if (queryKeys.length > 0) {
+    redirect("/whelping");
   }
 
   let litters: Awaited<ReturnType<typeof loadLitterJournalCatalog>>;
@@ -79,38 +85,19 @@ export default async function WhelpingMobilePage({
     );
   }
 
-  const sessionResults = await Promise.allSettled(
-    litters.map(async (litter) =>
-      litter.id
-        ? listWhelpingSessionsForLitter({ litterId: litter.id }, supabase)
-        : null,
-    ),
-  );
-  const sessionsByLitterIndex = sessionResults.map((result) =>
-    result.status === "fulfilled" && result.value?.outcome === "success"
-      ? result.value.sessions
-      : [],
-  );
-  const defaultIndex = selectDefaultMobileLitterIndex(
-    litters,
-    sessionsByLitterIndex,
-  );
-  const selectedIndex = resolveMobileLitterIndex(
-    params.litter,
-    litters.length,
-    defaultIndex,
-  );
-  const selectedLitter = selectedIndex === null ? null : litters[selectedIndex];
+  const mobileSelection = await readWhelpingMobileSelection();
+  const selectedIndex = mobileSelection
+    ? litters.findIndex((litter) => litter.id === mobileSelection.litterId)
+    : -1;
+  const selectedLitter = selectedIndex < 0 ? null : litters[selectedIndex];
 
-  if (!selectedLitter?.id || selectedIndex === null) {
-    return (
-      <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
-        <MobileLoadError />
-      </main>
-    );
+  if (!selectedLitter?.id || !mobileSelection) {
+    redirect("/whelping/selection");
   }
 
-  const workspace = await loadWhelpingWorkspace(selectedLitter.id, supabase);
+  const workspace = await loadWhelpingWorkspace(selectedLitter.id, supabase, {
+    revision: mobileSelection.revision,
+  });
   const options = litters.map((litter, index) => ({
     index,
     label: getMobileLitterLabel(litter.name, index),
@@ -118,7 +105,8 @@ export default async function WhelpingMobilePage({
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl overflow-x-hidden px-4 py-5 sm:px-6 sm:py-8">
-      <header className="border-b pb-5">
+      <WhelpingMobileSelectionBoundary key={selectedIndex}>
+        <header className="border-b pb-5">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div className="min-w-0">
             <p className="text-sm font-semibold uppercase tracking-wide text-accent">Espace privé</p>
@@ -139,17 +127,18 @@ export default async function WhelpingMobilePage({
             </Link>
           </div>
         </div>
-      </header>
+        </header>
 
-      <details className="my-5 rounded-xl border bg-surface px-4 py-3 text-sm">
+        <details className="my-5 rounded-xl border bg-surface px-4 py-3 text-sm">
         <summary className="cursor-pointer font-semibold">Installer sur l’écran d’accueil</summary>
         <p className="mt-2 leading-6 text-muted">
           Ouvrez le menu de votre navigateur puis choisissez « Installer l’application » ou « Ajouter à l’écran d’accueil ».
         </p>
         <p className="mt-2 leading-6 text-muted">Une connexion réseau est requise pour consulter ou enregistrer les données.</p>
-      </details>
+        </details>
 
-      <WhelpingPanel {...workspace} displayMode="mobile" />
+        <WhelpingPanel {...workspace} displayMode="mobile" />
+      </WhelpingMobileSelectionBoundary>
     </main>
   );
 }

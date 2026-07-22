@@ -143,7 +143,7 @@ async function verifyLoginReturns(browser: Browser) {
 
 async function verifyAuthenticatedLoginReturns(page: Page) {
   await page.goto("/login?next=%2Fwhelping%3Flitter%3D1");
-  await expect(page).toHaveURL(/\/whelping\?litter=1$/);
+  await expect(page).toHaveURL(/\/whelping$/);
 
   await page.goto("/login?next=https%3A%2F%2Fautre-site.example");
   await expect(page).toHaveURL(/\/candidatures$/);
@@ -217,9 +217,11 @@ test("partage le Journal, reste autonome, installable et online-only", async ({ 
 
     await page.goto("/whelping");
     await page.getByLabel("Portée affichée").selectOption("0");
-    await expect(page).toHaveURL(/\/whelping\?litter=0$/);
     await expect(page.getByRole("heading", { name: `${prefix} Alpha` })).toBeVisible();
+    await expect(page).toHaveURL(/\/whelping$/);
 
+    await page.getByLabel("Portée affichée").selectOption({ label: `${prefix} Bravo` });
+    await expect(page.getByRole("heading", { name: `${prefix} Bravo` })).toBeVisible();
     setOwnerRole("viewer");
     await page.goto("/whelping");
     await expect(panel(page).getByText(`${prefix} naissance`)).toBeVisible();
