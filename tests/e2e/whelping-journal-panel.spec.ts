@@ -460,8 +460,11 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Démarrer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByText(
-      "La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés. Rouvrez la session pour reprendre la mise-bas.",
+      "La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés. Rouvrez la session pour ajouter une nouvelle naissance ou un nouvel événement.",
     )).toBeVisible();
+    await expect(panel).not.toContainText(
+      "Seuls les poids de naissance manquants peuvent encore être renseignés",
+    );
     await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
 

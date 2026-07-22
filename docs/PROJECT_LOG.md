@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `871c107bee4c82380274985899cdf03f7269007b`.
-- La dernière migration incluse est `202607220001_whelping_birth_adjustment_history_read`.
+- SHA de base vérifié avant ce lot : `630d2c8770677df24ee855b12440c95d831760bc`.
+- La dernière migration incluse est `202607220002_whelping_birth_replacement_projection_fix`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -147,7 +147,7 @@ La **PR #333** ajoute le formulaire collectif mobile-first et les historiques. A
 
 La migration `202607200003_litter_weight_adjustment_foundation` prépare la rectification sécurisée des seules mesures `routine`. Une correction conserve l’identifiant, l’animal, la séance et l’heure de mesure ; elle modifie uniquement le poids ou la note et incrémente une révision optimiste. Une annulation individuelle ou collective ne supprime aucune ligne : elle marque la mesure ou la séance, conserve ses valeurs originales et incrémente les révisions concernées.
 
-Chaque commande est atomique, strictement idempotente et inscrite dans un registre privé append-only avec son motif et ses snapshots avant/après. Les séances et mesures annulées sont exclues des historiques courants, statistiques, comparaisons de séances, planning, tableaux, graphiques et comparaison inter-portées. L’heure d’une séance n’est pas modifiable dans ce lot : une heure erronée se traite par annulation complète puis recréation, possible au même instant. Aucune interface de correction, d’annulation ou d’historique des rectifications n’est encore exposée.
+Chaque commande est atomique, strictement idempotente et inscrite dans un registre privé append-only avec son motif et ses snapshots avant/après. Les séances et mesures annulées sont exclues des historiques courants, statistiques, comparaisons de séances, planning, tableaux, graphiques et comparaison inter-portées. L’heure d’une séance n’est pas modifiable dans ce lot : une heure erronée se traite par annulation complète puis recréation, possible au même instant. L’interface permet de corriger ou d’annuler les mesures `routine`, d’annuler une séance complète et de consulter l’historique expurgé des rectifications ; `viewer` conserve une lecture seule stricte.
 
 ##### Courbes de croissance
 
@@ -518,3 +518,13 @@ Les tests ciblés et E2E pertinents s’ajoutent selon le risque du lot.
 - Les identifiants, commandes et révisions sont liés aux Server Actions côté serveur. Une révision périmée conserve le dialogue ouvert et demande un rechargement, sans écraser la modification concurrente.
 - L’historique actif reste limité aux séances et mesures non annulées. Un historique replié des rectifications expose uniquement des libellés et valeurs métier, via une lecture `security definer` bornée à 100 entrées et accessible aux rôles `owner`, `admin`, `member` et `viewer`.
 - L’heure commune d’une séance n’est pas modifiable. Une heure erronée nécessite l’annulation complète de la séance, puis sa recréation.
+
+## Lot du 2026-07-22 — Consolidation finale du Journal de mise-bas
+
+Le workflow transversal a été vérifié dans un scénario navigateur unique : une même ligne `whelping_sessions` traverse plusieurs cycles de clôture et réouverture, tandis que la chronologie `whelping_events` reste append-only et strictement ordonnée par `sequence_no`. L’événement `birth` initial demeure byte-for-byte immuable ; seul l’état effectif de `whelping_births`, de l’Animal, du poids actif et des projections de portée est rectifié. Les corrections et annulations spécialisées restent distinctes dans la chronologie, et l’historique d’audit expurgé conserve toutes les actions dans l’ordre décroissant.
+
+Le poids de naissance actif reste unique dans `animal_weight_measurements`, cohérent avec `animals.birth_weight_grams` et immédiatement reflété dans le panneau de mise-bas ainsi que dans la croissance. Les pesées `routine` restent indépendantes : elles ne modifient ni la chronologie de mise-bas ni les ordres de naissance, et les animaux issus d’une naissance annulée sont exclus des nouvelles saisies. L’annulation demeure limitée à la dernière naissance active sans donnée ultérieure, sans suppression physique ; elle soft-delete l’Animal, neutralise son poids éventuel et libère l’ordre pour une naissance de remplacement.
+
+La consolidation a détecté un défaut dans `record_whelping_birth` lors de la réutilisation d’un ordre annulé : l’agrégat final incluait encore les naissances annulées. La migration corrective `202607220002_whelping_birth_replacement_projection_fix` limite ce calcul aux naissances actives, sans nouvelle table ni nouvelle source de vérité. Les compteurs `born_total_count`, `born_male_count`, `born_female_count`, `alive_count` et `actual_birth_date` restent ainsi cohérents avec le nombre de naissances et d’animaux actifs après correction, annulation et remplacement.
+
+L’interface d’une session clôturée indique désormais exactement que les naissances peuvent encore être rectifiées et les poids manquants complétés, la réouverture n’étant requise que pour une nouvelle naissance ou un nouvel événement. Les rôles `owner` et `viewer`, l’absence d’identifiants techniques dans le DOM et l’URL, ainsi que le responsive mobile à 375 × 812 ont été vérifiés conjointement pour les panneaux de mise-bas et de croissance.
