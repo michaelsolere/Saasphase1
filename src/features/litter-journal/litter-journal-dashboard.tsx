@@ -22,6 +22,7 @@ import type {
 } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
+import type { MaternalObservationPanelItem } from "./maternal-temperature-chart-model";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
 import type { MaternalObservationSummary } from "./maternal-observations";
 import type {
@@ -186,7 +187,6 @@ export function LitterJournalDashboard({
   maternalObservations,
   maternalObservationRole,
   maternalObservationAction,
-  maternalObservationClientCommandId,
   maternalObservationsLoadError,
   litterCareTasks,
   litterCareTaskRole,
@@ -235,7 +235,6 @@ export function LitterJournalDashboard({
     previousState: MaternalObservationActionState,
     formData: FormData,
   ) => Promise<MaternalObservationActionState>) | null;
-  maternalObservationClientCommandId: string;
   maternalObservationsLoadError: boolean;
   litterCareTasks: LitterCareTaskSummary[];
   litterCareTaskRole: "owner" | "admin" | "member" | "viewer" | null;
@@ -309,6 +308,17 @@ export function LitterJournalDashboard({
   const publicMobileLitterIndex = litters.findIndex(
     (item) => item.id === litter.id,
   );
+  const publicMaternalObservations: MaternalObservationPanelItem[] =
+    maternalObservations.map((observation, index) => ({
+      publicSourceIndex: index + 1,
+      observationType: observation.observationType,
+      observedAt: observation.observedAt,
+      timezoneName: observation.timezoneName,
+      numericValue: observation.numericValue,
+      unit: observation.unit,
+      severity: observation.severity,
+      note: observation.note,
+    }));
 
   return (
     <div className="space-y-6">
@@ -404,10 +414,9 @@ export function LitterJournalDashboard({
         loadError={litterWeightsLoadError}
       />
       <MaternalObservationsPanel
-        observations={maternalObservations}
+        observations={publicMaternalObservations}
         role={maternalObservationRole}
         action={maternalObservationAction}
-        clientCommandId={maternalObservationClientCommandId}
         loadError={maternalObservationsLoadError}
       />
       <LitterCareTaskGenerationPanel

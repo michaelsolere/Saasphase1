@@ -263,7 +263,6 @@ export default async function LitterJournalPage({
               maternalObservationsLoaded?.role ?? null
             }
             maternalObservationAction={maternalObservationAction}
-            maternalObservationClientCommandId={clientCommandId}
             maternalObservationsLoadError={maternalObservationsLoaded === null}
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
             litterCareTaskRole={litterCareTasksLoaded?.role ?? null}

@@ -11,8 +11,11 @@ test.setTimeout(180_000);
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const ownerMembershipId = "30000000-0000-4000-8000-000000000001";
-const prefix = "9f180006-0000-4000-8000-0000000000";
-const fixturePrefix = "E2E maternal observations UI";
+const prefix = "a7c24022-0000-4000-8000-0000000000";
+const uuidPrefix = "a7c24022-%";
+const historicalUuidPrefix = "9f180006-%";
+const fixturePrefix = "E2E maternal temperature chart 20260722";
+const historicalFixturePrefix = "E2E maternal observations UI";
 
 const ids = {
   mother: `${prefix}01`,
@@ -35,16 +38,23 @@ function cleanup() {
   sql(`
     delete from public.maternal_observations
     where litter_id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
-       or client_command_id::text like '9f180006-%';
+       or litter_id::text like ${q(historicalUuidPrefix)}
+       or client_command_id::text like ${q(uuidPrefix)}
+       or client_command_id::text like ${q(historicalUuidPrefix)};
 
     delete from public.litters
     where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
-       or name like ${q(`${fixturePrefix}%`)};
+       or id::text like ${q(historicalUuidPrefix)}
+       or name like ${q(`${fixturePrefix}%`)}
+       or name like ${q(`${historicalFixturePrefix}%`)};
 
     delete from public.animals
-    where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid);
+    where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid)
+       or id::text like ${q(historicalUuidPrefix)};
 
-    delete from public.organizations where id = ${q(ids.otherOrganization)}::uuid;
+    delete from public.organizations
+    where id = ${q(ids.otherOrganization)}::uuid
+       or id::text like ${q(historicalUuidPrefix)};
 
     set session_replication_role = replica;
     update public.memberships set role = 'owner'
@@ -62,19 +72,26 @@ function remainingFixtureCounts() {
         'maternal_observations', (
           select count(*) from public.maternal_observations
           where litter_id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
-             or client_command_id::text like '9f180006-%'
+             or litter_id::text like ${q(historicalUuidPrefix)}
+             or client_command_id::text like ${q(uuidPrefix)}
+             or client_command_id::text like ${q(historicalUuidPrefix)}
         ),
         'litters', (
           select count(*) from public.litters
           where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+             or id::text like ${q(historicalUuidPrefix)}
              or name like ${q(`${fixturePrefix}%`)}
+             or name like ${q(`${historicalFixturePrefix}%`)}
         ),
         'animals', (
           select count(*) from public.animals
           where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid)
+             or id::text like ${q(historicalUuidPrefix)}
         ),
         'organizations', (
-          select count(*) from public.organizations where id = ${q(ids.otherOrganization)}::uuid
+          select count(*) from public.organizations
+          where id = ${q(ids.otherOrganization)}::uuid
+             or id::text like ${q(historicalUuidPrefix)}
         ),
         'membership_role_changes', (
           select count(*) from public.memberships
@@ -83,6 +100,38 @@ function remainingFixtureCounts() {
       )::text;
     `),
   ) as Record<string, number>;
+}
+
+function fixtureIdentifiers() {
+  return JSON.parse(
+    sql(`
+      select json_build_object(
+        'organizations', coalesce((
+          select json_agg(id order by id) from public.organizations
+          where id = ${q(ids.otherOrganization)}::uuid
+        ), '[]'::json),
+        'animals', coalesce((
+          select json_agg(id order by id) from public.animals
+          where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid)
+        ), '[]'::json),
+        'litters', coalesce((
+          select json_agg(id order by id) from public.litters
+          where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+        ), '[]'::json),
+        'maternal_observations', coalesce((
+          select json_agg(id order by observed_at, id)
+          from public.maternal_observations
+          where litter_id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+        ), '[]'::json)
+      )::text;
+    `),
+  ) as Record<string, string[]>;
+}
+
+function logFixtureIdentifiers(stage: string) {
+  const inventory = fixtureIdentifiers();
+  console.info(`[maternal-temperature-chart fixtures:${stage}] ${JSON.stringify(inventory)}`);
+  return inventory;
 }
 
 function expectCleanupAtZero() {
@@ -230,13 +279,12 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
 
   try {
     createFixtures();
+    logFixtureIdentifiers("created-base");
     const outOfScopeBefore = outOfScopeCounts();
     await login(page);
     await page.goto(`/litters/journal?litter=${ids.mainLitter}`);
 
-    const panel = page.locator("section").filter({
-      has: page.getByRole("heading", { name: "Suivi de la mère" }),
-    });
+    const panel = page.getByTestId("maternal-observations-panel");
     await expect(panel.getByText("Aucune observation maternelle enregistrée pour cette portée.")).toBeVisible();
     await expect(panel.getByText("Observation étrangère invisible.")).toHaveCount(0);
 
@@ -276,10 +324,13 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
       });
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
     await expect(page.getByText("L’observation maternelle a été enregistrée.")).toBeVisible();
-    await expect(panel.getByText("38,4 °C")).toBeVisible();
-    await expect(panel.getByText("Température Celsius saisie.")).toBeVisible();
-    await expect(panel.getByText(formattedObservedAt)).toBeVisible();
+    await expect(panel.locator("li").getByText("38,4 °C", { exact: true })).toBeVisible();
+    await expect(panel.locator("li").getByText("Température Celsius saisie.", { exact: true })).toBeVisible();
+    await expect(
+      panel.locator("li").filter({ hasText: "Température Celsius saisie." }),
+    ).toContainText(formattedObservedAt);
     expect(maternalObservationCount()).toBe(1);
+    logFixtureIdentifiers("temperature-celsius");
     expect(
       JSON.parse(
         sql(`
@@ -314,13 +365,14 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     dialog = await openObservationDialog(page);
     await fillTemperature(dialog, {
       observedAt: "2026-07-18T12:20",
-      numericValue: "101.2",
+      numericValue: "98.6",
       unit: "fahrenheit",
       severity: "routine",
     });
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
-    await expect(panel.getByText("101,2 °F")).toBeVisible();
+    await expect(panel.locator("li").getByText("98,6 °F", { exact: true })).toBeVisible();
     expect(maternalObservationCount()).toBe(2);
+    logFixtureIdentifiers("temperature-fahrenheit");
 
     dialog = await openObservationDialog(page);
     await dialog.getByLabel("Température").fill("39.1");
@@ -334,6 +386,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
     await expect(panel.getByText("Comportement plus calme.")).toBeVisible();
     expect(maternalObservationCount()).toBe(3);
+    logFixtureIdentifiers("behavior");
     expect(
       JSON.parse(
         sql(`
@@ -345,16 +398,63 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
       ),
     ).toEqual({ numeric_value: null, unit: null });
 
+    dialog = await openObservationDialog(page);
+    await fillTemperature(dialog, {
+      observedAt: "2026-07-18T18:20",
+      numericValue: "37.4",
+      severity: "urgent",
+      note: "Troisième température saisie.",
+    });
+    const formattedLatestTemperatureDate = await page.evaluate(() => {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return new Intl.DateTimeFormat("fr-FR", {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: timezone,
+      }).format(new Date("2026-07-18T18:20"));
+    });
+    await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
+    await expect(panel.locator("li").getByText("Troisième température saisie.", { exact: true })).toBeVisible();
+    expect(maternalObservationCount()).toBe(4);
+    logFixtureIdentifiers("temperature-latest");
+
+    const chartSection = panel.getByTestId("maternal-temperature-chart-section");
+    await expect(chartSection.getByRole("heading", { name: "Courbe de température" })).toBeVisible();
+    const chart = chartSection.getByTestId("maternal-temperature-chart");
+    await expect(chart).toBeVisible();
+    const chartPoints = chart.getByTestId("maternal-temperature-point");
+    await expect(chartPoints).toHaveCount(3);
+    await expect(chartPoints.nth(0)).toHaveAttribute("data-temperature-point-index", "1");
+    await expect(chartPoints.nth(1)).toHaveAttribute("data-temperature-point-index", "2");
+    await expect(chartPoints.nth(2)).toHaveAttribute("data-temperature-point-index", "3");
+    const pointTitles = await chartPoints.evaluateAll((points) =>
+      points.map((point) => point.querySelector("title")?.textContent ?? ""),
+    );
+    expect(pointTitles[0]).toContain("38,4 °C");
+    expect(pointTitles[1]).toContain("98,6 °F · 37 °C après harmonisation graphique");
+    expect(pointTitles[2]).toContain("37,4 °C");
+    expect(pointTitles.join(" ")).not.toContain("Comportement plus calme.");
+    await expect(chartSection.getByTestId("maternal-temperature-latest")).toContainText("37,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-latest-date")).toContainText(formattedLatestTemperatureDate);
+    await expect(chartSection.getByTestId("maternal-temperature-previous")).toContainText("37 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-count")).toContainText("3");
+    await expect(chartSection.getByTestId("maternal-temperature-difference")).toContainText("+0,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-interval")).toContainText("6 h");
+    await expect(chartSection.getByTestId("maternal-temperature-minimum")).toContainText("37 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-maximum")).toContainText("38,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-severity")).toHaveText("Appréciation saisie : Urgent");
+
     const historyText = await panel.locator("li").evaluateAll((items) =>
       items.map((item) => item.textContent ?? ""),
     );
-    expect(historyText[0]).toContain("Comportement");
-    expect(historyText[1]).toContain("101,2 °F");
-    expect(historyText[2]).toContain("38,4 °C");
+    expect(historyText[0]).toContain("37,4 °C");
+    expect(historyText[1]).toContain("Comportement");
+    expect(historyText[2]).toContain("98,6 °F");
+    expect(historyText[3]).toContain("38,4 °C");
 
     await page.reload();
     await expect(panel.getByText("Comportement plus calme.")).toBeVisible();
-    await expect(panel.getByText("101,2 °F")).toBeVisible();
+    await expect(panel.locator("li").getByText("98,6 °F", { exact: true })).toBeVisible();
 
     const beforeDoubleClick = maternalObservationCount();
     dialog = await openObservationDialog(page);
@@ -368,6 +468,8 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     setOwnerRole("viewer");
     await page.reload();
     await expect(panel.getByText("Double clic protégé.")).toBeVisible();
+    await expect(panel.getByTestId("maternal-temperature-chart")).toBeVisible();
+    await expect(panel.getByText("Comportement plus calme.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Ajouter une observation" })).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
@@ -384,11 +486,21 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     );
     expect(maternalObservationCount()).toBe(beforeDoubleClick + 1);
     sql(`update public.litters set status = 'birth_expected' where id = ${q(ids.mainLitter)}::uuid;`);
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    await page.reload();
+    dialog = await openObservationDialog(page);
+    await dialog.getByLabel("Type d’observation").selectOption("health");
+    await dialog.getByLabel("Date et heure").fill("2026-07-18T16:00");
+    await dialog.getByLabel(/Note/).fill("Statut modifié pendant la saisie.");
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
     await expect(page.getByText("L’observation maternelle a été enregistrée.")).toBeVisible();
     expect(maternalObservationCount()).toBe(beforeDoubleClick + 2);
 
-    await page.setViewportSize({ width: 375, height: 760 });
+    const panelHtml = await panel.innerHTML();
+    expect(panelHtml).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(panelHtml).not.toMatch(/clientCommandId|created_by|createdBy|maternal_observations|record_maternal_observation|rpc/i);
+
+    await page.setViewportSize({ width: 375, height: 812 });
     await expect(panel).toBeVisible();
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
@@ -396,7 +508,9 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     await expect(panel.getByRole("button", { name: /Modifier|Supprimer/ })).toHaveCount(0);
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
   } finally {
+    logFixtureIdentifiers("before-cleanup");
     cleanup();
     expectCleanupAtZero();
+    console.info(`[maternal-temperature-chart fixtures:after-cleanup] ${JSON.stringify(remainingFixtureCounts())}`);
   }
 });
