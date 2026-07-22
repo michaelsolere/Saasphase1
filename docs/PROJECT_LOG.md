@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `19e25023253d728639754eec5cfdf8bdf0d72bd3`.
-- La dernière migration incluse est `202607200005_whelping_birth_adjustment_foundation`.
+- SHA de base vérifié avant ce lot : `871c107bee4c82380274985899cdf03f7269007b`.
+- La dernière migration incluse est `202607220001_whelping_birth_adjustment_history_read`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -76,9 +76,9 @@ Le Journal repose sur `whelping_sessions`, `whelping_events`, `whelping_births`,
 
 ##### Server Actions de mise-bas
 
-La PR #326 a introduit quatre Server Actions minces pour ouvrir une session, ajouter un événement générique, enregistrer une naissance atomique et clôturer la session. La réouverture ajoute une cinquième action mince selon les mêmes conventions. Elles restent de simples adaptateurs vers les services et commandes métier existants.
+La PR #326 a introduit quatre Server Actions minces pour ouvrir une session, ajouter un événement générique, enregistrer une naissance atomique et clôturer la session. La réouverture ajoute une cinquième action mince selon les mêmes conventions. La correction et l’annulation ajoutent deux actions liées à une intention serveur contenant exactement la portée, la session, la naissance, l’Animal, la révision attendue et la clé idempotente. Elles restent de simples adaptateurs vers les services et commandes métier existants.
 
-Les intentions liées côté serveur portent la portée, la session lorsqu’elle existe et la clé idempotente. Aucun identifiant structurant n’est accepté depuis les champs du formulaire. Les actions valident notamment les timestamps avec offset explicite, le fuseau IANA, les types fermés, le poids et la cohérence entre poids et heure de pesée. Elles traduisent les erreurs métier en messages neutres, limitent les revalidations aux routes utiles et ne retournent aucun UUID technique au navigateur.
+Les intentions liées côté serveur portent la portée, la session lorsqu’elle existe et la clé idempotente. Aucun identifiant structurant ni aucune révision n’est accepté depuis les champs du formulaire. Les actions valident notamment les timestamps avec offset explicite, le fuseau IANA, les types fermés, le poids et la cohérence entre poids et heure de pesée. Elles traduisent les erreurs métier en messages neutres, limitent les revalidations aux routes utiles et ne retournent aucun UUID technique au navigateur. Une révision périmée conserve le dialogue et ses valeurs afin d’interdire tout écrasement concurrent silencieux.
 
 ##### Interface opérationnelle
 
@@ -125,11 +125,17 @@ La **PR #330** apporte cette fondation serveur et la migration `202607190004_whe
 
 ##### Rectification des naissances
 
-La migration `202607200005_whelping_birth_adjustment_foundation` ajoute deux commandes serveur atomiques et idempotentes. Une correction met à jour l’état effectif de la naissance, les projections de l’Animal, l’unique ligne de poids de naissance et les agrégats de portée, tout en laissant strictement intact l’événement `birth` initial. Chaque rectification ajoute un événement spécialisé et une entrée dans un registre privé append-only avec révisions optimistes et snapshots avant/après.
+Les migrations `202607200003_litter_weight_adjustment_foundation`, `202607200004_litter_weight_adjustment_history_read`, `202607200005_whelping_birth_adjustment_foundation` et `202607220001_whelping_birth_adjustment_history_read` constituent les fondations de rectification des pesées et des naissances, puis leurs lectures d’audit expurgées.
 
-Une annulation est limitée à la dernière naissance active de toute la portée et ne modifie jamais son ordre. Elle soft-delete l’Animal, annule le poids de naissance et recalcule les compteurs sans suppression physique d’aucune ligne métier. Toute donnée ultérieure liée à l’Animal bloque l’opération ; les dépendances vers `animals` sont inventoriées par un test de schéma qui échoue si une FK non classée apparaît. L’ordre de naissance et l’événement initial restent immuables. Une prochaine naissance peut reprendre l’ordre libéré.
+La migration `202607200005_whelping_birth_adjustment_foundation` ajoute deux commandes serveur atomiques et idempotentes. Une correction, possible sur une session ouverte ou clôturée, met à jour l’état effectif de la naissance, les projections de l’Animal, l’unique ligne de poids de naissance et les agrégats de portée, tout en laissant strictement intact l’événement `birth` initial. Chaque rectification ajoute un événement spécialisé `birth_corrected` ou `birth_cancelled` et une entrée dans un registre privé append-only avec révisions optimistes et snapshots avant/après.
 
-Le panneau actuel distingue les naissances annulées, utilise l’heure et les données effectives et exclut ces naissances du compteur actif. L’interface complète de correction et d’annulation reste à réaliser dans un lot ultérieur ; aucun bouton, dialogue ni Server Action n’est ajouté ici.
+Une annulation est limitée à la dernière naissance active de toute la portée et ne modifie jamais son ordre. Elle soft-delete l’Animal, neutralise le poids de naissance sans supprimer sa ligne et recalcule les compteurs sans suppression physique d’aucune ligne métier. Toute donnée ultérieure liée à l’Animal bloque l’opération ; les dépendances vers `animals` sont inventoriées par un test de schéma qui échoue si une FK non classée apparaît. L’ordre de naissance et l’événement initial restent immuables. Une prochaine naissance peut reprendre l’ordre libéré.
+
+Le panneau distingue les naissances annulées, utilise l’état effectif séparé de l’événement initial et exclut les annulations du compteur actif. Les rôles `owner`, `admin` et `member` peuvent corriger chaque naissance active et annuler uniquement la dernière naissance active de la portée ; `viewer` reste en lecture seule. Les actions sont liées côté serveur et l’éligibilité d’annulation est calculée depuis toutes les sessions de la portée, la RPC restant l’autorité finale.
+
+La lecture `202607220001` expose au plus 100 rectifications, triées de la plus récente à la plus ancienne, sous forme d’un DTO métier plat sans UUID, commande, révision, auteur ni snapshot. Elle projette uniquement les anciennes et nouvelles valeurs effectives ainsi que la nature de l’évolution du poids ; un poids annulé n’est jamais présenté comme actif. Le registre privé demeure inaccessible directement. Son échec est isolé du chargement de la chronologie, et tous les membres actifs, dont `viewer`, peuvent consulter le bloc replié **Historique des rectifications**.
+
+Le rejeu d’une ancienne commande strictement identique reste idempotent et restitue son résultat d’origine ; la réutilisation de sa clé avec une intention différente reste conflictuelle. Une commande fondée sur une révision devenue obsolète est refusée avant toute écriture.
 
 ##### Pesées collectives et historique
 
@@ -183,13 +189,11 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 
 ##### Limites actuelles
 
-- aucune interface de correction, d’annulation ou de consultation de l’audit des mesures n’est encore disponible ;
 - aucune mesure clinique n’est disponible ;
 - aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
 - la comparaison inter-portées dispose désormais d’une synthèse descriptive et de graphiques en poids moyen et indice base 100 ; aucune courbe de référence de race n’est disponible ;
 - aucune interpolation, alerte, seuil ou interprétation vétérinaire n’est disponible ;
 - aucune saisie vocale n’est disponible ;
-- aucune correction ou annulation de naissance, ni réouverture de session, n’est disponible ;
 - aucune PWA ou application mobile indépendante n’existe ;
 - le statut de la portée n’est jamais modifié automatiquement.
 
@@ -445,8 +449,6 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- l’interface de correction, d’annulation et de consultation de l’audit d’une mesure `routine` ;
-- la correction ou l’annulation encadrée d’une naissance ;
 - d’éventuelles mesures cliniques ;
 - la saisie vocale ;
 - une éventuelle PWA ou application mobile indépendante.

@@ -1,6 +1,6 @@
 "use client";
 
-import { Baby, Clock3, Plus } from "lucide-react";
+import { Baby, Clock3, Pencil, Plus, Trash2 } from "lucide-react";
 import { useActionState, useCallback, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -20,12 +20,15 @@ import {
 import {
   initialWhelpingActionState,
   initialWhelpingBirthActionState,
+  initialWhelpingBirthAdjustmentActionState,
   type WhelpingActionState,
   type WhelpingBirthActionState,
+  type WhelpingBirthAdjustmentActionState,
 } from "./whelping-actions-core";
 import type {
   GenericWhelpingEventType,
   WhelpingBirthSex,
+  WhelpingBirthAdjustmentHistoryEntry,
   WhelpingBirthSummary,
   WhelpingBirthViability,
   WhelpingEventSummary,
@@ -42,9 +45,20 @@ type BirthAction = (
   formData: FormData,
 ) => Promise<WhelpingBirthActionState>;
 
+type BirthAdjustmentAction = (
+  previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+) => Promise<WhelpingBirthAdjustmentActionState>;
+
 export type WhelpingBirthWeightAction = {
   birthId: string;
   action: SimpleAction;
+};
+
+export type WhelpingBirthAdjustmentAction = {
+  birthId: string;
+  correctAction: BirthAdjustmentAction;
+  cancelAction: BirthAdjustmentAction | null;
 };
 
 type WhelpingRole = "owner" | "admin" | "member" | "viewer" | null;
@@ -88,6 +102,12 @@ function localDateTimeToIso(value: string) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
+function isoToLocalDateTime(value: string) {
+  const date = new Date(value);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
 function browserTimezone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -127,6 +147,23 @@ function ActionMessage({ state }: { state: WhelpingActionState }) {
       }
     >
       {state.message}
+    </p>
+  );
+}
+
+function AdjustmentMessage({ state }: { state: WhelpingBirthAdjustmentActionState }) {
+  if (state.status === "idle" || !state.message) return null;
+  return (
+    <p
+      role={state.status === "error" ? "alert" : "status"}
+      className={state.status === "error"
+        ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+        : "rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"}
+    >
+      {state.message}
+      {state.stale ? (
+        <> <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>Recharger les données</button></>
+      ) : null}
     </p>
   );
 }
@@ -824,17 +861,186 @@ function ReopenSessionDialog({
   );
 }
 
+function BirthCorrectionDialog({
+  birth,
+  action,
+  onSuccess,
+}: {
+  birth: WhelpingBirthSummary;
+  action: BirthAdjustmentAction;
+  onSuccess: (message: string) => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [occurredAt, setOccurredAt] = useState(() => isoToLocalDateTime(birth.occurredAt));
+  const [weight, setWeight] = useState(() => birth.birthWeightMeasurement?.grams.toString() ?? "");
+  const [weightMeasuredAt, setWeightMeasuredAt] = useState(() =>
+    birth.birthWeightMeasurement ? isoToLocalDateTime(birth.birthWeightMeasurement.measuredAt) : "",
+  );
+  const occurredAtIsoRef = useRef<HTMLInputElement>(null);
+  const weightMeasuredAtIsoRef = useRef<HTMLInputElement>(null);
+  const submitAction = useCallback(async (
+    previousState: WhelpingBirthAdjustmentActionState,
+    formData: FormData,
+  ) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.status === "success") {
+      setOpen(false);
+      onSuccess(nextState.message ?? "La naissance a été corrigée.");
+      router.refresh();
+    }
+    return nextState;
+  }, [action, onSuccess, router]);
+  const [state, formAction] = useActionState(
+    submitAction,
+    initialWhelpingBirthAdjustmentActionState,
+  );
+  const hasWeight = weight.trim().length > 0;
+
+  function prepareSubmission() {
+    if (occurredAtIsoRef.current) occurredAtIsoRef.current.value = localDateTimeToIso(occurredAt);
+    if (weightMeasuredAtIsoRef.current) {
+      weightMeasuredAtIsoRef.current.value = hasWeight ? localDateTimeToIso(weightMeasuredAt) : "";
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="outline">
+          <Pencil className="size-4" aria-hidden="true" />Corriger
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Corriger la naissance n° {birth.birthOrder}</DialogTitle>
+          <DialogDescription>
+            Le numéro d’ordre ne changera pas. L’événement initial restera conservé et une entrée d’historique sera ajoutée. La nouvelle heure doit respecter l’ordre des naissances.
+          </DialogDescription>
+        </DialogHeader>
+        <form action={formAction} onSubmit={prepareSubmission} className="space-y-4">
+          <input ref={occurredAtIsoRef} type="hidden" name="occurred_at" />
+          <input ref={weightMeasuredAtIsoRef} type="hidden" name="weight_measured_at" />
+          <label className={labelClass}>Date et heure de naissance
+            <input className={inputClass} type="datetime-local" value={occurredAt} onChange={(event) => setOccurredAt(event.target.value)} required />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className={labelClass}>Sexe
+              <select className={inputClass} name="sex" defaultValue={birth.sex} required>
+                <option value="female">Femelle</option><option value="male">Mâle</option><option value="unknown">Inconnu</option>
+              </select>
+            </label>
+            <label className={labelClass}>Viabilité
+              <select className={inputClass} name="viability" defaultValue={birth.viability} required>
+                <option value="alive">Vivant</option><option value="stillborn">Mort-né</option><option value="unknown">À confirmer</option>
+              </select>
+            </label>
+          </div>
+          <label className={labelClass}>Couleur ou collier initial
+            <input className={inputClass} name="initial_collar_color" maxLength={255} defaultValue={birth.initialCollarColor ?? ""} />
+          </label>
+          <label className={labelClass}>Note de naissance
+            <textarea className={inputClass} name="birth_note" rows={3} maxLength={5000} defaultValue={birth.note ?? ""} />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className={labelClass}>Poids de naissance (g)
+              <input className={inputClass} name="birth_weight_grams" type="number" min={1} max={100000} step={1} inputMode="numeric" value={weight} onChange={(event) => {
+                setWeight(event.target.value);
+                if (event.target.value && !weightMeasuredAt) setWeightMeasuredAt(occurredAt);
+              }} />
+            </label>
+            <label className={labelClass}>Date et heure de pesée
+              <input className={inputClass} type="datetime-local" value={weightMeasuredAt} onChange={(event) => setWeightMeasuredAt(event.target.value)} disabled={!hasWeight} required={hasWeight} />
+            </label>
+          </div>
+          <label className={labelClass}>Note du poids
+            <textarea className={inputClass} name="weight_note" rows={3} maxLength={5000} defaultValue={birth.birthWeightMeasurement?.note ?? ""} disabled={!hasWeight} />
+          </label>
+          <label className={labelClass}>Motif de la correction
+            <textarea className={inputClass} name="reason" rows={3} maxLength={500} required />
+          </label>
+          <AdjustmentMessage state={state} />
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Annuler</Button></DialogClose>
+            <SubmitButton idleLabel="Enregistrer la correction" pendingLabel="Correction..." />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BirthCancellationDialog({
+  birth,
+  action,
+  onSuccess,
+}: {
+  birth: WhelpingBirthSummary;
+  action: BirthAdjustmentAction;
+  onSuccess: (message: string) => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const cancelledAtRef = useRef<HTMLInputElement>(null);
+  const submitAction = useCallback(async (
+    previousState: WhelpingBirthAdjustmentActionState,
+    formData: FormData,
+  ) => {
+    const nextState = await action(previousState, formData);
+    if (nextState.status === "success") {
+      setOpen(false);
+      onSuccess(nextState.message ?? "La naissance a été annulée.");
+      router.refresh();
+    }
+    return nextState;
+  }, [action, onSuccess, router]);
+  const [state, formAction] = useActionState(submitAction, initialWhelpingBirthAdjustmentActionState);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="outline" className="text-destructive">
+          <Trash2 className="size-4" aria-hidden="true" />Annuler la naissance
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Annuler la naissance n° {birth.birthOrder}</DialogTitle>
+          <DialogDescription>Aucune ligne ne sera physiquement supprimée.</DialogDescription>
+        </DialogHeader>
+        <form action={formAction} onSubmit={() => { if (cancelledAtRef.current) cancelledAtRef.current.value = new Date().toISOString(); }} className="space-y-4">
+          <input ref={cancelledAtRef} type="hidden" name="cancelled_at" />
+          <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
+            <p>L’Animal sera retiré des données actives et son poids éventuel sera neutralisé.</p>
+            <p>Les compteurs de portée seront recalculés et l’ordre libéré pourra être repris par la prochaine naissance.</p>
+            <p>L’opération sera refusée si des données ultérieures existent.</p>
+          </div>
+          <label className={labelClass}>Motif de l’annulation
+            <textarea className={inputClass} name="reason" rows={3} maxLength={500} required />
+          </label>
+          <AdjustmentMessage state={state} />
+          <DialogFooter>
+            <DialogClose asChild><Button type="button" variant="outline">Conserver</Button></DialogClose>
+            <SubmitButton idleLabel="Confirmer l’annulation" pendingLabel="Annulation..." variant="destructive" />
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function Timeline({
   session,
   events,
   births,
   birthWeightActions,
+  birthAdjustmentActions,
   onWeightSuccess,
 }: {
   session: WhelpingSessionSummary;
   events: WhelpingEventSummary[];
   births: WhelpingBirthSummary[];
   birthWeightActions: WhelpingBirthWeightAction[];
+  birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
   onWeightSuccess: (message: string) => void;
 }) {
   const birthsByEventId = new Map(
@@ -842,6 +1048,9 @@ function Timeline({
   );
   const weightActionsByBirthId = new Map(
     birthWeightActions.map((entry) => [entry.birthId, entry.action]),
+  );
+  const adjustmentActionsByBirthId = new Map(
+    birthAdjustmentActions.map((entry) => [entry.birthId, entry]),
   );
 
   if (events.length === 0) {
@@ -862,6 +1071,9 @@ function Timeline({
           ? birth.cancelledAt === null
             ? weightActionsByBirthId.get(birth.id)
             : undefined
+          : undefined;
+        const birthAdjustmentAction = birth && birth.cancelledAt === null
+          ? adjustmentActionsByBirthId.get(birth.id)
           : undefined;
         const title = event.eventType === "birth"
           ? birth
@@ -963,10 +1175,95 @@ function Timeline({
                 {birth ? birth.note : event.note}
               </p>
             ) : null}
+            {birth && birthAdjustmentAction ? (
+              <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+                <BirthCorrectionDialog birth={birth} action={birthAdjustmentAction.correctAction} onSuccess={onWeightSuccess} />
+                {birthAdjustmentAction.cancelAction ? (
+                  <BirthCancellationDialog birth={birth} action={birthAdjustmentAction.cancelAction} onSuccess={onWeightSuccess} />
+                ) : null}
+              </div>
+            ) : null}
           </li>
         );
       })}
     </ol>
+  );
+}
+
+function historyText(value: string | null) {
+  return value || "Non renseigné";
+}
+
+function BirthAdjustmentHistory({
+  entries,
+  loadError,
+}: {
+  entries: WhelpingBirthAdjustmentHistoryEntry[];
+  loadError: boolean;
+}) {
+  return (
+    <details className="mt-6 rounded-xl border px-4 py-3">
+      <summary className="cursor-pointer font-semibold">Historique des rectifications</summary>
+      {loadError ? (
+        <p className="mt-3 text-sm text-muted">L’historique des rectifications n’est pas disponible pour le moment.</p>
+      ) : entries.length === 0 ? (
+        <p className="mt-3 text-sm text-muted">Aucune rectification enregistrée.</p>
+      ) : (
+        <ol className="mt-3 space-y-3">
+          {entries.map((entry, index) => {
+            const changes = [
+              entry.beforeOccurredAt !== entry.afterOccurredAt ? ["Date et heure", formatDateTime(entry.beforeOccurredAt, entry.sessionTimezoneName), formatDateTime(entry.afterOccurredAt, entry.sessionTimezoneName)] : null,
+              entry.beforeSex !== entry.afterSex ? ["Sexe", sexLabels[entry.beforeSex], sexLabels[entry.afterSex]] : null,
+              entry.beforeViability !== entry.afterViability ? ["Viabilité", viabilityLabels[entry.beforeViability], viabilityLabels[entry.afterViability]] : null,
+              entry.beforeInitialCollarColor !== entry.afterInitialCollarColor ? ["Couleur ou collier initial", historyText(entry.beforeInitialCollarColor), historyText(entry.afterInitialCollarColor)] : null,
+              entry.beforeBirthNote !== entry.afterBirthNote ? ["Note de naissance", historyText(entry.beforeBirthNote), historyText(entry.afterBirthNote)] : null,
+            ].filter((change): change is string[] => change !== null);
+            const weightLabel = entry.weightChangeType === "added"
+              ? "Poids ajouté"
+              : entry.weightChangeType === "corrected"
+                ? "Poids corrigé"
+                : entry.weightChangeType === "removed"
+                  ? "Poids retiré"
+                  : entry.weightChangeType === "neutralized_on_cancellation"
+                    ? "Poids neutralisé lors de l’annulation"
+                    : null;
+            return (
+              <li key={`${entry.actionAt}-${index}`} className="rounded-lg border p-3 text-sm">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <p className="font-semibold">{entry.adjustmentType === "correction" ? "Naissance corrigée" : "Naissance annulée"}</p>
+                  <time className="text-muted">{formatDateTime(entry.actionAt, entry.sessionTimezoneName)}</time>
+                </div>
+                <p className="mt-1 text-muted">Naissance n° {entry.birthOrder}</p>
+                <p className="mt-2 whitespace-pre-wrap">Motif : {entry.reason}</p>
+                {changes.length > 0 ? (
+                  <dl className="mt-3 space-y-2">
+                    {changes.map(([label, before, after]) => (
+                      <div key={label}><dt className="font-medium">{label}</dt><dd className="text-muted">{before} → {after}</dd></div>
+                    ))}
+                  </dl>
+                ) : null}
+                {weightLabel ? (
+                  <div className="mt-3">
+                    <p className="font-medium">{weightLabel}</p>
+                    {entry.weightChangeType === "added" ? (
+                      <p className="text-muted">{entry.afterWeightGrams} g · {entry.afterWeightMeasuredAt ? formatDateTime(entry.afterWeightMeasuredAt, entry.sessionTimezoneName) : "Heure non renseignée"}{entry.afterWeightNote ? ` · ${entry.afterWeightNote}` : ""}</p>
+                    ) : entry.weightChangeType === "corrected" ? (
+                      <div className="space-y-1 text-muted">
+                        {entry.beforeWeightGrams !== entry.afterWeightGrams ? <p>{entry.beforeWeightGrams} g → {entry.afterWeightGrams} g</p> : null}
+                        {entry.beforeWeightMeasuredAt !== entry.afterWeightMeasuredAt ? <p>Heure : {entry.beforeWeightMeasuredAt ? formatDateTime(entry.beforeWeightMeasuredAt, entry.sessionTimezoneName) : "Non renseignée"} → {entry.afterWeightMeasuredAt ? formatDateTime(entry.afterWeightMeasuredAt, entry.sessionTimezoneName) : "Non renseignée"}</p> : null}
+                        {entry.beforeWeightNote !== entry.afterWeightNote ? <p>Note : {historyText(entry.beforeWeightNote)} → {historyText(entry.afterWeightNote)}</p> : null}
+                      </div>
+                    ) : (
+                      <p className="text-muted">Ancien poids actif : {entry.beforeWeightGrams} g</p>
+                    )}
+                  </div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </details>
   );
 }
 
@@ -980,6 +1277,9 @@ export function WhelpingPanel({
   eventAction,
   birthAction,
   birthWeightActions,
+  birthAdjustmentActions,
+  adjustmentHistory,
+  adjustmentHistoryLoadError,
   closeAction,
   reopenAction,
 }: {
@@ -992,6 +1292,9 @@ export function WhelpingPanel({
   eventAction: SimpleAction | null;
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
+  birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
+  adjustmentHistory: WhelpingBirthAdjustmentHistoryEntry[];
+  adjustmentHistoryLoadError: boolean;
   closeAction: SimpleAction | null;
   reopenAction: SimpleAction | null;
 }) {
@@ -1074,7 +1377,7 @@ export function WhelpingPanel({
 
           {canCompleteClosedBirthWeights ? (
             <p className="mt-5 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
-              La session est clôturée. Les poids de naissance manquants peuvent encore être renseignés ; rouvrez la session pour reprendre la mise-bas.
+              La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés. Rouvrez la session pour reprendre la mise-bas.
             </p>
           ) : null}
 
@@ -1085,9 +1388,12 @@ export function WhelpingPanel({
               events={events}
               births={births}
               birthWeightActions={birthWeightActions}
+              birthAdjustmentActions={birthAdjustmentActions}
               onWeightSuccess={setConfirmation}
             />
           </div>
+
+          <BirthAdjustmentHistory entries={adjustmentHistory} loadError={adjustmentHistoryLoadError} />
 
           {sessionIsOpen && canWrite && closeAction ? (
             <div className="mt-6 border-t pt-5">

@@ -308,6 +308,47 @@ export type WhelpingBirthAdjustmentResult =
     }
   | ErrorResult;
 
+export type WhelpingBirthWeightChangeType =
+  | "added"
+  | "corrected"
+  | "removed"
+  | "neutralized_on_cancellation"
+  | "unchanged";
+
+export type WhelpingBirthAdjustmentHistoryEntry = {
+  adjustmentType: "correction" | "cancellation";
+  actionAt: string;
+  reason: string;
+  sessionTimezoneName: string;
+  birthOrder: number;
+  beforeOccurredAt: string;
+  afterOccurredAt: string;
+  beforeSex: WhelpingBirthSex;
+  afterSex: WhelpingBirthSex;
+  beforeViability: WhelpingBirthViability;
+  afterViability: WhelpingBirthViability;
+  beforeInitialCollarColor: string | null;
+  afterInitialCollarColor: string | null;
+  beforeBirthNote: string | null;
+  afterBirthNote: string | null;
+  beforeWeightGrams: number | null;
+  afterWeightGrams: number | null;
+  beforeWeightMeasuredAt: string | null;
+  afterWeightMeasuredAt: string | null;
+  beforeWeightNote: string | null;
+  afterWeightNote: string | null;
+  weightChangeType: WhelpingBirthWeightChangeType;
+};
+
+export type ListWhelpingBirthAdjustmentHistoryInput = {
+  litterId: string;
+  limit?: number;
+};
+
+export type ListWhelpingBirthAdjustmentHistoryResult =
+  | { outcome: "success"; entries: WhelpingBirthAdjustmentHistoryEntry[] }
+  | ErrorResult;
+
 export type CloseWhelpingSessionInput = {
   sessionId: string;
   clientCommandId: string;
@@ -1198,6 +1239,64 @@ export async function cancelWhelpingBirthCore(
   });
   if (adjusted.error) return databaseFailure("whelping_birth_cancellation_failed", adjusted.error);
   return mapBirthAdjustmentResult(adjusted.data?.[0]);
+}
+
+export async function listWhelpingBirthAdjustmentHistoryCore(
+  input: ListWhelpingBirthAdjustmentHistoryInput,
+  supabase: Supabase,
+): Promise<ListWhelpingBirthAdjustmentHistoryResult> {
+  const litterId = normalizeUuid(input.litterId);
+  const limit = input.limit ?? 100;
+  if (!litterId || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+    return invalidInput();
+  }
+
+  const listed = await supabase.rpc("list_whelping_birth_adjustment_history", {
+    p_litter_id: litterId,
+    p_limit: limit,
+  });
+  if (listed.error) {
+    return databaseFailure("whelping_birth_adjustment_history_read_failed", listed.error);
+  }
+
+  const entries: WhelpingBirthAdjustmentHistoryEntry[] = [];
+  for (const row of listed.data ?? []) {
+    if (
+      (row.adjustment_type !== "correction" && row.adjustment_type !== "cancellation") ||
+      !row.action_at || !row.reason || !row.session_timezone_name ||
+      !Number.isInteger(row.birth_order) || !row.before_occurred_at || !row.after_occurred_at ||
+      !isBirthSex(row.before_sex) || !isBirthSex(row.after_sex) ||
+      !isBirthViability(row.before_viability) || !isBirthViability(row.after_viability) ||
+      !["added", "corrected", "removed", "neutralized_on_cancellation", "unchanged"].includes(row.weight_change_type ?? "")
+    ) {
+      return databaseFailure("whelping_birth_adjustment_history_invalid_dto", null);
+    }
+    entries.push({
+      adjustmentType: row.adjustment_type,
+      actionAt: row.action_at,
+      reason: row.reason,
+      sessionTimezoneName: row.session_timezone_name,
+      birthOrder: row.birth_order,
+      beforeOccurredAt: row.before_occurred_at,
+      afterOccurredAt: row.after_occurred_at,
+      beforeSex: row.before_sex,
+      afterSex: row.after_sex,
+      beforeViability: row.before_viability,
+      afterViability: row.after_viability,
+      beforeInitialCollarColor: row.before_initial_collar_color,
+      afterInitialCollarColor: row.after_initial_collar_color,
+      beforeBirthNote: row.before_birth_note,
+      afterBirthNote: row.after_birth_note,
+      beforeWeightGrams: row.before_weight_grams,
+      afterWeightGrams: row.after_weight_grams,
+      beforeWeightMeasuredAt: row.before_weight_measured_at,
+      afterWeightMeasuredAt: row.after_weight_measured_at,
+      beforeWeightNote: row.before_weight_note,
+      afterWeightNote: row.after_weight_note,
+      weightChangeType: row.weight_change_type as WhelpingBirthWeightChangeType,
+    });
+  }
+  return { outcome: "success", entries };
 }
 
 export async function closeWhelpingSessionCore(

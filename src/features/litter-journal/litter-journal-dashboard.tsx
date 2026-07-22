@@ -30,6 +30,7 @@ import type {
 } from "@/features/whelping/whelping-actions-core";
 import type {
   WhelpingBirthSummary,
+  WhelpingBirthAdjustmentHistoryEntry,
   WhelpingEventSummary,
   WhelpingSessionSummary,
 } from "@/features/whelping/whelping-core";
@@ -48,6 +49,7 @@ import type { LitterWeighingScheduleResult } from "@/features/litter-weights/lit
 import type { LitterRoutineWeightsActionState } from "@/features/litter-weights/litter-weights-actions-core";
 import {
   WhelpingPanel,
+  type WhelpingBirthAdjustmentAction,
   type WhelpingBirthWeightAction,
 } from "@/features/whelping/whelping-panel";
 import {
@@ -205,6 +207,9 @@ export function LitterJournalDashboard({
   recordWhelpingEventAction,
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightActions,
+  whelpingBirthAdjustmentActions,
+  whelpingBirthAdjustmentHistory,
+  whelpingBirthAdjustmentHistoryLoadError,
   closeWhelpingSessionAction,
   reopenWhelpingSessionAction,
   litterWeightAnimals,
@@ -271,6 +276,9 @@ export function LitterJournalDashboard({
     formData: FormData,
   ) => Promise<WhelpingBirthActionState>) | null;
   recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[];
+  whelpingBirthAdjustmentActions: WhelpingBirthAdjustmentAction[];
+  whelpingBirthAdjustmentHistory: WhelpingBirthAdjustmentHistoryEntry[];
+  whelpingBirthAdjustmentHistoryLoadError: boolean;
   closeWhelpingSessionAction: ((
     previousState: WhelpingActionState,
     formData: FormData,
@@ -363,6 +371,9 @@ export function LitterJournalDashboard({
         eventAction={recordWhelpingEventAction}
         birthAction={recordWhelpingBirthAction}
         birthWeightActions={recordWhelpingBirthWeightActions}
+        birthAdjustmentActions={whelpingBirthAdjustmentActions}
+        adjustmentHistory={whelpingBirthAdjustmentHistory}
+        adjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoadError}
         closeAction={closeWhelpingSessionAction}
         reopenAction={reopenWhelpingSessionAction}
       />

@@ -216,17 +216,20 @@ function createFixtures() {
     set session_replication_role = replica;
     insert into public.whelping_births (
       id, organization_id, session_id, event_id, animal_id, birth_order,
-      sex, viability, initial_collar_color, created_by
+      sex, viability, initial_collar_color, occurred_at, note, created_by
     ) values
       (${q(ids.missingBirth)}::uuid, ${q(organizationId)}::uuid,
        ${q(ids.mainSession)}::uuid, ${q(ids.missingBirthEvent)}::uuid,
-       ${q(ids.missingAnimal)}::uuid, 1, 'female', 'alive', 'Rose', ${q(ownerId)}::uuid),
+       ${q(ids.missingAnimal)}::uuid, 1, 'female', 'alive', 'Rose',
+       '2026-07-19T08:00:00Z', 'Naissance sans poids UI E2E.', ${q(ownerId)}::uuid),
       (${q(ids.weightedBirth)}::uuid, ${q(organizationId)}::uuid,
        ${q(ids.mainSession)}::uuid, ${q(ids.weightedBirthEvent)}::uuid,
-       ${q(ids.weightedAnimal)}::uuid, 2, 'male', 'alive', 'Bleu', ${q(ownerId)}::uuid),
+       ${q(ids.weightedAnimal)}::uuid, 2, 'male', 'alive', 'Bleu',
+       '2026-07-19T08:10:00Z', 'Naissance déjà pesée UI E2E.', ${q(ownerId)}::uuid),
       (${q(ids.incompleteBirth)}::uuid, ${q(organizationId)}::uuid,
        ${q(ids.incompleteSession)}::uuid, ${q(ids.incompleteEvent)}::uuid,
        ${q(ids.incompleteMissingAnimal)}::uuid, 1, 'female', 'alive', null,
+       '2026-07-19T08:20:00Z', 'Naissance volontairement incomplète UI E2E.',
        ${q(ownerId)}::uuid);
     set session_replication_role = origin;
 

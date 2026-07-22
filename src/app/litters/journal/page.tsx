@@ -21,17 +21,21 @@ import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date"
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import {
   closeWhelpingSessionAction,
+  cancelWhelpingBirthAction,
+  correctWhelpingBirthAction,
   openWhelpingSessionAction,
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightAction,
   recordWhelpingEventAction,
   reopenWhelpingSessionAction,
 } from "@/features/whelping/whelping-actions";
-import type { WhelpingBirthWeightAction } from "@/features/whelping/whelping-panel";
+import type { WhelpingBirthAdjustmentAction, WhelpingBirthWeightAction } from "@/features/whelping/whelping-panel";
 import {
   listWhelpingBirthsForSession,
+  listWhelpingBirthAdjustmentHistory,
   listWhelpingEventsForSession,
   listWhelpingSessionsForLitter,
+  type WhelpingBirthSummary,
   type WhelpingSessionSummary,
 } from "@/features/whelping/whelping";
 import { createClient } from "@/lib/supabase/server";
@@ -90,6 +94,11 @@ export default async function LitterJournalPage({
   let whelpingBirths: Awaited<
     ReturnType<typeof listWhelpingBirthsForSession>
   > | null = null;
+  let allWhelpingBirths: WhelpingBirthSummary[] = [];
+  let allWhelpingBirthsReliable = false;
+  let whelpingBirthAdjustmentHistory: Awaited<
+    ReturnType<typeof listWhelpingBirthAdjustmentHistory>
+  > | null = null;
   let litterWeightHistory: Awaited<
     ReturnType<typeof listLitterWeightHistory>
   > | null = null;
@@ -103,7 +112,7 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult, adjustmentHistoryResult] =
+    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult, adjustmentHistoryResult, birthAdjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
@@ -116,6 +125,7 @@ export default async function LitterJournalPage({
           },
         }),
         listLitterWeightAdjustmentHistory({ litterId, limit: 100 }),
+        listWhelpingBirthAdjustmentHistory({ litterId, limit: 100 }),
       ]);
 
     maternalObservations =
@@ -131,6 +141,9 @@ export default async function LitterJournalPage({
     litterWeightHistory =
       weightsResult.status === "fulfilled" ? weightsResult.value : null;
     litterWeightAdjustmentHistory = adjustmentHistoryResult.status === "fulfilled" ? adjustmentHistoryResult.value : null;
+    whelpingBirthAdjustmentHistory = birthAdjustmentHistoryResult.status === "fulfilled"
+      ? birthAdjustmentHistoryResult.value
+      : null;
 
     if (whelpingSessions?.outcome === "success") {
       selectedWhelpingSession =
@@ -139,18 +152,31 @@ export default async function LitterJournalPage({
         null;
 
       if (selectedWhelpingSession) {
-        const [eventsResult, birthsResult] = await Promise.allSettled([
-          listWhelpingEventsForSession({
+        const [eventsResult, birthsResults] = await Promise.all([
+          Promise.resolve(listWhelpingEventsForSession({
             sessionId: selectedWhelpingSession.id,
-          }),
-          listWhelpingBirthsForSession({
-            sessionId: selectedWhelpingSession.id,
-          }),
+          })).then(
+            (value) => ({ status: "fulfilled" as const, value }),
+            (reason) => ({ status: "rejected" as const, reason }),
+          ),
+          Promise.allSettled(whelpingSessions.sessions.map((session) =>
+            listWhelpingBirthsForSession({ sessionId: session.id }),
+          )),
         ]);
         whelpingEvents =
           eventsResult.status === "fulfilled" ? eventsResult.value : null;
-        whelpingBirths =
-          birthsResult.status === "fulfilled" ? birthsResult.value : null;
+        const loadedBirthResults = birthsResults.flatMap((result) =>
+          result.status === "fulfilled" && result.value.outcome === "success"
+            ? [result.value]
+            : [],
+        );
+        allWhelpingBirthsReliable = loadedBirthResults.length === whelpingSessions.sessions.length;
+        allWhelpingBirths = loadedBirthResults.flatMap((result) => result.births);
+        whelpingBirths = loadedBirthResults.find((result) =>
+          result.births[0]?.sessionId === selectedWhelpingSession?.id,
+        ) ?? (allWhelpingBirthsReliable
+          ? { outcome: "success", role: whelpingSessions.role, births: [] }
+          : null);
       }
     }
   }
@@ -235,7 +261,7 @@ export default async function LitterJournalPage({
   const whelpingLoadError =
     whelpingSessionsLoaded === null ||
     (selectedWhelpingSession !== null &&
-      (whelpingEventsLoaded === null || whelpingBirthsLoaded === null));
+      (whelpingEventsLoaded === null || whelpingBirthsLoaded === null || !allWhelpingBirthsReliable));
   const whelpingServiceRoles = [
     whelpingSessionsLoaded?.role,
     selectedWhelpingSession ? whelpingEventsLoaded?.role : undefined,
@@ -331,6 +357,40 @@ export default async function LitterJournalPage({
             };
           })
       : [];
+  const lastActiveWhelpingBirth = allWhelpingBirths
+    .filter((birth) => birth.cancelledAt === null)
+    .sort((left, right) => right.birthOrder - left.birthOrder || right.occurredAt.localeCompare(left.occurredAt))[0] ?? null;
+  const whelpingBirthAdjustmentActions: WhelpingBirthAdjustmentAction[] =
+    selectedLitterId !== null && selectedSessionId !== null && whelpingDataReliable && whelpingCanWrite
+      ? (whelpingBirthsLoaded?.births ?? [])
+          .filter((birth) => birth.cancelledAt === null)
+          .map((birth) => {
+            const intention = {
+              litterId: selectedLitterId,
+              sessionId: selectedSessionId,
+              birthId: birth.id,
+              animalId: birth.animal.id,
+              expectedRevisionNo: birth.revisionNo,
+            };
+            return {
+              birthId: birth.id,
+              correctAction: correctWhelpingBirthAction.bind(null, {
+                ...intention,
+                clientCommandId: crypto.randomUUID(),
+              }),
+              cancelAction: lastActiveWhelpingBirth?.id === birth.id
+                ? cancelWhelpingBirthAction.bind(null, {
+                    ...intention,
+                    clientCommandId: crypto.randomUUID(),
+                  })
+                : null,
+            };
+          })
+      : [];
+  const whelpingBirthAdjustmentHistoryLoaded =
+    whelpingBirthAdjustmentHistory?.outcome === "success"
+      ? whelpingBirthAdjustmentHistory
+      : null;
   const litterWeightHistoryLoaded =
     litterWeightHistory?.outcome === "success" ? litterWeightHistory : null;
   const eligibleLitterWeightAnimals =
@@ -436,6 +496,9 @@ export default async function LitterJournalPage({
             recordWhelpingEventAction={recordWhelpingEvent}
             recordWhelpingBirthAction={recordWhelpingBirth}
             recordWhelpingBirthWeightActions={recordWhelpingBirthWeightActions}
+            whelpingBirthAdjustmentActions={whelpingBirthAdjustmentActions}
+            whelpingBirthAdjustmentHistory={whelpingBirthAdjustmentHistoryLoaded?.entries ?? []}
+            whelpingBirthAdjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoaded === null}
             closeWhelpingSessionAction={closeWhelpingAction}
             reopenWhelpingSessionAction={reopenWhelpingAction}
             litterWeightAnimals={litterWeightHistoryLoaded?.animals ?? []}

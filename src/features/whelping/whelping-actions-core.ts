@@ -3,6 +3,8 @@ import { z } from "zod";
 import type {
   CloseWhelpingSessionInput,
   CloseWhelpingSessionResult,
+  CancelWhelpingBirthInput,
+  CorrectWhelpingBirthInput,
   GenericWhelpingEventType,
   OpenWhelpingSessionInput,
   OpenWhelpingSessionResult,
@@ -17,6 +19,7 @@ import type {
   WhelpingBirthSex,
   WhelpingBirthViability,
   WhelpingServiceError,
+  WhelpingBirthAdjustmentResult,
 } from "./whelping-core";
 
 const UUID_PATTERN =
@@ -26,6 +29,7 @@ const MAX_TIMEZONE_LENGTH = 255;
 const MAX_COLOR_LENGTH = 255;
 const MAX_NOTE_LENGTH = 5_000;
 const MAX_REOPEN_REASON_LENGTH = 500;
+const MAX_ADJUSTMENT_REASON_LENGTH = 500;
 const MAX_BIRTH_WEIGHT_GRAMS = 100_000;
 
 const GENERIC_EVENT_TYPES = [
@@ -57,6 +61,10 @@ export type WhelpingBirthActionState = WhelpingActionState & {
   eventSequenceNo?: number;
 };
 
+export type WhelpingBirthAdjustmentActionState = WhelpingActionState & {
+  stale?: boolean;
+};
+
 export const initialWhelpingActionState = {
   status: "idle",
 } satisfies WhelpingActionState;
@@ -64,6 +72,10 @@ export const initialWhelpingActionState = {
 export const initialWhelpingBirthActionState = {
   status: "idle",
 } satisfies WhelpingBirthActionState;
+
+export const initialWhelpingBirthAdjustmentActionState = {
+  status: "idle",
+} satisfies WhelpingBirthAdjustmentActionState;
 
 export type OpenWhelpingSessionIntention = {
   litterId: string;
@@ -81,6 +93,15 @@ export type CloseWhelpingSessionIntention = RecordWhelpingEventIntention;
 export type ReopenWhelpingSessionIntention = RecordWhelpingEventIntention;
 export type RecordWhelpingBirthWeightIntention = RecordWhelpingEventIntention & {
   birthId: string;
+};
+
+export type WhelpingBirthAdjustmentIntention = {
+  litterId: string;
+  sessionId: string;
+  birthId: string;
+  animalId: string;
+  expectedRevisionNo: number;
+  clientCommandId: string;
 };
 
 export type WhelpingActionDependencies = {
@@ -102,6 +123,16 @@ export type WhelpingActionDependencies = {
   reopenSession: (
     input: ReopenWhelpingSessionInput,
   ) => Promise<ReopenWhelpingSessionResult>;
+  revalidatePath: (path: string) => void;
+};
+
+export type WhelpingBirthAdjustmentActionDependencies = {
+  correctBirth: (
+    input: CorrectWhelpingBirthInput,
+  ) => Promise<WhelpingBirthAdjustmentResult>;
+  cancelBirth: (
+    input: CancelWhelpingBirthInput,
+  ) => Promise<WhelpingBirthAdjustmentResult>;
   revalidatePath: (path: string) => void;
 };
 
@@ -209,6 +240,23 @@ function isBirthWeightIntention(
   return isSessionIntention(intention) && isValidId(intention?.birthId);
 }
 
+function isBirthAdjustmentIntention(
+  intention: WhelpingBirthAdjustmentIntention,
+): intention is WhelpingBirthAdjustmentIntention {
+  return Boolean(
+    intention &&
+    [
+      intention.litterId,
+      intention.sessionId,
+      intention.birthId,
+      intention.animalId,
+      intention.clientCommandId,
+    ].every(isValidId) &&
+    Number.isInteger(intention.expectedRevisionNo) &&
+    intention.expectedRevisionNo >= 0,
+  );
+}
+
 function isGenericEventType(value: string): value is GenericWhelpingEventType {
   return GENERIC_EVENT_TYPES.includes(value as GenericWhelpingEventType);
 }
@@ -274,6 +322,146 @@ function birthWeightErrorMessage(error: WhelpingServiceError) {
 
 function invalidState(message = "Les informations transmises sont invalides.") {
   return { status: "error", message } satisfies WhelpingActionState;
+}
+
+function adjustmentError(
+  message: string,
+  stale = false,
+): WhelpingBirthAdjustmentActionState {
+  return { status: "error", message, ...(stale ? { stale: true } : {}) };
+}
+
+function adjustmentServiceMessage(error: WhelpingServiceError) {
+  switch (error.code) {
+    case "stale_revision":
+      return {
+        message: "Cette naissance a été modifiée depuis son affichage. Rechargez les données avant de recommencer.",
+        stale: true,
+      };
+    case "no_change":
+      return { message: "Aucune modification n’a été détectée." };
+    case "later_active_birth_exists":
+      return { message: "Seule la dernière naissance active peut être annulée." };
+    case "birth_has_downstream_data":
+      return { message: "Cette naissance possède déjà des données ultérieures. Elle ne peut plus être annulée, mais ses informations peuvent éventuellement être corrigées." };
+    case "birth_time_out_of_order":
+      return { message: "L’heure indiquée est incompatible avec l’ordre des naissances." };
+    case "birth_weight_inconsistent":
+    case "invalid_birth_relations":
+      return { message: "Les données du poids de naissance ont changé depuis l’affichage." };
+    case "birth_cancelled":
+      return { message: "Cette naissance a déjà été annulée." };
+    case "conflict":
+      return { message: "Cette commande entre en conflit avec une tentative précédente. Rechargez les données." };
+    case "unauthenticated":
+    case "forbidden":
+      return { message: "Vous n’avez pas les droits nécessaires pour modifier cette naissance." };
+    case "not_found":
+      return { message: "La naissance demandée est introuvable ou inaccessible." };
+    default:
+      return { message: "Une erreur technique empêche momentanément cette opération." };
+  }
+}
+
+function revalidateBirthAdjustment(
+  dependencies: WhelpingBirthAdjustmentActionDependencies,
+  intention: WhelpingBirthAdjustmentIntention,
+) {
+  dependencies.revalidatePath("/litters/journal");
+  dependencies.revalidatePath("/litters");
+  dependencies.revalidatePath(`/litters/${intention.litterId}`);
+  dependencies.revalidatePath("/litters/journal/comparison");
+  dependencies.revalidatePath("/animals");
+  dependencies.revalidatePath(`/animals/${intention.animalId}`);
+}
+
+export async function correctWhelpingBirthActionCore(
+  intention: WhelpingBirthAdjustmentIntention,
+  _previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+  dependencies: WhelpingBirthAdjustmentActionDependencies,
+): Promise<WhelpingBirthAdjustmentActionState> {
+  if (!isBirthAdjustmentIntention(intention)) {
+    return adjustmentError("La commande de correction est invalide.");
+  }
+  const occurredAt = normalizeTimestamp(formData, "occurred_at");
+  const sex = normalizeRequiredString(formData, "sex");
+  const viability = normalizeRequiredString(formData, "viability");
+  const initialCollarColor = normalizeOptionalText(formData, "initial_collar_color", MAX_COLOR_LENGTH);
+  const birthNote = normalizeOptionalText(formData, "birth_note", MAX_NOTE_LENGTH);
+  const weightGrams = normalizeOptionalWeight(formData);
+  const weightMeasuredAt = normalizeOptionalTimestamp(formData, "weight_measured_at");
+  const weightNote = normalizeOptionalText(formData, "weight_note", MAX_NOTE_LENGTH);
+  const reason = normalizeOptionalText(formData, "reason", MAX_ADJUSTMENT_REASON_LENGTH);
+  if (
+    !occurredAt || !sex || !isBirthSex(sex) || !viability || !isBirthViability(viability) ||
+    initialCollarColor === undefined || birthNote === undefined || weightGrams === undefined ||
+    weightMeasuredAt === undefined || weightNote === undefined || !reason
+  ) {
+    return adjustmentError("Les informations de correction sont invalides.");
+  }
+  if (weightGrams === null && (weightMeasuredAt !== null || weightNote !== null)) {
+    return adjustmentError("Aucun horaire ni aucune note de poids ne peut être saisi sans poids.");
+  }
+  if (weightGrams !== null && weightMeasuredAt === null) {
+    return adjustmentError("L’heure de pesée est obligatoire lorsqu’un poids est renseigné.");
+  }
+  try {
+    const result = await dependencies.correctBirth({
+      birthId: intention.birthId,
+      clientCommandId: intention.clientCommandId,
+      expectedRevisionNo: intention.expectedRevisionNo,
+      occurredAt,
+      sex,
+      viability,
+      initialCollarColor,
+      birthNote,
+      weightGrams,
+      weightMeasuredAt,
+      weightNote,
+      reason,
+    });
+    if (result.outcome === "error") {
+      const mapped = adjustmentServiceMessage(result.error);
+      return adjustmentError(mapped.message, mapped.stale);
+    }
+    revalidateBirthAdjustment(dependencies, intention);
+    return { status: "success", message: "La naissance a été corrigée et l’événement initial a été conservé." };
+  } catch {
+    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
+  }
+}
+
+export async function cancelWhelpingBirthActionCore(
+  intention: WhelpingBirthAdjustmentIntention,
+  _previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+  dependencies: WhelpingBirthAdjustmentActionDependencies,
+): Promise<WhelpingBirthAdjustmentActionState> {
+  if (!isBirthAdjustmentIntention(intention)) {
+    return adjustmentError("La commande d’annulation est invalide.");
+  }
+  const cancelledAt = normalizeTimestamp(formData, "cancelled_at");
+  const reason = normalizeOptionalText(formData, "reason", MAX_ADJUSTMENT_REASON_LENGTH);
+  if (!cancelledAt) return adjustmentError("La date d’annulation est invalide.");
+  if (!reason) return adjustmentError("Le motif est obligatoire et doit contenir entre 1 et 500 caractères.");
+  try {
+    const result = await dependencies.cancelBirth({
+      birthId: intention.birthId,
+      clientCommandId: intention.clientCommandId,
+      expectedRevisionNo: intention.expectedRevisionNo,
+      cancelledAt,
+      reason,
+    });
+    if (result.outcome === "error") {
+      const mapped = adjustmentServiceMessage(result.error);
+      return adjustmentError(mapped.message, mapped.stale);
+    }
+    revalidateBirthAdjustment(dependencies, intention);
+    return { status: "success", message: "La naissance a été annulée sans suppression physique." };
+  } catch {
+    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
+  }
 }
 
 export async function openWhelpingSessionActionCore(

@@ -10,6 +10,7 @@ import {
   listWhelpingEventsForSessionCore,
   listWhelpingBirthsForSessionCore,
   listWhelpingSessionsForLitterCore,
+  listWhelpingBirthAdjustmentHistoryCore,
   openWhelpingSessionCore,
   recordWhelpingEventCore,
   recordWhelpingBirthCore,
@@ -33,6 +34,8 @@ export type {
   ListWhelpingBirthsForSessionResult,
   ListWhelpingSessionsForLitterInput,
   ListWhelpingSessionsForLitterResult,
+  ListWhelpingBirthAdjustmentHistoryInput,
+  ListWhelpingBirthAdjustmentHistoryResult,
   OpenWhelpingSessionInput,
   OpenWhelpingSessionResult,
   RecordWhelpingEventInput,
@@ -47,6 +50,8 @@ export type {
   CorrectWhelpingBirthInput,
   CancelWhelpingBirthInput,
   WhelpingBirthAdjustmentResult,
+  WhelpingBirthAdjustmentHistoryEntry,
+  WhelpingBirthWeightChangeType,
   WhelpingBirthAnimalSummary,
   WhelpingBirthSex,
   WhelpingBirthSummary,
@@ -89,6 +94,16 @@ export async function listWhelpingBirthsForSession(
   suppliedClient?: Supabase,
 ) {
   return listWhelpingBirthsForSessionCore(input, await serverClient(suppliedClient));
+}
+
+export async function listWhelpingBirthAdjustmentHistory(
+  input: Parameters<typeof listWhelpingBirthAdjustmentHistoryCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return listWhelpingBirthAdjustmentHistoryCore(
+    input,
+    await serverClient(suppliedClient),
+  );
 }
 
 export async function openWhelpingSession(

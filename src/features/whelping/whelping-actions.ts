@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 
 import {
   closeWhelpingSessionActionCore,
+  cancelWhelpingBirthActionCore,
+  correctWhelpingBirthActionCore,
   openWhelpingSessionActionCore,
   recordWhelpingBirthActionCore,
   recordWhelpingBirthWeightActionCore,
@@ -18,9 +20,14 @@ import {
   type WhelpingActionDependencies,
   type WhelpingActionState,
   type WhelpingBirthActionState,
+  type WhelpingBirthAdjustmentActionState,
+  type WhelpingBirthAdjustmentActionDependencies,
+  type WhelpingBirthAdjustmentIntention,
 } from "./whelping-actions-core";
 import {
   closeWhelpingSession,
+  cancelWhelpingBirth,
+  correctWhelpingBirth,
   openWhelpingSession,
   recordWhelpingBirth,
   recordWhelpingBirthWeight,
@@ -28,13 +35,15 @@ import {
   reopenWhelpingSession,
 } from "./whelping";
 
-const dependencies: WhelpingActionDependencies = {
+const dependencies: WhelpingActionDependencies & WhelpingBirthAdjustmentActionDependencies = {
   openSession: openWhelpingSession,
   recordEvent: recordWhelpingEvent,
   recordBirth: recordWhelpingBirth,
   recordBirthWeight: recordWhelpingBirthWeight,
   closeSession: closeWhelpingSession,
   reopenSession: reopenWhelpingSession,
+  correctBirth: correctWhelpingBirth,
+  cancelBirth: cancelWhelpingBirth,
   revalidatePath,
 };
 
@@ -83,6 +92,32 @@ export async function recordWhelpingBirthWeightAction(
   formData: FormData,
 ) {
   return recordWhelpingBirthWeightActionCore(
+    intention,
+    previousState,
+    formData,
+    dependencies,
+  );
+}
+
+export async function correctWhelpingBirthAction(
+  intention: WhelpingBirthAdjustmentIntention,
+  previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+) {
+  return correctWhelpingBirthActionCore(
+    intention,
+    previousState,
+    formData,
+    dependencies,
+  );
+}
+
+export async function cancelWhelpingBirthAction(
+  intention: WhelpingBirthAdjustmentIntention,
+  previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+) {
+  return cancelWhelpingBirthActionCore(
     intention,
     previousState,
     formData,

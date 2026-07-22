@@ -191,11 +191,12 @@ function createIncompleteSessionFixture() {
     set session_replication_role = replica;
     insert into public.whelping_births (
       id, organization_id, session_id, event_id, animal_id, birth_order,
-      sex, viability, initial_collar_color, created_by
+      sex, viability, initial_collar_color, occurred_at, note, created_by
     ) values (
       ${q(ids.incompleteBirth)}::uuid, ${q(organizationId)}::uuid,
       ${q(ids.incompleteSession)}::uuid, ${q(ids.incompleteEvent)}::uuid,
       ${q(ids.missingAnimal)}::uuid, 1, 'female', 'alive', 'Test',
+      '2026-07-19T07:30:00.000Z'::timestamptz, 'Événement volontairement incomplet pour le test.',
       ${q(ownerId)}::uuid
     );
     set session_replication_role = origin;
@@ -459,7 +460,7 @@ test("pilote une session de mise-bas et conserve une chronologie unique", async 
     await expect(panel.getByRole("button", { name: "Clôturer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByRole("button", { name: "Démarrer la mise-bas" })).toHaveCount(0);
     await expect(panel.getByText(
-      "La session est clôturée. Les poids de naissance manquants peuvent encore être renseignés ; rouvrez la session pour reprendre la mise-bas.",
+      "La session est clôturée. Seuls les poids de naissance manquants peuvent encore être renseignés. Rouvrez la session pour reprendre la mise-bas.",
     )).toBeVisible();
     await expect(panel.getByRole("button", { name: "Rouvrir la session" })).toBeVisible();
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
