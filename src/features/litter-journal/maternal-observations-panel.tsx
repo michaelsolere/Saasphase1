@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { useActionState, useCallback, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,7 @@ import {
   type MaternalObservationPanelItem,
   type MaternalTemperatureChartModel,
 } from "./maternal-temperature-chart-model";
+import type { MaternalTemperatureDropPolicyV1 } from "./maternal-temperature-drop-policy";
 
 const observationTypeLabels: Record<MaternalObservationType, string> = {
   temperature: "Température",
@@ -128,15 +130,132 @@ function emptyTemperatureModel(): MaternalTemperatureChartModel {
     minimumCelsius: null,
     maximumCelsius: null,
     domain: null,
+    dropMarker: {
+      status: "disabled",
+      referenceCelsius: null,
+      latestCelsius: null,
+      differenceFromReferenceCelsius: null,
+      observedDropCelsius: null,
+      thresholdCelsius: null,
+      requiredReferenceMeasurementCount: null,
+      usedReferenceMeasurementCount: 0,
+      referencePointPublicIndexes: [],
+    },
   };
 }
 
-function temperatureModel(observations: MaternalObservationPanelItem[]) {
+function temperatureModel(
+  observations: MaternalObservationPanelItem[],
+  dropPolicy: MaternalTemperatureDropPolicyV1 | null,
+  dropPolicyUnavailable: boolean,
+) {
   try {
-    return buildMaternalTemperatureChartModel(observations);
+    return buildMaternalTemperatureChartModel(
+      observations,
+      dropPolicy,
+      dropPolicyUnavailable,
+    );
   } catch {
     return emptyTemperatureModel();
   }
+}
+
+function TemperatureDropMarkerSection({
+  model,
+}: {
+  model: MaternalTemperatureChartModel;
+}) {
+  const marker = model.dropMarker;
+  return (
+    <section
+      className="mt-5 rounded-xl border bg-background p-4"
+      aria-labelledby="maternal-temperature-drop-marker-title"
+      data-testid="maternal-temperature-drop-marker"
+      data-temperature-drop-status={marker.status}
+    >
+      <h4 id="maternal-temperature-drop-marker-title" className="font-semibold">
+        Repère personnel de baisse
+      </h4>
+      {marker.status === "disabled" ? (
+        <>
+          <p className="mt-2 text-sm leading-6 text-muted">
+            Le repère personnel de baisse n’est pas activé dans les paramètres
+            de l’organisation.
+          </p>
+          <Link
+            href="/settings/organization#maternal-temperature-drop-policy"
+            className="mt-2 inline-block text-sm font-semibold text-accent hover:underline"
+          >
+            Consulter les paramètres de l’organisation
+          </Link>
+        </>
+      ) : marker.status === "policy_unavailable" ? (
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Le paramètre du repère n’est momentanément pas disponible. Les
+          températures et la courbe restent consultables.
+        </p>
+      ) : marker.status === "insufficient_history" ? (
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Repère en attente : {marker.usedReferenceMeasurementCount} mesure
+          {marker.usedReferenceMeasurementCount > 1 ? "s" : ""} de référence
+          disponible{marker.usedReferenceMeasurementCount > 1 ? "s" : ""} sur
+          les {marker.requiredReferenceMeasurementCount} nécessaires.
+        </p>
+      ) : (
+        <>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="font-medium text-muted">
+                Température de référence récente
+              </dt>
+              <dd data-testid="maternal-temperature-drop-reference">
+                {formatTemperature(marker.referenceCelsius!)} °C
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted">Dernière température</dt>
+              <dd data-testid="maternal-temperature-drop-latest">
+                {formatTemperature(marker.latestCelsius!)} °C
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted">
+                {marker.status === "reached"
+                  ? "Baisse observée"
+                  : "Variation par rapport à la référence"}
+              </dt>
+              <dd data-testid="maternal-temperature-drop-observed">
+                {marker.status === "reached"
+                  ? `${formatTemperature(marker.observedDropCelsius!)} °C`
+                  : formatSignedTemperature(
+                      marker.differenceFromReferenceCelsius!,
+                    )}
+              </dd>
+            </div>
+            <div>
+              <dt className="font-medium text-muted">Repère personnel</dt>
+              <dd data-testid="maternal-temperature-drop-threshold">
+                baisse d’au moins {formatTemperature(marker.thresholdCelsius!)} °C
+              </dd>
+            </div>
+          </dl>
+          <p
+            className="mt-3 font-semibold"
+            data-testid="maternal-temperature-drop-result"
+          >
+            {marker.status === "reached"
+              ? "Repère personnel de baisse atteint"
+              : "Repère non atteint"}
+          </p>
+          <p className="mt-3 text-sm leading-6 text-muted">
+            Cette indication matérialise une variation selon le repère défini
+            par l’éleveur. Elle ne prédit pas automatiquement le moment de la
+            mise-bas.
+          </p>
+        </>
+      )}
+    </section>
+  );
 }
 
 function localDateTimeToIso(value: string) {
@@ -408,10 +527,18 @@ function ObservationHistory({
 
 function TemperatureChartSection({
   observations,
+  dropPolicy,
+  dropPolicyUnavailable,
 }: {
   observations: MaternalObservationPanelItem[];
+  dropPolicy: MaternalTemperatureDropPolicyV1 | null;
+  dropPolicyUnavailable: boolean;
 }) {
-  const model = temperatureModel(observations);
+  const model = temperatureModel(
+    observations,
+    dropPolicy,
+    dropPolicyUnavailable,
+  );
   const latest = model.latest;
 
   return (
@@ -427,9 +554,12 @@ function TemperatureChartSection({
         Courbe de température
       </h3>
       {!latest ? (
-        <p className="mt-3 text-sm text-muted">
-          Aucune température enregistrée pour cette portée.
-        </p>
+        <>
+          <p className="mt-3 text-sm text-muted">
+            Aucune température enregistrée pour cette portée.
+          </p>
+          <TemperatureDropMarkerSection model={model} />
+        </>
       ) : (
         <>
           <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -531,6 +661,7 @@ function TemperatureChartSection({
             <span className="font-medium">Appréciation saisie :</span>{" "}
             {severityLabels[latest.severity]}
           </p>
+          <TemperatureDropMarkerSection model={model} />
           <div className="mt-5 min-w-0 overflow-hidden">
             <MaternalTemperatureChart model={model} />
           </div>
@@ -546,12 +677,16 @@ export function MaternalObservationsPanel({
   action,
   formInstanceKey,
   loadError = false,
+  temperatureDropPolicy = null,
+  temperatureDropPolicyUnavailable = false,
 }: {
   observations: MaternalObservationPanelItem[];
   role: "owner" | "admin" | "member" | "viewer" | null;
   action: RecordAction | null;
   formInstanceKey: string;
   loadError?: boolean;
+  temperatureDropPolicy?: MaternalTemperatureDropPolicyV1 | null;
+  temperatureDropPolicyUnavailable?: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
@@ -587,7 +722,11 @@ export function MaternalObservationsPanel({
         </p>
       ) : (
         <>
-          <TemperatureChartSection observations={observations} />
+          <TemperatureChartSection
+            observations={observations}
+            dropPolicy={temperatureDropPolicy}
+            dropPolicyUnavailable={temperatureDropPolicyUnavailable}
+          />
           <ObservationHistory observations={observations} />
         </>
       )}

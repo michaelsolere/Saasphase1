@@ -69,6 +69,28 @@ function pointTitle(point: MaternalTemperatureChartPoint) {
   return `${formatDateTime(point)} · ${formatNumber(point.originalValue, 3)} ${unit}${normalized} · Appréciation saisie : ${severityLabels[point.severity]}${note}`;
 }
 
+function dropMarkerTitle(model: MaternalTemperatureChartModel) {
+  const marker = model.dropMarker;
+  if (marker.status === "reached") {
+    return [
+      "Repère personnel de baisse atteint",
+      `Référence récente : ${formatNumber(marker.referenceCelsius!)} °C`,
+      `Baisse observée : ${formatNumber(marker.observedDropCelsius!)} °C`,
+      `Seuil configuré : ${formatNumber(marker.thresholdCelsius!)} °C`,
+    ].join("\n");
+  }
+  if (marker.status === "not_reached") {
+    return "Repère personnel de baisse non atteint.";
+  }
+  if (marker.status === "insufficient_history") {
+    return "Repère personnel en attente d’un historique complet.";
+  }
+  if (marker.status === "policy_unavailable") {
+    return "Paramètre du repère momentanément indisponible.";
+  }
+  return "Repère personnel de baisse désactivé.";
+}
+
 export function MaternalTemperatureChart({
   model,
 }: {
@@ -85,6 +107,11 @@ export function MaternalTemperatureChart({
   }));
   const extent =
     model.points.at(-1)!.timestamp - model.points[0].timestamp;
+  const markerReached = model.dropMarker.status === "reached";
+  const lastProjected = projected.at(-1)!;
+  const previousProjected = projected.at(-2) ?? null;
+  const chartTitle = `Courbe chronologique de température maternelle, ${model.measurementCount} mesure${model.measurementCount > 1 ? "s" : ""} saisie${model.measurementCount > 1 ? "s" : ""}`;
+  const chartDescription = `Seules les mesures saisies sont représentées. Les segments droits relient les observations successives sans interprétation. Les valeurs Fahrenheit sont seulement harmonisées en Celsius pour le graphique. ${dropMarkerTitle(model)}`;
 
   return (
     <svg
@@ -95,16 +122,8 @@ export function MaternalTemperatureChart({
       className="block h-auto max-w-full"
       data-testid="maternal-temperature-chart"
     >
-      <title id={titleId}>
-        Courbe chronologique de température maternelle, {model.measurementCount}{" "}
-        mesure{model.measurementCount > 1 ? "s" : ""} saisie
-        {model.measurementCount > 1 ? "s" : ""}
-      </title>
-      <desc id={descriptionId}>
-        Seules les mesures saisies sont représentées. Les segments droits relient
-        les observations successives sans interprétation. Les valeurs Fahrenheit
-        sont seulement harmonisées en Celsius pour le graphique.
-      </desc>
+      <title id={titleId}>{chartTitle}</title>
+      <desc id={descriptionId}>{chartDescription}</desc>
 
       {domain.celsiusTicks.map((celsius) => {
         const y = projectMaternalTemperaturePoint(
@@ -209,22 +228,62 @@ export function MaternalTemperatureChart({
         />
       ) : null}
 
-      {projected.map(({ point, x, y }) => (
-        <circle
-          key={point.publicIndex}
-          cx={x}
-          cy={y}
-          r="6"
-          fill="white"
-          stroke="#0f766e"
-          strokeWidth="4"
+      {markerReached && previousProjected ? (
+        <line
+          x1={previousProjected.x}
+          y1={previousProjected.y}
+          x2={lastProjected.x}
+          y2={lastProjected.y}
+          fill="none"
+          stroke="#9f1239"
+          strokeWidth="6"
+          strokeDasharray="8 5"
+          strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
-          data-testid="maternal-temperature-point"
-          data-temperature-point-index={point.publicIndex}
-        >
-          <title>{pointTitle(point)}</title>
-        </circle>
-      ))}
+          data-testid="maternal-temperature-drop-segment"
+          data-temperature-segment="latest"
+          aria-label="Dernier segment : repère personnel de baisse atteint"
+        />
+      ) : null}
+
+      {projected.map(({ point, x, y }, index) => {
+        const isReachedLatest = markerReached && index === projected.length - 1;
+        const accessiblePointTitle = `${pointTitle(point)}${
+          index === projected.length - 1 ? `\n${dropMarkerTitle(model)}` : ""
+        }`;
+        return (
+          <g key={point.publicIndex}>
+            {isReachedLatest ? (
+              <circle
+                cx={x}
+                cy={y}
+                r="11"
+                fill="none"
+                stroke="#9f1239"
+                strokeWidth="3"
+                strokeDasharray="3 2"
+                vectorEffect="non-scaling-stroke"
+                data-testid="maternal-temperature-drop-point-outline"
+                aria-hidden="true"
+              />
+            ) : null}
+            <circle
+              cx={x}
+              cy={y}
+              r="6"
+              fill="white"
+              stroke={isReachedLatest ? "#9f1239" : "#0f766e"}
+              strokeWidth={isReachedLatest ? "5" : "4"}
+              vectorEffect="non-scaling-stroke"
+              data-testid="maternal-temperature-point"
+              data-temperature-point-index={point.publicIndex}
+              data-temperature-drop-marker={isReachedLatest ? "reached" : undefined}
+            >
+              <title>{accessiblePointTitle}</title>
+            </circle>
+          </g>
+        );
+      })}
     </svg>
   );
 }

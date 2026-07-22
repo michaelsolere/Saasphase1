@@ -11,10 +11,12 @@ test.setTimeout(180_000);
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const ownerMembershipId = "30000000-0000-4000-8000-000000000001";
-const prefix = "a7c24022-0000-4000-8000-0000000000";
-const uuidPrefix = "a7c24022-%";
+const prefix = "b8d22003-0000-4000-8000-0000000000";
+const uuidPrefix = "b8d22003-%";
+const previousUuidPrefix = "a7c24022-%";
 const historicalUuidPrefix = "9f180006-%";
-const fixturePrefix = "E2E maternal temperature chart 20260722";
+const fixturePrefix = "E2E maternal temperature drop marker 20260722";
+const previousFixturePrefix = "E2E maternal temperature chart 20260722";
 const historicalFixturePrefix = "E2E maternal observations UI";
 
 const ids = {
@@ -34,26 +36,65 @@ function sql(statement: string) {
   return runE2eSqlSync(statement);
 }
 
+function restoreTemperatureDropPolicyConstraint() {
+  sql(`
+    update public.organization_settings
+    set maternal_temperature_drop_policy = null
+    where maternal_temperature_drop_policy is not null
+      and not public.is_valid_maternal_temperature_drop_policy(
+        maternal_temperature_drop_policy
+      );
+    do $$
+    begin
+      if not exists (
+        select 1 from pg_constraint
+        where conname = 'organization_settings_maternal_temperature_drop_policy_check'
+          and conrelid = 'public.organization_settings'::regclass
+      ) then
+        alter table public.organization_settings
+          add constraint organization_settings_maternal_temperature_drop_policy_check
+          check (
+            maternal_temperature_drop_policy is null
+            or public.is_valid_maternal_temperature_drop_policy(
+              maternal_temperature_drop_policy
+            )
+          );
+      end if;
+    end $$;
+  `);
+}
+
 function cleanup() {
   sql(`
     delete from public.maternal_observations
     where litter_id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+       or litter_id::text like ${q(previousUuidPrefix)}
        or litter_id::text like ${q(historicalUuidPrefix)}
        or client_command_id::text like ${q(uuidPrefix)}
+       or client_command_id::text like ${q(previousUuidPrefix)}
        or client_command_id::text like ${q(historicalUuidPrefix)};
 
     delete from public.litters
     where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+       or id::text like ${q(previousUuidPrefix)}
        or id::text like ${q(historicalUuidPrefix)}
        or name like ${q(`${fixturePrefix}%`)}
+       or name like ${q(`${previousFixturePrefix}%`)}
        or name like ${q(`${historicalFixturePrefix}%`)};
 
     delete from public.animals
     where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid)
+       or id::text like ${q(previousUuidPrefix)}
        or id::text like ${q(historicalUuidPrefix)};
+
+    delete from public.organization_settings
+    where organization_id = ${q(ids.otherOrganization)}::uuid
+       or organization_id::text like ${q(previousUuidPrefix)}
+       or organization_id::text like ${q(historicalUuidPrefix)};
 
     delete from public.organizations
     where id = ${q(ids.otherOrganization)}::uuid
+       or id::text like ${q(previousUuidPrefix)}
        or id::text like ${q(historicalUuidPrefix)};
 
     set session_replication_role = replica;
@@ -72,26 +113,38 @@ function remainingFixtureCounts() {
         'maternal_observations', (
           select count(*) from public.maternal_observations
           where litter_id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+             or litter_id::text like ${q(previousUuidPrefix)}
              or litter_id::text like ${q(historicalUuidPrefix)}
              or client_command_id::text like ${q(uuidPrefix)}
+             or client_command_id::text like ${q(previousUuidPrefix)}
              or client_command_id::text like ${q(historicalUuidPrefix)}
         ),
         'litters', (
           select count(*) from public.litters
           where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+             or id::text like ${q(previousUuidPrefix)}
              or id::text like ${q(historicalUuidPrefix)}
              or name like ${q(`${fixturePrefix}%`)}
+             or name like ${q(`${previousFixturePrefix}%`)}
              or name like ${q(`${historicalFixturePrefix}%`)}
         ),
         'animals', (
           select count(*) from public.animals
           where id in (${q(ids.mother)}::uuid, ${q(ids.foreignMother)}::uuid)
+             or id::text like ${q(previousUuidPrefix)}
              or id::text like ${q(historicalUuidPrefix)}
         ),
         'organizations', (
           select count(*) from public.organizations
           where id = ${q(ids.otherOrganization)}::uuid
+             or id::text like ${q(previousUuidPrefix)}
              or id::text like ${q(historicalUuidPrefix)}
+        ),
+        'organization_settings', (
+          select count(*) from public.organization_settings
+          where organization_id = ${q(ids.otherOrganization)}::uuid
+             or organization_id::text like ${q(previousUuidPrefix)}
+             or organization_id::text like ${q(historicalUuidPrefix)}
         ),
         'membership_role_changes', (
           select count(*) from public.memberships
@@ -109,6 +162,7 @@ function fixtureIdentifiers() {
         'organizations', coalesce((
           select json_agg(id order by id) from public.organizations
           where id = ${q(ids.otherOrganization)}::uuid
+             or id::text like ${q(previousUuidPrefix)}
         ), '[]'::json),
         'animals', coalesce((
           select json_agg(id order by id) from public.animals
@@ -117,6 +171,10 @@ function fixtureIdentifiers() {
         'litters', coalesce((
           select json_agg(id order by id) from public.litters
           where id in (${q(ids.mainLitter)}::uuid, ${q(ids.foreignLitter)}::uuid)
+        ), '[]'::json),
+        'organization_settings', coalesce((
+          select json_agg(id order by id) from public.organization_settings
+          where organization_id = ${q(ids.otherOrganization)}::uuid
         ), '[]'::json),
         'maternal_observations', coalesce((
           select json_agg(id order by observed_at, id)
@@ -194,6 +252,15 @@ function createFixtures() {
       (${q(ids.foreignMother)}::uuid, ${q(ids.otherOrganization)}::uuid,
        'Mère étrangère observations UI E2E', 'dog', 'Golden Retriever', 'female',
        'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+
+    insert into public.organization_settings (
+      organization_id, maternal_temperature_drop_policy, created_by, updated_by
+    ) values (
+      ${q(ids.otherOrganization)}::uuid,
+      '{"version":1,"referenceMeasurementCount":2,"dropThresholdCelsius":2}'::jsonb,
+      ${q(ownerId)}::uuid,
+      ${q(ownerId)}::uuid
+    );
 
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status, created_by, updated_by
@@ -274,11 +341,24 @@ async function fillTemperature(
 }
 
 test("enregistre et affiche les observations maternelles dans le Journal", async ({ page }) => {
+  restoreTemperatureDropPolicyConstraint();
+  const originalSettingsJson = sql(`
+    select to_jsonb(settings)::text
+    from public.organization_settings settings
+    where organization_id = ${q(organizationId)}::uuid;
+  `);
+  expect(originalSettingsJson).toBeTruthy();
   cleanup();
   expectCleanupAtZero();
 
   try {
     createFixtures();
+    sql(`
+      update public.organization_settings
+      set maternal_temperature_drop_policy =
+        '{"version":1,"referenceMeasurementCount":3,"dropThresholdCelsius":0.7}'::jsonb
+      where organization_id = ${q(organizationId)}::uuid;
+    `);
     logFixtureIdentifiers("created-base");
     const outOfScopeBefore = outOfScopeCounts();
     await login(page);
@@ -303,7 +383,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     await expect(dialog.getByLabel("Date et heure")).toHaveJSProperty("validity.valid", false);
     await fillTemperature(dialog, {
       observedAt: "2026-07-18T10:15",
-      numericValue: "38.4",
+      numericValue: "38.2",
       severity: "watch",
       note: "Température Celsius saisie.",
     });
@@ -324,7 +404,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
       });
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
     await expect(page.getByText("L’observation maternelle a été enregistrée.")).toBeVisible();
-    await expect(panel.locator("li").getByText("38,4 °C", { exact: true })).toBeVisible();
+    await expect(panel.locator("li").getByText("38,2 °C", { exact: true })).toBeVisible();
     await expect(panel.locator("li").getByText("Température Celsius saisie.", { exact: true })).toBeVisible();
     await expect(
       panel.locator("li").filter({ hasText: "Température Celsius saisie." }),
@@ -349,7 +429,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
       ),
     ).toMatchObject({
       timezone_name: browserTimezone,
-      numeric_value: "38.4000",
+      numeric_value: "38.2000",
       unit: "celsius",
       severity: "watch",
       note: "Température Celsius saisie.",
@@ -371,12 +451,12 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     await expect(dialog.getByLabel("Unité")).toHaveValue("celsius");
     await fillTemperature(dialog, {
       observedAt: "2026-07-18T12:20",
-      numericValue: "98.6",
+      numericValue: "100.76",
       unit: "fahrenheit",
       severity: "routine",
     });
     await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
-    await expect(panel.locator("li").getByText("98,6 °F", { exact: true })).toBeVisible();
+    await expect(panel.locator("li").getByText("100,76 °F", { exact: true })).toBeVisible();
     expect(maternalObservationCount()).toBe(2);
     logFixtureIdentifiers("temperature-fahrenheit");
 
@@ -407,7 +487,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     dialog = await openObservationDialog(page);
     await fillTemperature(dialog, {
       observedAt: "2026-07-18T18:20",
-      numericValue: "37.4",
+      numericValue: "38.2",
       severity: "urgent",
       note: "Troisième température saisie.",
     });
@@ -436,31 +516,131 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     const pointTitles = await chartPoints.evaluateAll((points) =>
       points.map((point) => point.querySelector("title")?.textContent ?? ""),
     );
-    expect(pointTitles[0]).toContain("38,4 °C");
-    expect(pointTitles[1]).toContain("98,6 °F · 37 °C après harmonisation graphique");
-    expect(pointTitles[2]).toContain("37,4 °C");
+    expect(pointTitles[0]).toContain("38,2 °C");
+    expect(pointTitles[1]).toContain("100,76 °F · 38,2 °C après harmonisation graphique");
+    expect(pointTitles[2]).toContain("38,2 °C");
     expect(pointTitles.join(" ")).not.toContain("Comportement plus calme.");
-    await expect(chartSection.getByTestId("maternal-temperature-latest")).toContainText("37,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-latest")).toContainText("38,2 °C");
     await expect(chartSection.getByTestId("maternal-temperature-latest-date")).toContainText(formattedLatestTemperatureDate);
-    await expect(chartSection.getByTestId("maternal-temperature-previous")).toContainText("37 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-previous")).toContainText("38,2 °C");
     await expect(chartSection.getByTestId("maternal-temperature-count")).toContainText("3");
-    await expect(chartSection.getByTestId("maternal-temperature-difference")).toContainText("+0,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-difference")).toContainText("0 °C");
     await expect(chartSection.getByTestId("maternal-temperature-interval")).toContainText("6 h");
-    await expect(chartSection.getByTestId("maternal-temperature-minimum")).toContainText("37 °C");
-    await expect(chartSection.getByTestId("maternal-temperature-maximum")).toContainText("38,4 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-minimum")).toContainText("38,2 °C");
+    await expect(chartSection.getByTestId("maternal-temperature-maximum")).toContainText("38,2 °C");
     await expect(chartSection.getByTestId("maternal-temperature-severity")).toHaveText("Appréciation saisie : Urgent");
+
+    const waitingMarker = chartSection.getByTestId("maternal-temperature-drop-marker");
+    await expect(waitingMarker).toHaveAttribute("data-temperature-drop-status", "insufficient_history");
+    await expect(waitingMarker).toContainText("2 mesures de référence disponibles sur les 3 nécessaires");
+
+    dialog = await openObservationDialog(page);
+    await fillTemperature(dialog, {
+      observedAt: "2026-07-18T20:20",
+      numericValue: "37.8",
+      severity: "watch",
+      note: "Repère non atteint.",
+    });
+    await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
+    await expect(
+      panel.locator("li").getByText("Repère non atteint.", { exact: true }),
+    ).toBeVisible();
+    expect(maternalObservationCount()).toBe(5);
+    const nonReachedMarker = chartSection.getByTestId("maternal-temperature-drop-marker");
+    await expect(nonReachedMarker).toHaveAttribute("data-temperature-drop-status", "not_reached");
+    await expect(nonReachedMarker.getByTestId("maternal-temperature-drop-reference")).toHaveText("38,2 °C");
+    await expect(nonReachedMarker.getByTestId("maternal-temperature-drop-latest")).toHaveText("37,8 °C");
+    await expect(nonReachedMarker.getByTestId("maternal-temperature-drop-observed")).toHaveText("−0,4 °C");
+    await expect(nonReachedMarker.getByTestId("maternal-temperature-drop-threshold")).toContainText("0,7 °C");
+    await expect(nonReachedMarker.getByTestId("maternal-temperature-drop-result")).toHaveText("Repère non atteint");
+    await expect(chartSection.getByTestId("maternal-temperature-drop-segment")).toHaveCount(0);
+    await expect(chartSection.getByTestId("maternal-temperature-drop-point-outline")).toHaveCount(0);
+    expect((await panel.textContent()) ?? "").not.toMatch(/24\s*(?:à|–|-)\s*36|mise-bas imminente|chute annonciatrice|alerte médicale|température anormale/i);
+
+    dialog = await openObservationDialog(page);
+    await fillTemperature(dialog, {
+      observedAt: "2026-07-18T22:20",
+      numericValue: "37.3",
+      severity: "routine",
+      note: "Repère atteint sans prédiction.",
+    });
+    await dialog.getByRole("button", { name: "Enregistrer l’observation" }).click();
+    await expect(
+      panel.locator("li").getByText("Repère atteint sans prédiction.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(maternalObservationCount()).toBe(6);
+    const reachedMarker = chartSection.getByTestId("maternal-temperature-drop-marker");
+    await expect(reachedMarker).toHaveAttribute("data-temperature-drop-status", "reached");
+    await expect(reachedMarker.getByTestId("maternal-temperature-drop-reference")).toHaveText("38,2 °C");
+    await expect(reachedMarker.getByTestId("maternal-temperature-drop-latest")).toHaveText("37,3 °C");
+    await expect(reachedMarker.getByTestId("maternal-temperature-drop-observed")).toHaveText("0,9 °C");
+    await expect(reachedMarker.getByTestId("maternal-temperature-drop-threshold")).toContainText("0,7 °C");
+    await expect(reachedMarker.getByTestId("maternal-temperature-drop-result")).toHaveText("Repère personnel de baisse atteint");
+    await expect(chartSection.getByTestId("maternal-temperature-drop-segment")).toHaveAttribute("data-temperature-segment", "latest");
+    await expect(chartSection.getByTestId("maternal-temperature-drop-point-outline")).toHaveCount(1);
+    const reachedPoints = chartSection.getByTestId("maternal-temperature-point");
+    await expect(reachedPoints).toHaveCount(5);
+    for (let index = 0; index < 4; index += 1) {
+      await expect(reachedPoints.nth(index)).not.toHaveAttribute("data-temperature-drop-marker", "reached");
+    }
+    await expect(reachedPoints.nth(4)).toHaveAttribute("data-temperature-drop-marker", "reached");
+    const latestTitle = await reachedPoints.nth(4).locator("title").textContent();
+    expect(latestTitle).toContain("Repère personnel de baisse atteint");
+    expect(latestTitle).toContain("Référence récente : 38,2 °C");
+    expect(latestTitle).toContain("Baisse observée : 0,9 °C");
+    expect(latestTitle).toContain("Seuil configuré : 0,7 °C");
+
+    // An invalid persisted policy is isolated from the authorized observations.
+    sql(`
+      alter table public.organization_settings
+        drop constraint organization_settings_maternal_temperature_drop_policy_check;
+      update public.organization_settings
+      set maternal_temperature_drop_policy =
+        '{"version":1,"referenceMeasurementCount":3,"dropThresholdCelsius":0.7,"technical":"hidden"}'::jsonb
+      where organization_id = ${q(organizationId)}::uuid;
+    `);
+    await page.reload();
+    await expect(panel.getByTestId("maternal-temperature-chart")).toBeVisible();
+    const unavailableMarker = panel.getByTestId("maternal-temperature-drop-marker");
+    await expect(unavailableMarker).toHaveAttribute(
+      "data-temperature-drop-status",
+      "policy_unavailable",
+    );
+    await expect(unavailableMarker).toContainText(
+      "Le paramètre du repère n’est momentanément pas disponible",
+    );
+    await expect(
+      panel.getByText("Repère atteint sans prédiction.", { exact: true }),
+    ).toBeVisible();
+    await expect(panel.getByTestId("maternal-temperature-drop-segment")).toHaveCount(0);
+    await expect(panel.getByRole("button", { name: "Ajouter une observation" })).toHaveCount(1);
+    sql(`
+      update public.organization_settings
+      set maternal_temperature_drop_policy =
+        '{"version":1,"referenceMeasurementCount":3,"dropThresholdCelsius":0.7}'::jsonb
+      where organization_id = ${q(organizationId)}::uuid;
+    `);
+    restoreTemperatureDropPolicyConstraint();
+    await page.reload();
+    await expect(panel.getByTestId("maternal-temperature-drop-result")).toHaveText(
+      "Repère personnel de baisse atteint",
+    );
 
     const historyText = await panel.locator("li").evaluateAll((items) =>
       items.map((item) => item.textContent ?? ""),
     );
-    expect(historyText[0]).toContain("37,4 °C");
-    expect(historyText[1]).toContain("Comportement");
-    expect(historyText[2]).toContain("98,6 °F");
-    expect(historyText[3]).toContain("38,4 °C");
+    expect(historyText[0]).toContain("37,3 °C");
+    expect(historyText[1]).toContain("37,8 °C");
+    expect(historyText[2]).toContain("38,2 °C");
+    expect(historyText[3]).toContain("Comportement");
+    expect(historyText[4]).toContain("100,76 °F");
+    expect(historyText[5]).toContain("38,2 °C");
 
     await page.reload();
     await expect(panel.getByText("Comportement plus calme.")).toBeVisible();
-    await expect(panel.locator("li").getByText("98,6 °F", { exact: true })).toBeVisible();
+    await expect(panel.locator("li").getByText("100,76 °F", { exact: true })).toBeVisible();
 
     const beforeDoubleClick = maternalObservationCount();
     dialog = await openObservationDialog(page);
@@ -475,6 +655,7 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     await page.reload();
     await expect(panel.getByText("Double clic protégé.")).toBeVisible();
     await expect(panel.getByTestId("maternal-temperature-chart")).toBeVisible();
+    await expect(panel.getByTestId("maternal-temperature-drop-result")).toHaveText("Repère personnel de baisse atteint");
     await expect(panel.getByText("Comportement plus calme.")).toBeVisible();
     await expect(panel.getByRole("button", { name: "Ajouter une observation" })).toHaveCount(0);
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -515,7 +696,18 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     expect(outOfScopeCounts()).toEqual(outOfScopeBefore);
   } finally {
     logFixtureIdentifiers("before-cleanup");
+    restoreTemperatureDropPolicyConstraint();
     cleanup();
+    sql(`
+      delete from public.organization_settings
+      where organization_id = ${q(organizationId)}::uuid;
+      insert into public.organization_settings
+      select restored.*
+      from jsonb_populate_record(
+        null::public.organization_settings,
+        ${q(originalSettingsJson)}::jsonb
+      ) restored;
+    `);
     expectCleanupAtZero();
     console.info(`[maternal-temperature-chart fixtures:after-cleanup] ${JSON.stringify(remainingFixtureCounts())}`);
   }

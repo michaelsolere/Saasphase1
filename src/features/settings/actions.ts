@@ -10,6 +10,7 @@ import {
 } from "@/features/settings/organization-logo-service";
 import type { OrganizationLogoValidationCode } from "@/features/settings/organization-logo-image";
 import { parseLitterWeighingSchedulePolicy } from "@/features/litter-weights/litter-weighing-schedule-model";
+import { parseMaternalTemperatureDropPolicy } from "@/features/litter-journal/maternal-temperature-drop-policy";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
@@ -92,6 +93,12 @@ function litterWeighingPolicyStatusUrl(
   outcome: "success" | "reset" | "error",
 ) {
   return `${settingsPath}?litter_weighing_policy_status=${outcome}#litter-weighing-policy`;
+}
+
+function maternalTemperatureDropPolicyStatusUrl(
+  outcome: "success" | "disabled" | "error",
+) {
+  return `${settingsPath}?maternal_temperature_drop_policy_status=${outcome}#maternal-temperature-drop-policy`;
 }
 
 function brevoStatusUrl(outcome: string) {
@@ -388,6 +395,129 @@ export async function updateLitterWeighingSchedulePolicy(formData: FormData) {
   revalidatePath(settingsPath);
   revalidatePath("/litters/journal");
   redirect(litterWeighingPolicyStatusUrl("success"));
+}
+
+export async function updateMaternalTemperatureDropPolicy(formData: FormData) {
+  const intent = normalizeOptionalText(formData.get("intent"), 32);
+  if (intent !== "enable" && intent !== "disable") {
+    redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+  }
+
+  let policy: Json | null = null;
+  if (intent === "enable") {
+    const policyJson = formData.get("policy_json");
+    if (typeof policyJson !== "string") {
+      redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+    }
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(policyJson);
+    } catch {
+      redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+    }
+    const parsedPolicy = parseMaternalTemperatureDropPolicy(parsedJson);
+    if (!parsedPolicy.ok) {
+      redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+    }
+    policy = JSON.parse(JSON.stringify(parsedPolicy.policy)) as Json;
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("organization_id, role")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (
+    membershipError ||
+    !membership?.organization_id ||
+    (membership.role !== "owner" && membership.role !== "admin")
+  ) {
+    redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+  }
+
+  const organizationId = membership.organization_id;
+  const timestamp = new Date().toISOString();
+  const { data: existingSettings, error: readError } = await supabase
+    .from("organization_settings")
+    .select("id, deleted_at")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+  if (readError) redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+
+  if (intent === "disable") {
+    if (existingSettings) {
+      const { error } = await supabase
+        .from("organization_settings")
+        .update({
+          maternal_temperature_drop_policy: null,
+          updated_by: user.id,
+          updated_at: timestamp,
+        })
+        .eq("id", existingSettings.id)
+        .eq("organization_id", organizationId);
+      if (error) redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+    }
+    revalidatePath(settingsPath);
+    revalidatePath("/litters/journal");
+    redirect(maternalTemperatureDropPolicyStatusUrl("disabled"));
+  }
+
+  const updatePayload = {
+    maternal_temperature_drop_policy: policy,
+    deleted_at: null,
+    updated_by: user.id,
+    updated_at: timestamp,
+  };
+  if (existingSettings) {
+    const { error } = await supabase
+      .from("organization_settings")
+      .update(updatePayload)
+      .eq("id", existingSettings.id)
+      .eq("organization_id", organizationId);
+    if (error) redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+  } else {
+    const { error: insertError } = await supabase
+      .from("organization_settings")
+      .insert({
+        organization_id: organizationId,
+        ...updatePayload,
+        created_by: user.id,
+      });
+    if (insertError?.code === "23505") {
+      const { data: concurrentSettings, error: retryReadError } = await supabase
+        .from("organization_settings")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (retryReadError || !concurrentSettings) {
+        redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+      }
+      const { error: retryUpdateError } = await supabase
+        .from("organization_settings")
+        .update(updatePayload)
+        .eq("id", concurrentSettings.id)
+        .eq("organization_id", organizationId);
+      if (retryUpdateError) {
+        redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+      }
+    } else if (insertError) {
+      redirect(maternalTemperatureDropPolicyStatusUrl("error"));
+    }
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath("/litters/journal");
+  redirect(maternalTemperatureDropPolicyStatusUrl("success"));
 }
 
 async function requireCurrentAdminOrganization(errorOutcome: string) {

@@ -25,6 +25,7 @@ import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationPanelItem } from "./maternal-temperature-chart-model";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
 import type { MaternalObservationSummary } from "./maternal-observations";
+import type { MaternalTemperatureDropPolicyV1 } from "./maternal-temperature-drop-policy";
 import type {
   WhelpingActionState,
   WhelpingBirthActionState,
@@ -188,6 +189,8 @@ export function LitterJournalDashboard({
   maternalObservationRole,
   maternalObservationAction,
   maternalObservationsLoadError,
+  maternalTemperatureDropPolicy,
+  maternalTemperatureDropPolicyUnavailable,
   litterCareTasks,
   litterCareTaskRole,
   litterCareTaskGenerationEntries,
@@ -236,6 +239,8 @@ export function LitterJournalDashboard({
     formData: FormData,
   ) => Promise<MaternalObservationActionState>) | null;
   maternalObservationsLoadError: boolean;
+  maternalTemperatureDropPolicy: MaternalTemperatureDropPolicyV1 | null;
+  maternalTemperatureDropPolicyUnavailable: boolean;
   litterCareTasks: LitterCareTaskSummary[];
   litterCareTaskRole: "owner" | "admin" | "member" | "viewer" | null;
   litterCareTaskGenerationEntries: LitterCareTaskGenerationPanelEntry[];
@@ -421,6 +426,8 @@ export function LitterJournalDashboard({
         action={maternalObservationAction}
         formInstanceKey={maternalObservationFormInstanceKey}
         loadError={maternalObservationsLoadError}
+        temperatureDropPolicy={maternalTemperatureDropPolicy}
+        temperatureDropPolicyUnavailable={maternalTemperatureDropPolicyUnavailable}
       />
       <LitterCareTaskGenerationPanel
         entries={litterCareTaskGenerationEntries}

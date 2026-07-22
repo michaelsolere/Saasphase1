@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `9e5347c0366504e2b61ebd03736738b6ee7b3d65`.
-- La dernière migration incluse est `202607220002_whelping_birth_replacement_projection_fix`.
+- SHA de base vérifié avant ce lot : `4969ce94b46f00cb728fb97aa849e4888f029640`.
+- La dernière migration incluse est `202607220003_maternal_temperature_drop_policy`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -88,6 +88,38 @@ de soin. L’appréciation affichée reste strictement la valeur `routine`, `wat
 `concern` ou `urgent` saisie par l’éleveur. Le rôle `viewer` accède à la courbe,
 à la synthèse et à l’historique en lecture seule. Le DTO transmis au panneau ne
 contient aucun UUID, auteur, identifiant de commande ou identifiant de base.
+
+#### Repère personnel de baisse de température maternelle
+
+Chaque organisation peut activer indépendamment un repère personnel V1 dans
+`/settings/organization`. Sa politique contient exclusivement sa version, un
+nombre de 2 à 10 mesures de référence et une baisse minimale de 0,1 à 3,0 °C,
+avec au maximum deux décimales. L’absence de politique désactive le repère. Les
+valeurs proposées lors de la première activation sont présentées comme un
+simple exemple modifiable et jamais comme un seuil vétérinaire.
+
+Pour la dernière température réelle valide, le calcul l’exclut toujours de sa
+propre référence, retient les N températures immédiatement précédentes et
+exige l’historique complet. La référence est leur médiane : valeur centrale
+pour un nombre impair, moyenne des deux valeurs centrales pour un nombre pair.
+Les valeurs Fahrenheit sont harmonisées en Celsius avant ce calcul, selon la
+même conversion que la courbe. Aucune interpolation, pondération,
+extrapolation ou heure prévue de mise-bas n’intervient.
+
+Le Journal distingue les états désactivé, paramètre momentanément indisponible,
+historique insuffisant, repère non atteint et repère atteint. Dans le dernier
+cas seulement, le dernier segment réel est différencié par un motif, et le
+dernier point reçoit un double contour ; les anciens points et toute la courbe
+historique restent inchangés. Le texte donne la référence récente, la dernière
+mesure, la variation ou la baisse observée et le seuil personnel configuré.
+
+Ce repère matérialise uniquement une variation selon les paramètres de
+l’éleveur. Il ne prédit pas automatiquement le moment de la mise-bas, ne classe
+aucune température comme normale ou anormale et n’impose aucun seuil médical.
+Les rôles `owner` et `admin` peuvent modifier la politique ; `member` et
+`viewer` la consultent en lecture seule. Une erreur de lecture ou une valeur
+persistée invalide est isolée : les observations et la courbe restent visibles,
+et le repère est neutralisé avec une indication neutre.
 
 Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
 
