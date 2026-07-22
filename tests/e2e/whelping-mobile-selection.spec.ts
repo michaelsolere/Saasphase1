@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { validateLoginReturnPath } from "../../src/features/auth/login-return";
 import type { LitterJournalListItem } from "../../src/features/litter-journal/types";
+import { config as proxyConfig } from "../../src/proxy";
 import {
   parsePublicLitterIndex,
   resolveMobileLitterIndex,
@@ -83,4 +84,11 @@ test("autorise uniquement les retours de connexion vers le mode mise-bas", () =>
     expect(validateLoginReturnPath(rejected), rejected).toBeNull();
   }
   expect(validateLoginReturnPath(undefined)).toBeNull();
+});
+
+test("rafraîchit la session Supabase sur la route mobile installée", () => {
+  expect(proxyConfig.matcher).toContain("/whelping/:path*");
+  expect(proxyConfig.matcher).toEqual(
+    expect.arrayContaining(["/candidatures/:path*", "/login"]),
+  );
 });

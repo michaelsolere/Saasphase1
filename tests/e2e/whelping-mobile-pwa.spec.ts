@@ -141,6 +141,15 @@ async function verifyLoginReturns(browser: Browser) {
   }
 }
 
+async function verifyAuthenticatedLoginReturns(page: Page) {
+  await page.goto("/login?next=%2Fwhelping%3Flitter%3D1");
+  await expect(page).toHaveURL(/\/whelping\?litter=1$/);
+
+  await page.goto("/login?next=https%3A%2F%2Fautre-site.example");
+  await expect(page).toHaveURL(/\/candidatures$/);
+  expect(page.url()).not.toContain("autre-site.example");
+}
+
 test("partage le Journal, reste autonome, installable et online-only", async ({ page, browser, request }) => {
   cleanup();
   expectCleanupAtZero();
@@ -215,6 +224,7 @@ test("partage le Journal, reste autonome, installable et online-only", async ({ 
     await expect(panel(page).getByRole("button")).toHaveCount(0);
     setOwnerRole("owner");
 
+    await verifyAuthenticatedLoginReturns(page);
     await verifyLoginReturns(browser);
 
     await page.setViewportSize({ width: 375, height: 812 });
