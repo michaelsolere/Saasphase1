@@ -3,12 +3,17 @@
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  defaultLoginSuccessPath,
+  validateLoginReturnPath,
+} from "@/features/auth/login-return";
 
 export type LoginState = {
   error: string | null;
 };
 
 export async function login(
+  returnPath: string | null,
   _previousState: LoginState,
   formData: FormData,
 ): Promise<LoginState> {
@@ -38,7 +43,7 @@ export async function login(
     };
   }
 
-  redirect("/candidatures?connexion=success");
+  redirect(validateLoginReturnPath(returnPath) ?? defaultLoginSuccessPath);
 }
 
 export async function logout() {

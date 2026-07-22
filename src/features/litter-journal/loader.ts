@@ -60,21 +60,7 @@ export async function loadLitterJournal(
   supabase: JournalClient,
   requestedLitterId?: string,
 ): Promise<LitterJournalSelection> {
-  const { data, error } = await supabase
-    .from("litter_overview")
-    .select(
-      "id, name, species, breed, status, mother_id, mother_display_name, father_id, father_display_name, expected_birth_date, actual_birth_date, expected_puppy_count, born_total_count, alive_count, animal_count, reservation_count, created_at",
-    )
-    .in("status", ACTIVE_LITTER_JOURNAL_STATUSES)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new Error("Unable to load active litters for the journal.");
-  }
-
-  const litters = orderLitterJournalItems(
-    (data ?? []) as LitterJournalListItem[],
-  );
+  const litters = await loadLitterJournalCatalog(supabase);
   const selectedLitter =
     litters.find((litter) => litter.id === requestedLitterId) ??
     litters[0] ??
@@ -102,4 +88,25 @@ export async function loadLitterJournal(
     selectedLitter,
     selectedDetails: details as LitterJournalDetails | null,
   };
+}
+
+export async function loadLitterJournalCatalog(
+  supabase: JournalClient,
+): Promise<LitterJournalListItem[]> {
+  const { data, error } = await supabase
+    .from("litter_overview")
+    .select(
+      "id, name, species, breed, status, mother_id, mother_display_name, father_id, father_display_name, expected_birth_date, actual_birth_date, expected_puppy_count, born_total_count, alive_count, animal_count, reservation_count, created_at",
+    )
+    .in("status", ACTIVE_LITTER_JOURNAL_STATUSES)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error("Unable to load active litters for the journal.");
+  }
+
+  const litters = orderLitterJournalItems(
+    (data ?? []) as LitterJournalListItem[],
+  );
+  return litters;
 }

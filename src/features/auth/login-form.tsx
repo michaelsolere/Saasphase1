@@ -23,8 +23,11 @@ function SubmitButton() {
   );
 }
 
-export function LoginForm() {
-  const [state, formAction] = useActionState(login, initialState);
+export function LoginForm({ returnPath }: { returnPath: string | null }) {
+  const [state, formAction] = useActionState(
+    login.bind(null, returnPath),
+    initialState,
+  );
 
   return (
     <form action={formAction} className="mt-8 space-y-5">

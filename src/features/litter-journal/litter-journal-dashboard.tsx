@@ -306,6 +306,9 @@ export function LitterJournalDashboard({
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
+  const publicMobileLitterIndex = litters.findIndex(
+    (item) => item.id === litter.id,
+  );
 
   return (
     <div className="space-y-6">
@@ -318,6 +321,14 @@ export function LitterJournalDashboard({
             <h2 className="mt-2 break-words text-2xl font-semibold tracking-tight sm:text-3xl">
               {getLitterDisplayName(litter.name, litter.id)}
             </h2>
+            {publicMobileLitterIndex >= 0 ? (
+              <Link
+                href={`/whelping?litter=${publicMobileLitterIndex}`}
+                className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline"
+              >
+                Ouvrir le mode mobile de mise-bas
+              </Link>
+            ) : null}
           </div>
           {litter.id ? (
             <LitterJournalSelector litters={litters} selectedLitterId={litter.id} />

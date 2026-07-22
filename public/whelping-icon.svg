@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Mise-bas">
+  <rect width="512" height="512" rx="96" fill="#315c43"/>
+  <circle cx="256" cy="256" r="166" fill="#f7f7f4"/>
+  <g fill="#315c43">
+    <ellipse cx="171" cy="202" rx="38" ry="48" transform="rotate(-24 171 202)"/>
+    <ellipse cx="236" cy="164" rx="38" ry="49" transform="rotate(-7 236 164)"/>
+    <ellipse cx="306" cy="164" rx="38" ry="49" transform="rotate(7 306 164)"/>
+    <ellipse cx="369" cy="202" rx="38" ry="48" transform="rotate(24 369 202)"/>
+    <path d="M270 224c-74 0-129 67-129 128 0 35 23 62 57 62 25 0 45-17 72-17s47 17 72 17c34 0 57-27 57-62 0-61-55-128-129-128z"/>
+  </g>
+</svg>
