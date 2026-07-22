@@ -6,6 +6,19 @@ import type { Database } from "@/types/database.types";
 
 import { getSupabaseConfig } from "./config";
 
+export function redirectWithResponseCookies(
+  destination: URL,
+  sourceResponse: NextResponse,
+) {
+  const redirectResponse = NextResponse.redirect(destination);
+
+  for (const cookie of sourceResponse.cookies.getAll()) {
+    redirectResponse.cookies.set(cookie);
+  }
+
+  return redirectResponse;
+}
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
   const { url, anonKey } = getSupabaseConfig();
@@ -38,7 +51,7 @@ export async function updateSession(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
-    return NextResponse.redirect(loginUrl);
+    return redirectWithResponseCookies(loginUrl, response);
   }
 
   if (user && pathname === "/login") {
@@ -49,7 +62,7 @@ export async function updateSession(request: NextRequest) {
       returnPath ?? "/candidatures",
       request.url,
     );
-    return NextResponse.redirect(destinationUrl);
+    return redirectWithResponseCookies(destinationUrl, response);
   }
 
   return response;

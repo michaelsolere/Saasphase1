@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { NextResponse } from "next/server";
 
 import { validateLoginReturnPath } from "../../src/features/auth/login-return";
 import type { LitterJournalListItem } from "../../src/features/litter-journal/types";
+import { redirectWithResponseCookies } from "../../src/lib/supabase/proxy";
 import { config as proxyConfig } from "../../src/proxy";
 import {
   parsePublicLitterIndex,
@@ -91,4 +93,52 @@ test("rafraîchit la session Supabase sur la route mobile installée", () => {
   expect(proxyConfig.matcher).toEqual(
     expect.arrayContaining(["/candidatures/:path*", "/login"]),
   );
+});
+
+test("conserve les cookies Supabase et leurs options lors d'une redirection", () => {
+  const sourceResponse = NextResponse.next();
+  const expires = new Date("2030-01-02T03:04:05.000Z");
+  sourceResponse.cookies.set({
+    name: "synthetic-access",
+    value: "access-value",
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 3_600,
+  });
+  sourceResponse.cookies.set({
+    name: "synthetic-refresh",
+    value: "refresh-value",
+    path: "/whelping",
+    httpOnly: true,
+    sameSite: "strict",
+    expires,
+  });
+
+  const response = redirectWithResponseCookies(
+    new URL("https://saas-elevage.example/whelping?litter=1"),
+    sourceResponse,
+  );
+
+  expect(response.headers.get("location")).toBe(
+    "https://saas-elevage.example/whelping?litter=1",
+  );
+  const cookies = response.cookies.getAll();
+  expect(cookies).toHaveLength(2);
+  expect(cookies.find(({ name }) => name === "synthetic-access")).toMatchObject({
+    name: "synthetic-access",
+    value: "access-value",
+    path: "/",
+    httpOnly: true,
+    sameSite: "lax",
+    maxAge: 3_600,
+  });
+  expect(cookies.find(({ name }) => name === "synthetic-refresh")).toMatchObject({
+    name: "synthetic-refresh",
+    value: "refresh-value",
+    path: "/whelping",
+    httpOnly: true,
+    sameSite: "strict",
+    expires,
+  });
 });
