@@ -691,3 +691,13 @@ La sélection mobile est autoritative côté serveur. L’interface ne transmet 
 Depuis le Journal complet, le lien `Ouvrir le mode mobile de mise-bas` passe par `/whelping/selection?litter=<index public>`. Cette route authentifiée résout à nouveau l’index dans le catalogue autorisé, renouvelle le cookie et termine sur l’URL canonique `/whelping`. Les anciens liens `/whelping?litter=<index public>` sont transférés vers cette même route de sélection ; les autres query strings inattendues sont supprimées sans modifier la sélection. Aucun identifiant de portée ou de session n’est ajouté à l’URL canonique, au DOM, à l’état React ou aux logs navigateur.
 
 Ce lot ne crée aucune migration, RPC, table ou dépendance.
+
+## Lot du 2026-07-22 — Clés React du complément rapide mobile
+
+Un parcours mobile complet a produit plusieurs rendus de l’avertissement React `Encountered two children with the same key, 1`. L’audit a confirmé qu’il ne correspondait à aucun doublon métier : chaque naissance, Animal, événement, commande, mesure et rectification restait unique. La reproduction instrumentée situe la première apparition au rafraîchissement achevé après la première naissance express mâle, avant la seconde naissance et avant tout complément.
+
+La liste fautive n’était pas la liste interne des cartes rapides. Dans le groupe de commandes mobile, `ExpressBirthActions` utilisait le nombre de naissances actives comme clé, tandis que `WhelpingQuickCompletion` utilisait la concaténation des numéros de naissance à compléter. Avec une seule naissance active à compléter, ces deux enfants frères recevaient donc tous deux la clé `1`. Le numéro de naissance reste un ordre métier ; il ne doit pas servir seul d’identité entre composants frères de nature différente.
+
+Les espaces de clés du panneau sont désormais explicitement séparés. La commande express utilise un préfixe propre, et le remontage de la file rapide utilise un autre préfixe avec une identité publique composée de l’ordre, de l’heure de naissance et du sexe. Aucun identifiant de base n’est exposé. Les clés de la chronologie, de l’historique, de la palette, du sélecteur et des dialogues ont aussi été vérifiées sans collision réelle.
+
+Le scénario navigateur capture la console dès le chargement initial et échoue dès la première alerte de clé dupliquée. Il contrôle chaque action et chaque rafraîchissement, les cartes rapides, la chronologie, l’historique et les comptes SQL, puis exige le hard-delete de toutes les fixtures. Ce lot n’ajoute aucune migration, RPC, table ou dépendance.

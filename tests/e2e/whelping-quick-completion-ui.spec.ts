@@ -115,6 +115,16 @@ function birthState(order: number) {
 }
 
 test("gère la file mobile de compléments rapides sans altérer le Journal", async ({ page }) => {
+  const duplicateKeyWarnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("Encountered two children with the same key")) {
+      duplicateKeyWarnings.push(message.text());
+    }
+  });
+  const checkpoint = (step: string) => {
+    console.info(JSON.stringify({ quickCompletionDuplicateKeyCheckpoint: { step, warnings: duplicateKeyWarnings.length } }));
+    expect(duplicateKeyWarnings, `duplicate React key warning at ${step}`).toEqual([]);
+  };
   cleanup();
   expectClean();
   const createdIds: Record<string, string[]> = { births: [], animals: [], events: [], commands: [], adjustments: [], measurements: [] };
@@ -122,14 +132,18 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     fixtures();
     await login(page);
     await page.goto("/whelping");
+    checkpoint("initial-load");
     let mobilePanel = panel(page);
     await expressBirthButton(mobilePanel, "+ NAISSANCE MÂLE").click();
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n° 1");
+    checkpoint("male-birth-action-complete");
     await expect(mobilePanel.getByRole("heading", { name: "Naissances à compléter" })).toBeVisible();
     await expect(quickCard(mobilePanel, 1)).toBeVisible();
+    checkpoint("male-birth-refresh-complete");
 
     await expressBirthButton(mobilePanel, "+ NAISSANCE FEMELLE").click();
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n° 2");
+    checkpoint("female-birth-refresh-complete");
     const cards = mobilePanel.getByTestId("quick-completion-card");
     await expect(cards).toHaveCount(2);
     await expect(cards.nth(0)).toContainText("Naissance n°2 — Femelle");
@@ -169,6 +183,7 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     const beforeSubmit = Date.now();
     await doubleClickSynchronously(latest.getByRole("button", { name: "Enregistrer le complément" }));
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n°2 complétée : 430 g · collier bleu.");
+    checkpoint("female-full-completion-refresh-complete");
     const afterSubmit = Date.now();
     await expect(quickCard(mobilePanel, 2)).toHaveCount(0);
     const second = birthState(2);
@@ -183,6 +198,7 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     await first.getByLabel("Utiliser quand même cette couleur").check();
     await first.getByRole("button", { name: "Enregistrer le complément" }).click();
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n°1 complétée : collier bleu.");
+    checkpoint("male-color-only-refresh-complete");
     await expect(first).toBeVisible();
     await expect(first.getByText(/Bleu.*déjà enregistrée/)).toBeVisible();
     await expect(first.getByRole("button", { name: "Bleu", exact: true })).toHaveCount(0);
@@ -190,6 +206,7 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     await first.getByLabel("Poids de naissance").fill("425");
     await first.getByRole("button", { name: "Enregistrer le complément" }).click();
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n°1 complétée : 425 g.");
+    checkpoint("male-weight-only-refresh-complete");
     await expect(quickCard(mobilePanel, 1)).toHaveCount(0);
 
     await expressBirthButton(mobilePanel, "+ NAISSANCE MÂLE").click();
