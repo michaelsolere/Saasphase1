@@ -2053,6 +2053,507 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_generation_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          plan: Json
+          reason: string | null
+          result: Json
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          plan: Json
+          reason?: string | null
+          result: Json
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          organization_id?: string
+          outcome?: string
+          plan?: Json
+          reason?: string | null
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_generation_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_generation_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_care_task_library_import_commands: {
+        Row: {
+          already_imported_count: number
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Insert: {
+          already_imported_count: number
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Update: {
+          already_imported_count?: number
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          imported_count?: number
+          initial_is_active?: boolean
+          organization_id?: string
+          result?: Json
+          selection?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_library_import_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_library_import_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_care_task_library_packs: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          is_available: boolean
+          sort_order: number
+          species: string
+          title: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          sort_order?: number
+          species: string
+          title: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          sort_order?: number
+          species?: string
+          title?: string
+        }
+        Relationships: []
+      }
+      litter_care_task_library_templates: {
+        Row: {
+          anchor_type: string
+          breed: string | null
+          category: string
+          code: string
+          created_at: string
+          description: string | null
+          is_available: boolean
+          offset_days: number
+          pack_code: string
+          sort_order: number
+          species: string
+          target_scope: string
+          title: string
+          version: number
+        }
+        Insert: {
+          anchor_type: string
+          breed?: string | null
+          category: string
+          code: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          offset_days: number
+          pack_code: string
+          sort_order?: number
+          species: string
+          target_scope: string
+          title: string
+          version: number
+        }
+        Update: {
+          anchor_type?: string
+          breed?: string | null
+          category?: string
+          code?: string
+          created_at?: string
+          description?: string | null
+          is_available?: boolean
+          offset_days?: number
+          pack_code?: string
+          sort_order?: number
+          species?: string
+          target_scope?: string
+          title?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_library_templates_pack_species_fk"
+            columns: ["pack_code", "species"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_library_packs"
+            referencedColumns: ["code", "species"]
+          },
+        ]
+      }
+      litter_care_task_template_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          operation: string
+          organization_id: string
+          result_is_active: boolean
+          result_revision: number
+          template_id: string
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          operation: string
+          organization_id: string
+          result_is_active: boolean
+          result_revision: number
+          template_id: string
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          operation?: string
+          organization_id?: string
+          result_is_active?: boolean
+          result_revision?: number
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_template_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_template_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_template_commands_template_organization_fk"
+            columns: ["organization_id", "template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      litter_care_task_templates: {
+        Row: {
+          anchor_type: string
+          breed: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          library_template_code: string | null
+          library_template_version: number | null
+          offset_days: number
+          organization_id: string
+          revision: number
+          sort_order: number
+          species: string
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anchor_type: string
+          breed?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          library_template_code?: string | null
+          library_template_version?: number | null
+          offset_days: number
+          organization_id: string
+          revision?: number
+          sort_order?: number
+          species: string
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anchor_type?: string
+          breed?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          library_template_code?: string | null
+          library_template_version?: number | null
+          offset_days?: number
+          organization_id?: string
+          revision?: number
+          sort_order?: number
+          species?: string
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_templates_library_origin_fk"
+            columns: ["library_template_code", "library_template_version"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_library_templates"
+            referencedColumns: ["code", "version"]
+          },
+          {
+            foreignKeyName: "litter_care_task_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_care_tasks: {
+        Row: {
+          anchor_date: string | null
+          anchor_type: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          creation_command_id: string
+          description: string | null
+          id: string
+          litter_id: string
+          occurrence_no: number
+          offset_days: number | null
+          organization_id: string
+          organization_template_id: string | null
+          planned_for: string
+          resolution_command_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_timezone_name: string | null
+          source: string
+          status: string
+          system_template_code: string | null
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id: string
+          description?: string | null
+          id?: string
+          litter_id: string
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id: string
+          organization_template_id?: string | null
+          planned_for: string
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          source: string
+          status?: string
+          system_template_code?: string | null
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id?: string
+          description?: string | null
+          id?: string
+          litter_id?: string
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id?: string
+          organization_template_id?: string | null
+          planned_for?: string
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          source?: string
+          status?: string
+          system_template_code?: string | null
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_template_organization_fk"
+            columns: ["organization_id", "organization_template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       litter_groups: {
         Row: {
           created_at: string
@@ -2207,15 +2708,16 @@ export type Database = {
       litter_weight_adjustment_commands: {
         Row: {
           affected_measurement_count: number
+          after_snapshot: Json
           animal_id: string | null
           before_snapshot: Json
+          cancelled_at: string | null
           client_command_id: string
           command_type: string
           created_at: string
           created_by: string
           expected_revision_no: number
           id: string
-          cancelled_at: string | null
           input_grams: number | null
           input_note: string | null
           litter_id: string
@@ -2225,19 +2727,19 @@ export type Database = {
           previous_revision_no: number
           reason: string
           result_revision_no: number
-          after_snapshot: Json
         }
         Insert: {
-          affected_measurement_count?: number
+          affected_measurement_count: number
+          after_snapshot: Json
           animal_id?: string | null
           before_snapshot: Json
+          cancelled_at?: string | null
           client_command_id: string
           command_type: string
           created_at?: string
           created_by: string
           expected_revision_no: number
           id?: string
-          cancelled_at?: string | null
           input_grams?: number | null
           input_note?: string | null
           litter_id: string
@@ -2247,19 +2749,19 @@ export type Database = {
           previous_revision_no: number
           reason: string
           result_revision_no: number
-          after_snapshot: Json
         }
         Update: {
           affected_measurement_count?: number
+          after_snapshot?: Json
           animal_id?: string | null
           before_snapshot?: Json
+          cancelled_at?: string | null
           client_command_id?: string
           command_type?: string
           created_at?: string
           created_by?: string
           expected_revision_no?: number
           id?: string
-          cancelled_at?: string | null
           input_grams?: number | null
           input_note?: string | null
           litter_id?: string
@@ -2269,7 +2771,6 @@ export type Database = {
           previous_revision_no?: number
           reason?: string
           result_revision_no?: number
-          after_snapshot?: Json
         }
         Relationships: [
           {
@@ -2285,6 +2786,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_weight_adjustment_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
           },
           {
             foreignKeyName: "litter_weight_adjustment_commands_litter_organization_fk"
@@ -2553,8 +3061,8 @@ export type Database = {
           note: string | null
           numeric_value: number | null
           observation_type: string
-          organization_id: string
           observed_at: string
+          organization_id: string
           severity: string
           timezone_name: string
           unit: string | null
@@ -2571,8 +3079,8 @@ export type Database = {
           note?: string | null
           numeric_value?: number | null
           observation_type: string
-          organization_id: string
           observed_at: string
+          organization_id: string
           severity?: string
           timezone_name: string
           unit?: string | null
@@ -2589,8 +3097,8 @@ export type Database = {
           note?: string | null
           numeric_value?: number | null
           observation_type?: string
-          organization_id?: string
           observed_at?: string
+          organization_id?: string
           severity?: string
           timezone_name?: string
           unit?: string | null
@@ -2635,507 +3143,6 @@ export type Database = {
           },
           {
             foreignKeyName: "maternal_observations_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      litter_care_task_library_import_commands: {
-        Row: {
-          already_imported_count: number
-          client_command_id: string
-          created_at: string
-          created_by: string
-          id: string
-          imported_count: number
-          initial_is_active: boolean
-          organization_id: string
-          result: Json
-          selection: Json
-        }
-        Insert: {
-          already_imported_count: number
-          client_command_id: string
-          created_at?: string
-          created_by: string
-          id?: string
-          imported_count: number
-          initial_is_active: boolean
-          organization_id: string
-          result: Json
-          selection: Json
-        }
-        Update: {
-          already_imported_count?: number
-          client_command_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          imported_count?: number
-          initial_is_active?: boolean
-          organization_id?: string
-          result?: Json
-          selection?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_task_library_import_commands_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_library_import_commands_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      litter_care_task_library_packs: {
-        Row: {
-          code: string
-          created_at: string
-          description: string | null
-          is_available: boolean
-          sort_order: number
-          species: string
-          title: string
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          description?: string | null
-          is_available?: boolean
-          sort_order?: number
-          species: string
-          title: string
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          description?: string | null
-          is_available?: boolean
-          sort_order?: number
-          species?: string
-          title?: string
-        }
-        Relationships: []
-      }
-      litter_care_task_library_templates: {
-        Row: {
-          anchor_type: string
-          breed: string | null
-          category: string
-          code: string
-          created_at: string
-          description: string | null
-          is_available: boolean
-          offset_days: number
-          pack_code: string
-          sort_order: number
-          species: string
-          target_scope: string
-          title: string
-          version: number
-        }
-        Insert: {
-          anchor_type: string
-          breed?: string | null
-          category: string
-          code: string
-          created_at?: string
-          description?: string | null
-          is_available?: boolean
-          offset_days: number
-          pack_code: string
-          sort_order?: number
-          species: string
-          target_scope: string
-          title: string
-          version: number
-        }
-        Update: {
-          anchor_type?: string
-          breed?: string | null
-          category?: string
-          code?: string
-          created_at?: string
-          description?: string | null
-          is_available?: boolean
-          offset_days?: number
-          pack_code?: string
-          sort_order?: number
-          species?: string
-          target_scope?: string
-          title?: string
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_task_library_templates_pack_species_fk"
-            columns: ["pack_code", "species"]
-            isOneToOne: false
-            referencedRelation: "litter_care_task_library_packs"
-            referencedColumns: ["code", "species"]
-          },
-        ]
-      }
-      litter_care_task_generation_commands: {
-        Row: {
-          client_command_id: string
-          created_at: string
-          created_by: string
-          id: string
-          litter_id: string
-          organization_id: string
-          outcome: string
-          plan: Json
-          reason: string | null
-          result: Json
-        }
-        Insert: {
-          client_command_id: string
-          created_at?: string
-          created_by: string
-          id?: string
-          litter_id: string
-          organization_id: string
-          outcome: string
-          plan: Json
-          reason?: string | null
-          result: Json
-        }
-        Update: {
-          client_command_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          litter_id?: string
-          organization_id?: string
-          outcome?: string
-          plan?: Json
-          reason?: string | null
-          result?: Json
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_task_generation_commands_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
-            isOneToOne: false
-            referencedRelation: "litter_overview"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_generation_commands_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
-            isOneToOne: false
-            referencedRelation: "litters"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_generation_commands_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      litter_care_task_template_commands: {
-        Row: {
-          client_command_id: string
-          created_at: string
-          created_by: string
-          id: string
-          operation: string
-          organization_id: string
-          result_is_active: boolean
-          result_revision: number
-          template_id: string
-        }
-        Insert: {
-          client_command_id: string
-          created_at?: string
-          created_by: string
-          id?: string
-          operation: string
-          organization_id: string
-          result_is_active: boolean
-          result_revision: number
-          template_id: string
-        }
-        Update: {
-          client_command_id?: string
-          created_at?: string
-          created_by?: string
-          id?: string
-          operation?: string
-          organization_id?: string
-          result_is_active?: boolean
-          result_revision?: number
-          template_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_task_template_commands_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_template_commands_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_template_commands_template_organization_fk"
-            columns: ["organization_id", "template_id"]
-            isOneToOne: false
-            referencedRelation: "litter_care_task_templates"
-            referencedColumns: ["organization_id", "id"]
-          },
-        ]
-      }
-      litter_care_task_templates: {
-        Row: {
-          anchor_type: string
-          breed: string | null
-          category: string
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          is_active: boolean
-          library_template_code: string | null
-          library_template_version: number | null
-          offset_days: number
-          organization_id: string
-          revision: number
-          sort_order: number
-          species: string
-          target_scope: string
-          title: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          anchor_type: string
-          breed?: string | null
-          category: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          library_template_code?: string | null
-          library_template_version?: number | null
-          offset_days: number
-          organization_id: string
-          revision?: number
-          sort_order?: number
-          species: string
-          target_scope: string
-          title: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          anchor_type?: string
-          breed?: string | null
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          library_template_code?: string | null
-          library_template_version?: number | null
-          offset_days?: number
-          organization_id?: string
-          revision?: number
-          sort_order?: number
-          species?: string
-          target_scope?: string
-          title?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_task_templates_library_origin_fk"
-            columns: ["library_template_code", "library_template_version"]
-            isOneToOne: false
-            referencedRelation: "litter_care_task_library_templates"
-            referencedColumns: ["code", "version"]
-          },
-          {
-            foreignKeyName: "litter_care_task_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_templates_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_task_templates_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      litter_care_tasks: {
-        Row: {
-          anchor_date: string | null
-          anchor_type: string | null
-          category: string
-          created_at: string
-          created_by: string | null
-          creation_command_id: string
-          description: string | null
-          id: string
-          litter_id: string
-          occurrence_no: number
-          offset_days: number | null
-          organization_id: string
-          organization_template_id: string | null
-          planned_for: string
-          resolution_command_id: string | null
-          resolution_note: string | null
-          resolved_at: string | null
-          resolved_by: string | null
-          resolved_timezone_name: string | null
-          source: string
-          status: string
-          system_template_code: string | null
-          target_scope: string
-          title: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          anchor_date?: string | null
-          anchor_type?: string | null
-          category: string
-          created_at?: string
-          created_by?: string | null
-          creation_command_id: string
-          description?: string | null
-          id?: string
-          litter_id: string
-          occurrence_no?: number
-          offset_days?: number | null
-          organization_id: string
-          organization_template_id?: string | null
-          planned_for: string
-          resolution_command_id?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          resolved_timezone_name?: string | null
-          source: string
-          status?: string
-          system_template_code?: string | null
-          target_scope: string
-          title: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          anchor_date?: string | null
-          anchor_type?: string | null
-          category?: string
-          created_at?: string
-          created_by?: string | null
-          creation_command_id?: string
-          description?: string | null
-          id?: string
-          litter_id?: string
-          occurrence_no?: number
-          offset_days?: number | null
-          organization_id?: string
-          organization_template_id?: string | null
-          planned_for?: string
-          resolution_command_id?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          resolved_timezone_name?: string | null
-          source?: string
-          status?: string
-          system_template_code?: string | null
-          target_scope?: string
-          title?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "litter_care_tasks_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
-            isOneToOne: false
-            referencedRelation: "litter_overview"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
-            isOneToOne: false
-            referencedRelation: "litters"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_organization_template_organization_fk"
-            columns: ["organization_id", "organization_template_id"]
-            isOneToOne: false
-            referencedRelation: "litter_care_task_templates"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -4892,6 +4899,163 @@ export type Database = {
           },
         ]
       }
+      whelping_birth_adjustment_commands: {
+        Row: {
+          animal_id: string
+          birth_id: string
+          client_command_id: string
+          command_type: string
+          created_at: string
+          created_by: string
+          event_id: string
+          event_sequence_no: number
+          expected_revision_no: number
+          id: string
+          litter_id: string
+          organization_id: string
+          previous_revision_no: number
+          reason: string
+          requested_birth_note: string | null
+          requested_cancelled_at: string | null
+          requested_initial_collar_color: string | null
+          requested_occurred_at: string | null
+          requested_sex: string | null
+          requested_viability: string | null
+          requested_weight_grams: number | null
+          requested_weight_measured_at: string | null
+          requested_weight_note: string | null
+          resulting_revision_no: number
+          session_id: string
+          snapshot_after: Json
+          snapshot_before: Json
+          weight_measurement_id: string | null
+        }
+        Insert: {
+          animal_id: string
+          birth_id: string
+          client_command_id: string
+          command_type: string
+          created_at?: string
+          created_by: string
+          event_id: string
+          event_sequence_no: number
+          expected_revision_no: number
+          id?: string
+          litter_id: string
+          organization_id: string
+          previous_revision_no: number
+          reason: string
+          requested_birth_note?: string | null
+          requested_cancelled_at?: string | null
+          requested_initial_collar_color?: string | null
+          requested_occurred_at?: string | null
+          requested_sex?: string | null
+          requested_viability?: string | null
+          requested_weight_grams?: number | null
+          requested_weight_measured_at?: string | null
+          requested_weight_note?: string | null
+          resulting_revision_no: number
+          session_id: string
+          snapshot_after: Json
+          snapshot_before: Json
+          weight_measurement_id?: string | null
+        }
+        Update: {
+          animal_id?: string
+          birth_id?: string
+          client_command_id?: string
+          command_type?: string
+          created_at?: string
+          created_by?: string
+          event_id?: string
+          event_sequence_no?: number
+          expected_revision_no?: number
+          id?: string
+          litter_id?: string
+          organization_id?: string
+          previous_revision_no?: number
+          reason?: string
+          requested_birth_note?: string | null
+          requested_cancelled_at?: string | null
+          requested_initial_collar_color?: string | null
+          requested_occurred_at?: string | null
+          requested_sex?: string | null
+          requested_viability?: string | null
+          requested_weight_grams?: number | null
+          requested_weight_measured_at?: string | null
+          requested_weight_note?: string | null
+          resulting_revision_no?: number
+          session_id?: string
+          snapshot_after?: Json
+          snapshot_before?: Json
+          weight_measurement_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_animal_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_birth_fk"
+            columns: ["organization_id", "birth_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_births"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_event_fk"
+            columns: ["organization_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_events"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_session_fk"
+            columns: ["organization_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_sessions"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_birth_adjustment_commands_weight_fk"
+            columns: ["organization_id", "weight_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "animal_weight_measurements"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       whelping_births: {
         Row: {
           animal_id: string
@@ -4924,7 +5088,7 @@ export type Database = {
           id?: string
           initial_collar_color?: string | null
           note?: string | null
-          occurred_at?: string
+          occurred_at: string
           organization_id: string
           revision_no?: number
           session_id: string
@@ -4952,18 +5116,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "whelping_births_cancelled_by_membership_fk"
-            columns: ["organization_id", "cancelled_by"]
-            isOneToOne: false
-            referencedRelation: "memberships"
-            referencedColumns: ["organization_id", "profile_id"]
-          },
-          {
             foreignKeyName: "whelping_births_animal_organization_fk"
             columns: ["organization_id", "animal_id"]
             isOneToOne: false
             referencedRelation: "animals"
             referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_births_cancelled_by_membership_fk"
+            columns: ["organization_id", "cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
           },
           {
             foreignKeyName: "whelping_births_created_by_fkey"
@@ -4991,6 +5155,154 @@ export type Database = {
             columns: ["organization_id", "session_id"]
             isOneToOne: false
             referencedRelation: "whelping_sessions"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      whelping_commands: {
+        Row: {
+          animal_id: string | null
+          birth_id: string | null
+          client_command_id: string
+          command_type: string
+          created_at: string
+          created_by: string
+          ended_at: string | null
+          event_id: string | null
+          event_type: string | null
+          id: string
+          initial_collar_color: string | null
+          litter_id: string
+          measured_at: string | null
+          note: string | null
+          occurred_at: string | null
+          organization_id: string
+          result_birth_order: number | null
+          result_sequence_no: number | null
+          session_id: string
+          sex: string | null
+          started_at: string | null
+          timezone_name: string | null
+          viability: string | null
+          weight_grams: number | null
+          weight_measurement_id: string | null
+        }
+        Insert: {
+          animal_id?: string | null
+          birth_id?: string | null
+          client_command_id: string
+          command_type: string
+          created_at?: string
+          created_by: string
+          ended_at?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          id?: string
+          initial_collar_color?: string | null
+          litter_id: string
+          measured_at?: string | null
+          note?: string | null
+          occurred_at?: string | null
+          organization_id: string
+          result_birth_order?: number | null
+          result_sequence_no?: number | null
+          session_id: string
+          sex?: string | null
+          started_at?: string | null
+          timezone_name?: string | null
+          viability?: string | null
+          weight_grams?: number | null
+          weight_measurement_id?: string | null
+        }
+        Update: {
+          animal_id?: string | null
+          birth_id?: string | null
+          client_command_id?: string
+          command_type?: string
+          created_at?: string
+          created_by?: string
+          ended_at?: string | null
+          event_id?: string | null
+          event_type?: string | null
+          id?: string
+          initial_collar_color?: string | null
+          litter_id?: string
+          measured_at?: string | null
+          note?: string | null
+          occurred_at?: string | null
+          organization_id?: string
+          result_birth_order?: number | null
+          result_sequence_no?: number | null
+          session_id?: string
+          sex?: string | null
+          started_at?: string | null
+          timezone_name?: string | null
+          viability?: string | null
+          weight_grams?: number | null
+          weight_measurement_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whelping_commands_animal_organization_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_birth_organization_fk"
+            columns: ["organization_id", "birth_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_births"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_event_organization_fk"
+            columns: ["organization_id", "event_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_events"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_session_organization_fk"
+            columns: ["organization_id", "session_id"]
+            isOneToOne: false
+            referencedRelation: "whelping_sessions"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "whelping_commands_weight_measurement_organization_fk"
+            columns: ["organization_id", "weight_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "animal_weight_measurements"
             referencedColumns: ["organization_id", "id"]
           },
         ]
@@ -5430,38 +5742,6 @@ export type Database = {
           form_submission_id: string
         }[]
       }
-      close_whelping_session: {
-        Args: {
-          p_client_command_id: string
-          p_ended_at: string
-          p_note?: string | null
-          p_session_id: string
-        }
-        Returns: {
-          event_id: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          sequence_no: number | null
-          session_id: string | null
-        }[]
-      }
-      reopen_whelping_session: {
-        Args: {
-          p_client_command_id: string
-          p_reason: string
-          p_reopened_at: string
-          p_session_id: string
-        }
-        Returns: {
-          event_id: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          sequence_no: number | null
-          session_id: string | null
-        }[]
-      }
       build_contact_display_name: {
         Args: {
           fallback?: string
@@ -5471,6 +5751,121 @@ export type Database = {
         }
         Returns: string
       }
+      cancel_litter_routine_weight: {
+        Args: {
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_measurement_id: string
+          p_reason: string
+        }
+        Returns: {
+          litter_weighing_session_id: string
+          measurement_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+        }[]
+      }
+      cancel_litter_weighing_session: {
+        Args: {
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string
+          p_session_id: string
+        }
+        Returns: {
+          affected_measurement_count: number
+          litter_weighing_session_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+        }[]
+      }
+      cancel_whelping_birth: {
+        Args: {
+          p_birth_id: string
+          p_cancelled_at: string
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string
+        }
+        Returns: {
+          animal_id: string
+          birth_id: string
+          event_id: string
+          event_sequence_no: number
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+          weight_measurement_id: string
+        }[]
+      }
+      close_whelping_session: {
+        Args: {
+          p_client_command_id: string
+          p_ended_at: string
+          p_note?: string | null
+          p_session_id: string
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          sequence_no: number
+          session_id: string
+        }[]
+      }
+      correct_litter_routine_weight: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_grams: number
+          p_measurement_id: string
+          p_note: string | null
+          p_reason: string
+        }
+        Returns: {
+          litter_weighing_session_id: string
+          measurement_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+        }[]
+      }
+      correct_whelping_birth: {
+        Args: {
+          p_birth_id: string
+          p_birth_note: string | null
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_initial_collar_color: string | null
+          p_occurred_at: string
+          p_reason: string
+          p_sex: string
+          p_viability: string
+          p_weight_grams: number | null
+          p_weight_measured_at: string | null
+          p_weight_note: string | null
+        }
+        Returns: {
+          animal_id: string
+          birth_id: string
+          event_id: string
+          event_sequence_no: number
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+          weight_measurement_id: string
+        }[]
+      }
       create_document_template_draft: {
         Args: {
           p_family_id: string
@@ -5478,6 +5873,23 @@ export type Database = {
           p_template_format?: string
         }
         Returns: string
+      }
+      create_document_template_family_with_draft: {
+        Args: {
+          p_breed: string
+          p_description?: string
+          p_document_type: string
+          p_name: string
+          p_organization_id: string
+          p_species: string
+          p_template_content: string
+          p_template_format: string
+        }
+        Returns: {
+          family_id: string
+          template_id: string
+          version: number
+        }[]
       }
       create_litter_care_task: {
         Args: {
@@ -5515,59 +5927,10 @@ export type Database = {
         Returns: {
           is_active: boolean
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
           revision: number
           template_id: string
-        }[]
-      }
-      generate_litter_care_tasks_from_plan: {
-        Args: {
-          p_client_command_id: string
-          p_litter_id: string
-          p_plan: Json
-        }
-        Returns: {
-          already_generated_count: number
-          created_count: number
-          litter_id: string
-          outcome: string
-          reason: string
-          replayed: boolean
-          result: Json
-        }[]
-      }
-      import_litter_care_task_library_templates: {
-        Args: {
-          p_client_command_id: string
-          p_is_active: boolean
-          p_organization_id: string
-          p_selection: Json
-        }
-        Returns: {
-          already_imported_count: number
-          imported_count: number
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          result: Json
-        }[]
-      }
-      create_document_template_family_with_draft: {
-        Args: {
-          p_breed: string
-          p_description?: string | null
-          p_document_type: string
-          p_name: string
-          p_organization_id: string
-          p_species: string
-          p_template_content: string
-          p_template_format: string
-        }
-        Returns: {
-          family_id: string
-          template_id: string
-          version: number
         }[]
       }
       create_organization_with_owner: {
@@ -5600,8 +5963,8 @@ export type Database = {
           p_source_template_version: number
           p_species: string
           p_template_family_id: string
-          p_variant_id?: string | null
-          p_version_id?: string | null
+          p_variant_id?: string
+          p_version_id?: string
         }
         Returns: {
           variant_id: string
@@ -5613,7 +5976,7 @@ export type Database = {
         Args: {
           p_organization_id: string
           p_variant_id: string
-          p_version_id?: string | null
+          p_version_id?: string
         }
         Returns: {
           version: number
@@ -5631,14 +5994,89 @@ export type Database = {
           outcome: string
         }[]
       }
+      generate_litter_care_tasks_from_plan: {
+        Args: { p_client_command_id: string; p_litter_id: string; p_plan: Json }
+        Returns: {
+          already_generated_count: number
+          created_count: number
+          litter_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
+        }[]
+      }
       has_organization_role: {
         Args: { allowed_roles: string[]; org_id: string }
         Returns: boolean
       }
+      import_litter_care_task_library_templates: {
+        Args: {
+          p_client_command_id: string
+          p_is_active: boolean
+          p_organization_id: string
+          p_selection: Json
+        }
+        Returns: {
+          already_imported_count: number
+          imported_count: number
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
+        }[]
+      }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
+      is_valid_litter_weighing_schedule_policy: {
+        Args: { p_policy: Json }
+        Returns: boolean
+      }
       is_valid_transactional_email_attachment_snapshot: {
         Args: { value: Json }
         Returns: boolean
+      }
+      list_litter_weight_adjustment_history: {
+        Args: { p_limit?: number; p_litter_id: string }
+        Returns: {
+          affected_measurement_count: number
+          after_grams: number
+          after_note: string
+          animal_label: string
+          before_grams: number
+          before_note: string
+          command_type: string
+          created_at: string
+          reason: string
+          session_measured_at: string
+          session_timezone_name: string
+        }[]
+      }
+      list_whelping_birth_adjustment_history: {
+        Args: { p_limit?: number; p_litter_id: string }
+        Returns: {
+          action_at: string
+          adjustment_type: string
+          after_birth_note: string
+          after_initial_collar_color: string
+          after_occurred_at: string
+          after_sex: string
+          after_viability: string
+          after_weight_grams: number
+          after_weight_measured_at: string
+          after_weight_note: string
+          before_birth_note: string
+          before_initial_collar_color: string
+          before_occurred_at: string
+          before_sex: string
+          before_viability: string
+          before_weight_grams: number
+          before_weight_measured_at: string
+          before_weight_note: string
+          birth_order: number
+          reason: string
+          session_timezone_name: string
+          weight_change_type: string
+        }[]
       }
       mark_birth_documents_deposit_documents_sent: {
         Args: {
@@ -5682,27 +6120,12 @@ export type Database = {
           p_timezone_name: string
         }
         Returns: {
-          litter_id: string | null
-          mother_id: string | null
+          litter_id: string
+          mother_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          session_id: string | null
-        }[]
-      }
-      is_valid_litter_weighing_schedule_policy: {
-        Args: { p_policy: Json }
-        Returns: boolean
-      }
-      recommended_litter_weighing_schedule_policy: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
-      resolve_litter_weighing_policy_for_freeze: {
-        Args: { p_organization_id: string }
-        Returns: {
-          policy: Json
-          source: string
+          session_id: string
         }[]
       }
       publish_document_template_version: {
@@ -5725,73 +6148,17 @@ export type Database = {
         }
         Returns: string
       }
-      cancel_litter_routine_weight: {
+      recalculate_whelping_litter_birth_projections: {
         Args: {
-          p_cancelled_at: string
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_measurement_id: string
-          p_reason: string
+          p_litter_id: string
+          p_organization_id: string
+          p_user_id: string
         }
-        Returns: {
-          litter_weighing_session_id: string | null
-          measurement_id: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          revision_no: number | null
-        }[]
+        Returns: undefined
       }
-      cancel_litter_weighing_session: {
-        Args: {
-          p_cancelled_at: string
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_reason: string
-          p_session_id: string
-        }
-        Returns: {
-          affected_measurement_count: number | null
-          litter_weighing_session_id: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          revision_no: number | null
-        }[]
-      }
-      correct_litter_routine_weight: {
-        Args: {
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_grams: number
-          p_measurement_id: string
-          p_note: string | null
-          p_reason: string
-        }
-        Returns: {
-          litter_weighing_session_id: string | null
-          measurement_id: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          revision_no: number | null
-        }[]
-      }
-      list_litter_weight_adjustment_history: {
-        Args: { p_limit?: number; p_litter_id: string }
-        Returns: {
-          affected_measurement_count: number
-          after_grams: number | null
-          after_note: string | null
-          animal_label: string | null
-          before_grams: number | null
-          before_note: string | null
-          command_type: string
-          created_at: string
-          reason: string
-          session_measured_at: string
-          session_timezone_name: string
-        }[]
+      recommended_litter_weighing_schedule_policy: {
+        Args: never
+        Returns: Json
       }
       record_litter_routine_weights: {
         Args: {
@@ -5804,11 +6171,11 @@ export type Database = {
         }
         Returns: {
           litter_id: string
-          litter_weighing_session_id: string | null
-          measurement_count: number | null
-          measurement_ids: string[] | null
+          litter_weighing_session_id: string
+          measurement_count: number
+          measurement_ids: string[]
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
         }[]
       }
@@ -5855,53 +6222,6 @@ export type Database = {
           sequence_no: number
         }[]
       }
-      cancel_whelping_birth: {
-        Args: {
-          p_birth_id: string
-          p_cancelled_at: string
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_reason: string
-        }
-        Returns: {
-          animal_id: string | null
-          birth_id: string | null
-          event_id: string | null
-          event_sequence_no: number | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          revision_no: number | null
-          weight_measurement_id: string | null
-        }[]
-      }
-      correct_whelping_birth: {
-        Args: {
-          p_birth_id: string
-          p_birth_note: string | null
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_initial_collar_color: string | null
-          p_occurred_at: string
-          p_reason: string
-          p_sex: string
-          p_viability: string
-          p_weight_grams: number | null
-          p_weight_measured_at: string | null
-          p_weight_note: string | null
-        }
-        Returns: {
-          animal_id: string | null
-          birth_id: string | null
-          event_id: string | null
-          event_sequence_no: number | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          revision_no: number | null
-          weight_measurement_id: string | null
-        }[]
-      }
       record_whelping_birth: {
         Args: {
           p_client_command_id: string
@@ -5915,15 +6235,15 @@ export type Database = {
           p_weight_grams?: number | null
         }
         Returns: {
-          animal_id: string | null
-          birth_id: string | null
-          birth_order: number | null
-          event_id: string | null
-          event_sequence_no: number | null
+          animal_id: string
+          birth_id: string
+          birth_order: number
+          event_id: string
+          event_sequence_no: number
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          weight_measurement_id: string | null
+          weight_measurement_id: string
         }[]
       }
       record_whelping_birth_weight: {
@@ -5935,12 +6255,12 @@ export type Database = {
           p_weight_grams: number
         }
         Returns: {
-          animal_id: string | null
-          birth_id: string | null
+          animal_id: string
+          birth_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          weight_measurement_id: string | null
+          weight_measurement_id: string
         }[]
       }
       record_whelping_event: {
@@ -5952,31 +6272,33 @@ export type Database = {
           p_session_id: string
         }
         Returns: {
-          event_id: string | null
+          event_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          sequence_no: number | null
-          session_id: string | null
+          sequence_no: number
+          session_id: string
+        }[]
+      }
+      reopen_whelping_session: {
+        Args: {
+          p_client_command_id: string
+          p_reason: string
+          p_reopened_at: string
+          p_session_id: string
+        }
+        Returns: {
+          event_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          sequence_no: number
+          session_id: string
         }[]
       }
       reservation_document_variant_version_is_used: {
         Args: { p_organization_id: string; p_version_id: string }
         Returns: boolean
-      }
-      resolve_suspect_form_submission_existing_contact: {
-        Args: { p_contact_id: string; p_form_submission_id: string }
-        Returns: {
-          application_id: string
-          contact_id: string
-        }[]
-      }
-      resolve_suspect_form_submission_new_contact: {
-        Args: { p_form_submission_id: string }
-        Returns: {
-          application_id: string
-          contact_id: string
-        }[]
       }
       resolve_litter_care_task: {
         Args: {
@@ -5996,10 +6318,31 @@ export type Database = {
           task_id: string
         }[]
       }
+      resolve_litter_weighing_policy_for_freeze: {
+        Args: { p_organization_id: string }
+        Returns: {
+          policy: Json
+          source: string
+        }[]
+      }
+      resolve_suspect_form_submission_existing_contact: {
+        Args: { p_contact_id: string; p_form_submission_id: string }
+        Returns: {
+          application_id: string
+          contact_id: string
+        }[]
+      }
+      resolve_suspect_form_submission_new_contact: {
+        Args: { p_form_submission_id: string }
+        Returns: {
+          application_id: string
+          contact_id: string
+        }[]
+      }
       retire_active_organization_logo: {
         Args: { p_organization_id: string }
         Returns: {
-          asset_id: string | null
+          asset_id: string
           outcome: string
         }[]
       }
@@ -6013,7 +6356,7 @@ export type Database = {
         Returns: {
           is_active: boolean
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
           revision: number
           template_id: string
@@ -6100,7 +6443,7 @@ export type Database = {
         Returns: {
           is_active: boolean
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
           revision: number
           template_id: string
@@ -6116,6 +6459,14 @@ export type Database = {
           p_target_reservation_id?: string
         }
         Returns: string
+      }
+      whelping_birth_has_downstream_data: {
+        Args: {
+          p_animal_id: string
+          p_birth_id: string
+          p_organization_id: string
+        }
+        Returns: boolean
       }
     }
     Enums: {

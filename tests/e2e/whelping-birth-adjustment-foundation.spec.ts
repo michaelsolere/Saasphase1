@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   cancelWhelpingBirthCore,
   correctWhelpingBirthCore,
+  listWhelpingBirthAdjustmentHistoryCore,
   listWhelpingBirthsForSessionCore,
   recordWhelpingBirthCore,
   recordWhelpingBirthWeightCore,
@@ -277,6 +278,43 @@ test("corrects and cancels births atomically while preserving every source row",
     expect(audit.count).toBeGreaterThanOrEqual(7); expect(audit.snapshots).toBe(true);
     expect(audit.types.sort()).toEqual(["cancel_birth", "correct_birth"]);
     expect(sql(`select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth';`)).toBe("3");
+
+    const ownerHistory = await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter, limit: 100 }, owner);
+    expect(ownerHistory.outcome).toBe("success");
+    if (ownerHistory.outcome !== "success") throw new Error("audit history read failed");
+    expect(ownerHistory.entries.length).toBeLessThanOrEqual(100);
+    expect(ownerHistory.entries.map((entry) => entry.actionAt)).toEqual(
+      [...ownerHistory.entries].map((entry) => entry.actionAt).sort().reverse(),
+    );
+    expect(ownerHistory.entries.some((entry) => entry.weightChangeType === "corrected" && entry.beforeWeightGrams === 410 && entry.afterWeightGrams === 420)).toBe(true);
+    expect(ownerHistory.entries.find((entry) => entry.reason === "Rectification vérifiée" && entry.weightChangeType === "removed")?.afterWeightGrams).toBeNull();
+    expect(ownerHistory.entries.some((entry) => entry.weightChangeType === "added" && entry.afterWeightGrams === 430)).toBe(true);
+    expect(ownerHistory.entries.find((entry) => entry.reason === "Annulation finale")).toMatchObject({
+      adjustmentType: "cancellation",
+      birthOrder: 1,
+      beforeWeightGrams: 430,
+      afterWeightGrams: null,
+      weightChangeType: "neutralized_on_cancellation",
+    });
+    const serializedHistory = JSON.stringify(ownerHistory.entries);
+    expect(serializedHistory).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    expect(serializedHistory).not.toMatch(/snapshot|clientCommand|revision|createdBy|commandId|table|rpc/i);
+
+    for (const user of roleUsers) {
+      const result = await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter }, await roleClient(user.email));
+      expect(result.outcome).toBe("success");
+      if (result.outcome === "success") expect(result.entries).toEqual(ownerHistory.entries);
+    }
+    expect((await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter }, anonymous)).outcome).toBe("error");
+    expect((await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter }, await roleClient(outsider.email))).outcome).toBe("error");
+    sql(`update public.memberships set status='disabled' where id=${q(ids.viewerMembership)}::uuid;`);
+    expect((await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter }, await roleClient(roleUsers[2].email))).outcome).toBe("error");
+    sql(`update public.memberships set status='active' where id=${q(ids.viewerMembership)}::uuid;`);
+    expect((await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter, limit: 0 }, owner)).outcome).toBe("error");
+    expect((await listWhelpingBirthAdjustmentHistoryCore({ litterId: ids.litter, limit: 101 }, owner)).outcome).toBe("error");
+    const directPrivateRead = await owner.from("whelping_birth_adjustment_commands").select("id").limit(1);
+    expect(directPrivateRead.error).not.toBeNull();
+    expect(directPrivateRead.data).toBeNull();
   } finally {
     cleanup();
     const left = remaining();

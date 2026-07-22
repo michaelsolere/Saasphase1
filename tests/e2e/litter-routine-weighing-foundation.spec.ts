@@ -718,8 +718,12 @@ test("records collective routine weights atomically, idempotently and without si
     }).toEqual(scheduleReadStateBefore);
 
     try {
-      sql(`update public.animals set deleted_at = now()
-        where id = ${q(created.journalAnimals[0]!)}::uuid;`);
+      sql(`
+        set session_replication_role = replica;
+        update public.animals set deleted_at = now()
+        where id = ${q(created.journalAnimals[0]!)}::uuid;
+        set session_replication_role = origin;
+      `);
       const historyAfterSoftDelete = requireSuccess(
         await listLitterWeightHistoryCore(
           {
@@ -748,8 +752,12 @@ test("records collective routine weights atomically, idempotently and without si
         scheduledHistory.weighingSchedule,
       );
     } finally {
-      sql(`update public.animals set deleted_at = null
-        where id = ${q(created.journalAnimals[0]!)}::uuid;`);
+      sql(`
+        set session_replication_role = replica;
+        update public.animals set deleted_at = null
+        where id = ${q(created.journalAnimals[0]!)}::uuid;
+        set session_replication_role = origin;
+      `);
     }
 
     const adminHistory = requireSuccess(
