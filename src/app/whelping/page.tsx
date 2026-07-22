@@ -149,7 +149,7 @@ export default async function WhelpingMobilePage({
         <p className="mt-2 leading-6 text-muted">Une connexion réseau est requise pour consulter ou enregistrer les données.</p>
       </details>
 
-      <WhelpingPanel {...workspace} />
+      <WhelpingPanel {...workspace} displayMode="mobile" />
     </main>
   );
 }
