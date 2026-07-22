@@ -7,6 +7,7 @@ import { MainSidebar } from "@/components/main-sidebar";
 import { createClient } from "@/lib/supabase/client";
 
 const publicRoutes = ["/login", "/candidature"];
+const standalonePrivateRoutes = ["/whelping"];
 const privateRoutes = [
   "/animals",
   "/candidatures",
@@ -32,6 +33,12 @@ function isPublicRoute(pathname: string) {
 
 function isPrivateRoute(pathname: string) {
   return privateRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
+
+function isStandalonePrivateRoute(pathname: string) {
+  return standalonePrivateRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
@@ -82,6 +89,7 @@ export function PrivateAppShell({
   const isAuthenticated = authStatus === "authenticated";
   const shouldShowSidebar =
     !isPublicRoute(pathname) &&
+    !isStandalonePrivateRoute(pathname) &&
     (isPrivateRoute(pathname) || (pathname === "/" && isAuthenticated));
 
   if (!shouldShowSidebar) {

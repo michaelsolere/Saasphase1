@@ -19,25 +19,7 @@ import {
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
-import {
-  closeWhelpingSessionAction,
-  cancelWhelpingBirthAction,
-  correctWhelpingBirthAction,
-  openWhelpingSessionAction,
-  recordWhelpingBirthAction,
-  recordWhelpingBirthWeightAction,
-  recordWhelpingEventAction,
-  reopenWhelpingSessionAction,
-} from "@/features/whelping/whelping-actions";
-import type { WhelpingBirthAdjustmentAction, WhelpingBirthWeightAction } from "@/features/whelping/whelping-panel";
-import {
-  listWhelpingBirthsForSession,
-  listWhelpingBirthAdjustmentHistory,
-  listWhelpingEventsForSession,
-  listWhelpingSessionsForLitter,
-  type WhelpingBirthSummary,
-  type WhelpingSessionSummary,
-} from "@/features/whelping/whelping";
+import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
 import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightAdjustmentHistory, listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
 import { cancelLitterRoutineWeightAction, cancelLitterWeighingSessionAction, correctLitterRoutineWeightAction, recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
@@ -84,20 +66,8 @@ export default async function LitterJournalPage({
   let litterCareTaskGenerationPlan: Awaited<
     ReturnType<typeof planLitterCareTaskGeneration>
   > | null = null;
-  let whelpingSessions: Awaited<
-    ReturnType<typeof listWhelpingSessionsForLitter>
-  > | null = null;
-  let selectedWhelpingSession: WhelpingSessionSummary | null = null;
-  let whelpingEvents: Awaited<
-    ReturnType<typeof listWhelpingEventsForSession>
-  > | null = null;
-  let whelpingBirths: Awaited<
-    ReturnType<typeof listWhelpingBirthsForSession>
-  > | null = null;
-  let allWhelpingBirths: WhelpingBirthSummary[] = [];
-  let allWhelpingBirthsReliable = false;
-  let whelpingBirthAdjustmentHistory: Awaited<
-    ReturnType<typeof listWhelpingBirthAdjustmentHistory>
+  let whelpingWorkspace: Awaited<
+    ReturnType<typeof loadWhelpingWorkspace>
   > | null = null;
   let litterWeightHistory: Awaited<
     ReturnType<typeof listLitterWeightHistory>
@@ -112,12 +82,12 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, sessionsResult, weightsResult, adjustmentHistoryResult, birthAdjustmentHistoryResult] =
+    const [maternalResult, tasksResult, generationPlanResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
-        listWhelpingSessionsForLitter({ litterId }),
+        loadWhelpingWorkspace(litterId, supabase),
         listLitterWeightHistory({
           litterId,
           schedule: {
@@ -125,7 +95,6 @@ export default async function LitterJournalPage({
           },
         }),
         listLitterWeightAdjustmentHistory({ litterId, limit: 100 }),
-        listWhelpingBirthAdjustmentHistory({ litterId, limit: 100 }),
       ]);
 
     maternalObservations =
@@ -136,49 +105,11 @@ export default async function LitterJournalPage({
       generationPlanResult.status === "fulfilled"
         ? generationPlanResult.value
         : null;
-    whelpingSessions =
-      sessionsResult.status === "fulfilled" ? sessionsResult.value : null;
+    whelpingWorkspace =
+      whelpingResult.status === "fulfilled" ? whelpingResult.value : null;
     litterWeightHistory =
       weightsResult.status === "fulfilled" ? weightsResult.value : null;
     litterWeightAdjustmentHistory = adjustmentHistoryResult.status === "fulfilled" ? adjustmentHistoryResult.value : null;
-    whelpingBirthAdjustmentHistory = birthAdjustmentHistoryResult.status === "fulfilled"
-      ? birthAdjustmentHistoryResult.value
-      : null;
-
-    if (whelpingSessions?.outcome === "success") {
-      selectedWhelpingSession =
-        whelpingSessions.sessions.find((session) => session.status === "open") ??
-        whelpingSessions.sessions[0] ??
-        null;
-
-      if (selectedWhelpingSession) {
-        const [eventsResult, birthsResults] = await Promise.all([
-          Promise.resolve(listWhelpingEventsForSession({
-            sessionId: selectedWhelpingSession.id,
-          })).then(
-            (value) => ({ status: "fulfilled" as const, value }),
-            (reason) => ({ status: "rejected" as const, reason }),
-          ),
-          Promise.allSettled(whelpingSessions.sessions.map((session) =>
-            listWhelpingBirthsForSession({ sessionId: session.id }),
-          )),
-        ]);
-        whelpingEvents =
-          eventsResult.status === "fulfilled" ? eventsResult.value : null;
-        const loadedBirthResults = birthsResults.flatMap((result) =>
-          result.status === "fulfilled" && result.value.outcome === "success"
-            ? [result.value]
-            : [],
-        );
-        allWhelpingBirthsReliable = loadedBirthResults.length === whelpingSessions.sessions.length;
-        allWhelpingBirths = loadedBirthResults.flatMap((result) => result.births);
-        whelpingBirths = loadedBirthResults.find((result) =>
-          result.births[0]?.sessionId === selectedWhelpingSession?.id,
-        ) ?? (allWhelpingBirthsReliable
-          ? { outcome: "success", role: whelpingSessions.role, births: [] }
-          : null);
-      }
-    }
   }
 
   const maternalObservationsLoaded =
@@ -252,145 +183,8 @@ export default async function LitterJournalPage({
           };
         })
     : [];
-  const whelpingSessionsLoaded =
-    whelpingSessions?.outcome === "success" ? whelpingSessions : null;
-  const whelpingEventsLoaded =
-    whelpingEvents?.outcome === "success" ? whelpingEvents : null;
-  const whelpingBirthsLoaded =
-    whelpingBirths?.outcome === "success" ? whelpingBirths : null;
-  const whelpingLoadError =
-    whelpingSessionsLoaded === null ||
-    (selectedWhelpingSession !== null &&
-      (whelpingEventsLoaded === null || whelpingBirthsLoaded === null || !allWhelpingBirthsReliable));
-  const whelpingServiceRoles = [
-    whelpingSessionsLoaded?.role,
-    selectedWhelpingSession ? whelpingEventsLoaded?.role : undefined,
-    selectedWhelpingSession ? whelpingBirthsLoaded?.role : undefined,
-  ].filter((role): role is "owner" | "admin" | "member" | "viewer" =>
-    role !== undefined,
-  );
-  const whelpingRole = whelpingServiceRoles.includes("viewer")
-    ? "viewer"
-    : (whelpingSessionsLoaded?.role ?? null);
-  const whelpingCanWrite =
-    whelpingServiceRoles.length > 0 &&
-    whelpingServiceRoles.every(
-      (role) => role === "owner" || role === "admin" || role === "member",
-    );
-  const whelpingDataReliable = !whelpingLoadError;
-  const openWhelpingClientCommandId = crypto.randomUUID();
-  const eventWhelpingClientCommandId = crypto.randomUUID();
-  const birthWhelpingClientCommandId = crypto.randomUUID();
-  const closeWhelpingClientCommandId = crypto.randomUUID();
-  const reopenWhelpingClientCommandId = crypto.randomUUID();
+  const whelpingWorkspaceLoaded = whelpingWorkspace;
   const selectedLitterId = journal?.selectedLitter?.id ?? null;
-  const selectedSessionId = selectedWhelpingSession?.id ?? null;
-  const openWhelpingAction =
-    selectedLitterId &&
-    whelpingDataReliable &&
-    whelpingCanWrite &&
-    selectedWhelpingSession === null
-      ? openWhelpingSessionAction.bind(null, {
-          litterId: selectedLitterId,
-          clientCommandId: openWhelpingClientCommandId,
-        })
-      : null;
-  const sessionWriteEnabled =
-    selectedLitterId !== null &&
-    selectedSessionId !== null &&
-    selectedWhelpingSession?.status === "open" &&
-    whelpingDataReliable &&
-    whelpingCanWrite;
-  const recordWhelpingEvent = sessionWriteEnabled
-    ? recordWhelpingEventAction.bind(null, {
-        litterId: selectedLitterId,
-        sessionId: selectedSessionId,
-        clientCommandId: eventWhelpingClientCommandId,
-      })
-    : null;
-  const recordWhelpingBirth = sessionWriteEnabled
-    ? recordWhelpingBirthAction.bind(null, {
-        litterId: selectedLitterId,
-        sessionId: selectedSessionId,
-        clientCommandId: birthWhelpingClientCommandId,
-      })
-    : null;
-  const closeWhelpingAction = sessionWriteEnabled
-    ? closeWhelpingSessionAction.bind(null, {
-        litterId: selectedLitterId,
-        sessionId: selectedSessionId,
-        clientCommandId: closeWhelpingClientCommandId,
-      })
-    : null;
-  const reopenWhelpingAction =
-    selectedLitterId !== null &&
-    selectedSessionId !== null &&
-    selectedWhelpingSession?.status === "closed" &&
-    whelpingDataReliable &&
-    whelpingCanWrite
-      ? reopenWhelpingSessionAction.bind(null, {
-          litterId: selectedLitterId,
-          sessionId: selectedSessionId,
-          clientCommandId: reopenWhelpingClientCommandId,
-        })
-      : null;
-  const recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[] =
-    selectedLitterId !== null &&
-    selectedSessionId !== null &&
-    whelpingDataReliable &&
-    whelpingCanWrite
-      ? (whelpingBirthsLoaded?.births ?? [])
-          .filter(
-            (birth) =>
-              birth.cancelledAt === null && birth.birthWeightMeasurement === null,
-          )
-          .map((birth) => {
-            const birthWeightClientCommandId = crypto.randomUUID();
-            return {
-              birthId: birth.id,
-              action: recordWhelpingBirthWeightAction.bind(null, {
-                litterId: selectedLitterId,
-                sessionId: selectedSessionId,
-                birthId: birth.id,
-                clientCommandId: birthWeightClientCommandId,
-              }),
-            };
-          })
-      : [];
-  const lastActiveWhelpingBirth = allWhelpingBirths
-    .filter((birth) => birth.cancelledAt === null)
-    .sort((left, right) => right.birthOrder - left.birthOrder || right.occurredAt.localeCompare(left.occurredAt))[0] ?? null;
-  const whelpingBirthAdjustmentActions: WhelpingBirthAdjustmentAction[] =
-    selectedLitterId !== null && selectedSessionId !== null && whelpingDataReliable && whelpingCanWrite
-      ? (whelpingBirthsLoaded?.births ?? [])
-          .filter((birth) => birth.cancelledAt === null)
-          .map((birth) => {
-            const intention = {
-              litterId: selectedLitterId,
-              sessionId: selectedSessionId,
-              birthId: birth.id,
-              animalId: birth.animal.id,
-              expectedRevisionNo: birth.revisionNo,
-            };
-            return {
-              birthId: birth.id,
-              correctAction: correctWhelpingBirthAction.bind(null, {
-                ...intention,
-                clientCommandId: crypto.randomUUID(),
-              }),
-              cancelAction: lastActiveWhelpingBirth?.id === birth.id
-                ? cancelWhelpingBirthAction.bind(null, {
-                    ...intention,
-                    clientCommandId: crypto.randomUUID(),
-                  })
-                : null,
-            };
-          })
-      : [];
-  const whelpingBirthAdjustmentHistoryLoaded =
-    whelpingBirthAdjustmentHistory?.outcome === "success"
-      ? whelpingBirthAdjustmentHistory
-      : null;
   const litterWeightHistoryLoaded =
     litterWeightHistory?.outcome === "success" ? litterWeightHistory : null;
   const eligibleLitterWeightAnimals =
@@ -487,20 +281,24 @@ export default async function LitterJournalPage({
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
-            whelpingSession={selectedWhelpingSession}
-            whelpingEvents={whelpingEventsLoaded?.events ?? []}
-            whelpingBirths={whelpingBirthsLoaded?.births ?? []}
-            whelpingRole={whelpingRole}
-            whelpingLoadError={whelpingLoadError}
-            openWhelpingAction={openWhelpingAction}
-            recordWhelpingEventAction={recordWhelpingEvent}
-            recordWhelpingBirthAction={recordWhelpingBirth}
-            recordWhelpingBirthWeightActions={recordWhelpingBirthWeightActions}
-            whelpingBirthAdjustmentActions={whelpingBirthAdjustmentActions}
-            whelpingBirthAdjustmentHistory={whelpingBirthAdjustmentHistoryLoaded?.entries ?? []}
-            whelpingBirthAdjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoaded === null}
-            closeWhelpingSessionAction={closeWhelpingAction}
-            reopenWhelpingSessionAction={reopenWhelpingAction}
+            whelpingSession={whelpingWorkspaceLoaded?.session ?? null}
+            whelpingEvents={whelpingWorkspaceLoaded?.events ?? []}
+            whelpingBirths={whelpingWorkspaceLoaded?.births ?? []}
+            whelpingRole={whelpingWorkspaceLoaded?.role ?? null}
+            whelpingLoadError={
+              whelpingWorkspaceLoaded?.loadError ?? true
+            }
+            openWhelpingAction={whelpingWorkspaceLoaded?.openAction ?? null}
+            recordWhelpingEventAction={whelpingWorkspaceLoaded?.eventAction ?? null}
+            recordWhelpingBirthAction={whelpingWorkspaceLoaded?.birthAction ?? null}
+            recordWhelpingBirthWeightActions={whelpingWorkspaceLoaded?.birthWeightActions ?? []}
+            whelpingBirthAdjustmentActions={whelpingWorkspaceLoaded?.birthAdjustmentActions ?? []}
+            whelpingBirthAdjustmentHistory={whelpingWorkspaceLoaded?.adjustmentHistory ?? []}
+            whelpingBirthAdjustmentHistoryLoadError={
+              whelpingWorkspaceLoaded?.adjustmentHistoryLoadError ?? true
+            }
+            closeWhelpingSessionAction={whelpingWorkspaceLoaded?.closeAction ?? null}
+            reopenWhelpingSessionAction={whelpingWorkspaceLoaded?.reopenAction ?? null}
             litterWeightAnimals={litterWeightHistoryLoaded?.animals ?? []}
             litterWeightSessions={litterWeightHistoryLoaded?.sessions ?? []}
             litterWeightMeasurements={litterWeightHistoryLoaded?.measurements ?? []}

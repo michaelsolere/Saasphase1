@@ -1,9 +1,23 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { validateLoginReturnPath } from "@/features/auth/login-return";
 import type { Database } from "@/types/database.types";
 
 import { getSupabaseConfig } from "./config";
+
+export function redirectWithResponseCookies(
+  destination: URL,
+  sourceResponse: NextResponse,
+) {
+  const redirectResponse = NextResponse.redirect(destination);
+
+  for (const cookie of sourceResponse.cookies.getAll()) {
+    redirectResponse.cookies.set(cookie);
+  }
+
+  return redirectResponse;
+}
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
@@ -37,14 +51,18 @@ export async function updateSession(request: NextRequest) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
-    return NextResponse.redirect(loginUrl);
+    return redirectWithResponseCookies(loginUrl, response);
   }
 
   if (user && pathname === "/login") {
-    const applicationsUrl = request.nextUrl.clone();
-    applicationsUrl.pathname = "/candidatures";
-    applicationsUrl.search = "";
-    return NextResponse.redirect(applicationsUrl);
+    const returnPath = validateLoginReturnPath(
+      request.nextUrl.searchParams.get("next"),
+    );
+    const destinationUrl = new URL(
+      returnPath ?? "/candidatures",
+      request.url,
+    );
+    return redirectWithResponseCookies(destinationUrl, response);
   }
 
   return response;

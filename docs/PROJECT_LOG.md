@@ -6,7 +6,7 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `630d2c8770677df24ee855b12440c95d831760bc`.
+- SHA de base vérifié avant ce lot : `9e5347c0366504e2b61ebd03736738b6ee7b3d65`.
 - La dernière migration incluse est `202607220002_whelping_birth_replacement_projection_fix`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -190,14 +190,14 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 ##### Limites actuelles
 
 - aucune mesure clinique n’est disponible ;
-- aucune fréquence automatique quotidienne ou tous les trois jours n’est disponible ;
+- la recommandation de pesée couvre J0 à J30 quotidiennement, puis J31 à J60 tous les trois jours. Le planning est calculé depuis l’historique réel : une mesure observée satisfait le jalon correspondant, sans créer de séance ni de mesure artificielle ;
+- chaque portée née conserve un snapshot de la politique effective afin que sa cadence historique ne change pas lorsqu’une organisation personnalise ensuite ses phases. Les rôles autorisés peuvent personnaliser la politique de l’organisation ou revenir à la recommandation ;
 - la comparaison inter-portées dispose désormais d’une synthèse descriptive et de graphiques en poids moyen et indice base 100 ; aucune courbe de référence de race n’est disponible ;
 - aucune interpolation, alerte, seuil ou interprétation vétérinaire n’est disponible ;
-- aucune saisie vocale n’est disponible ;
-- aucune PWA ou application mobile indépendante n’existe ;
+- aucune dictée structurée de phrase complète n’est disponible ; la dictée du clavier natif reste utilisable comme toute saisie de formulaire ;
 - le statut de la portée n’est jamais modifié automatiquement.
 
-L’interface actuelle est responsive et utilisable sur mobile dans le navigateur, mais elle n’est ni une PWA ni une application mobile indépendante.
+Le Journal complet reste responsive dans le navigateur. Le mode autonome `/whelping` constitue une fondation PWA installable dédiée à la mise-bas, strictement en ligne ; il ne s’agit pas d’une application native séparée.
 
 ##### Synthèse fonctionnelle des PR du Journal
 
@@ -219,11 +219,29 @@ L’interface actuelle est responsive et utilisable sur mobile dans le navigateu
 - **#342** : modèle de comparaison par âge réel ;
 - **#343** : lecture serveur sécurisée multi-portées ;
 - **#344** : sélection et synthèse descriptive inter-portées ;
-- **#346** : graphique comparatif inter-portées, poids moyen et indice base 100.
+- **#346** : graphique comparatif inter-portées, poids moyen et indice base 100 ;
+- **#347** : consolidation documentaire du graphique comparatif ;
+- **#348** : modèle paramétrable du planning J0–J60 ;
+- **#349** : calcul du planning depuis l’historique réel ;
+- **#350** : synthèse du planning dans le Journal ;
+- **#351** : politique effective et snapshot immuable par portée ;
+- **#352** : utilisation de la politique effective dans le Journal ;
+- **#353** : personnalisation de la cadence par organisation ;
+- **#354** : conservation des animaux adoptés dans les historiques et clarification de leur éligibilité aux nouvelles pesées.
 
 Les PR #323, #325, #329 et #335 ont actualisé le présent journal sans ajouter de capacité métier ; la PR #335 a consolidé la documentation après la PR #334.
 
 La **PR #345** a consolidé la documentation après la PR #344 ; la PR #340 était la consolidation documentaire antérieure.
+
+#### Fondation mobile de mise-bas
+
+La route privée `/whelping` expose le même `WhelpingPanel`, les mêmes lectures, les mêmes Server Actions et les mêmes commandes que le Journal complet. L’orchestration serveur partagée charge la session ouverte ou la dernière session clôturée, la chronologie, les naissances de toutes les sessions nécessaires à l’éligibilité d’annulation, les rôles et l’historique des rectifications. Toute lecture structurante défaillante neutralise les mutations, et `viewer` reste en lecture seule.
+
+Sans paramètre, le mode mobile choisit en priorité la portée dont la session ouverte a été démarrée le plus récemment, puis la première portée selon l’ordre métier du Journal. Le sélecteur et l’URL utilisent un index public borné (`/whelping?litter=0`) traduit côté serveur vers le catalogue autorisé courant ; aucun UUID n’est accepté comme index ou rendu dans les options.
+
+Le mode autonome n’affiche pas la sidebar. Son manifest dédié permet l’installation sous le nom **Mise-bas**, avec affichage `standalone`, icônes 192 et 512 pixels et métadonnées Apple. Un retour après connexion n’est accepté que pour `/whelping` ou `/whelping?litter=<entier non négatif>`, avec revalidation côté serveur et fallback vers le parcours de connexion historique.
+
+Cette fondation exige une connexion réseau. Elle n’ajoute aucun service worker, cache de page privée ou de réponse de Server Action, stockage local de naissance, file d’attente, IndexedDB, Background Sync, notification push, dictée structurée ou application native séparée.
 
 #### Bibliothèque recommandée et copies d’organisation
 
@@ -450,8 +468,8 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
 - d’éventuelles mesures cliniques ;
-- la saisie vocale ;
-- une éventuelle PWA ou application mobile indépendante.
+- la dictée structurée ;
+- le fonctionnement hors ligne et une éventuelle application mobile native séparée.
 
 Cette liste reste prudente et ne constitue pas un ordre de réalisation définitivement validé. L’architecture et la priorité de ces évolutions devront être confirmées avant leur mise en œuvre.
 

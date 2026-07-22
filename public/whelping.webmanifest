@@ -1,0 +1,26 @@
+{
+  "id": "/whelping",
+  "name": "SaaS Élevage – Mise-bas",
+  "short_name": "Mise-bas",
+  "description": "Interface mobile sécurisée pour le suivi en ligne d’une mise-bas.",
+  "start_url": "/whelping",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f7f4",
+  "theme_color": "#315c43",
+  "lang": "fr",
+  "icons": [
+    {
+      "src": "/whelping-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/whelping-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

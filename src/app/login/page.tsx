@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/features/auth/login-form";
+import { validateLoginReturnPath } from "@/features/auth/login-return";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +10,10 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ deconnexion?: string }>;
+  searchParams: Promise<{ deconnexion?: string; next?: string }>;
 }) {
   const params = await searchParams;
+  const returnPath = validateLoginReturnPath(params.next);
   const supabase = await createClient();
   const {
     data: { user },
@@ -19,7 +21,7 @@ export default async function LoginPage({
 
   // Un utilisateur déjà connecté n’a pas à ressaisir ses identifiants.
   if (user) {
-    redirect("/candidatures");
+    redirect(returnPath ?? "/candidatures");
   }
 
   return (
@@ -59,7 +61,7 @@ export default async function LoginPage({
             </p>
           ) : null}
 
-          <LoginForm />
+          <LoginForm returnPath={returnPath} />
 
           <p className="mt-6 text-xs leading-5 text-muted">
             L’inscription et la récupération de mot de passe ne sont pas encore
