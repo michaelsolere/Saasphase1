@@ -1,5 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { QUICK_WHELPING_COMPLETION_REASON } from "../../src/features/whelping/whelping-core";
+
 import {
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
@@ -88,7 +90,7 @@ function workflowState() {
     'recordBirthCommands',(select count(*) from public.whelping_commands where litter_id=${q(ids.litter)}::uuid and command_type='record_birth'),
     'quickCompletionActions',(select count(*) from births b left join public.animal_weight_measurements w on w.source_birth_id=b.id and w.cancelled_at is null where b.cancelled_at is null and (b.initial_collar_color is null or w.id is null)),
     'quickCompletionItems',(select count(*) from births b left join public.animal_weight_measurements w on w.source_birth_id=b.id and w.cancelled_at is null where b.cancelled_at is null and (b.initial_collar_color is null or w.id is null)),
-    'adjustments',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason='Complément rapide du poids et du collier'),
+    'adjustments',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason=${q(QUICK_WHELPING_COMPLETION_REASON)}),
     'measurements',(select count(*) from public.animal_weight_measurements where animal_id in (select id from offspring) and measurement_kind='birth' and cancelled_at is null),
     'orders',coalesce((select json_agg(birth_order order by birth_order) from births),'[]'::json),
     'sexes',coalesce((select json_agg(sex order by birth_order) from births),'[]'::json),
@@ -134,7 +136,7 @@ async function uiState(page: Page) {
   return scope.evaluate((element) => {
     const quickCards = Array.from(element.querySelectorAll('[data-testid="quick-completion-card"]'));
     const timelineItems = Array.from(element.querySelectorAll("ol > li")).filter((item) => item.textContent?.trim().startsWith("#"));
-    const history = Array.from(element.querySelectorAll("details")).find((detail) => detail.querySelector("summary")?.textContent?.includes("Historique des rectifications"));
+    const history = Array.from(element.querySelectorAll("details")).find((detail) => detail.querySelector("summary")?.textContent?.includes("Historique des compléments et rectifications"));
     return {
       cards: quickCards.length,
       visibleOrders: quickCards.map((card) => Number(card.textContent?.match(/Naissance n°(\d+)/)?.[1])).filter(Number.isFinite),
@@ -208,7 +210,7 @@ test("ouvre une session puis complète exactement deux naissances sans collision
     await checkpoint("10-male-completion-saved", { births: 2, measurements: 1, quickCompletionActions: 1, adjustments: 1, correctionEvents: 1, cards: 1, visibleOrders: [2], history: 1 });
     await page.reload();
     mobilePanel = panel(page);
-    await checkpoint("11-male-refresh-complete", { births: 2, cards: 1, visibleOrders: [2], timeline: 3, history: 1 });
+    await checkpoint("11-male-refresh-complete", { births: 2, cards: 1, visibleOrders: [2], timeline: 2, history: 1 });
 
     const remainingFemale = quickCard(mobilePanel, 2);
     await remainingFemale.getByRole("button", { name: "Rose", exact: true }).click();
@@ -225,7 +227,7 @@ test("ouvre une session puis complète exactement deux naissances sans collision
       commands: 3, recordBirthCommands: 2, quickCompletionActions: 0, quickCompletionItems: 0, adjustments: 2,
       measurements: 2, orders: [1, 2], sexes: ["male", "female"], revisions: [1, 1],
       duplicateOrders: 0, duplicateEvents: 0, duplicateMeasurements: 0, duplicateAdjustments: 0,
-      cards: 0, timeline: 4, history: 2,
+      cards: 0, timeline: 2, history: 2,
     });
   } finally {
     cleanup();

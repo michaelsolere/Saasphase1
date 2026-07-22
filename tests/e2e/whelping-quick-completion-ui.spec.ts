@@ -1,6 +1,9 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { correctWhelpingBirthCore } from "../../src/features/whelping/whelping-core";
+import {
+  correctWhelpingBirthCore,
+  QUICK_WHELPING_COMPLETION_REASON,
+} from "../../src/features/whelping/whelping-core";
 import {
   createAuthenticatedSupabaseClient,
   E2E_OWNER_EMAIL,
@@ -86,6 +89,10 @@ async function login(page: Page) {
 
 function panel(page: Page) {
   return page.getByRole("heading", { name: "Mise-bas", exact: true }).locator("xpath=ancestor::section[1]");
+}
+
+function timeline(scope: Locator) {
+  return scope.getByRole("heading", { name: "Chronologie" }).locator("xpath=following-sibling::ol[1]");
 }
 
 function quickCard(scope: Locator, order: number) {
@@ -190,6 +197,13 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     expect(new Date(String(second.measured_at)).getTime()).toBeGreaterThanOrEqual(beforeSubmit - 1_000);
     expect(new Date(String(second.measured_at)).getTime()).toBeLessThanOrEqual(afterSubmit + 1_000);
     expect(second).toMatchObject({ sex: "female", viability: "unknown", color: "Bleu", animal_color_initial: "Bleu", animal_color_current: "Bleu", animal_weight: 430 });
+    await expect(timeline(mobilePanel).locator(":scope > li")).toHaveCount(2);
+    await expect(timeline(mobilePanel)).not.toContainText("Naissance corrigée");
+    await expect(timeline(mobilePanel).locator(":scope > li").nth(1)).toContainText("430 g");
+    await expect(timeline(mobilePanel).locator(":scope > li").nth(1)).toContainText("Bleu");
+    await mobilePanel.getByText("Historique des compléments et rectifications").click();
+    await expect(mobilePanel.getByText("Poids et collier ajoutés", { exact: true })).toBeVisible();
+    await expect(mobilePanel.getByText(`Motif : ${QUICK_WHELPING_COMPLETION_REASON}`, { exact: true })).toBeVisible();
 
     const first = quickCard(mobilePanel, 1);
     await first.getByRole("button", { name: "Bleu", exact: true }).click();
@@ -208,6 +222,9 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n°1 complétée : 425 g.");
     checkpoint("male-weight-only-refresh-complete");
     await expect(quickCard(mobilePanel, 1)).toHaveCount(0);
+    await expect(mobilePanel.getByText("Couleur du collier ajoutée", { exact: true })).toBeVisible();
+    await expect(mobilePanel.getByText("Poids de naissance ajouté", { exact: true })).toBeVisible();
+    await expect(timeline(mobilePanel)).not.toContainText("Naissance corrigée");
 
     await expressBirthButton(mobilePanel, "+ NAISSANCE MÂLE").click();
     await expect(mobilePanel.getByRole("status")).toContainText("Naissance n° 3");
@@ -247,8 +264,8 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
     const database = JSON.parse(sql(`select json_build_object(
       'births',(select count(*) from public.whelping_births where session_id=${q(ids.session)}::uuid),
       'birth_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth'),
-      'quick_corrections',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason='Complément rapide du poids et du collier'),
-      'quick_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth_corrected' and note='Complément rapide du poids et du collier'),
+      'quick_corrections',(select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid and reason=${q(QUICK_WHELPING_COMPLETION_REASON)}),
+      'quick_events',(select count(*) from public.whelping_events where session_id=${q(ids.session)}::uuid and event_type='birth_corrected' and note=${q(QUICK_WHELPING_COMPLETION_REASON)}),
       'active_measures',(select count(*) from public.animal_weight_measurements where animal_id in (select id from public.animals where litter_id=${q(ids.litter)}::uuid) and measurement_kind='birth' and cancelled_at is null),
       'duplicate_measures',(select count(*) from (select source_birth_id from public.animal_weight_measurements where animal_id in (select id from public.animals where litter_id=${q(ids.litter)}::uuid) and measurement_kind='birth' and cancelled_at is null group by source_birth_id having count(*)>1) duplicated)
     )::text;`));
@@ -256,6 +273,25 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
 
     await page.reload();
     mobilePanel = panel(page);
+    const visibleTimelineItems = timeline(mobilePanel).locator(":scope > li");
+    await expect(visibleTimelineItems).toHaveCount(5);
+    await expect(visibleTimelineItems).toHaveText([
+      /#1[\s\S]*Naissance n° 1/,
+      /#2[\s\S]*Naissance n° 2/,
+      /#3[\s\S]*Naissance n° 3/,
+      /#4[\s\S]*Naissance n° 4/,
+      /#5[\s\S]*Naissance corrigée/,
+    ]);
+    await expect(timeline(mobilePanel)).not.toContainText(QUICK_WHELPING_COMPLETION_REASON);
+    expect(JSON.parse(sql(`select json_agg(sequence_no order by sequence_no)::text from public.whelping_events where session_id=${q(ids.session)}::uuid;`)))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    await mobilePanel.getByText("Historique des compléments et rectifications").click();
+    const history = mobilePanel.locator("details").filter({ hasText: "Historique des compléments et rectifications" });
+    await expect(history.locator("ol > li")).toHaveCount(6);
+    await expect(history.getByText("Poids et collier ajoutés", { exact: true })).toHaveCount(1);
+    await expect(history.getByText("Poids de naissance ajouté", { exact: true })).toHaveCount(2);
+    await expect(history.getByText("Couleur du collier ajoutée", { exact: true })).toHaveCount(2);
+    await expect(history.getByText("Naissance corrigée", { exact: true })).toHaveCount(1);
     const html = await page.locator("main").evaluate((node) => node.outerHTML);
     expect(html).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
     expect(html).not.toMatch(/clientCommand|command_id|revision|supabase|rpc|whelping_births|storage/i);
@@ -291,5 +327,84 @@ test("gère la file mobile de compléments rapides sans altérer le Journal", as
   } finally {
     cleanup();
     console.info(JSON.stringify({ quickCompletionUiCleanup: { prefix, remaining: expectClean() } }));
+  }
+});
+
+test("renumérote naissance, événement métier et correction autour d’un complément masqué", async ({ page }) => {
+  cleanup();
+  expectClean();
+  let createdIds: Record<string, string[]> = {};
+  try {
+    fixtures();
+    await login(page);
+    await page.goto("/whelping");
+    let mobilePanel = panel(page);
+
+    await expressBirthButton(mobilePanel, "+ NAISSANCE MÂLE").click();
+    await expect(mobilePanel.getByRole("status")).toContainText("Naissance n° 1");
+    const quick = quickCard(mobilePanel, 1);
+    await quick.getByLabel("Poids de naissance").fill("410");
+    await quick.getByRole("button", { name: "Vert", exact: true }).click();
+    await quick.getByRole("button", { name: "Enregistrer le complément" }).click();
+    await expect(quick).toHaveCount(0);
+
+    await mobilePanel.getByRole("button", { name: "Ajouter un événement" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Type").selectOption("observation");
+    await dialog.getByLabel("Note (facultative)").fill("Observation visible après complément");
+    await dialog.getByRole("button", { name: "Ajouter l’événement" }).click();
+    await expect(dialog).toBeHidden();
+
+    const current = birthState(1);
+    const owner = await createAuthenticatedSupabaseClient();
+    const corrected = await correctWhelpingBirthCore({
+      birthId: String(current.birth_id),
+      clientCommandId: ids.staleCommand,
+      expectedRevisionNo: Number(current.revision),
+      occurredAt: String(current.occurred_at),
+      sex: "female",
+      viability: "unknown",
+      initialCollarColor: String(current.color),
+      birthNote: "Correction manuelle visible",
+      weightGrams: Number(current.measurement_grams),
+      weightMeasuredAt: String(current.measured_at),
+      weightNote: null,
+      reason: "Correction manuelle du sexe",
+    }, owner);
+    expect(corrected.outcome).toBe("success");
+
+    await page.reload();
+    mobilePanel = panel(page);
+    const items = timeline(mobilePanel).locator(":scope > li");
+    await expect(items).toHaveCount(3);
+    await expect(items).toHaveText([
+      /#1[\s\S]*Naissance n° 1/,
+      /#2[\s\S]*Observation[\s\S]*Observation visible après complément/,
+      /#3[\s\S]*Naissance corrigée[\s\S]*Correction manuelle du sexe/,
+    ]);
+    expect(JSON.parse(sql(`select json_agg(json_build_object('sequence',sequence_no,'type',event_type,'note',note) order by sequence_no)::text from public.whelping_events where session_id=${q(ids.session)}::uuid;`))).toEqual([
+      { sequence: 1, type: "birth", note: null },
+      { sequence: 2, type: "birth_corrected", note: QUICK_WHELPING_COMPLETION_REASON },
+      { sequence: 3, type: "observation", note: "Observation visible après complément" },
+      { sequence: 4, type: "birth_corrected", note: "Correction manuelle du sexe" },
+    ]);
+    await mobilePanel.getByText("Historique des compléments et rectifications").click();
+    const history = mobilePanel.locator("details").filter({ hasText: "Historique des compléments et rectifications" });
+    await expect(history.locator("ol > li")).toHaveCount(2);
+    await expect(history.getByText("Poids et collier ajoutés", { exact: true })).toBeVisible();
+    await expect(history.getByText("Naissance corrigée", { exact: true })).toBeVisible();
+
+    createdIds = JSON.parse(sql(`select json_build_object(
+      'births',coalesce((select json_agg(id::text) from public.whelping_births where session_id=${q(ids.session)}::uuid),'[]'::json),
+      'animals',coalesce((select json_agg(id::text) from public.animals where litter_id=${q(ids.litter)}::uuid),'[]'::json),
+      'events',coalesce((select json_agg(id::text) from public.whelping_events where session_id=${q(ids.session)}::uuid),'[]'::json),
+      'commands',coalesce((select json_agg(id::text) from public.whelping_commands where litter_id=${q(ids.litter)}::uuid),'[]'::json),
+      'adjustments',coalesce((select json_agg(id::text) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid),'[]'::json),
+      'measurements',coalesce((select json_agg(id::text) from public.animal_weight_measurements where animal_id in (select id from public.animals where litter_id=${q(ids.litter)}::uuid)),'[]'::json)
+    )::text;`));
+    console.info(JSON.stringify({ quickCompletionNumberingCreatedIds: createdIds }));
+  } finally {
+    cleanup();
+    console.info(JSON.stringify({ quickCompletionNumberingCleanup: { prefix, deleted: createdIds, remaining: expectClean() } }));
   }
 });

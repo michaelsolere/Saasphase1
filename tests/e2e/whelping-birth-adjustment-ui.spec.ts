@@ -146,7 +146,7 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await expect(whelping.getByText("État corrigé", { exact: true })).toBeVisible();
     await expect(whelping.locator("ol").first().getByText("425 g", { exact: false })).toBeVisible();
     expect(sql(`select row_to_json(e)::text from public.whelping_events e where id=${q(first.eventId)}::uuid;`)).toBe(originalEvent);
-    await whelping.getByText("Historique des rectifications").click();
+    await whelping.getByText("Historique des compléments et rectifications").click();
     await expect(whelping.getByText("Motif : Erreur de saisie complète", { exact: true })).toBeVisible();
     await expect(whelping.getByText("Femelle → Mâle")).toBeVisible();
     await expect(whelping.getByText("410 g → 425 g")).toBeVisible();
@@ -202,7 +202,7 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     sql(`set session_replication_role=replica; update public.memberships set role='viewer' where id=${q(ownerMembershipId)}::uuid; set session_replication_role=origin;`);
     await page.reload();
     whelping = panel(page);
-    await whelping.getByText("Historique des rectifications").click();
+    await whelping.getByText("Historique des compléments et rectifications").click();
     await expect(whelping.getByText("Naissance corrigée").first()).toBeVisible();
     await expect(whelping.getByRole("button", { name: "Corriger" })).toHaveCount(0);
     await expect(whelping.getByRole("button", { name: "Annuler la naissance" })).toHaveCount(0);
