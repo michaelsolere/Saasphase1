@@ -80,7 +80,11 @@ export const initialWhelpingBirthAdjustmentActionState = {
   status: "idle",
 } satisfies WhelpingBirthAdjustmentActionState;
 
-export type OpenWhelpingSessionIntention = {
+type WhelpingMobileSelectionIntention = {
+  mobileSelectionRevision?: string;
+};
+
+export type OpenWhelpingSessionIntention = WhelpingMobileSelectionIntention & {
   litterId: string;
   clientCommandId: string;
 };
@@ -98,7 +102,7 @@ export type RecordWhelpingBirthWeightIntention = RecordWhelpingEventIntention & 
   birthId: string;
 };
 
-export type WhelpingBirthAdjustmentIntention = {
+export type WhelpingBirthAdjustmentIntention = WhelpingMobileSelectionIntention & {
   litterId: string;
   sessionId: string;
   birthId: string;

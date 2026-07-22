@@ -73,6 +73,7 @@ export type WhelpingWorkspace = {
 export async function loadWhelpingWorkspace(
   litterId: string,
   suppliedClient?: WhelpingClient,
+  mobileSelection?: { revision: string },
 ): Promise<WhelpingWorkspace> {
   const supabase = suppliedClient ?? (await createClient());
   const [sessionsResult, adjustmentHistoryResult] = await Promise.allSettled([
@@ -174,12 +175,16 @@ export async function loadWhelpingWorkspace(
     selectedSession?.status === "open" &&
     dataReliable &&
     canWrite;
+  const mobileIntention = mobileSelection
+    ? { mobileSelectionRevision: mobileSelection.revision }
+    : {};
 
   const openAction =
     dataReliable && canWrite && selectedSession === null
       ? openWhelpingSessionAction.bind(null, {
           litterId,
           clientCommandId: crypto.randomUUID(),
+          ...mobileIntention,
         })
       : null;
   const eventAction = sessionWriteEnabled
@@ -187,6 +192,7 @@ export async function loadWhelpingWorkspace(
         litterId,
         sessionId: selectedSessionId,
         clientCommandId: crypto.randomUUID(),
+        ...mobileIntention,
       })
     : null;
   const bindBirthAction = (): BirthAction | null =>
@@ -195,6 +201,7 @@ export async function loadWhelpingWorkspace(
           litterId,
           sessionId: selectedSessionId,
           clientCommandId: crypto.randomUUID(),
+          ...mobileIntention,
         })
       : null;
   const expressMaleBirthAction = bindBirthAction();
@@ -205,6 +212,7 @@ export async function loadWhelpingWorkspace(
         litterId,
         sessionId: selectedSessionId,
         clientCommandId: crypto.randomUUID(),
+        ...mobileIntention,
       })
     : null;
   const reopenAction =
@@ -216,6 +224,7 @@ export async function loadWhelpingWorkspace(
           litterId,
           sessionId: selectedSessionId,
           clientCommandId: crypto.randomUUID(),
+          ...mobileIntention,
         })
       : null;
   const birthWeightActions: WhelpingBirthWeightAction[] =
@@ -233,6 +242,7 @@ export async function loadWhelpingWorkspace(
               sessionId: selectedSessionId,
               birthId: birth.id,
               clientCommandId: crypto.randomUUID(),
+              ...mobileIntention,
             }),
           }))
       : [];
@@ -253,6 +263,7 @@ export async function loadWhelpingWorkspace(
               animalId: birth.animal.id,
               expectedRevisionNo: birth.revisionNo,
               clientCommandId: crypto.randomUUID(),
+              ...mobileIntention,
             }),
           }))
       : [];
@@ -281,12 +292,14 @@ export async function loadWhelpingWorkspace(
               correctAction: correctWhelpingBirthAction.bind(null, {
                 ...intention,
                 clientCommandId: crypto.randomUUID(),
+                ...mobileIntention,
               }),
               cancelAction:
                 lastActiveBirth?.id === birth.id
                   ? cancelWhelpingBirthAction.bind(null, {
                       ...intention,
                       clientCommandId: crypto.randomUUID(),
+                      ...mobileIntention,
                     })
                   : null,
             };

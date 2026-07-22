@@ -37,6 +37,21 @@ import {
   recordWhelpingEvent,
   reopenWhelpingSession,
 } from "./whelping";
+import { mobileSelectionMatches } from "./whelping-mobile-selection-server";
+
+const STALE_MOBILE_SELECTION_MESSAGE =
+  "La portée affichée a changé. Rechargez le mode mise-bas avant de continuer.";
+
+async function hasStaleMobileSelection(intention: {
+  litterId: string;
+  mobileSelectionRevision?: string;
+}) {
+  return intention.mobileSelectionRevision !== undefined &&
+    !(await mobileSelectionMatches(
+      intention.litterId,
+      intention.mobileSelectionRevision,
+    ));
+}
 
 const dependencies: WhelpingActionDependencies & WhelpingBirthAdjustmentActionDependencies & WhelpingQuickCompletionActionDependencies = {
   openSession: openWhelpingSession,
@@ -56,6 +71,9 @@ export async function quickCompleteWhelpingBirthAction(
   previousState: WhelpingBirthAdjustmentActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE, stale: true };
+  }
   return quickCompleteWhelpingBirthActionCore(
     intention,
     previousState,
@@ -69,6 +87,9 @@ export async function openWhelpingSessionAction(
   previousState: WhelpingActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return openWhelpingSessionActionCore(
     intention,
     previousState,
@@ -82,6 +103,9 @@ export async function recordWhelpingEventAction(
   previousState: WhelpingActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return recordWhelpingEventActionCore(
     intention,
     previousState,
@@ -95,6 +119,9 @@ export async function recordWhelpingBirthAction(
   previousState: WhelpingBirthActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return recordWhelpingBirthActionCore(
     intention,
     previousState,
@@ -108,6 +135,9 @@ export async function recordWhelpingBirthWeightAction(
   previousState: WhelpingActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return recordWhelpingBirthWeightActionCore(
     intention,
     previousState,
@@ -121,6 +151,9 @@ export async function correctWhelpingBirthAction(
   previousState: WhelpingBirthAdjustmentActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE, stale: true };
+  }
   return correctWhelpingBirthActionCore(
     intention,
     previousState,
@@ -134,6 +167,9 @@ export async function cancelWhelpingBirthAction(
   previousState: WhelpingBirthAdjustmentActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE, stale: true };
+  }
   return cancelWhelpingBirthActionCore(
     intention,
     previousState,
@@ -147,6 +183,9 @@ export async function closeWhelpingSessionAction(
   previousState: WhelpingActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return closeWhelpingSessionActionCore(
     intention,
     previousState,
@@ -160,6 +199,9 @@ export async function reopenWhelpingSessionAction(
   previousState: WhelpingActionState,
   formData: FormData,
 ) {
+  if (await hasStaleMobileSelection(intention)) {
+    return { status: "error" as const, message: STALE_MOBILE_SELECTION_MESSAGE };
+  }
   return reopenWhelpingSessionActionCore(
     intention,
     previousState,
