@@ -68,6 +68,27 @@ Capacités actuellement disponibles :
 - sélection vide par défaut, puis génération partielle des seuls jalons choisis après confirmation explicite ;
 - aucune tâche ni autre donnée créée au chargement de la page.
 
+#### Courbe descriptive des températures maternelles
+
+Le panneau **Suivi de la mère** présente désormais, avant l’historique textuel
+intégral, une courbe chronologique construite exclusivement depuis les
+observations maternelles de type `temperature` déjà autorisées et chargées. Il
+n’ajoute aucune lecture Supabase. Les valeurs saisies en Fahrenheit sont
+converties en Celsius uniquement pour harmoniser l’axe graphique, selon
+`°C = (°F − 32) × 5 / 9` ; la valeur et l’unité d’origine restent disponibles
+dans le titre accessible de chaque point.
+
+La synthèse affiche la dernière mesure, la précédente, leur écart et leur
+intervalle observé, le nombre de mesures ainsi que les minimum et maximum
+réellement mesurés. Les segments droits relient uniquement les observations
+successives : aucun point artificiel, interpolation ou extrapolation n’est
+créé. Le module ne contient aucun seuil clinique et ne produit ni diagnostic,
+ni prédiction de mise-bas, ni détection automatique, ni alerte ou recommandation
+de soin. L’appréciation affichée reste strictement la valeur `routine`, `watch`,
+`concern` ou `urgent` saisie par l’éleveur. Le rôle `viewer` accède à la courbe,
+à la synthèse et à l’historique en lecture seule. Le DTO transmis au panneau ne
+contient aucun UUID, auteur, identifiant de commande ou identifiant de base.
+
 Les repères disponibles sont `first_mating`, `estimated_ovulation`, `expected_birth`, `actual_birth` et `offspring_age`. Le repère `offspring_age` utilise exclusivement la naissance réelle comme ancre. Si l’ancre requise manque, seule la tâche concernée reste en `missing_anchor` : aucun autre repère n’est utilisé comme fallback silencieux.
 
 #### Sessions, chronologie, naissances et poids de mise-bas
@@ -189,7 +210,7 @@ La comparaison inter-portées repose sur les mesures réellement observées et c
 
 ##### Limites actuelles
 
-- aucune mesure clinique n’est disponible ;
+- aucun module de mesures cliniques individuelles des chiots ni interprétation vétérinaire automatique n’est disponible ;
 - la recommandation de pesée couvre J0 à J30 quotidiennement, puis J31 à J60 tous les trois jours. Le planning est calculé depuis l’historique réel : une mesure observée satisfait le jalon correspondant, sans créer de séance ni de mesure artificielle ;
 - chaque portée née conserve un snapshot de la politique effective afin que sa cadence historique ne change pas lorsqu’une organisation personnalise ensuite ses phases. Les rôles autorisés peuvent personnaliser la politique de l’organisation ou revenir à la recommandation ;
 - la comparaison inter-portées dispose désormais d’une synthèse descriptive et de graphiques en poids moyen et indice base 100 ; aucune courbe de référence de race n’est disponible ;
@@ -467,7 +488,7 @@ Dans l’interface Portée, l’éligibilité d’un dossier tient compte des de
 
 Restent notamment à concevoir ou implémenter, sans ordre technique définitivement décidé :
 
-- d’éventuelles mesures cliniques ;
+- d’éventuelles mesures cliniques individuelles des chiots et leur interprétation vétérinaire ;
 - la dictée structurée ;
 - le fonctionnement hors ligne et une éventuelle application mobile native séparée.
 

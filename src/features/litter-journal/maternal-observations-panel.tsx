@@ -20,9 +20,14 @@ import {
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
 import type {
   MaternalObservationSeverity,
-  MaternalObservationSummary,
   MaternalObservationType,
 } from "./maternal-observations";
+import { MaternalTemperatureChart } from "./maternal-temperature-chart";
+import {
+  buildMaternalTemperatureChartModel,
+  type MaternalObservationPanelItem,
+  type MaternalTemperatureChartModel,
+} from "./maternal-temperature-chart-model";
 
 const observationTypeLabels: Record<MaternalObservationType, string> = {
   temperature: "Température",
@@ -60,7 +65,7 @@ const initialMaternalObservationActionState: MaternalObservationActionState = {
   status: "idle",
 };
 
-function formatObservationDateTime(observation: MaternalObservationSummary) {
+function formatObservationDateTime(observation: MaternalObservationPanelItem) {
   const date = new Date(observation.observedAt);
   const options: Intl.DateTimeFormatOptions = {
     dateStyle: "medium",
@@ -75,6 +80,62 @@ function formatObservationDateTime(observation: MaternalObservationSummary) {
       ...options,
       timeZone: "UTC",
     }).format(date);
+  }
+}
+
+function formatTemperature(value: number) {
+  return new Intl.NumberFormat("fr-FR", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatSignedTemperature(value: number) {
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+  return `${sign}${formatTemperature(Math.abs(value))} °C`;
+}
+
+function formatObservedInterval(intervalMilliseconds: number) {
+  const minuteMilliseconds = 60 * 1_000;
+  const hourMilliseconds = 60 * minuteMilliseconds;
+  const dayMilliseconds = 24 * hourMilliseconds;
+  if (intervalMilliseconds === 0) return "0 min";
+  if (intervalMilliseconds < minuteMilliseconds) return "Moins d’une minute";
+
+  let remaining = intervalMilliseconds;
+  const days = Math.floor(remaining / dayMilliseconds);
+  remaining -= days * dayMilliseconds;
+  const hours = Math.floor(remaining / hourMilliseconds);
+  remaining -= hours * hourMilliseconds;
+  const minutes = Math.floor(remaining / minuteMilliseconds);
+  return [
+    days > 0 ? `${days} j` : null,
+    hours > 0 ? `${hours} h` : null,
+    minutes > 0 ? `${minutes} min` : null,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" ");
+}
+
+function emptyTemperatureModel(): MaternalTemperatureChartModel {
+  return {
+    status: "empty",
+    points: [],
+    measurementCount: 0,
+    latest: null,
+    previous: null,
+    differenceCelsius: null,
+    intervalMilliseconds: null,
+    minimumCelsius: null,
+    maximumCelsius: null,
+    domain: null,
+  };
+}
+
+function temperatureModel(observations: MaternalObservationPanelItem[]) {
+  try {
+    return buildMaternalTemperatureChartModel(observations);
+  } catch {
+    return emptyTemperatureModel();
   }
 }
 
@@ -160,6 +221,14 @@ function AddMaternalObservationDialog({
     initialMaternalObservationActionState,
   );
 
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (nextOpen) {
+      setType("temperature");
+      setObservedAt(currentLocalDateTime());
+    }
+  }
+
   function prepareSubmission() {
     if (observedAtIsoRef.current) {
       observedAtIsoRef.current.value = localDateTimeToIso(observedAt);
@@ -172,7 +241,7 @@ function AddMaternalObservationDialog({
   const temperature = type === "temperature";
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button type="button">
           <Plus aria-hidden="true" />
@@ -297,7 +366,7 @@ function AddMaternalObservationDialog({
 function ObservationHistory({
   observations,
 }: {
-  observations: MaternalObservationSummary[];
+  observations: MaternalObservationPanelItem[];
 }) {
   if (observations.length === 0) {
     return (
@@ -310,7 +379,7 @@ function ObservationHistory({
   return (
     <ul className="mt-5 divide-y divide-border rounded-xl border">
       {observations.map((observation) => (
-        <li key={observation.id} className="min-w-0 p-4 sm:p-5">
+        <li key={observation.publicSourceIndex} className="min-w-0 p-4 sm:p-5">
           <div className="flex min-w-0 flex-col justify-between gap-2 sm:flex-row sm:items-start">
             <div className="min-w-0">
               <p className="break-words font-semibold">
@@ -337,24 +406,161 @@ function ObservationHistory({
   );
 }
 
+function TemperatureChartSection({
+  observations,
+}: {
+  observations: MaternalObservationPanelItem[];
+}) {
+  const model = temperatureModel(observations);
+  const latest = model.latest;
+
+  return (
+    <section
+      className="mt-6 min-w-0 border-t pt-5"
+      aria-labelledby="maternal-temperature-chart-title"
+      data-testid="maternal-temperature-chart-section"
+    >
+      <h3
+        id="maternal-temperature-chart-title"
+        className="text-base font-semibold"
+      >
+        Courbe de température
+      </h3>
+      {!latest ? (
+        <p className="mt-3 text-sm text-muted">
+          Aucune température enregistrée pour cette portée.
+        </p>
+      ) : (
+        <>
+          <dl className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-latest"
+            >
+              <dt className="text-xs font-medium text-muted">
+                Dernière température
+              </dt>
+              <dd className="mt-1 font-semibold">
+                {formatTemperature(latest.celsius)} °C
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-latest-date"
+            >
+              <dt className="text-xs font-medium text-muted">
+                Date de la dernière mesure
+              </dt>
+              <dd className="mt-1 text-sm">
+                {formatObservationDateTime({
+                  publicSourceIndex: latest.publicIndex,
+                  observationType: "temperature",
+                  observedAt: latest.observedAt,
+                  timezoneName: latest.timezoneName,
+                  numericValue: latest.originalValue,
+                  unit: latest.originalUnit,
+                  severity: latest.severity,
+                  note: latest.note,
+                })}
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-previous"
+            >
+              <dt className="text-xs font-medium text-muted">
+                Mesure précédente
+              </dt>
+              <dd className="mt-1 text-sm">
+                {model.previous
+                  ? `${formatTemperature(model.previous.celsius)} °C`
+                  : "Non disponible"}
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-count"
+            >
+              <dt className="text-xs font-medium text-muted">Nombre de mesures</dt>
+              <dd className="mt-1 font-semibold">{model.measurementCount}</dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-difference"
+            >
+              <dt className="text-xs font-medium text-muted">
+                Écart avec la mesure précédente
+              </dt>
+              <dd className="mt-1 text-sm">
+                {model.differenceCelsius === null
+                  ? "Non disponible"
+                  : formatSignedTemperature(model.differenceCelsius)}
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-interval"
+            >
+              <dt className="text-xs font-medium text-muted">Intervalle observé</dt>
+              <dd className="mt-1 text-sm">
+                {model.intervalMilliseconds === null
+                  ? "Non disponible"
+                  : formatObservedInterval(model.intervalMilliseconds)}
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-minimum"
+            >
+              <dt className="text-xs font-medium text-muted">Minimum mesuré</dt>
+              <dd className="mt-1 text-sm">
+                {formatTemperature(model.minimumCelsius!)} °C
+              </dd>
+            </div>
+            <div
+              className="rounded-xl border bg-background p-3"
+              data-testid="maternal-temperature-maximum"
+            >
+              <dt className="text-xs font-medium text-muted">Maximum mesuré</dt>
+              <dd className="mt-1 text-sm">
+                {formatTemperature(model.maximumCelsius!)} °C
+              </dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-sm" data-testid="maternal-temperature-severity">
+            <span className="font-medium">Appréciation saisie :</span>{" "}
+            {severityLabels[latest.severity]}
+          </p>
+          <div className="mt-5 min-w-0 overflow-hidden">
+            <MaternalTemperatureChart model={model} />
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 export function MaternalObservationsPanel({
   observations,
   role,
   action,
-  clientCommandId,
+  formInstanceKey,
   loadError = false,
 }: {
-  observations: MaternalObservationSummary[];
+  observations: MaternalObservationPanelItem[];
   role: "owner" | "admin" | "member" | "viewer" | null;
   action: RecordAction | null;
-  clientCommandId: string;
+  formInstanceKey: string;
   loadError?: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
 
   return (
-    <section className="rounded-2xl border bg-surface p-5 sm:p-6">
+    <section
+      className="rounded-2xl border bg-surface p-5 sm:p-6"
+      data-testid="maternal-observations-panel"
+    >
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <h2 className="text-lg font-semibold">Suivi de la mère</h2>
@@ -364,7 +570,7 @@ export function MaternalObservationsPanel({
         </div>
         {canWrite && action ? (
           <AddMaternalObservationDialog
-            key={clientCommandId}
+            key={formInstanceKey}
             action={action}
             onSuccess={setConfirmation}
           />
@@ -380,7 +586,10 @@ export function MaternalObservationsPanel({
           Les observations maternelles ne sont pas disponibles pour le moment.
         </p>
       ) : (
-        <ObservationHistory observations={observations} />
+        <>
+          <TemperatureChartSection observations={observations} />
+          <ObservationHistory observations={observations} />
+        </>
       )}
     </section>
   );
