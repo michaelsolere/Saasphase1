@@ -253,7 +253,7 @@ function isBirthAdjustmentIntention(
       intention.clientCommandId,
     ].every(isValidId) &&
     Number.isInteger(intention.expectedRevisionNo) &&
-    intention.expectedRevisionNo > 0,
+    intention.expectedRevisionNo >= 0,
   );
 }
 

@@ -83,13 +83,39 @@ function harness(options: { correctionError?: string; cancellationError?: string
 test("refuse une intention liée invalide", async () => {
   const testHarness = harness();
   const state = await correctWhelpingBirthActionCore(
-    { ...intention, animalId: "forged", expectedRevisionNo: -1 },
+    { ...intention, expectedRevisionNo: -1 },
     initialWhelpingBirthAdjustmentActionState,
     validCorrection(),
     testHarness.dependencies,
   );
   expect(state).toMatchObject({ status: "error" });
   expect(testHarness.calls).toHaveLength(0);
+});
+
+test("corrige une naissance depuis la révision initiale zéro", async () => {
+  const testHarness = harness();
+  const state = await correctWhelpingBirthActionCore(
+    { ...intention, expectedRevisionNo: 0 },
+    initialWhelpingBirthAdjustmentActionState,
+    validCorrection(),
+    testHarness.dependencies,
+  );
+  expect(state.status).toBe("success");
+  expect(testHarness.calls).toHaveLength(1);
+  expect(testHarness.calls[0]).toMatchObject({ expectedRevisionNo: 0 });
+});
+
+test("annule une naissance depuis la révision initiale zéro", async () => {
+  const testHarness = harness();
+  const state = await cancelWhelpingBirthActionCore(
+    { ...intention, expectedRevisionNo: 0 },
+    initialWhelpingBirthAdjustmentActionState,
+    form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: "Doublon" }),
+    testHarness.dependencies,
+  );
+  expect(state.status).toBe("success");
+  expect(testHarness.calls).toHaveLength(1);
+  expect(testHarness.calls[0]).toMatchObject({ expectedRevisionNo: 0 });
 });
 
 test("ignore tous les identifiants et la révision forgés dans FormData", async () => {

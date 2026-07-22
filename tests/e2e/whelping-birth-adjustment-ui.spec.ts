@@ -107,6 +107,8 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
       created.births.push(birth.birthId); created.animals.push(birth.animalId); created.events.push(birth.eventId);
       if (birth.weightMeasurementId) created.weights.push(birth.weightMeasurementId);
     }
+    expect(sql(`select revision_no from public.whelping_births where id=${q(first.birthId)}::uuid;`)).toBe("0");
+    expect(sql(`select revision_no from public.whelping_births where id=${q(second.birthId)}::uuid;`)).toBe("0");
     const originalEvent = sql(`select row_to_json(e)::text from public.whelping_events e where id=${q(first.eventId)}::uuid;`);
 
     await login(page);
@@ -174,6 +176,7 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await dialog.getByRole("button", { name: "Confirmer l’annulation" }).click();
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("alert")).toContainText("données ultérieures");
+    expect(sql(`select revision_no from public.whelping_births where id=${q(second.birthId)}::uuid;`)).toBe("0");
     sql(`delete from public.animal_weight_measurements where id=${q(ids.downstreamWeight)}::uuid;`);
     await page.reload();
     whelping = panel(page);
