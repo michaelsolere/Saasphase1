@@ -1301,7 +1301,10 @@ export function WhelpingPanel({
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
   const sessionIsOpen = session?.status === "open";
-  const canRectifyClosedSession = session?.status === "closed" && canWrite;
+  const canRectifyClosedSession =
+    session?.status === "closed" &&
+    canWrite &&
+    (birthAdjustmentActions.length > 0 || birthWeightActions.length > 0);
 
   return (
     <section className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
