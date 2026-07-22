@@ -15,6 +15,7 @@ import {
   recordWhelpingEventCore,
   recordWhelpingBirthCore,
   recordWhelpingBirthWeightCore,
+  quickCompleteWhelpingBirthCore,
   reopenWhelpingSessionCore,
 } from "./whelping-core";
 import { createClient } from "@/lib/supabase/server";
@@ -44,6 +45,8 @@ export type {
   RecordWhelpingBirthResult,
   RecordWhelpingBirthWeightInput,
   RecordWhelpingBirthWeightResult,
+  QuickCompleteWhelpingBirthInput,
+  QuickCompleteWhelpingBirthResult,
   ReopenWhelpingSessionInput,
   ReopenWhelpingSessionResult,
   BirthWeightMeasurementSummary,
@@ -142,6 +145,13 @@ export async function correctWhelpingBirth(
   suppliedClient?: Supabase,
 ) {
   return correctWhelpingBirthCore(input, await serverClient(suppliedClient));
+}
+
+export async function quickCompleteWhelpingBirth(
+  input: Parameters<typeof quickCompleteWhelpingBirthCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return quickCompleteWhelpingBirthCore(input, await serverClient(suppliedClient));
 }
 
 export async function cancelWhelpingBirth(

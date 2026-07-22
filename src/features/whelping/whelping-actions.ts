@@ -9,6 +9,7 @@ import {
   openWhelpingSessionActionCore,
   recordWhelpingBirthActionCore,
   recordWhelpingBirthWeightActionCore,
+  quickCompleteWhelpingBirthActionCore,
   recordWhelpingEventActionCore,
   reopenWhelpingSessionActionCore,
   type CloseWhelpingSessionIntention,
@@ -23,6 +24,7 @@ import {
   type WhelpingBirthAdjustmentActionState,
   type WhelpingBirthAdjustmentActionDependencies,
   type WhelpingBirthAdjustmentIntention,
+  type WhelpingQuickCompletionActionDependencies,
 } from "./whelping-actions-core";
 import {
   closeWhelpingSession,
@@ -31,21 +33,36 @@ import {
   openWhelpingSession,
   recordWhelpingBirth,
   recordWhelpingBirthWeight,
+  quickCompleteWhelpingBirth,
   recordWhelpingEvent,
   reopenWhelpingSession,
 } from "./whelping";
 
-const dependencies: WhelpingActionDependencies & WhelpingBirthAdjustmentActionDependencies = {
+const dependencies: WhelpingActionDependencies & WhelpingBirthAdjustmentActionDependencies & WhelpingQuickCompletionActionDependencies = {
   openSession: openWhelpingSession,
   recordEvent: recordWhelpingEvent,
   recordBirth: recordWhelpingBirth,
   recordBirthWeight: recordWhelpingBirthWeight,
+  quickCompleteBirth: quickCompleteWhelpingBirth,
   closeSession: closeWhelpingSession,
   reopenSession: reopenWhelpingSession,
   correctBirth: correctWhelpingBirth,
   cancelBirth: cancelWhelpingBirth,
   revalidatePath,
 };
+
+export async function quickCompleteWhelpingBirthAction(
+  intention: WhelpingBirthAdjustmentIntention,
+  previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+) {
+  return quickCompleteWhelpingBirthActionCore(
+    intention,
+    previousState,
+    formData,
+    dependencies,
+  );
+}
 
 export async function openWhelpingSessionAction(
   intention: OpenWhelpingSessionIntention,

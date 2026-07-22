@@ -6,6 +6,7 @@ import {
   cancelWhelpingBirthAction,
   closeWhelpingSessionAction,
   correctWhelpingBirthAction,
+  quickCompleteWhelpingBirthAction,
   openWhelpingSessionAction,
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightAction,
@@ -19,6 +20,7 @@ import type {
 import type {
   WhelpingBirthAdjustmentAction,
   WhelpingBirthWeightAction,
+  WhelpingQuickCompletionAction,
 } from "@/features/whelping/whelping-panel";
 import {
   listWhelpingBirthAdjustmentHistory,
@@ -60,6 +62,7 @@ export type WhelpingWorkspace = {
   expressFemaleBirthAction: BirthAction | null;
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
+  quickCompletionActions: WhelpingQuickCompletionAction[];
   birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
   adjustmentHistory: WhelpingBirthAdjustmentHistoryEntry[];
   adjustmentHistoryLoadError: boolean;
@@ -233,6 +236,26 @@ export async function loadWhelpingWorkspace(
             }),
           }))
       : [];
+  const quickCompletionActions: WhelpingQuickCompletionAction[] =
+    selectedSessionId !== null && dataReliable && canWrite
+      ? (selectedBirthsResult?.births ?? [])
+          .filter(
+            (birth) =>
+              birth.cancelledAt === null &&
+              (birth.initialCollarColor === null || birth.birthWeightMeasurement === null),
+          )
+          .map((birth) => ({
+            birthId: birth.id,
+            action: quickCompleteWhelpingBirthAction.bind(null, {
+              litterId,
+              sessionId: selectedSessionId,
+              birthId: birth.id,
+              animalId: birth.animal.id,
+              expectedRevisionNo: birth.revisionNo,
+              clientCommandId: crypto.randomUUID(),
+            }),
+          }))
+      : [];
   const lastActiveBirth =
     allBirths
       .filter((birth) => birth.cancelledAt === null)
@@ -282,6 +305,7 @@ export async function loadWhelpingWorkspace(
     expressFemaleBirthAction,
     birthAction,
     birthWeightActions,
+    quickCompletionActions,
     birthAdjustmentActions,
     adjustmentHistory: adjustmentHistory?.entries ?? [],
     adjustmentHistoryLoadError: adjustmentHistory === null,
