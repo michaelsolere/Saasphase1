@@ -76,6 +76,14 @@ function birthForm() {
   return formData;
 }
 
+function expressBirthForm(sex: "male" | "female") {
+  const formData = new FormData();
+  formData.set("occurred_at", "2026-07-22T03:17:42.123+02:00");
+  formData.set("sex", sex);
+  formData.set("viability", "unknown");
+  return formData;
+}
+
 function closeForm() {
   const formData = new FormData();
   formData.set("ended_at", "2026-07-19T15:00:00+02:00");
@@ -444,6 +452,104 @@ test("applique strictement la dépendance entre poids et heure de pesée", async
     (await recordWhelpingBirthActionCore(sessionIntention, initialWhelpingBirthActionState, neitherForm, neither.dependencies)).status,
   ).toBe("success");
   expect(neither.births[0]).toMatchObject({ birthWeightGrams: null, measuredAt: null });
+});
+
+test("transmet une naissance express mâle sans inventer de donnée", async () => {
+  const context = harness();
+  const state = await recordWhelpingBirthActionCore(
+    sessionIntention,
+    initialWhelpingBirthActionState,
+    expressBirthForm("male"),
+    context.dependencies,
+  );
+
+  expect(context.births).toEqual([{
+    sessionId,
+    clientCommandId,
+    occurredAt: "2026-07-22T01:17:42.123Z",
+    sex: "male",
+    viability: "unknown",
+    initialCollarColor: null,
+    birthWeightGrams: null,
+    measuredAt: null,
+    note: null,
+  }]);
+  expect(state).toMatchObject({ status: "success", birthOrder: 2 });
+});
+
+test("transmet une naissance express femelle sans inventer de donnée", async () => {
+  const context = harness();
+  const state = await recordWhelpingBirthActionCore(
+    sessionIntention,
+    initialWhelpingBirthActionState,
+    expressBirthForm("female"),
+    context.dependencies,
+  );
+
+  expect(context.births[0]).toMatchObject({
+    sex: "female",
+    viability: "unknown",
+    initialCollarColor: null,
+    birthWeightGrams: null,
+    measuredAt: null,
+    note: null,
+  });
+  expect(state).toMatchObject({ status: "success", birthOrder: 2 });
+});
+
+test("refuse l’horodatage express sans offset explicite", async () => {
+  const context = harness();
+  const form = expressBirthForm("male");
+  form.set("occurred_at", "2026-07-22T03:17:42.123");
+
+  const state = await recordWhelpingBirthActionCore(
+    sessionIntention,
+    initialWhelpingBirthActionState,
+    form,
+    context.dependencies,
+  );
+
+  expect(state.status).toBe("error");
+  expect(context.births).toEqual([]);
+});
+
+test("refuse une intention serveur express invalide", async () => {
+  const context = harness();
+  const state = await recordWhelpingBirthActionCore(
+    { ...sessionIntention, clientCommandId: "intention-forgée" },
+    initialWhelpingBirthActionState,
+    expressBirthForm("female"),
+    context.dependencies,
+  );
+
+  expect(state.status).toBe("error");
+  expect(context.births).toEqual([]);
+  expect(context.paths).toEqual([]);
+});
+
+test("utilise le même adaptateur atomique pour express et formulaire détaillé équivalents", async () => {
+  const expressContext = harness();
+  const detailedContext = harness();
+  const detailed = expressBirthForm("female");
+  detailed.set("initial_collar_color", "");
+  detailed.set("birth_weight_grams", "");
+  detailed.set("measured_at", "");
+  detailed.set("note", "");
+
+  await recordWhelpingBirthActionCore(
+    sessionIntention,
+    initialWhelpingBirthActionState,
+    expressBirthForm("female"),
+    expressContext.dependencies,
+  );
+  await recordWhelpingBirthActionCore(
+    sessionIntention,
+    initialWhelpingBirthActionState,
+    detailed,
+    detailedContext.dependencies,
+  );
+
+  expect(expressContext.births).toEqual(detailedContext.births);
 });
 
 test("applique les bornes de couleur et de note", async () => {

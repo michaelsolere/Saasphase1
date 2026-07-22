@@ -87,7 +87,7 @@ const sexLabels: Record<WhelpingBirthSex, string> = {
 const viabilityLabels: Record<WhelpingBirthViability, string> = {
   alive: "Vivant",
   stillborn: "Mort-né",
-  unknown: "À confirmer",
+  unknown: "État à confirmer",
 };
 
 function currentLocalDateTime() {
@@ -131,6 +131,23 @@ function formatDateTime(value: string, timezoneName: string) {
       ...options,
       timeZone: "UTC",
     }).format(date);
+  }
+}
+
+function formatTime(value: string, timezoneName: string) {
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: timezoneName,
+    }).format(new Date(value));
+  } catch {
+    return new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).format(new Date(value));
   }
 }
 
@@ -290,12 +307,113 @@ function OpenSessionDialog({
   );
 }
 
+function ExpressBirthActions({
+  maleAction,
+  femaleAction,
+  timezoneName,
+  onSuccess,
+}: {
+  maleAction: BirthAction;
+  femaleAction: BirthAction;
+  timezoneName: string;
+  onSuccess: (message: string) => void;
+}) {
+  const router = useRouter();
+  const submittingRef = useRef(false);
+  const [submittingSex, setSubmittingSex] = useState<"male" | "female" | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  async function submitExpressBirth(
+    sex: "male" | "female",
+    action: BirthAction,
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (submittingRef.current) return;
+
+    submittingRef.current = true;
+    const occurredAt = new Date().toISOString();
+    setSubmittingSex(sex);
+    setErrorMessage(null);
+
+    const formData = new FormData();
+    formData.set("occurred_at", occurredAt);
+    formData.set("sex", sex);
+    formData.set("viability", "unknown");
+
+    let succeeded = false;
+    try {
+      const nextState = await action(initialWhelpingBirthActionState, formData);
+      if (nextState.status === "success" && nextState.birthOrder) {
+        succeeded = true;
+        onSuccess(
+          `Naissance n° ${nextState.birthOrder} — ${sex === "male" ? "mâle" : "femelle"} — enregistrée à ${formatTime(occurredAt, timezoneName)}`,
+        );
+        router.refresh();
+      } else {
+        setErrorMessage(
+          nextState.message ??
+            "La naissance n’a pas pu être enregistrée. Rechargez la page avant de réessayer.",
+        );
+      }
+    } catch {
+      setErrorMessage(
+        "La naissance n’a pas pu être enregistrée. Rechargez la page avant de réessayer.",
+      );
+    } finally {
+      if (!succeeded) {
+        submittingRef.current = false;
+        setSubmittingSex(null);
+      }
+    }
+  }
+
+  const submitting = submittingSex !== null;
+
+  return (
+    <div className="w-full space-y-3" data-testid="express-birth-actions">
+      <form onSubmit={(event) => void submitExpressBirth("male", maleAction, event)}>
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting}
+          className="min-h-14 w-full text-sm font-bold tracking-wide sm:text-base"
+        >
+          <Baby aria-hidden="true" />
+          {submittingSex === "male" ? "ENREGISTREMENT…" : "+ NAISSANCE MÂLE"}
+        </Button>
+      </form>
+      <form onSubmit={(event) => void submitExpressBirth("female", femaleAction, event)}>
+        <Button
+          type="submit"
+          size="lg"
+          variant="outline"
+          disabled={submitting}
+          className="min-h-14 w-full border-2 text-sm font-bold tracking-wide sm:text-base"
+        >
+          <Baby aria-hidden="true" />
+          {submittingSex === "female" ? "ENREGISTREMENT…" : "+ NAISSANCE FEMELLE"}
+        </Button>
+      </form>
+      {errorMessage ? (
+        <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          {errorMessage}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function BirthDialog({
   action,
   onSuccess,
+  triggerLabel = "+ ENREGISTRER UNE NAISSANCE",
+  secondary = false,
 }: {
   action: BirthAction;
   onSuccess: (message: string) => void;
+  triggerLabel?: string;
+  secondary?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -352,10 +470,13 @@ function BirthDialog({
         <Button
           type="button"
           size="lg"
-          className="min-h-14 w-full text-sm font-bold tracking-wide sm:w-auto sm:text-base"
+          variant={secondary ? "outline" : "default"}
+          className={secondary
+            ? "min-h-11 w-full text-sm font-semibold sm:w-auto"
+            : "min-h-14 w-full text-sm font-bold tracking-wide sm:w-auto sm:text-base"}
         >
           <Baby aria-hidden="true" />
-          + ENREGISTRER UNE NAISSANCE
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] w-[calc(100%-1.5rem)] overflow-y-auto rounded-xl sm:max-w-xl">
@@ -431,6 +552,9 @@ function BirthDialog({
                 value={weight}
                 onChange={(event) => setWeight(event.target.value)}
               />
+              <p className="mt-2 text-xs leading-5 text-muted">
+                Vous pouvez utiliser la dictée du clavier de votre téléphone si elle est disponible.
+              </p>
             </div>
           </div>
           {weight ? (
@@ -870,6 +994,10 @@ function BirthCorrectionDialog({
   action: BirthAdjustmentAction;
   onSuccess: (message: string) => void;
 }) {
+  const needsCompletion =
+    birth.viability === "unknown" ||
+    birth.initialCollarColor === null ||
+    birth.birthWeightMeasurement === null;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [occurredAt, setOccurredAt] = useState(() => isoToLocalDateTime(birth.occurredAt));
@@ -908,12 +1036,15 @@ function BirthCorrectionDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button type="button" size="sm" variant="outline">
-          <Pencil className="size-4" aria-hidden="true" />Corriger
+          <Pencil className="size-4" aria-hidden="true" />
+          {needsCompletion ? "Compléter la naissance" : "Corriger"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Corriger la naissance n° {birth.birthOrder}</DialogTitle>
+          <DialogTitle>
+            {needsCompletion ? "Compléter" : "Corriger"} la naissance n° {birth.birthOrder}
+          </DialogTitle>
           <DialogDescription>
             Le numéro d’ordre ne changera pas. L’événement initial restera conservé et une entrée d’historique sera ajoutée. La nouvelle heure doit respecter l’ordre des naissances.
           </DialogDescription>
@@ -948,6 +1079,9 @@ function BirthCorrectionDialog({
                 setWeight(event.target.value);
                 if (event.target.value && !weightMeasuredAt) setWeightMeasuredAt(occurredAt);
               }} />
+              <span className="mt-2 block text-xs font-normal leading-5 text-muted">
+                Vous pouvez utiliser la dictée du clavier de votre téléphone si elle est disponible.
+              </span>
             </label>
             <label className={labelClass}>Date et heure de pesée
               <input className={inputClass} type="datetime-local" value={weightMeasuredAt} onChange={(event) => setWeightMeasuredAt(event.target.value)} disabled={!hasWeight} required={hasWeight} />
@@ -957,7 +1091,14 @@ function BirthCorrectionDialog({
             <textarea className={inputClass} name="weight_note" rows={3} maxLength={5000} defaultValue={birth.birthWeightMeasurement?.note ?? ""} disabled={!hasWeight} />
           </label>
           <label className={labelClass}>Motif de la correction
-            <textarea className={inputClass} name="reason" rows={3} maxLength={500} required />
+            <textarea
+              className={inputClass}
+              name="reason"
+              rows={3}
+              maxLength={500}
+              defaultValue={needsCompletion ? "Complément après naissance express" : ""}
+              required
+            />
           </label>
           <AdjustmentMessage state={state} />
           <DialogFooter>
@@ -1268,6 +1409,7 @@ function BirthAdjustmentHistory({
 }
 
 export function WhelpingPanel({
+  displayMode,
   session,
   events,
   births,
@@ -1275,6 +1417,8 @@ export function WhelpingPanel({
   loadError = false,
   openAction,
   eventAction,
+  expressMaleBirthAction,
+  expressFemaleBirthAction,
   birthAction,
   birthWeightActions,
   birthAdjustmentActions,
@@ -1283,6 +1427,7 @@ export function WhelpingPanel({
   closeAction,
   reopenAction,
 }: {
+  displayMode: "mobile" | "journal";
   session: WhelpingSessionSummary | null;
   events: WhelpingEventSummary[];
   births: WhelpingBirthSummary[];
@@ -1290,6 +1435,8 @@ export function WhelpingPanel({
   loadError?: boolean;
   openAction: SimpleAction | null;
   eventAction: SimpleAction | null;
+  expressMaleBirthAction: BirthAction | null;
+  expressFemaleBirthAction: BirthAction | null;
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
   birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
@@ -1369,10 +1516,31 @@ export function WhelpingPanel({
                 </span>
               </p>
               {canWrite && birthAction && eventAction ? (
-                <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <BirthDialog action={birthAction} onSuccess={setConfirmation} />
-                  <EventDialog action={eventAction} onSuccess={setConfirmation} />
-                </div>
+                displayMode === "mobile" && expressMaleBirthAction && expressFemaleBirthAction ? (
+                  <div className="mt-4 flex flex-col items-stretch gap-3">
+                    <ExpressBirthActions
+                      key={births.filter((birth) => birth.cancelledAt === null).length}
+                      maleAction={expressMaleBirthAction}
+                      femaleAction={expressFemaleBirthAction}
+                      timezoneName={session.timezoneName}
+                      onSuccess={setConfirmation}
+                    />
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <BirthDialog
+                        action={birthAction}
+                        onSuccess={setConfirmation}
+                        triggerLabel="Saisir tous les détails"
+                        secondary
+                      />
+                      <EventDialog action={eventAction} onSuccess={setConfirmation} />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <BirthDialog action={birthAction} onSuccess={setConfirmation} />
+                    <EventDialog action={eventAction} onSuccess={setConfirmation} />
+                  </div>
+                )
               ) : null}
             </div>
           ) : null}

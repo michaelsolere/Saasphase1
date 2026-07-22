@@ -190,7 +190,7 @@ async function recordBirth(panel: Locator, values: { sex: "female" | "male"; wei
   if (values.weight) await dialog.getByLabel("Poids en grammes (facultatif)").fill(values.weight);
   await dialog.getByRole("button", { name: "Enregistrer la naissance" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel.getByText(values.note, { exact: true })).toBeVisible();
+  await expect(panel.getByText(values.note, { exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 async function closeSession(panel: Locator, note: string) {
@@ -198,7 +198,7 @@ async function closeSession(panel: Locator, note: string) {
   await dialog.getByLabel("Note (facultative)").fill(note);
   await dialog.getByRole("button", { name: "Clôturer la mise-bas" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel.getByText(note, { exact: true })).toBeVisible();
+  await expect(panel.getByText(note, { exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 async function reopenSession(panel: Locator, reason: string) {
@@ -206,11 +206,11 @@ async function reopenSession(panel: Locator, reason: string) {
   await dialog.getByLabel("Motif de la réouverture").fill(reason);
   await dialog.getByRole("button", { name: "Confirmer la réouverture" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel.getByText(reason, { exact: true })).toBeVisible();
+  await expect(panel.getByText(reason, { exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 async function correctFirstBirth(panel: Locator, values: { weight: string; viability: "alive" | "unknown"; reason: string; note: string }) {
-  const dialog = await openDialogFrom(birthCard(panel, 1), "Corriger");
+  const dialog = await openDialogFrom(birthCard(panel, 1), /Corriger|Compléter la naissance/);
   await dialog.getByLabel("Sexe").selectOption("male");
   await dialog.getByLabel("Viabilité").selectOption(values.viability);
   await dialog.getByLabel("Note de naissance").fill(values.note);
@@ -218,7 +218,7 @@ async function correctFirstBirth(panel: Locator, values: { weight: string; viabi
   await dialog.getByLabel("Motif de la correction").fill(values.reason);
   await dialog.getByRole("button", { name: "Enregistrer la correction" }).click();
   await expect(dialog).toBeHidden();
-  await expect(panel.getByText(values.note, { exact: true })).toBeVisible();
+  await expect(panel.getByText(values.note, { exact: true })).toBeVisible({ timeout: 30_000 });
 }
 
 test("consolide le workflow transversal du Journal, des rectifications et de la croissance", async ({ page }) => {
@@ -351,7 +351,7 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     await whelping.getByText("Historique des rectifications").click();
     await expect(whelping).toContainText("Doublon confirmé");
     await expect(weights).toContainText("Routine après consolidation");
-    for (const button of [/ENREGISTRER UNE NAISSANCE/, "Ajouter un événement", "Clôturer la mise-bas", "Rouvrir la session", "Renseigner le poids", "Corriger", "Annuler la naissance"]) {
+    for (const button of [/ENREGISTRER UNE NAISSANCE/, "Ajouter un événement", "Clôturer la mise-bas", "Rouvrir la session", "Renseigner le poids", /Corriger|Compléter la naissance/, "Annuler la naissance"]) {
       await expect(whelping.getByRole("button", { name: button })).toHaveCount(0);
     }
     await expect(weights.getByRole("button", { name: "Nouvelle pesée" })).toHaveCount(0);

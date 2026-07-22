@@ -390,6 +390,7 @@ export function LitterJournalDashboard({
         <SummaryCard litter={litter} />
       </div>
       <WhelpingPanel
+        displayMode="journal"
         session={whelpingSession}
         events={whelpingEvents}
         births={whelpingBirths}
@@ -397,6 +398,8 @@ export function LitterJournalDashboard({
         loadError={whelpingLoadError}
         openAction={openWhelpingAction}
         eventAction={recordWhelpingEventAction}
+        expressMaleBirthAction={null}
+        expressFemaleBirthAction={null}
         birthAction={recordWhelpingBirthAction}
         birthWeightActions={recordWhelpingBirthWeightActions}
         birthAdjustmentActions={whelpingBirthAdjustmentActions}

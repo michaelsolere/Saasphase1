@@ -137,7 +137,42 @@ Les intentions liées côté serveur portent la portée, la session lorsqu’ell
 
 La PR #327 expose un panneau de mise-bas responsive dans le Journal, avant le suivi maternel. Le chargement sélectionne la session ouverte ou, à défaut, la session clôturée la plus récente. L’état vide propose un démarrage explicite. Une session ouverte affiche son badge, son heure de début, son fuseau et le nombre de naissances enregistrées.
 
-Le bouton mobile prioritaire **+ ENREGISTRER UNE NAISSANCE** permet de saisir rapidement le sexe, la viabilité, la couleur initiale, le poids facultatif, l’heure de pesée associée et une note. Une interface unique permet également d’ajouter les huit types d’événements génériques autorisés. La clôture exige une confirmation explicite. Une session clôturée peut être rouverte explicitement avec un motif court obligatoire : la même session repasse à l’état ouvert, l’ancienne clôture reste visible et un événement `session_reopened` est ajouté avant la reprise des naissances et événements. Chaque nouvelle clôture ajoute un nouvel événement `session_closed`. Le rôle `viewer` reste strictement en lecture seule.
+Le formulaire **+ ENREGISTRER UNE NAISSANCE** permet de saisir le sexe, la viabilité, la couleur initiale, le poids facultatif, l’heure de pesée associée et une note dans le Journal complet. Une interface unique permet également d’ajouter les huit types d’événements génériques autorisés. La clôture exige une confirmation explicite. Une session clôturée peut être rouverte explicitement avec un motif court obligatoire : la même session repasse à l’état ouvert, l’ancienne clôture reste visible et un événement `session_reopened` est ajouté avant la reprise des naissances et événements. Chaque nouvelle clôture ajoute un nouvel événement `session_closed`. Le rôle `viewer` reste strictement en lecture seule.
+
+##### Naissance express dans le mode mobile privé
+
+Le mode privé `/whelping` distingue désormais explicitement son expérience de
+celle du Journal complet. Il présente en premier **+ NAISSANCE MÂLE** et
+**+ NAISSANCE FEMELLE**, tandis que `/litters/journal` conserve le formulaire
+détaillé comme action principale et n’affiche pas ces boutons express. L’action
+secondaire **Saisir tous les détails** reste disponible dans le mode mobile pour
+un sexe incertain, un mort-né ou toute situation particulière.
+
+Chaque appui express capture `new Date().toISOString()` dans le gestionnaire de
+soumission, au moment du clic. Les intentions mâle, femelle et saisie complète
+possèdent chacune leur propre clé idempotente liée côté serveur. Toutes trois
+réutilisent exclusivement `recordWhelpingBirthAction` et la commande atomique
+existante : l’ordre est attribué côté serveur, puis l’événement initial `birth`,
+la naissance structurée, le même Animal et les projections existantes sont
+créés dans la transaction actuelle. Aucun nom, couleur, poids ou note n’est
+inventé. La viabilité reste `unknown`, donc elle n’est comptée ni vivante ni
+mort-née ; le compteur du sexe choisi et le total augmentent immédiatement.
+
+Une naissance encore incomplète expose **Compléter la naissance**. Le dialogue
+réutilise la correction auditée existante avec la même naissance, le même
+Animal, le même ordre et le même événement initial. Il préremplit les valeurs
+connues et le motif visible **Complément après naissance express**. Le sexe reste
+modifiable pour corriger un mauvais appui ; la viabilité, la couleur, le poids,
+ses informations de pesée et les notes peuvent être complétés selon les
+invariants existants. La correction ajoute son événement spécialisé et recalcule
+les projections sans créer une seconde naissance.
+
+Près des champs de poids du formulaire complet et du dialogue de complément,
+le texte rappelle que la dictée native du clavier du téléphone peut être
+utilisée lorsqu’elle est disponible. Ce lot n’ajoute ni Web Speech API, ni
+permission microphone, ni audio, ni transcription intégrée. Le fonctionnement
+reste strictement online-only. Il n’ajoute aucune migration, RPC, dépendance,
+table, modification de manifest ou logique de service worker.
 
 La migration `202607200002_reopen_whelping_session` ajoute cette commande atomique dédiée, la protection d’immutabilité du passage `closed → open`, ainsi que l’idempotence stricte et la sérialisation concurrente associées.
 

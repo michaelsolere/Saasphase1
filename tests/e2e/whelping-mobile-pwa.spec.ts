@@ -177,7 +177,7 @@ test("partage le Journal, reste autonome, installable et online-only", async ({ 
     await dialog.getByRole("button", { name: "Ajouter l’événement" }).click();
     await expect(mobilePanel.getByText(`${prefix} contractions`)).toBeVisible();
 
-    await mobilePanel.getByRole("button", { name: /ENREGISTRER UNE NAISSANCE/ }).click();
+    await mobilePanel.getByRole("button", { name: "Saisir tous les détails", exact: true }).click();
     dialog = page.getByRole("dialog");
     await dialog.getByLabel("Date et heure de naissance").fill("2026-07-22T12:30");
     await dialog.getByLabel("Sexe").selectOption("female");
@@ -186,6 +186,8 @@ test("partage le Journal, reste autonome, installable et online-only", async ({ 
     await dialog.getByLabel("Heure de pesée").fill("2026-07-22T12:31");
     await dialog.getByLabel("Note (facultative)").fill(`${prefix} naissance`);
     await dialog.getByRole("button", { name: "Enregistrer la naissance" }).click();
+    await expect(mobilePanel.getByRole("status")).toContainText("Naissance n° 1 enregistrée");
+    await page.reload();
     await expect(mobilePanel.getByText("Naissance n° 1")).toBeVisible();
     await expect(mobilePanel.getByText(`${prefix} naissance`)).toBeVisible();
     await expect(mobilePanel.getByRole("heading", { name: "Chronologie" })).toBeVisible();

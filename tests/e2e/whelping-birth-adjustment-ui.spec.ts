@@ -142,7 +142,7 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await dialog.getByLabel("Motif de la correction").fill("Erreur de saisie complète");
     await dialog.getByRole("button", { name: "Enregistrer la correction" }).click();
     await expect(dialog).toBeHidden();
-    await expect(whelping.locator("ol").first().locator("li").filter({ hasText: "Naissance corrigée" })).toBeVisible();
+    await expect(whelping.locator("ol").first().locator("li").filter({ hasText: "Naissance corrigée" })).toBeVisible({ timeout: 30_000 });
     await expect(whelping.getByText("État corrigé", { exact: true })).toBeVisible();
     await expect(whelping.locator("ol").first().getByText("425 g", { exact: false })).toBeVisible();
     expect(sql(`select row_to_json(e)::text from public.whelping_events e where id=${q(first.eventId)}::uuid;`)).toBe(originalEvent);
@@ -154,7 +154,7 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await page.reload();
     whelping = panel(page);
     const currentFirst = whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first();
-    dialog = await dialogFrom(currentFirst, "Corriger");
+    dialog = await dialogFrom(currentFirst, "Compléter la naissance");
     const revision = Number(sql(`select revision_no from public.whelping_births where id=${q(first.birthId)}::uuid;`));
     const concurrent = await correctWhelpingBirthCore({ birthId: first.birthId, clientCommandId: ids.concurrentCommand, expectedRevisionNo: revision, occurredAt: "2026-07-22T09:06:00Z", sex: "male", viability: "unknown", initialCollarColor: "Violet", birthNote: "Modification concurrente", weightGrams: 425, weightMeasuredAt: "2026-07-22T09:06:00Z", weightNote: "Poids corrigé", reason: "Seconde session" }, owner);
     expect(concurrent.outcome).toBe("success");

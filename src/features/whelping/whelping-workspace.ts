@@ -56,6 +56,8 @@ export type WhelpingWorkspace = {
   loadError: boolean;
   openAction: SimpleAction | null;
   eventAction: SimpleAction | null;
+  expressMaleBirthAction: BirthAction | null;
+  expressFemaleBirthAction: BirthAction | null;
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
   birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
@@ -184,13 +186,17 @@ export async function loadWhelpingWorkspace(
         clientCommandId: crypto.randomUUID(),
       })
     : null;
-  const birthAction = sessionWriteEnabled
-    ? recordWhelpingBirthAction.bind(null, {
-        litterId,
-        sessionId: selectedSessionId,
-        clientCommandId: crypto.randomUUID(),
-      })
-    : null;
+  const bindBirthAction = (): BirthAction | null =>
+    sessionWriteEnabled
+      ? recordWhelpingBirthAction.bind(null, {
+          litterId,
+          sessionId: selectedSessionId,
+          clientCommandId: crypto.randomUUID(),
+        })
+      : null;
+  const expressMaleBirthAction = bindBirthAction();
+  const expressFemaleBirthAction = bindBirthAction();
+  const birthAction = bindBirthAction();
   const closeAction = sessionWriteEnabled
     ? closeWhelpingSessionAction.bind(null, {
         litterId,
@@ -272,6 +278,8 @@ export async function loadWhelpingWorkspace(
     loadError,
     openAction,
     eventAction,
+    expressMaleBirthAction,
+    expressFemaleBirthAction,
     birthAction,
     birthWeightActions,
     birthAdjustmentActions,
