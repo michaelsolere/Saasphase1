@@ -363,6 +363,12 @@ test("enregistre et affiche les observations maternelles dans le Journal", async
     expect(new Date(storedObservedAt).toISOString()).toBe(expectedObservedAt);
 
     dialog = await openObservationDialog(page);
+    await expect(
+      dialog.getByText("L’observation maternelle a été enregistrée."),
+    ).toHaveCount(0);
+    await expect(dialog.getByLabel("Type d’observation")).toHaveValue("temperature");
+    await expect(dialog.getByLabel("Gravité")).toHaveValue("routine");
+    await expect(dialog.getByLabel("Unité")).toHaveValue("celsius");
     await fillTemperature(dialog, {
       observedAt: "2026-07-18T12:20",
       numericValue: "98.6",

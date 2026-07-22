@@ -319,6 +319,8 @@ export function LitterJournalDashboard({
       severity: observation.severity,
       note: observation.note,
     }));
+  const maternalObservationFormInstanceKey =
+    `${publicMobileLitterIndex}:${publicMaternalObservations.length}`;
 
   return (
     <div className="space-y-6">
@@ -417,6 +419,7 @@ export function LitterJournalDashboard({
         observations={publicMaternalObservations}
         role={maternalObservationRole}
         action={maternalObservationAction}
+        formInstanceKey={maternalObservationFormInstanceKey}
         loadError={maternalObservationsLoadError}
       />
       <LitterCareTaskGenerationPanel

@@ -544,11 +544,13 @@ export function MaternalObservationsPanel({
   observations,
   role,
   action,
+  formInstanceKey,
   loadError = false,
 }: {
   observations: MaternalObservationPanelItem[];
   role: "owner" | "admin" | "member" | "viewer" | null;
   action: RecordAction | null;
+  formInstanceKey: string;
   loadError?: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -568,6 +570,7 @@ export function MaternalObservationsPanel({
         </div>
         {canWrite && action ? (
           <AddMaternalObservationDialog
+            key={formInstanceKey}
             action={action}
             onSuccess={setConfirmation}
           />
