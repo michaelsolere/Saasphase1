@@ -174,6 +174,53 @@ permission microphone, ni audio, ni transcription intégrée. Le fonctionnement
 reste strictement online-only. Il n’ajoute aucune migration, RPC, dépendance,
 table, modification de manifest ou logique de service worker.
 
+Sous les boutons express, `/whelping` affiche une file **Naissances à
+compléter** réservée au mode mobile. Elle contient, de la plus récente à la plus
+ancienne, chaque naissance active à laquelle manque le poids de naissance ou
+le collier initial. La viabilité `unknown` ne suffit pas à maintenir une
+naissance dans cette file. La carte la plus récente est ouverte par défaut ;
+**Plus tard** la replie seulement dans le navigateur, sans écriture ni marquage
+métier, et sa ligne compacte reste disponible.
+
+Cette interface ajoute un poids, un collier ou les deux sans réexposer la date
+de naissance, le sexe, la viabilité, les notes, les identifiants structurants
+ni la révision. Le poids reste facultatif et son heure est capturée avec
+`new Date().toISOString()` au moment exact de la soumission. Un poids déjà
+présent est affiché en lecture seule et ne peut être remplacé par l’action
+rapide ; il en va de même pour une couleur existante. Une sauvegarde partielle
+laisse la carte dans la file tant que l’autre donnée manque.
+
+La palette V1 est locale et fixe : Rouge, Bleu, Vert, Jaune, Orange, Rose,
+Violet, Turquoise, Blanc, Noir et Autre. Chaque choix associe un repère visuel,
+un libellé et un état accessible. **Autre** conserve un libellé métier libre,
+trimé et limité à 255 caractères. La palette configurable par organisation est
+reportée.
+
+Les couleurs des autres naissances actives sont comparées après trim et sans
+tenir compte de la casse. L’interface indique le numéro de naissance concerné
+et exige **Utiliser quand même cette couleur**. Ce consentement est revalidé
+côté serveur après une nouvelle lecture autoritative des naissances actives ;
+il s’agit d’une aide contre les erreurs, pas d’une garantie transactionnelle ni
+d’une contrainte SQL.
+
+L’action serveur dédiée reste un adaptateur restreint vers la correction
+auditée et son registre idempotent existants. Elle relit la naissance, la
+session, la portée, l’Animal, la révision, le poids et les couleurs, refuse tout
+écrasement, puis réinjecte exactement l’heure de naissance, le sexe, la
+viabilité et les notes existants. Le motif fixe est **Complément rapide du poids
+et du collier**. La même naissance, le même Animal, le même ordre et l’événement
+initial `birth` sont conservés ; un seul événement `birth_corrected` est ajouté
+par commande et l’unique mesure `birth` est créée seulement si un poids manque
+et est fourni. La règle existante propage le collier initial au collier courant
+uniquement si celui-ci est encore vide ou égal à l’ancien collier initial, afin
+de ne pas écraser une modification ultérieure.
+
+Le Journal complet conserve son formulaire détaillé, le dialogue **Compléter la
+naissance / Corriger** et sa chronologie sans afficher la file rapide. Les
+viewers restent en lecture seule. Ce complément est online-only et n’ajoute ni
+migration, ni RPC, ni table, ni dépendance, ni mode hors ligne, ni modification
+du manifest, du proxy ou du service worker.
+
 La migration `202607200002_reopen_whelping_session` ajoute cette commande atomique dédiée, la protection d’immutabilité du passage `closed → open`, ainsi que l’idempotence stricte et la sérialisation concurrente associées.
 
 Si le chargement des sessions, événements ou naissances n’est pas fiable, le panneau affiche un état neutre et ne rend aucune commande d’écriture. Aucune naissance ni aucun événement n’est ajouté optimistement à l’état React : après une mutation réussie, les données sont relues à la suite des revalidations serveur.

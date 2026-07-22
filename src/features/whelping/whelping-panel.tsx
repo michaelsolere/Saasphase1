@@ -34,6 +34,10 @@ import type {
   WhelpingEventSummary,
   WhelpingSessionSummary,
 } from "./whelping-core";
+import {
+  WhelpingQuickCompletion,
+  type WhelpingQuickCompletionItem,
+} from "./whelping-quick-completion";
 
 type SimpleAction = (
   previousState: WhelpingActionState,
@@ -59,6 +63,11 @@ export type WhelpingBirthAdjustmentAction = {
   birthId: string;
   correctAction: BirthAdjustmentAction;
   cancelAction: BirthAdjustmentAction | null;
+};
+
+export type WhelpingQuickCompletionAction = {
+  birthId: string;
+  action: BirthAdjustmentAction;
 };
 
 type WhelpingRole = "owner" | "admin" | "member" | "viewer" | null;
@@ -1420,6 +1429,7 @@ export function WhelpingPanel({
   expressFemaleBirthAction,
   birthAction,
   birthWeightActions,
+  quickCompletionActions = [],
   birthAdjustmentActions,
   adjustmentHistory,
   adjustmentHistoryLoadError,
@@ -1438,6 +1448,7 @@ export function WhelpingPanel({
   expressFemaleBirthAction: BirthAction | null;
   birthAction: BirthAction | null;
   birthWeightActions: WhelpingBirthWeightAction[];
+  quickCompletionActions?: WhelpingQuickCompletionAction[];
   birthAdjustmentActions: WhelpingBirthAdjustmentAction[];
   adjustmentHistory: WhelpingBirthAdjustmentHistoryEntry[];
   adjustmentHistoryLoadError: boolean;
@@ -1451,6 +1462,35 @@ export function WhelpingPanel({
     session?.status === "closed" &&
     canWrite &&
     (birthAdjustmentActions.length > 0 || birthWeightActions.length > 0);
+  const quickActionsByBirthId = new Map(
+    quickCompletionActions.map((entry) => [entry.birthId, entry.action]),
+  );
+  const activeBirths = births.filter((birth) => birth.cancelledAt === null);
+  const quickCompletionItems: WhelpingQuickCompletionItem[] = activeBirths
+    .filter(
+      (birth) =>
+        (birth.initialCollarColor === null || birth.birthWeightMeasurement === null) &&
+        quickActionsByBirthId.has(birth.id),
+    )
+    .map((birth) => ({
+      birthOrder: birth.birthOrder,
+      sex: birth.sex,
+      occurredAt: birth.occurredAt,
+      initialCollarColor: birth.initialCollarColor,
+      birthWeightMeasurement: birth.birthWeightMeasurement
+        ? {
+            grams: birth.birthWeightMeasurement.grams,
+            measuredAt: birth.birthWeightMeasurement.measuredAt,
+          }
+        : null,
+      assignedColors: activeBirths
+        .filter((candidate) => candidate.id !== birth.id && candidate.initialCollarColor !== null)
+        .map((candidate) => ({
+          birthOrder: candidate.birthOrder,
+          color: candidate.initialCollarColor!,
+        })),
+      action: quickActionsByBirthId.get(birth.id)!,
+    }));
 
   return (
     <section className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
@@ -1521,6 +1561,12 @@ export function WhelpingPanel({
                       key={births.filter((birth) => birth.cancelledAt === null).length}
                       maleAction={expressMaleBirthAction}
                       femaleAction={expressFemaleBirthAction}
+                      timezoneName={session.timezoneName}
+                      onSuccess={setConfirmation}
+                    />
+                    <WhelpingQuickCompletion
+                      key={quickCompletionItems.map(({ birthOrder }) => birthOrder).join("-")}
+                      items={quickCompletionItems}
                       timezoneName={session.timezoneName}
                       onSuccess={setConfirmation}
                     />

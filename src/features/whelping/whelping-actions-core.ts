@@ -12,6 +12,8 @@ import type {
   RecordWhelpingBirthResult,
   RecordWhelpingBirthWeightInput,
   RecordWhelpingBirthWeightResult,
+  QuickCompleteWhelpingBirthInput,
+  QuickCompleteWhelpingBirthResult,
   RecordWhelpingEventInput,
   RecordWhelpingEventResult,
   ReopenWhelpingSessionInput,
@@ -63,6 +65,7 @@ export type WhelpingBirthActionState = WhelpingActionState & {
 
 export type WhelpingBirthAdjustmentActionState = WhelpingActionState & {
   stale?: boolean;
+  duplicateColorBirthOrder?: number;
 };
 
 export const initialWhelpingActionState = {
@@ -133,6 +136,13 @@ export type WhelpingBirthAdjustmentActionDependencies = {
   cancelBirth: (
     input: CancelWhelpingBirthInput,
   ) => Promise<WhelpingBirthAdjustmentResult>;
+  revalidatePath: (path: string) => void;
+};
+
+export type WhelpingQuickCompletionActionDependencies = {
+  quickCompleteBirth: (
+    input: QuickCompleteWhelpingBirthInput,
+  ) => Promise<QuickCompleteWhelpingBirthResult>;
   revalidatePath: (path: string) => void;
 };
 
@@ -351,6 +361,10 @@ function adjustmentServiceMessage(error: WhelpingServiceError) {
       return { message: "Les données du poids de naissance ont changé depuis l’affichage." };
     case "birth_cancelled":
       return { message: "Cette naissance a déjà été annulée." };
+    case "birth_color_already_recorded":
+      return { message: "Une couleur de collier est déjà enregistrée pour cette naissance." };
+    case "birth_weight_already_recorded":
+      return { message: "Un poids de naissance est déjà enregistré pour cette naissance." };
     case "conflict":
       return { message: "Cette commande entre en conflit avec une tentative précédente. Rechargez les données." };
     case "unauthenticated":
@@ -360,6 +374,85 @@ function adjustmentServiceMessage(error: WhelpingServiceError) {
       return { message: "La naissance demandée est introuvable ou inaccessible." };
     default:
       return { message: "Une erreur technique empêche momentanément cette opération." };
+  }
+}
+
+export async function quickCompleteWhelpingBirthActionCore(
+  intention: WhelpingBirthAdjustmentIntention,
+  _previousState: WhelpingBirthAdjustmentActionState,
+  formData: FormData,
+  dependencies: WhelpingQuickCompletionActionDependencies,
+): Promise<WhelpingBirthAdjustmentActionState> {
+  if (!isBirthAdjustmentIntention(intention)) {
+    return adjustmentError("La commande de complément rapide est invalide.");
+  }
+
+  const initialCollarColor = normalizeOptionalText(
+    formData,
+    "initial_collar_color",
+    MAX_COLOR_LENGTH,
+  );
+  const birthWeightGrams = normalizeOptionalWeight(formData);
+  const weightMeasuredAt = normalizeOptionalTimestamp(formData, "weight_measured_at");
+  const allowDuplicateColor = formString(formData, "allow_duplicate_color") === "true";
+  if (
+    initialCollarColor === undefined || birthWeightGrams === undefined ||
+    weightMeasuredAt === undefined ||
+    (birthWeightGrams === null && weightMeasuredAt !== null) ||
+    (birthWeightGrams !== null && weightMeasuredAt === null) ||
+    (birthWeightGrams === null && initialCollarColor === null)
+  ) {
+    return adjustmentError("Le complément rapide est invalide.");
+  }
+
+  try {
+    const result = await dependencies.quickCompleteBirth({
+      litterId: intention.litterId,
+      sessionId: intention.sessionId,
+      birthId: intention.birthId,
+      animalId: intention.animalId,
+      expectedRevisionNo: intention.expectedRevisionNo,
+      clientCommandId: intention.clientCommandId,
+      initialCollarColor,
+      birthWeightGrams,
+      weightMeasuredAt,
+      allowDuplicateColor,
+    });
+    if (result.outcome === "error") {
+      if (
+        result.error.code === "duplicate_color_confirmation_required" &&
+        result.duplicateColorBirthOrder
+      ) {
+        return {
+          status: "error",
+          message: `Cette couleur est déjà attribuée à la naissance n°${result.duplicateColorBirthOrder}.`,
+          duplicateColorBirthOrder: result.duplicateColorBirthOrder,
+        };
+      }
+      const mapped = adjustmentServiceMessage(result.error);
+      return adjustmentError(mapped.message, mapped.stale);
+    }
+
+    dependencies.revalidatePath("/whelping");
+    dependencies.revalidatePath("/litters/journal");
+    dependencies.revalidatePath("/litters");
+    dependencies.revalidatePath(`/litters/${intention.litterId}`);
+    dependencies.revalidatePath("/animals");
+    dependencies.revalidatePath(`/animals/${intention.animalId}`);
+
+    const details = [
+      birthWeightGrams === null ? null : `${birthWeightGrams} g`,
+      initialCollarColor === null
+        ? null
+        : `collier ${initialCollarColor.toLocaleLowerCase("fr-FR")}`,
+    ].filter((value): value is string => value !== null).join(" · ");
+    return {
+      status: "success",
+      message: `Naissance n°${result.birthOrder} complétée : ${details}.`,
+      replayed: result.replayed,
+    };
+  } catch {
+    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
   }
 }
 

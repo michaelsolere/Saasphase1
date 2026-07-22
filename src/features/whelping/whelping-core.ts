@@ -59,6 +59,8 @@ export type WhelpingServiceErrorCode =
   | "birth_has_downstream_data"
   | "birth_time_out_of_order"
   | "birth_weight_inconsistent"
+  | "birth_color_already_recorded"
+  | "duplicate_color_confirmation_required"
   | "database_error";
 
 export type WhelpingServiceError = {
@@ -286,6 +288,29 @@ export type CorrectWhelpingBirthInput = {
   weightNote?: string | null;
   reason: string;
 };
+
+export type QuickCompleteWhelpingBirthInput = {
+  litterId: string;
+  sessionId: string;
+  birthId: string;
+  animalId: string;
+  expectedRevisionNo: number;
+  clientCommandId: string;
+  initialCollarColor?: string | null;
+  birthWeightGrams?: number | null;
+  weightMeasuredAt?: string | null;
+  allowDuplicateColor: boolean;
+};
+
+export type QuickCompleteWhelpingBirthResult =
+  | {
+      outcome: "success";
+      birthOrder: number;
+      initialCollarColor: string | null;
+      birthWeightGrams: number | null;
+      replayed: boolean;
+    }
+  | (ErrorResult & { duplicateColorBirthOrder?: number });
 
 export type CancelWhelpingBirthInput = {
   birthId: string;
@@ -1215,6 +1240,118 @@ export async function correctWhelpingBirthCore(
   });
   if (adjusted.error) return databaseFailure("whelping_birth_correction_failed", adjusted.error);
   return mapBirthAdjustmentResult(adjusted.data?.[0]);
+}
+
+export async function quickCompleteWhelpingBirthCore(
+  input: QuickCompleteWhelpingBirthInput,
+  supabase: Supabase,
+): Promise<QuickCompleteWhelpingBirthResult> {
+  const litterId = normalizeUuid(input.litterId);
+  const sessionId = normalizeUuid(input.sessionId);
+  const birthId = normalizeUuid(input.birthId);
+  const animalId = normalizeUuid(input.animalId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const initialCollarColor = normalizeOptionalText(input.initialCollarColor, 255);
+  const birthWeightGrams = normalizeOptionalWeight(input.birthWeightGrams);
+  const weightMeasuredAt = input.weightMeasuredAt == null
+    ? null
+    : normalizeTimestamp(input.weightMeasuredAt);
+
+  if (
+    !litterId || !sessionId || !birthId || !animalId || !clientCommandId ||
+    !Number.isInteger(input.expectedRevisionNo) || input.expectedRevisionNo < 0 ||
+    initialCollarColor === undefined || birthWeightGrams === undefined ||
+    weightMeasuredAt === undefined || typeof input.allowDuplicateColor !== "boolean" ||
+    (birthWeightGrams === null && weightMeasuredAt !== null) ||
+    (birthWeightGrams !== null && weightMeasuredAt === null) ||
+    (birthWeightGrams === null && initialCollarColor === null)
+  ) {
+    return invalidInput();
+  }
+
+  const listed = await listWhelpingBirthsForSessionCore({ sessionId }, supabase);
+  if (listed.outcome === "error") return listed;
+  if (listed.role === "viewer") {
+    return failure("forbidden", "Vous n’avez pas les droits nécessaires.");
+  }
+
+  const birth = listed.births.find((candidate) => candidate.id === birthId);
+  if (!birth) return failure("not_found", "La naissance demandée est introuvable.");
+  if (
+    birth.sessionId !== sessionId || birth.animal.id !== animalId ||
+    birth.animal.litterId !== litterId
+  ) {
+    return failure("invalid_birth_relations", "Les relations de la naissance sont incohérentes.");
+  }
+  if (birth.cancelledAt !== null) {
+    return failure("birth_cancelled", "Cette naissance a déjà été annulée.");
+  }
+
+  const requestedColor = initialCollarColor ?? birth.initialCollarColor;
+  const requestedWeight = birthWeightGrams ?? birth.birthWeightMeasurement?.grams ?? null;
+  const requestedMeasuredAt = birthWeightGrams !== null
+    ? weightMeasuredAt
+    : birth.birthWeightMeasurement?.measuredAt ?? null;
+  const requestedWeightNote = birth.birthWeightMeasurement?.note ?? null;
+
+  const applyExistingCorrection = async () => {
+    const corrected = await correctWhelpingBirthCore({
+      birthId,
+      clientCommandId,
+      expectedRevisionNo: input.expectedRevisionNo,
+      occurredAt: birth.occurredAt,
+      sex: birth.sex,
+      viability: birth.viability,
+      initialCollarColor: requestedColor,
+      birthNote: birth.note,
+      weightGrams: requestedWeight,
+      weightMeasuredAt: requestedMeasuredAt,
+      weightNote: requestedWeightNote,
+      reason: "Complément rapide du poids et du collier",
+    }, supabase);
+    if (corrected.outcome === "error") return corrected;
+    return {
+      outcome: "success" as const,
+      birthOrder: birth.birthOrder,
+      initialCollarColor: requestedColor,
+      birthWeightGrams: requestedWeight,
+      replayed: corrected.replayed,
+    };
+  };
+
+  // A changed revision may be the result of replaying this exact command. The
+  // audited correction registry decides between an idempotent replay and a
+  // genuinely stale write before any current value can be overwritten.
+  if (birth.revisionNo !== input.expectedRevisionNo) {
+    return applyExistingCorrection();
+  }
+
+  if (initialCollarColor !== null && birth.initialCollarColor !== null) {
+    return failure("birth_color_already_recorded", "Une couleur est déjà enregistrée.");
+  }
+  if (birthWeightGrams !== null && birth.birthWeightMeasurement !== null) {
+    return failure("birth_weight_already_recorded", "Un poids est déjà enregistré.");
+  }
+  if (birthWeightGrams !== null && weightMeasuredAt! < birth.occurredAt) {
+    return failure("measured_before_birth", "L’heure de pesée précède la naissance.");
+  }
+
+  if (initialCollarColor !== null) {
+    const normalizedColor = initialCollarColor.trim().toLocaleLowerCase("fr-FR");
+    const duplicate = listed.births.find((candidate) =>
+      candidate.id !== birth.id &&
+      candidate.cancelledAt === null &&
+      candidate.initialCollarColor?.trim().toLocaleLowerCase("fr-FR") === normalizedColor
+    );
+    if (duplicate && !input.allowDuplicateColor) {
+      return {
+        ...failure("duplicate_color_confirmation_required", "Cette couleur est déjà attribuée."),
+        duplicateColorBirthOrder: duplicate.birthOrder,
+      };
+    }
+  }
+
+  return applyExistingCorrection();
 }
 
 export async function cancelWhelpingBirthCore(
