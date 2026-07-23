@@ -305,13 +305,14 @@ Légende : **déjà couvert**, **partiellement couvert**, **à étendre**, **nou
 
 | Besoin | Qualification | Couverture actuelle et écart |
 | --- | --- | --- |
-| Jalon | Déjà couvert | Un modèle ponctuel et sa tâche générée existent, avec snapshot et unicité. Le terme UI « jalon » correspond actuellement à un `litter_care_task_template`. |
+| Jalon | Partiellement couvert | Un modèle ponctuel et sa tâche générée existent, avec snapshot et unicité. En revanche, il n'existe pas encore de type fonctionnel `milestone` distinct de la tâche qui le matérialise. |
 | Tâche | Déjà couvert | Création manuelle ou depuis un modèle, statut, réalisation/annulation/non-applicabilité, permissions et idempotence. |
-| Période ou fenêtre | Nouveau | Une seule date `planned_for`; aucun début/fin, durée ou tolérance. |
+| Période ou fenêtre | Nouveau | Une seule date `planned_for`; aucun élément autonome de type `window`, aucune paire de bornes suggérées/retenues et aucun état temporel de fenêtre. |
 | Suivi récurrent | À étendre | `occurrence_no` et les unicités préparent les occurrences, mais aucun objet série, aucune cadence ni génération au-delà de l'occurrence 1. |
 | Date suggérée | Partiellement couvert | `anchor_date + offset_days` est calculé puis stocké dans `planned_for`, sans conservation distincte de la suggestion après modification manuelle. |
 | Date retenue | Partiellement couvert | `planned_for` joue ce rôle de fait, mais elle n'est ni éditable ni distinguée de la suggestion. |
 | Date réalisée | Déjà couvert | `resolved_at` en `timestamptz`, fuseau et auteur pour `done`. Le nom générique couvre aussi les autres résolutions. |
+| Heure planifiée | Nouveau | Aucune heure locale, aucun snapshot de fuseau et aucun créneau quotidien multiple ne sont portés par les tâches. |
 | Verrouillage | Nouveau | Aucun verrou fonctionnel de date ; seuls les verrous transactionnels internes existent. |
 | Report historisé | Nouveau | Aucune commande de report et aucun historique de dates. |
 | Annulation | Déjà couvert | État terminal `cancelled`, instant, auteur, fuseau, note et commande idempotente. |
@@ -345,10 +346,12 @@ Compléments nécessaires :
 | Définition réutilisable d'un jalon simple | `litter_care_task_templates` | Copie de bibliothèque dans la même table. |
 | Composition d'un modèle de planning | Nouvelles tables de modèle et d'items | Bibliothèque globale éventuelle, jamais utilisée directement pour exécuter une portée. |
 | Planning adopté par une portée | Nouvelle instance `litter_plans` et ses définitions/séries snapshotées | DTO de lecture unifié. |
+| Type fonctionnel | Snapshot de l'item propre à la portée : `milestone`, `task`, `window` ou `recurring_task` | Présentation adaptée dans la liste, la frise, Aujourd'hui et le calendrier. |
 | Règle d'une série récurrente | Nouvelle définition de série propre au planning de portée | Occurrences finies dans `litter_care_tasks`. |
-| Occurrence concrète | `litter_care_tasks` étendue | Liste, frise, Aujourd'hui et calendrier. |
+| Occurrence ou élément concret | `litter_care_tasks` étendue | Un point pour `milestone`/`task`, une ligne autonome à deux bornes pour `window`, une occurrence pour `recurring_task`. |
 | Date suggérée | Calcul déterministe stocké sur l'occurrence, recalculable et historisé | Affichage « suggérée ». |
 | Date retenue | Champ opérationnel de l'occurrence, modifiable par commande | Toutes les vues utilisent cette date pour l'agenda. |
+| Heure planifiée | Date civile + heure locale facultative + fuseau IANA snapshoté | Instant UTC dérivé seulement lorsqu'une heure existe. |
 | Réalisation générique | État terminal et `resolved_at` de l'occurrence | Historique de la tâche. |
 | Première/deuxième saillie | `reproductive_cycle_matings`; champs `litters.mating_date*` comme projections actuelles | Ancrage civil lu par le planning. |
 | Estimation d'ovulation | `litters.estimated_ovulation_date` | Ancrage de planning ; ne pas la transformer en mesure de progestérone. |
@@ -369,7 +372,7 @@ Une occurrence dit « ce qui devait être fait, quand, avec quel état administr
 
 Pour une action dont la réalisation est déjà un fait structuré, la V1 doit soit laisser la tâche être réalisée manuellement sans recopier le fait, soit introduire un lien étroit de preuve, par exemple `litter_care_task_maternal_observation_evidence`, `litter_care_task_whelping_event_evidence` ou `litter_care_task_weighing_session_evidence`. Ces tables de liaison ne contiendraient aucune valeur clinique et imposeraient des FK composites de même organisation. Une table polymorphe `entity_type/entity_id` sans FK est déconseillée.
 
-L'auto-réalisation à partir des faits peut être différée. La lecture peut présenter qu'un fait compatible existe sans changer silencieusement le statut d'une tâche.
+En V1, un fait compatible peut être lié ou présenté comme preuve, mais il ne réalise jamais automatiquement l'occurrence. Toute transition de statut reste une commande explicite.
 
 ## 4. Modèle cible comparé
 
@@ -418,7 +421,12 @@ Cette option conserve `litter_care_tasks` comme occurrence concrète et introdui
 
 ### 4.3 Recommandation
 
-Retenir **l'option B**, avec réutilisation contrôlée de `litter_care_tasks` comme table d'occurrences. Ne pas renommer ni remplacer cette table dans la première migration d'évolution.
+Retenir **l'option B**, avec réutilisation contrôlée de `litter_care_tasks` comme table des éléments opérationnels et occurrences. Ne pas renommer ni remplacer cette table dans la première migration d'évolution. Le modèle fonctionnel distingue obligatoirement quatre types :
+
+- `milestone` : repère ponctuel, éventuellement marquable comme traité ;
+- `task` : action ponctuelle à réaliser ;
+- `window` : période autonome avec deux bornes, et non simple attribut facultatif d'une tâche ;
+- `recurring_task` : série produisant des occurrences concrètes indépendantes.
 
 Schéma conceptuel indicatif :
 
@@ -429,11 +437,11 @@ litter_care_task_templates (jalon élémentaire d'organisation, existant)
                 │                                      modèle composé
                 │
                 ▼
-litters ── litter_plans ── litter_plan_series ── litter_care_tasks
-             instance          règle snapshotée        occurrences
-                                                        │
-                                                        ├── schedule_changes
-                                                        └── evidence links (optionnels)
+litters ── litter_plans ── litter_plan_items ── litter_care_tasks
+             principal        snapshots des 4 types     éléments/occurrences
+                                     │                         │
+                                     └── litter_plan_series    ├── schedule_changes
+                                          + time_slots         └── evidence links
 ```
 
 Noms et colonnes indicatifs, à confirmer avant migration :
@@ -444,34 +452,71 @@ Noms et colonnes indicatifs, à confirmer avant migration :
 
 #### `litter_planning_model_items`
 
-`id`, `organization_id`, `planning_model_id`, `organization_template_id`, `item_kind` (`milestone`, `task`, `recurring_task`), `priority`, `window_start_offset_days`, `suggested_offset_days`, `window_end_offset_days`, `recurrence_kind`, `recurrence_interval_days`, `recurrence_end_kind`, `recurrence_end_offset_days`, `sort_order`, `revision`.
+`id`, `organization_id`, `planning_model_id`, `organization_template_id`, `item_kind` (`milestone`, `task`, `window`, `recurring_task`), `priority` (`normal`, `important`, `organization_critical`), ancrage, offsets de date ou de bornes, heure(s) locale(s), règle de récurrence éventuelle, `sort_order`, `revision`.
 
 Le lien vers `litter_care_task_templates` réutilise le contenu, la cible, la catégorie et l'ancrage. En V1, un modèle ponctuel existant peut être ajouté tel quel à un modèle de planning sans perdre son identité.
 
 #### `litter_plans`
 
-`id`, `organization_id`, `litter_id`, `planning_model_id nullable`, `title`, `status` (`active`, `closed`, `cancelled`), `revision`, `last_recalculated_at`, `created_at`, `updated_at`, auteurs. Unicité d'un planning actif principal par portée si le cadrage confirme qu'il n'en faut qu'un.
+`id`, `organization_id`, `litter_id`, `title`, `status` (`active`, `completed`, `cancelled`), `revision`, `last_recalculated_at`, `created_at`, `updated_at`, auteurs. Une unicité partielle impose **un seul planning opérationnel principal actif par portée**. Plusieurs modèles spécialisés peuvent être appliqués successivement à ce même planning; ils y ajoutent des items snapshotés sans créer de second planning concurrent.
 
-#### `litter_plan_series`
+#### `litter_plan_items`
 
-Snapshot propre à la portée : `id`, `organization_id`, `litter_plan_id`, `organization_template_id nullable`, `item_kind`, contenu métier snapshoté, `anchor_type`, `anchor_date_snapshot`, offsets de fenêtre/suggestion, priorité, règle récurrente V1, règle de fin, `generation_horizon_date`, `revision`, état actif/inactif. Les modifications futures d'un modèle ne changent pas cette définition sans action explicite.
+Snapshot propre à la portée : `id`, `organization_id`, `litter_plan_id`, `source_planning_model_id nullable`, `organization_template_id nullable`, `item_kind`, contenu métier snapshoté, `anchor_type`, `anchor_date_snapshot`, priorité, règles de date/heure, `revision` et état d'activation. Les modifications futures d'un modèle ne changent pas cet item sans action explicite.
+
+Pour `milestone` et `task`, l'item définit une date civile suggérée et éventuellement une heure locale. Pour `window`, il définit deux bornes civiles suggérées. Pour `recurring_task`, il possède une série associée.
+
+Une fenêtre peut exister seule ou être reliée à un ou plusieurs points par une table étroite telle que `litter_plan_item_window_links`. Elle n'est jamais réduite à deux colonnes facultatives sur une tâche. Le lien reste indicatif : la date retenue du `milestone` ou de la `task` peut sortir des bornes retenues de la fenêtre après confirmation explicite et historique.
+
+#### `litter_plan_series` et `litter_plan_series_time_slots`
+
+La série porte `litter_plan_item_id`, la cadence, le début, la fin, l'horizon matérialisé, la révision et l'état fonctionnel `active`, `suspended`, `completed`, `cancelled` ou `not_applicable`. Le libellé de `completed` est « Terminée ».
+
+Les créneaux sont relationnels : `litter_plan_series_time_slots` porte `series_id`, `slot_no` et `local_time`, avec unicité de l'heure dans la série et de `(series_id, slot_no)`. Cela autorise par exemple 08:00 et 20:00 sans tableau JSON opaque.
 
 #### Extensions de `litter_care_tasks`
 
-- `litter_plan_series_id nullable` pour préserver toutes les tâches historiques autonomes ;
-- `occurrence_key` ou unicité `(organization_id, litter_plan_series_id, occurrence_no)` ;
-- `suggested_for date nullable` ;
-- conserver `planned_for` comme date retenue pour compatibilité, avec un nom DTO `scheduledFor` ;
-- `window_starts_on`, `window_ends_on` ;
-- `priority` ;
+- `item_kind` avec les quatre valeurs fonctionnelles ;
+- `litter_plan_item_id nullable` et `litter_plan_series_id nullable` pour préserver toutes les tâches historiques autonomes ;
+- `occurrence_no`, `recurrence_day_no nullable` et `slot_no nullable` ;
+- `suggested_for date nullable` et `suggested_local_time time nullable` ;
+- conserver `planned_for` comme date retenue pour compatibilité, avec un nom DTO `scheduledFor`; elle reste obligatoire pour les points et devient sans objet pour une ligne `window` ;
+- `scheduled_local_time time nullable` et `schedule_timezone_name text nullable` ;
+- pour un `window`, `suggested_starts_on`, `suggested_ends_on`, `retained_starts_on`, `retained_ends_on` et, si utile, les heures locales facultatives de début/fin ; ces bornes appartiennent à la fenêtre elle-même ;
+- `priority` contraint à `normal`, `important`, `organization_critical`; le dernier est affiché « Critique pour l’organisation » ;
 - `schedule_source` (`suggested`, `manual`) ;
 - `is_schedule_locked`, `schedule_locked_at`, `schedule_locked_by` ;
 - `revision_no` ;
 - éventuellement `cancelled_reason`/`not_applicable_reason` si la note générique ne suffit pas.
 
+Les checks dépendent du type : un point exige une date civile `planned_for`; une fenêtre autorise `planned_for = null` mais exige ses deux bornes retenues ordonnées; une occurrence récurrente exige série, `recurrence_day_no` et `slot_no`. Une fenêtre est donc une ligne autonome, affichable et résoluble sans tâche fille.
+
+L'état fonctionnel d'une fenêtre est calculé depuis ses bornes retenues et son état terminal :
+
+- `upcoming` (« À venir ») avant la borne de début ;
+- `open` (« Ouverte ») du début à la fin inclus ;
+- `overdue` (« Dépassée ») après la borne de fin tant qu'elle n'est pas traitée ;
+- `treated` (« Traitée ») si son état persistant est `done` ;
+- `cancelled` (« Annulée ») ou `not_applicable` (« Non applicable ») selon sa résolution.
+
+Les bornes suggérées continuent d'évoluer lors d'un recalcul. Les bornes retenues pilotent ces états et peuvent diverger des bornes suggérées après confirmation explicite et historique. La date retenue d'un point lié peut, elle aussi, être hors de la fenêtre retenue après cette confirmation.
+
+#### Date civile, heure locale et fuseau
+
+Deux représentations sont possibles :
+
+| Représentation | Avantage | Limite |
+| --- | --- | --- |
+| `date + local_time + timezone_name` | Préserve explicitement le jour civil voulu, accepte une date sans heure et ne dépend pas du fuseau du navigateur. | Nécessite une conversion serveur contrôlée pour obtenir un instant et une gestion explicite des heures ambiguës/inexistantes lors d'un changement d'heure. |
+| `timestamptz` seul | Comparaison chronologique et requêtes d'agenda simples. | Perd l'intention « jour civil sans heure », impose un instant même quand il n'existe pas et peut afficher une autre date selon le fuseau du client. |
+
+Recommandation : conserver la **date civile comme autorité**, ajouter une heure locale facultative et le `timezone_name` IANA de l'organisation, snapshoté sur l'élément lors de sa planification. Lorsqu'une heure existe, le serveur valide le triplet et peut stocker un `scheduled_at timestamptz` dérivé comme projection indexable; cette projection n'est jamais recalculée depuis le fuseau du navigateur. Une date sans heure n'a pas d'instant artificiel.
+
+Les fenêtres suivent la même logique avec bornes civiles obligatoires et heures locales facultatives. Les rendez-vous à heure précise sont rendus à leur heure locale dans la vue semaine et l'agenda. Les anciennes tâches restent valides avec `planned_for`, heure et fuseau nuls; elles continuent d'être des éléments « journée entière ».
+
 #### `litter_care_task_schedule_changes`
 
-Registre append-only : tâche, commande, type (`manual_reschedule`, `anchor_recalculation`, `lock`, `unlock`), révision attendue/résultante, anciennes/nouvelles suggestion et date retenue, ancien/nouveau verrou, ancrage lu, motif, auteur, instant. Ce registre est privé; une RPC de lecture renvoie un DTO expurgé.
+Registre append-only : tâche, commande, type (`manual_reschedule`, `anchor_recalculation`, `lock`, `unlock`), révision attendue/résultante, anciennes/nouvelles suggestion, date/heure retenue ou bornes de fenêtre, ancien/nouveau verrou, fuseau snapshoté, ancrage lu, motif, auteur, instant. Ce registre est privé; une RPC de lecture renvoie un DTO expurgé.
 
 Le modèle ne doit pas intégrer les valeurs biologiques. Les liens de preuve, s'ils sont retenus, sont des tables étroites séparées.
 
@@ -483,11 +528,12 @@ La migration doit être additive et en plusieurs étapes. Aucune tâche existant
 
 ### 5.2 Préservation des tâches
 
-- ajouter `litter_plan_series_id` nullable ;
+- ajouter `item_kind`, `litter_plan_item_id` et `litter_plan_series_id` de façon additive ;
 - conserver `planned_for` et sa signification historique ; dans les nouveaux DTO il devient la date retenue ;
-- pour une tâche de modèle existante, backfiller `suggested_for = planned_for`, `schedule_source = 'suggested'`, `priority` à une valeur neutre et `revision_no = 0` ;
-- pour une tâche manuelle existante, garder `suggested_for = null`, `schedule_source = 'manual'` ;
-- laisser `litter_plan_series_id = null` pour toutes les tâches historiques, sauf migration explicitement vérifiable d'un futur planning réellement connu ;
+- backfiller les anciennes lignes avec `item_kind = 'task'`, `priority = 'normal'`, `scheduled_local_time = null`, `schedule_timezone_name = null` et `revision_no = 0` ;
+- pour une tâche de modèle existante, backfiller `suggested_for = planned_for` et `schedule_source = 'suggested'` ;
+- pour une tâche manuelle existante, garder `suggested_for = null` et `schedule_source = 'manual'` ;
+- laisser `litter_plan_item_id = null` et `litter_plan_series_id = null` pour toutes les tâches historiques ;
 - conserver sans transformation `status`, `resolution_command_id`, `resolved_at`, `resolved_timezone_name`, `resolved_by` et `resolution_note`.
 
 Ainsi, les tâches `done`, `cancelled` et `not_applicable` gardent exactement leur interprétation. Aucun recalcul ne les touche.
@@ -538,9 +584,9 @@ La V1 recommande une commande explicite ou orchestrée côté serveur, jamais un
 1. verrouille la portée et le planning ;
 2. relit tous les ancrages dans `litters` ;
 3. compare une révision attendue du planning et, si utile, l'ancienne valeur d'ancrage attendue ;
-4. recalcule les suggestions et fenêtres déterministes ;
+4. recalcule les dates suggérées et les bornes suggérées des fenêtres déterministes ;
 5. écrit un historique unique ;
-6. matérialise ou ajuste seulement l'horizon autorisé.
+6. ajuste uniquement les éléments déjà matérialisés et ne crée aucune occurrence nouvelle.
 
 ### 6.2 Règles de conservation
 
@@ -548,12 +594,14 @@ La V1 recommande une commande explicite ou orchestrée côté serveur, jamais un
 | --- | --- |
 | Planifiée, suit la suggestion, non verrouillée | Mettre à jour `suggested_for`, fenêtre et `planned_for`. |
 | Planifiée, date retenue manuellement | Mettre à jour la suggestion et la fenêtre, conserver `planned_for`. |
-| Planifiée, verrouillée | Conserver `planned_for`; mettre à jour la suggestion à titre informatif ou conserver son snapshot selon décision produit. Recommandation : actualiser la suggestion et historiser l'écart. |
+| Planifiée, verrouillée | Conserver la date/heure ou les bornes retenues; mettre à jour la suggestion à titre informatif et historiser l'écart. |
 | Réalisée | Ne modifier aucune date opérationnelle ou donnée de résolution. |
 | Annulée | Ne pas réactiver ni déplacer. |
 | Non applicable | Ne pas réactiver ni déplacer. |
 
 La conservation d'une date manuelle ne doit pas dépendre d'une comparaison fragile `planned_for = suggested_for`. Elle doit être exprimée par `schedule_source`.
+
+`owner`, `admin` et `member` peuvent verrouiller ou déverrouiller. Le verrou bloque uniquement le recalcul automatique de la date/heure ou des bornes retenues; la suggestion continue d'évoluer. Un report manuel explicite reste autorisé sur un élément verrouillé après confirmation, avec motif et historique. Pour une fenêtre, une borne retenue hors des bornes suggérées est également admise après confirmation explicite.
 
 ### 6.3 Double clic et retry réseau
 
@@ -569,7 +617,7 @@ Chaque mutation reçoit un `client_command_id` stable pour l'intention affichée
 
 ### 6.5 Génération en double
 
-L'unicité recommandée est `(organization_id, litter_plan_series_id, occurrence_no)` et, si la règle utilise une clé temporelle, une `occurrence_key` canonique immuable. La matérialisation :
+L'unicité recommandée est `(organization_id, litter_plan_series_id, recurrence_day_no, slot_no)`, complétée par un `occurrence_no` séquentiel immuable pour l'affichage. La matérialisation :
 
 - verrouille la série ;
 - calcule la liste finie attendue pour l'horizon ;
@@ -593,32 +641,47 @@ Si le report gagne, il marque `schedule_source = 'manual'`; le recalcul suivant 
 
 ### 7.1 V1 volontairement simple
 
-Ne pas introduire RRULE, cron ni moteur générique. Une série V1 peut être décrite par :
+Ne pas introduire RRULE, cron ni moteur générique. Une série V1 est décrite par :
 
-- `recurrence_kind = 'none' | 'daily_interval'` ;
-- `recurrence_interval_days` entier strictement positif ;
-- un ancrage et un offset de première occurrence ;
-- une fin fermée ;
-- un horizon maximum.
+- `recurrence_kind = 'daily_interval'` ;
+- `recurrence_interval_days` entier strictement positif pour « tous les N jours » ;
+- un début sous forme de date civile explicite ou d'offset civil par rapport à l'ancrage ;
+- un ou plusieurs créneaux locaux ordonnés, par exemple 08:00 et 20:00 ;
+- le fuseau IANA snapshoté ;
+- une borne de fin explicite : date, offset, nombre maximal ou borne biologique ;
+- `absolute_max_occurrences`, plafond strict validé en base et dans la commande.
 
-Cette forme couvre une action tous les N jours sans gérer jours ouvrés, exceptions complexes, règles mensuelles ou fuseaux d'heures. Les échéances sont des dates civiles, cohérentes avec les tâches actuelles.
+Cette forme exclut volontairement jours ouvrés, règles hebdomadaires ou mensuelles, cron et RRULE.
 
 ### 7.2 Série et occurrences
 
-`litter_plan_series` porte la règle et son snapshot. `litter_care_tasks` porte chaque occurrence. L'occurrence peut être réalisée, annulée, rendue non applicable, reportée ou verrouillée indépendamment. Modifier une occurrence ne modifie pas la série.
+`litter_plan_series` porte la règle et son snapshot. Son état est distinct de celui des occurrences :
+
+- `active` : de nouvelles occurrences peuvent être matérialisées par commande explicite ;
+- `suspended` : aucune nouvelle matérialisation tant qu'elle n'est pas reprise; les occurrences existantes gardent leur état ;
+- `completed` : borne atteinte ou terminaison normale, sans nouvelle occurrence ;
+- `cancelled` : arrêt décidé; les occurrences futures sont annulées selon la commande auditée ;
+- `not_applicable` : la série entière ne s'applique plus; ses occurrences futures deviennent `not_applicable`.
+
+`litter_care_tasks` porte chaque occurrence, avec son propre état `planned`, `done`, `cancelled` ou `not_applicable`. Une occurrence peut être réalisée, reportée ou verrouillée indépendamment sans changer l'état de la série. Inversement, suspendre une série ne marque pas ses occurrences existantes comme réalisées.
+
+Ces états ne doivent pas être confondus avec l'état calculé d'une `window` : « À venir », « Ouverte » et « Dépassée » résultent de la date courante et des bornes retenues, tandis que « Traitée », « Annulée » et « Non applicable » reflètent la résolution persistée de cette fenêtre autonome.
 
 Une modification de cadence crée une nouvelle révision de série ou clôt l'ancienne à une borne; elle ne réécrit pas les occurrences terminales.
 
+Pour chaque date de cadence, `recurrence_day_no` commence à 1. Les créneaux triés par heure reçoivent `slot_no = 1..n`. `occurrence_no` numérote ensuite chaque paire `(recurrence_day_no, slot_no)` dans l'ordre date/heure. Deux créneaux le même jour ont donc le même `recurrence_day_no`, des `slot_no` distincts et des `occurrence_no` distincts. L'unicité SQL repose sur la série, le jour de récurrence et le créneau; la définition des créneaux est immuable dans une révision active.
+
 ### 7.3 Horizon et matérialisation
 
-Recommandation :
+Règle impérative :
 
-- matérialiser au moment de l'activation les occurrences jusqu'au plus petit de : fin de série, horizon de 60 à 90 jours, borne métier connue ;
-- étendre à la demande lors de l'ouverture du Journal ou d'une vue calendrier, par commande serveur idempotente ;
-- ne jamais écrire depuis une simple fonction de lecture sans commande traçable ;
-- ne jamais générer au-delà d'une limite absolue d'occurrences par série et par commande.
+- matérialiser explicitement lors de l'application d'un modèle au planning ou de l'activation d'une série, jusqu'au plus petit de la fin, de l'horizon autorisé et du maximum absolu ;
+- n'effectuer **aucune écriture lors du chargement** du Journal, de la frise, d'Aujourd'hui ou du calendrier ;
+- si une borne biologique est inconnue et que l'horizon est atteint, afficher l'état et proposer une commande utilisateur explicite de prolongation ;
+- borner cette prolongation par la révision, l'horizon demandé, la fin devenue connue et `absolute_max_occurrences` ;
+- réserver un éventuel scheduler automatique à un lot futur séparé.
 
-Le calendrier ne doit pas calculer une infinité virtuelle; il lit des occurrences finies dans sa plage.
+Toutes les vues restent des lectures sans effet de bord et n'affichent que les occurrences déjà matérialisées.
 
 ### 7.4 Fins biologiques
 
@@ -634,14 +697,14 @@ Vocabulaire V1 possible :
 Si la borne biologique n'est pas encore connue, la matérialisation reste limitée à l'horizon. Lorsqu'elle apparaît, une commande clôt la série et :
 
 - ne supprime aucune occurrence terminale ;
-- marque les futures occurrences non pertinentes comme `not_applicable` via une commande groupée auditée, ou les annule selon la décision métier ;
+- marque les occurrences futures non pertinentes `not_applicable` avec un motif système audité ;
 - ne crée rien après la borne.
 
 ### 7.5 Idempotence
 
 - commande unique par matérialisation ;
 - verrou de série ;
-- occurrence `n` déterministe ;
+- paire `(recurrence_day_no, slot_no)` et `occurrence_no` déterministes ;
 - unicité SQL ;
 - résultat stocké ;
 - payload canonique incluant série, révision, horizon demandé et ancrage lu ;
@@ -657,21 +720,34 @@ Créer un DTO serveur unique, par exemple :
 type LitterPlanningOccurrenceDTO = {
   id: string;
   litter: { label: string; publicIndex: number };
-  kind: "milestone" | "task" | "recurring_task";
+  kind: "milestone" | "task" | "window" | "recurring_task";
   title: string;
   category: string;
   targetScope: string;
-  priority: "low" | "normal" | "high" | "urgent";
+  priority: "normal" | "important" | "organization_critical";
   suggestedFor: string | null;
-  scheduledFor: string;
-  windowStartsOn: string | null;
-  windowEndsOn: string | null;
+  suggestedLocalTime: string | null;
+  scheduledFor: string | null;
+  scheduledLocalTime: string | null;
+  timezoneName: string | null;
+  suggestedWindow: { startsOn: string; endsOn: string } | null;
+  retainedWindow: { startsOn: string; endsOn: string } | null;
   status: "planned" | "done" | "cancelled" | "not_applicable";
+  windowState:
+    | "upcoming" | "open" | "overdue"
+    | "treated" | "cancelled" | "not_applicable"
+    | null;
   completedAt: string | null;
   isScheduleLocked: boolean;
   scheduleSource: "suggested" | "manual";
   occurrenceNo: number;
+  recurrenceDayNo: number | null;
+  slotNo: number | null;
   seriesLabel: string | null;
+  seriesState:
+    | "active" | "suspended" | "completed"
+    | "cancelled" | "not_applicable"
+    | null;
 };
 ```
 
@@ -681,18 +757,19 @@ Le DTO public ne doit exposer ni identifiant d'organisation, ni clé de commande
 
 | Vue | Projection du même DTO |
 | --- | --- |
-| Liste actuelle | Regrouper planifiées puis historiques; conserver l'ordre actuel, enrichi de priorité, fenêtre, suggestion et verrou. |
-| Frise | Positionner ancrages et occurrences sur un axe civil; fenêtres sous forme d'intervalle, réalisation comme marqueur secondaire. Les faits de mise-bas peuvent être des repères en lecture seule issus de leur source propre. |
-| Aujourd'hui | Lecture serveur multi-portées des occurrences dont la date retenue ou la fenêtre intersecte le jour métier, plus retard et priorité. |
-| Calendrier interne | Requête bornée `[rangeStart, rangeEnd]`, occurrences sur `scheduledFor`, fenêtres éventuelles, filtre portée/catégorie/état. |
+| Liste actuelle | Regrouper éléments à traiter puis historiques; distinguer les quatre types et enrichir de priorité, suggestion, heure, verrou et état de série/fenêtre. |
+| Frise | Rendre `milestone` comme repère, `task` comme action ponctuelle, `window` comme intervalle autonome et `recurring_task` comme occurrences reliées à leur série. Les faits de mise-bas restent des repères en lecture seule issus de leur source propre. |
+| Aujourd'hui | Lecture serveur multi-portées des points du jour, des rendez-vous à heure précise et des fenêtres ouvertes/dépassées, avec priorité. |
+| Calendrier interne | Requête bornée `[rangeStart, rangeEnd]`; vue mois en dates civiles, vue semaine/agenda positionnant les éléments munis d'une heure locale dans le fuseau snapshoté. |
 
 ### 8.3 Fonctions pures
 
 Peuvent rester pures et testables :
 
 - calcul d'une date civile depuis ancrage + offset ;
-- calcul des fenêtres ;
+- calcul des bornes et de l'état temporel des fenêtres ;
 - génération candidate finie d'une série pour un horizon ;
+- numérotation déterministe des jours, créneaux et occurrences ;
 - classement `overdue`, `today`, `upcoming`, `completed` à partir d'un `todayDate` explicite ;
 - tri par priorité/date ;
 - construction des groupes de liste, pistes de frise et cellules de calendrier ;
@@ -703,26 +780,26 @@ Doivent venir du serveur :
 - authentification, rôle et sélection des portées accessibles ;
 - valeurs d'ancrage actuelles ;
 - occurrence persistée, révision, verrou et historique ;
-- matérialisation, recalcul, report et résolution ;
+- matérialisation explicite, prolongation explicite, recalcul, report et résolution ;
 - liens éventuels vers observations, événements et séances ;
 - définition du jour métier de l'organisation. La constante `Europe/Paris` actuelle devra être évaluée avant une commercialisation multi-fuseaux.
 
-Toutes les vues doivent consommer la même sémantique. Il est déconseillé de recalculer la date suggérée indépendamment dans chaque composant.
+Toutes les vues doivent consommer la même sémantique et rester strictement sans effet de bord : aucun chargement, changement de plage ou navigation de calendrier ne matérialise une occurrence. Il est déconseillé de recalculer la date suggérée indépendamment dans chaque composant.
 
 ## 9. Découpage d'implémentation
 
 ### Lot 1 — Fondation des dates d'occurrence et historique
 
-- **Objectif métier** : distinguer suggestion, date retenue, priorité, fenêtre, verrou et révision sans changer l'expérience actuelle.
-- **Tables/services** : extension additive de `litter_care_tasks`, nouveau registre de changements, RPC de report/verrouillage, DTO enrichi.
+- **Objectif métier** : fonder les quatre types, la date civile obligatoire ou les bornes civiles, l'heure locale facultative, le fuseau snapshoté, les priorités `normal`/`important`/`organization_critical`, le verrou et la révision.
+- **Tables/services** : extension additive de `litter_care_tasks`, checks propres aux points et fenêtres autonomes, registre de changements, RPC de report/verrouillage, DTO enrichi.
 - **Migration** : oui, avec backfill conservateur décrit en section 5.
-- **Tests** : schéma, RLS/grants, backfill, idempotence, stale revision, double clic, tâches terminales inchangées, UI de liste inchangée avant activation des nouveaux contrôles.
+- **Tests** : schéma, dates/heures/fuseaux, états calculés de fenêtre, vocabulaire de priorité, RLS/grants, backfill, idempotence, stale revision, double clic et tâches terminales inchangées.
 - **Exclusions** : modèle composé, récurrence, frise, calendrier.
 - **Dépendance** : aucune nouvelle; s'appuie sur le socle actuel.
 
 ### Lot 2 — Modèles de planning composés
 
-- **Objectif métier** : regrouper des jalons d'organisation dans un planning réutilisable et versionné.
+- **Objectif métier** : regrouper des `milestone`, `task`, `window` et `recurring_task` dans des modèles spécialisés réutilisables et versionnés.
 - **Tables/services** : `litter_planning_models`, `litter_planning_model_items`, commandes privées, CRUD `owner`/`admin`.
 - **Migration** : oui.
 - **Tests** : composition, ordre, espèce/race, révisions, permissions, import existant réutilisable, aucun effet sur les tâches.
@@ -731,8 +808,8 @@ Toutes les vues doivent consommer la même sémantique. Il est déconseillé de 
 
 ### Lot 3 — Planning propre à la portée et compatibilité de génération
 
-- **Objectif métier** : instancier un modèle sur une portée et créer des séries ponctuelles snapshotées.
-- **Tables/services** : `litter_plans`, `litter_plan_series`, FK nullable depuis les tâches, nouvelle génération atomique; adaptateur de l'ancienne commande.
+- **Objectif métier** : alimenter progressivement l'unique planning principal d'une portée depuis plusieurs modèles spécialisés et créer les items snapshotés.
+- **Tables/services** : `litter_plans`, `litter_plan_items`, FK nullable depuis les tâches, application atomique d'un modèle; adaptateur de l'ancienne commande.
 - **Migration** : oui.
 - **Tests** : préservation des anciens modèles/liens, génération partielle, `stale_plan`, commandes rejouées, unicités legacy et nouvelles, permissions.
 - **Exclusions** : séries répétées.
@@ -749,17 +826,17 @@ Toutes les vues doivent consommer la même sémantique. Il est déconseillé de 
 
 ### Lot 5 — Récurrences finies V1
 
-- **Objectif métier** : suivre une action tous les N jours avec borne et horizon.
-- **Tables/services** : colonnes de règle sur `litter_plan_series`, commande de matérialisation/extension, fin biologique.
+- **Objectif métier** : suivre une action tous les N jours, à un ou plusieurs créneaux locaux quotidiens, avec début, borne, horizon et plafond absolu.
+- **Tables/services** : `litter_plan_series`, `litter_plan_series_time_slots`, états de série, commandes explicites d'activation/matérialisation et de prolongation, fin biologique.
 - **Migration** : oui.
-- **Tests** : horizon, absence d'infini, occurrence individuelle, fin mise-bas, fin dernier départ simulée sans dupliquer le fait, idempotence et concurrence.
-- **Exclusions** : RRULE, jours ouvrés, cron, notifications.
+- **Tests** : plusieurs créneaux le même jour, numérotation/unicité, états de série, horizon, plafond, absence d'infini, fin mise-bas, fin dernier départ simulée sans dupliquer le fait, idempotence et concurrence.
+- **Exclusions** : RRULE, jours ouvrés, règles mensuelles, cron, scheduler et notifications.
 - **Dépendance** : recalcul du lot 4.
 
 ### Lot 6 — Lecture unifiée et vue Aujourd'hui
 
 - **Objectif métier** : produire le DTO canonique et une vue opérationnelle multi-portées.
-- **Tables/services** : requêtes indexées par date/état/priorité, fonction pure de classement.
+- **Tables/services** : requêtes indexées par date/heure/état/priorité, fonction pure de classement; aucune commande de matérialisation appelée par la lecture.
 - **Migration** : index éventuels seulement.
 - **Tests** : isolation organisation, `viewer`, jour civil, retards, fenêtres, pagination/limites, absence d'identifiants techniques.
 - **Exclusions** : frise et calendrier.
@@ -768,7 +845,7 @@ Toutes les vues doivent consommer la même sémantique. Il est déconseillé de 
 ### Lot 7 — Frise
 
 - **Objectif métier** : visualiser le parcours de la portée, ses fenêtres et faits de repère sans les dupliquer.
-- **Tables/services** : aucun nouveau stockage attendu; projection du DTO et lectures en lecture seule des ancrages/faits nécessaires.
+- **Tables/services** : aucun nouveau stockage attendu; projection distincte des quatre types et lectures sans effet de bord des ancrages/faits nécessaires.
 - **Migration** : non.
 - **Tests** : fonctions de projection, responsive, accessibilité, absence d'interpolation ou de faux fait.
 - **Exclusions** : édition par glisser-déposer.
@@ -777,7 +854,7 @@ Toutes les vues doivent consommer la même sémantique. Il est déconseillé de 
 ### Lot 8 — Calendrier interne
 
 - **Objectif métier** : consulter les occurrences dans une plage, filtrer et ouvrir leur détail.
-- **Tables/services** : lecture bornée, index de plage, composants calendrier internes sans dépendance si réalisable.
+- **Tables/services** : lecture bornée sans écriture, index de plage et d'instant dérivé, vues mois/semaine/agenda, composants calendrier internes sans dépendance si réalisable.
 - **Migration** : index éventuels.
 - **Tests** : bornes de plage, changement de mois, fenêtres, fuseau/jour civil, performances, droits.
 - **Exclusions** : iCalendar, Google, Proton, notifications et synchronisation.
@@ -786,7 +863,7 @@ Toutes les vues doivent consommer la même sémantique. Il est déconseillé de 
 ### Lot 9 — Liens de preuve et rapprochement avec les faits
 
 - **Objectif métier** : montrer qu'une occurrence correspond à une observation, un événement ou une pesée sans recopier la donnée.
-- **Tables/services** : tables de liaison étroites et lectures expurgées; auto-réalisation seulement si une règle métier explicite est validée.
+- **Tables/services** : tables de liaison étroites et lectures expurgées; aucune auto-réalisation en V1.
 - **Migration** : oui si les liens persistants sont retenus.
 - **Tests** : FK de même organisation, unicité, fait annulé/rectifié, absence de copie de valeur, permissions.
 - **Exclusions** : diagnostic ou recommandation clinique.
@@ -796,21 +873,15 @@ L'export iCalendar constitue un lot ultérieur distinct, après stabilisation du
 
 ## 10. Risques et décisions à valider
 
-1. **Document fonctionnel absent** : vérifier le présent audit contre `Cadrage_fonctionnel_planning_jalons_calendrier_journal_portees_2026-07-23_v1.md` avant toute migration.
-2. **Un ou plusieurs plannings actifs par portée** : la contrainte d'unicité et l'UI dépendent de cette décision.
-3. **Sémantique de « jalon » et « tâche »** : décider si ce sont deux types d'occurrence avec comportements différents ou seulement deux présentations.
-4. **Fenêtre** : confirmer si elle est purement indicative ou si une date retenue doit obligatoirement rester dans la fenêtre.
-5. **Verrou** : confirmer qui peut verrouiller/déverrouiller et si le verrou bloque seulement le recalcul automatique ou aussi le report manuel.
-6. **Recalcul de la suggestion d'une tâche verrouillée** : recommandation actuelle, actualiser la suggestion mais conserver la date retenue afin de rendre l'écart visible.
-7. **Fin « départ du dernier chiot »** : définir le fait métier exact parmi statut animal, adoption, réservation ou date de départ, avant de coder la borne.
-8. **État des futures occurrences après une fin biologique anticipée** : choisir entre `not_applicable` et `cancelled`; ne pas les supprimer.
-9. **Cadence de pesée existante** : décider si elle reste un planning descriptif spécialisé ou peut instancier explicitement des tâches. Elle ne doit jamais auto-créer de mesures.
-10. **Preuve et auto-réalisation** : décider si un fait compatible lie seulement une preuve ou réalise automatiquement l'occurrence. La recommandation V1 est lien/présentation sans transition silencieuse.
-11. **Jour métier** : `Europe/Paris` est codé en dur dans le Journal; décider quand passer au fuseau d'organisation avant d'étendre Aujourd'hui et le calendrier.
-12. **Politique de migration des tâches historiques** : recommandation ferme de les laisser autonomes (`litter_plan_series_id = null`) plutôt que de fabriquer un planning historique artificiel.
+Les autres règles structurantes décrites dans cet audit sont actées. Restent réellement ouverts :
+
+1. **Départ du dernier chiot** : définir la source métier exacte parmi statut animal, adoption, réservation, rendez-vous de départ ou autre fait déjà structuré.
+2. **Cadence spécialisée des pesées** : décider si elle reste un planning descriptif spécialisé ou peut alimenter explicitement le planning général. Elle ne doit jamais créer de mesure ni réaliser automatiquement une occurrence.
+3. **Fuseau paramétrable par organisation** : choisir le lot de bascule depuis la constante actuelle `Europe/Paris`, sans remettre en cause le stockage recommandé date/heure locale/fuseau.
+4. **Détails UI non structurants** : densité de la frise, filtres par défaut, couleurs, regroupements et ergonomie exacte des vues semaine/agenda.
 
 ## Conclusion
 
 Le dépôt possède déjà les briques critiques : modèle ponctuel d'organisation, copie versionnée depuis une bibliothèque globale, snapshot complet sur la tâche, génération partielle atomique et idempotente, permissions et registres privés. Le bon axe n'est donc pas de remplacer ce socle.
 
-La cible recommandée est une architecture à trois niveaux : **modèle de planning composé → instance/série snapshotée propre à la portée → occurrences concrètes dans `litter_care_tasks`**. Cette séparation rend possibles les récurrences finies, les fenêtres, le recalcul et les modifications manuelles sans altérer les tâches terminales ni dupliquer les faits biologiques. La liste actuelle, la frise, Aujourd'hui et le calendrier doivent être quatre projections d'un même DTO d'occurrence, tandis que naissances, températures et poids restent exclusivement dans leurs tables métier existantes.
+La cible recommandée est une architecture à trois niveaux : **modèles spécialisés composés → planning principal et items/séries snapshotés propres à la portée → éléments et occurrences concrets dans `litter_care_tasks`**. Cette séparation rend possibles les quatre types fonctionnels, les horaires locaux, les récurrences finies, le recalcul et les modifications manuelles sans altérer les tâches terminales ni dupliquer les faits biologiques. La liste actuelle, la frise, Aujourd'hui et le calendrier sont des projections en lecture seule d'un même DTO, tandis que naissances, températures et poids restent exclusivement dans leurs tables métier existantes.
