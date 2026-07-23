@@ -37,6 +37,7 @@ const ids = {
   templatePoint: `${prefix}15`,
   foreignPoint: `${prefix}16`,
   validTimedPoint: `${prefix}17`,
+  backfillTemplate: `${prefix}18`,
   admin: `${prefix}20`,
   member: `${prefix}21`,
   viewer: `${prefix}22`,
@@ -61,6 +62,10 @@ function sql(statement: string) {
 
 function cleanup() {
   sql(`
+    drop trigger if exists e2e_litter_schedule_history_failure
+      on public.litter_care_task_schedule_changes;
+    drop function if exists public.e2e_raise_litter_schedule_history_error();
+
     delete from public.litter_care_task_schedule_changes
     where task_id::text like '9f230001-%'
        or changed_by::text like '9f230001-%';
@@ -265,6 +270,20 @@ function createFixtures() {
     );
 
     insert into public.litter_care_tasks (
+      id, organization_id, litter_id, source, system_template_code,
+      occurrence_no, category, target_scope, title, anchor_type, anchor_date,
+      offset_days, planned_for, status, creation_command_id,
+      created_by, updated_by
+    ) values (
+      ${q(ids.backfillTemplate)}::uuid, ${q(organizationId)}::uuid,
+      ${q(ids.litter)}::uuid, 'system_template', 'e2e-backfill-template', 1,
+      'preparation', 'litter', '${labelPrefix} backfill template',
+      'expected_birth', '2026-08-01', 6, '2026-08-07', 'planned',
+      ${q(`${prefix}68`)}::uuid,
+      ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+
+    insert into public.litter_care_tasks (
       id, organization_id, litter_id, source, occurrence_no, category,
       target_scope, title, planned_for, status, creation_command_id,
       created_by, updated_by
@@ -277,14 +296,17 @@ function createFixtures() {
 
     insert into public.litter_care_tasks (
       id, organization_id, litter_id, source, occurrence_no, category,
-      target_scope, title, item_kind, suggested_starts_on, suggested_ends_on,
+      target_scope, title, item_kind,
+      suggested_starts_on, suggested_starts_local_time,
+      suggested_ends_on, suggested_ends_local_time,
       retained_starts_on, retained_ends_on, planned_for, status,
-      creation_command_id, created_by, updated_by
+      schedule_timezone_name, creation_command_id, created_by, updated_by
     ) values (
       ${q(ids.window)}::uuid, ${q(organizationId)}::uuid, ${q(ids.litter)}::uuid,
       'manual', 1, 'preparation', 'litter', '${labelPrefix} window', 'window',
-      '2026-08-02', '2026-08-04', '2026-08-02', '2026-08-04', null,
-      'planned', ${q(`${prefix}61`)}::uuid,
+      '2026-08-02', '08:00', '2026-08-04', '18:00',
+      '2026-08-02', '2026-08-04', null, 'planned', 'Europe/Paris',
+      ${q(`${prefix}61`)}::uuid,
       ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
     );
 
@@ -309,13 +331,15 @@ function createFixtures() {
     insert into public.litter_care_tasks (
       id, organization_id, litter_id, source, system_template_code,
       occurrence_no, category, target_scope, title, anchor_type, anchor_date,
-      offset_days, planned_for, status, creation_command_id,
+      offset_days, planned_for, suggested_local_time, schedule_timezone_name,
+      status, creation_command_id,
       created_by, updated_by
     ) values (
       ${q(ids.templatePoint)}::uuid, ${q(organizationId)}::uuid, ${q(ids.litter)}::uuid,
       'system_template', 'e2e-occurrence-template', 1, 'preparation', 'litter',
       '${labelPrefix} suggested', 'expected_birth', '2026-08-01', 5,
-      '2026-08-06', 'planned', ${q(`${prefix}64`)}::uuid,
+      '2026-08-06', '08:00', 'Europe/Paris', 'planned',
+      ${q(`${prefix}64`)}::uuid,
       ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
     );
 
@@ -346,7 +370,7 @@ function verifyConservativeBackfill() {
       revision_no = 7
     where id in (
       ${q(ids.terminal)}::uuid,
-      ${q(ids.templatePoint)}::uuid
+      ${q(ids.backfillTemplate)}::uuid
     );
 
     create temporary table e2e_occurrence_backfill_snapshot on commit drop as
@@ -365,7 +389,7 @@ function verifyConservativeBackfill() {
     from public.litter_care_tasks task
     where id in (
       ${q(ids.terminal)}::uuid,
-      ${q(ids.templatePoint)}::uuid
+      ${q(ids.backfillTemplate)}::uuid
     );
 
     alter table public.litter_care_tasks
@@ -394,7 +418,7 @@ function verifyConservativeBackfill() {
       revision_no = 0
     where id in (
       ${q(ids.terminal)}::uuid,
-      ${q(ids.templatePoint)}::uuid
+      ${q(ids.backfillTemplate)}::uuid
     );
 
     alter table public.litter_care_tasks
@@ -427,7 +451,7 @@ function verifyConservativeBackfill() {
         from public.litter_care_tasks task
         where task.id in (
           ${q(ids.terminal)}::uuid,
-          ${q(ids.templatePoint)}::uuid
+          ${q(ids.backfillTemplate)}::uuid
         )
           and (
             task.item_kind <> 'task'
@@ -515,9 +539,11 @@ test("fonde les occurrences et leur historique de planification", async () => {
           itemKind: "window",
           status: "planned",
           retainedStartsOn: "2026-08-02",
+          retainedStartsLocalTime: null,
           retainedEndsOn: "2026-08-04",
+          retainedEndsLocalTime: null,
         },
-        "2026-08-03",
+        { date: "2026-08-03", localTime: "12:00" },
       ),
     ).toBe("open");
 
@@ -670,23 +696,82 @@ test("fonde les occurrences et leur historique de planification", async () => {
     ).toMatchObject({ outcome: "error", error: { code: "conflict" } });
 
     expect(
-      await setLitterCareTaskScheduleLockCore(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'suggested_starts_local_time', suggested_starts_local_time::text,
+            'suggested_ends_local_time', suggested_ends_local_time::text,
+            'retained_starts_local_time', retained_starts_local_time::text,
+            'retained_ends_local_time', retained_ends_local_time::text,
+            'timezone_name', schedule_timezone_name,
+            'schedule_source', schedule_source
+          )::text
+          from public.litter_care_tasks
+          where id = ${q(ids.window)}::uuid;
+        `),
+      ),
+    ).toEqual({
+      suggested_starts_local_time: "08:00:00",
+      suggested_ends_local_time: "18:00:00",
+      retained_starts_local_time: null,
+      retained_ends_local_time: null,
+      timezone_name: "Europe/Paris",
+      schedule_source: "manual",
+    });
+
+    expect(
+      await reapplyLitterCareTaskScheduleSuggestionCore(
         {
           taskId: ids.window,
-          clientCommandId: command("75"),
+          clientCommandId: command("96"),
           expectedRevisionNo: 1,
-          isLocked: true,
-          reason: "Fenêtre confirmée",
+          reason: "Retour à la fenêtre suggérée",
         },
         owner,
       ),
     ).toMatchObject({ outcome: "success", revisionNo: 2 });
     expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'retained_starts_on', retained_starts_on::text,
+            'retained_starts_local_time', retained_starts_local_time::text,
+            'retained_ends_on', retained_ends_on::text,
+            'retained_ends_local_time', retained_ends_local_time::text,
+            'timezone_name', schedule_timezone_name,
+            'schedule_source', schedule_source
+          )::text
+          from public.litter_care_tasks
+          where id = ${q(ids.window)}::uuid;
+        `),
+      ),
+    ).toEqual({
+      retained_starts_on: "2026-08-02",
+      retained_starts_local_time: "08:00:00",
+      retained_ends_on: "2026-08-04",
+      retained_ends_local_time: "18:00:00",
+      timezone_name: "Europe/Paris",
+      schedule_source: "suggested",
+    });
+
+    expect(
+      await setLitterCareTaskScheduleLockCore(
+        {
+          taskId: ids.window,
+          clientCommandId: command("75"),
+          expectedRevisionNo: 2,
+          isLocked: true,
+          reason: "Fenêtre confirmée",
+        },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "success", revisionNo: 3 });
+    expect(
       await rescheduleLitterCareTaskWindowCore(
         {
           taskId: ids.window,
           clientCommandId: command("76"),
-          expectedRevisionNo: 2,
+          expectedRevisionNo: 3,
           retainedStartsOn: "2026-08-09",
           retainedEndsOn: "2026-08-11",
         },
@@ -698,38 +783,94 @@ test("fonde les occurrences et leur historique de planification", async () => {
         {
           taskId: ids.window,
           clientCommandId: command("77"),
-          expectedRevisionNo: 2,
+          expectedRevisionNo: 3,
           retainedStartsOn: "2026-08-09",
           retainedEndsOn: "2026-08-11",
           reason: "Remplacement de fenêtre confirmé côté serveur",
         },
         owner,
       ),
-    ).toMatchObject({ outcome: "success", revisionNo: 3 });
+    ).toMatchObject({ outcome: "success", revisionNo: 4 });
     expect(
       sql(`
         select is_schedule_locked::text || ':' || retained_starts_on::text
+          || ':' || schedule_timezone_name
         from public.litter_care_tasks where id = ${q(ids.window)}::uuid;
       `),
-    ).toBe("true:2026-08-09");
+    ).toBe("true:2026-08-09:Europe/Paris");
+
+    expect(
+      await rescheduleLitterCareTaskPointCore(
+        {
+          taskId: ids.templatePoint,
+          clientCommandId: command("78"),
+          expectedRevisionNo: 0,
+          plannedFor: "2026-08-12",
+          reason: "Report en journée entière",
+        },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "success", revisionNo: 1 });
+    expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'suggested_for', suggested_for::text,
+            'suggested_local_time', suggested_local_time::text,
+            'planned_for', planned_for::text,
+            'scheduled_local_time', scheduled_local_time::text,
+            'timezone_name', schedule_timezone_name,
+            'schedule_source', schedule_source
+          )::text
+          from public.litter_care_tasks
+          where id = ${q(ids.templatePoint)}::uuid;
+        `),
+      ),
+    ).toEqual({
+      suggested_for: "2026-08-06",
+      suggested_local_time: "08:00:00",
+      planned_for: "2026-08-12",
+      scheduled_local_time: null,
+      timezone_name: "Europe/Paris",
+      schedule_source: "manual",
+    });
+    expect(
+      await reapplyLitterCareTaskScheduleSuggestionCore(
+        {
+          taskId: ids.templatePoint,
+          clientCommandId: command("79"),
+          expectedRevisionNo: 1,
+          reason: "Retour à la suggestion horaire",
+        },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "success", revisionNo: 2 });
+    expect(
+      sql(`
+        select planned_for::text || ':' || scheduled_local_time::text
+          || ':' || schedule_timezone_name || ':' || schedule_source
+        from public.litter_care_tasks
+        where id = ${q(ids.templatePoint)}::uuid;
+      `),
+    ).toBe("2026-08-06:08:00:00:Europe/Paris:suggested");
 
     const locked = await setLitterCareTaskScheduleLockCore(
       {
         taskId: ids.templatePoint,
         clientCommandId: command("86"),
-        expectedRevisionNo: 0,
+        expectedRevisionNo: 2,
         isLocked: true,
         reason: "Planning confirmé",
       },
       owner,
     );
-    expect(locked).toMatchObject({ outcome: "success", revisionNo: 1 });
+    expect(locked).toMatchObject({ outcome: "success", revisionNo: 3 });
     expect(
       await rescheduleLitterCareTaskPointCore(
         {
           taskId: ids.templatePoint,
           clientCommandId: command("87"),
-          expectedRevisionNo: 1,
+          expectedRevisionNo: 3,
           plannedFor: "2026-08-14",
         },
         owner,
@@ -750,7 +891,7 @@ test("fonde les occurrences et leur historique de planification", async () => {
       {
         taskId: ids.templatePoint,
         clientCommandId: command("88"),
-        expectedRevisionNo: 1,
+        expectedRevisionNo: 3,
         plannedFor: "2026-08-14",
         scheduledLocalTime: "10:00",
         timezoneName: "Europe/Paris",
@@ -758,7 +899,7 @@ test("fonde les occurrences et leur historique de planification", async () => {
       },
       owner,
     );
-    expect(replaced).toMatchObject({ outcome: "success", revisionNo: 2 });
+    expect(replaced).toMatchObject({ outcome: "success", revisionNo: 4 });
     expect(
       JSON.parse(
         sql(`
@@ -788,29 +929,30 @@ test("fonde les occurrences et leur historique de planification", async () => {
       {
         taskId: ids.templatePoint,
         clientCommandId: command("89"),
-        expectedRevisionNo: 2,
+        expectedRevisionNo: 4,
         isLocked: false,
         reason: "Déverrouillage explicite",
       },
       owner,
     );
-    expect(unlocked).toMatchObject({ outcome: "success", revisionNo: 3 });
+    expect(unlocked).toMatchObject({ outcome: "success", revisionNo: 5 });
     const reapplied = await reapplyLitterCareTaskScheduleSuggestionCore(
       {
         taskId: ids.templatePoint,
         clientCommandId: command("90"),
-        expectedRevisionNo: 3,
+        expectedRevisionNo: 5,
         reason: "Retour à la suggestion",
       },
       owner,
     );
-    expect(reapplied).toMatchObject({ outcome: "success", revisionNo: 4 });
+    expect(reapplied).toMatchObject({ outcome: "success", revisionNo: 6 });
     expect(
       sql(`
-        select planned_for::text || ':' || schedule_source
+        select planned_for::text || ':' || scheduled_local_time::text
+          || ':' || schedule_timezone_name || ':' || schedule_source
         from public.litter_care_tasks where id = ${q(ids.templatePoint)}::uuid;
       `),
-    ).toBe("2026-08-06:suggested");
+    ).toBe("2026-08-06:08:00:00:Europe/Paris:suggested");
 
     expect(
       await rescheduleLitterCareTaskPointCore(
@@ -876,6 +1018,119 @@ test("fonde les occurrences et leur historique de planification", async () => {
           result.outcome === "error" && result.error.code === "stale_revision",
       ),
     ).toHaveLength(1);
+    expect(
+      sql(`
+        select (scheduled_local_time is null)::text || ':'
+          || (schedule_timezone_name is null)::text
+        from public.litter_care_tasks
+        where id = ${q(concurrentTaskId)}::uuid;
+      `),
+    ).toBe("true:true");
+
+    const schemaAssertions = JSON.parse(
+      sql(`
+        select json_build_object(
+          'snapshot_volatility', (
+            select procedure.provolatile
+            from pg_catalog.pg_proc procedure
+            join pg_catalog.pg_namespace namespace
+              on namespace.oid = procedure.pronamespace
+            where namespace.nspname = 'public'
+              and procedure.proname = 'litter_care_task_schedule_snapshot'
+              and pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+                = 'p_task litter_care_tasks'
+          ),
+          'revision_check', (
+            select pg_catalog.pg_get_constraintdef(constraint_row.oid)
+            from pg_catalog.pg_constraint constraint_row
+            where constraint_row.conname
+              = 'litter_care_task_schedule_changes_revision_check'
+          ),
+          'has_catch_all', position(
+            'exception when others' in lower(
+              pg_catalog.pg_get_functiondef(
+                'public.execute_litter_care_task_schedule_command(
+                  uuid, uuid, integer, text, date, time without time zone,
+                  date, time without time zone, date, time without time zone,
+                  text, text
+                )'::regprocedure
+              )
+            )
+          ) > 0
+        )::text;
+      `),
+    );
+    expect(schemaAssertions.snapshot_volatility).toBe("s");
+    expect(schemaAssertions.revision_check).toContain(
+      "expected_revision_no = previous_revision_no",
+    );
+    expect(schemaAssertions.has_catch_all).toBe(false);
+
+    sql(`
+      create function public.e2e_raise_litter_schedule_history_error()
+      returns trigger
+      language plpgsql
+      as $$
+      begin
+        raise exception 'forced E2E schedule history failure'
+          using errcode = 'XX999';
+      end;
+      $$;
+
+      create trigger e2e_litter_schedule_history_failure
+      before insert on public.litter_care_task_schedule_changes
+      for each row
+      execute function public.e2e_raise_litter_schedule_history_error();
+    `);
+    const technicalFailure = await rescheduleLitterCareTaskPointCore(
+      {
+        taskId: ids.validTimedPoint,
+        clientCommandId: command("97"),
+        expectedRevisionNo: 0,
+        plannedFor: "2026-08-23",
+      },
+      owner,
+    );
+    expect(technicalFailure).toMatchObject({
+      outcome: "error",
+      error: { code: "database_error" },
+    });
+    if (technicalFailure.outcome === "error") {
+      expect(technicalFailure.error.code).not.toBe("invalid_input");
+      expect(technicalFailure.error.message).not.toContain(
+        "forced E2E schedule history failure",
+      );
+    }
+    sql(`
+      drop trigger e2e_litter_schedule_history_failure
+        on public.litter_care_task_schedule_changes;
+      drop function public.e2e_raise_litter_schedule_history_error();
+    `);
+    expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'revision_no', (
+              select revision_no
+              from public.litter_care_tasks
+              where id = ${q(ids.validTimedPoint)}::uuid
+            ),
+            'commands', (
+              select count(*)
+              from public.litter_care_task_schedule_commands
+              where client_command_id = ${q(command("97"))}::uuid
+            ),
+            'changes', (
+              select count(*)
+              from public.litter_care_task_schedule_changes change
+              join public.litter_care_task_schedule_commands command_row
+                on command_row.id = change.command_id
+              where command_row.client_command_id = ${q(command("97"))}::uuid
+            )
+          )::text;
+        `),
+      ),
+    ).toEqual({ revision_no: 0, commands: 0, changes: 0 });
 
     const grants = JSON.parse(
       sql(`

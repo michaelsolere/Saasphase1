@@ -1083,25 +1083,52 @@ function mapTask(
 export function getLitterCareTaskWindowState(
   task: Pick<
     LitterCareTaskSummary,
-    "itemKind" | "status" | "retainedStartsOn" | "retainedEndsOn"
+    | "itemKind"
+    | "status"
+    | "retainedStartsOn"
+    | "retainedStartsLocalTime"
+    | "retainedEndsOn"
+    | "retainedEndsLocalTime"
   >,
-  todayDate: string,
+  reference: { date: string; localTime: string },
 ): LitterCareTaskWindowState | null {
-  const today = normalizeCivilDate(todayDate);
+  if (task.itemKind !== "window") return null;
+  if (task.status === "done") return "treated";
+  if (task.status === "cancelled") return "cancelled";
+  if (task.status === "not_applicable") return "not_applicable";
+
+  const referenceDate = normalizeCivilDate(reference.date);
+  const referenceTime = normalizeOptionalLocalTime(reference.localTime);
+  const startsTime = normalizeOptionalLocalTime(task.retainedStartsLocalTime);
+  const endsTime = normalizeOptionalLocalTime(task.retainedEndsLocalTime);
   if (
-    task.itemKind !== "window" ||
-    !today ||
+    !referenceDate ||
+    !referenceTime ||
+    startsTime === undefined ||
+    endsTime === undefined ||
     !task.retainedStartsOn ||
     !task.retainedEndsOn
   ) {
     return null;
   }
-  if (task.status === "done") return "treated";
-  if (task.status === "cancelled") return "cancelled";
-  if (task.status === "not_applicable") return "not_applicable";
-  if (today < task.retainedStartsOn) return "upcoming";
-  if (today <= task.retainedEndsOn) return "open";
-  return "overdue";
+
+  if (referenceDate < task.retainedStartsOn) return "upcoming";
+  if (referenceDate > task.retainedEndsOn) return "overdue";
+  if (
+    referenceDate === task.retainedStartsOn &&
+    startsTime &&
+    referenceTime < startsTime
+  ) {
+    return "upcoming";
+  }
+  if (
+    referenceDate === task.retainedEndsOn &&
+    endsTime &&
+    referenceTime > endsTime
+  ) {
+    return "overdue";
+  }
+  return "open";
 }
 
 function litterAnchorDate(

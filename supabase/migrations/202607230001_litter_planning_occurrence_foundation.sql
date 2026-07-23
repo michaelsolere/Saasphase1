@@ -327,6 +327,7 @@ create table public.litter_care_task_schedule_changes (
     check (
       expected_revision_no >= 0
       and previous_revision_no >= 0
+      and expected_revision_no = previous_revision_no
       and result_revision_no = previous_revision_no + 1
     ),
   constraint litter_care_task_schedule_changes_source_check
@@ -400,7 +401,7 @@ create or replace function public.litter_care_task_schedule_snapshot(
 )
 returns jsonb
 language sql
-immutable
+stable
 set search_path = ''
 as $$
   select jsonb_build_object(
@@ -691,7 +692,11 @@ begin
     set
       planned_for = p_planned_for,
       scheduled_local_time = p_scheduled_local_time,
-      schedule_timezone_name = v_timezone_name,
+      schedule_timezone_name = case
+        when p_scheduled_local_time is not null then v_timezone_name
+        when suggested_local_time is not null then schedule_timezone_name
+        else null
+      end,
       schedule_source = 'manual',
       revision_no = public.litter_care_tasks.revision_no + 1,
       updated_by = v_user_id
@@ -704,7 +709,15 @@ begin
       retained_starts_local_time = p_retained_starts_local_time,
       retained_ends_on = p_retained_ends_on,
       retained_ends_local_time = p_retained_ends_local_time,
-      schedule_timezone_name = v_timezone_name,
+      schedule_timezone_name = case
+        when p_retained_starts_local_time is not null
+          or p_retained_ends_local_time is not null
+          then v_timezone_name
+        when suggested_starts_local_time is not null
+          or suggested_ends_local_time is not null
+          then schedule_timezone_name
+        else null
+      end,
       schedule_source = 'manual',
       revision_no = public.litter_care_tasks.revision_no + 1,
       updated_by = v_user_id
@@ -738,6 +751,12 @@ begin
         retained_starts_local_time = suggested_starts_local_time,
         retained_ends_on = suggested_ends_on,
         retained_ends_local_time = suggested_ends_local_time,
+        schedule_timezone_name = case
+          when suggested_starts_local_time is not null
+            or suggested_ends_local_time is not null
+            then schedule_timezone_name
+          else null
+        end,
         schedule_source = 'suggested',
         revision_no = public.litter_care_tasks.revision_no + 1,
         updated_by = v_user_id
@@ -748,6 +767,10 @@ begin
       set
         planned_for = suggested_for,
         scheduled_local_time = suggested_local_time,
+        schedule_timezone_name = case
+          when suggested_local_time is not null then schedule_timezone_name
+          else null
+        end,
         schedule_source = 'suggested',
         revision_no = public.litter_care_tasks.revision_no + 1,
         updated_by = v_user_id
@@ -827,15 +850,6 @@ begin
   revision_no := v_after.revision_no;
   replayed := false;
   reason := null;
-  return next;
-exception when others then
-  outcome := 'error';
-  task_id := p_task_id;
-  litter_id := null;
-  revision_no := null;
-  change_id := null;
-  replayed := false;
-  reason := 'technical_error';
   return next;
 end;
 $$;
