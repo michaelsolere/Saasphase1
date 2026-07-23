@@ -49,6 +49,32 @@ export const LITTER_CARE_TASK_RESOLUTION_STATUSES = [
 export type LitterCareTaskResolutionStatus =
   (typeof LITTER_CARE_TASK_RESOLUTION_STATUSES)[number];
 
+export const LITTER_CARE_TASK_ITEM_KINDS = [
+  "milestone",
+  "task",
+  "window",
+  "recurring_task",
+] as const;
+export type LitterCareTaskItemKind =
+  (typeof LITTER_CARE_TASK_ITEM_KINDS)[number];
+
+export const LITTER_CARE_TASK_PRIORITIES = [
+  "normal",
+  "important",
+  "organization_critical",
+] as const;
+export type LitterCareTaskPriority =
+  (typeof LITTER_CARE_TASK_PRIORITIES)[number];
+
+export type LitterCareTaskScheduleSource = "suggested" | "manual";
+export type LitterCareTaskWindowState =
+  | "upcoming"
+  | "open"
+  | "overdue"
+  | "treated"
+  | "cancelled"
+  | "not_applicable";
+
 export type LitterCareTaskServiceErrorCode =
   | "invalid_input"
   | "unauthenticated"
@@ -146,7 +172,26 @@ export type LitterCareTaskSummary = {
   anchorType: LitterCareTaskAnchorType | null;
   anchorDate: string | null;
   offsetDays: number | null;
-  plannedFor: string;
+  itemKind: LitterCareTaskItemKind;
+  priority: LitterCareTaskPriority;
+  suggestedFor: string | null;
+  suggestedLocalTime: string | null;
+  plannedFor: string | null;
+  scheduledLocalTime: string | null;
+  scheduleTimezoneName: string | null;
+  suggestedStartsOn: string | null;
+  suggestedStartsLocalTime: string | null;
+  suggestedEndsOn: string | null;
+  suggestedEndsLocalTime: string | null;
+  retainedStartsOn: string | null;
+  retainedStartsLocalTime: string | null;
+  retainedEndsOn: string | null;
+  retainedEndsLocalTime: string | null;
+  scheduleSource: LitterCareTaskScheduleSource;
+  isScheduleLocked: boolean;
+  scheduleLockedAt: string | null;
+  scheduleLockedBy: string | null;
+  revisionNo: number;
   status: "planned" | "done" | "cancelled" | "not_applicable";
   resolvedAt: string | null;
   resolvedTimezoneName: string | null;
@@ -336,6 +381,48 @@ export type ResolveLitterCareTaskResult =
     }
   | ErrorResult;
 
+type LitterCareTaskScheduleCommandBase = {
+  taskId: string;
+  clientCommandId: string;
+  expectedRevisionNo: number;
+  reason?: string | null;
+};
+
+export type RescheduleLitterCareTaskPointInput =
+  LitterCareTaskScheduleCommandBase & {
+    plannedFor: string;
+    scheduledLocalTime?: string | null;
+    timezoneName?: string | null;
+  };
+
+export type RescheduleLitterCareTaskWindowInput =
+  LitterCareTaskScheduleCommandBase & {
+    retainedStartsOn: string;
+    retainedStartsLocalTime?: string | null;
+    retainedEndsOn: string;
+    retainedEndsLocalTime?: string | null;
+    timezoneName?: string | null;
+  };
+
+export type SetLitterCareTaskScheduleLockInput =
+  LitterCareTaskScheduleCommandBase & {
+    isLocked: boolean;
+  };
+
+export type ReapplyLitterCareTaskScheduleSuggestionInput =
+  LitterCareTaskScheduleCommandBase;
+
+export type LitterCareTaskScheduleCommandResult =
+  | {
+      outcome: "success";
+      taskId: string;
+      litterId: string;
+      revisionNo: number;
+      changeId: string;
+      replayed: boolean;
+    }
+  | ErrorResult;
+
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const LIBRARY_CODE_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -440,6 +527,20 @@ function normalizeTimezone(value: unknown) {
   }
 }
 
+function normalizeOptionalTimezone(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  return normalizeTimezone(value) ?? undefined;
+}
+
+function normalizeOptionalLocalTime(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(
+    value.trim(),
+  );
+  return match ? `${match[1]}:${match[2]}:${match[3] ?? "00"}` : undefined;
+}
+
 function normalizeRequiredText(value: unknown, maxLength: number) {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
@@ -517,6 +618,27 @@ function isResolutionStatus(
       value as LitterCareTaskResolutionStatus,
     )
   );
+}
+
+function scheduleFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure("forbidden", "Vous n’avez pas les droits nécessaires pour cette opération.");
+    case "task_not_found":
+      return failure("not_found", "La tâche demandée est introuvable.");
+    case "stale_revision":
+      return failure("stale_revision", "Cette tâche a été modifiée entre-temps.");
+    case "task_not_planned":
+      return failure("not_planned", "Cette tâche ne peut plus être planifiée.");
+    case "schedule_locked":
+    case "schedule_not_locked":
+    case "client_command_conflict":
+      return failure("conflict", "Cette modification de planning est incompatible avec l’état courant.");
+    default:
+      return invalidInput();
+  }
 }
 
 async function authenticatedUserId(supabase: Supabase) {
@@ -929,7 +1051,26 @@ function mapTask(
     anchorType: row.anchor_type as LitterCareTaskAnchorType | null,
     anchorDate: row.anchor_date,
     offsetDays: row.offset_days,
+    itemKind: row.item_kind as LitterCareTaskItemKind,
+    priority: row.priority as LitterCareTaskPriority,
+    suggestedFor: row.suggested_for,
+    suggestedLocalTime: row.suggested_local_time,
     plannedFor: row.planned_for,
+    scheduledLocalTime: row.scheduled_local_time,
+    scheduleTimezoneName: row.schedule_timezone_name,
+    suggestedStartsOn: row.suggested_starts_on,
+    suggestedStartsLocalTime: row.suggested_starts_local_time,
+    suggestedEndsOn: row.suggested_ends_on,
+    suggestedEndsLocalTime: row.suggested_ends_local_time,
+    retainedStartsOn: row.retained_starts_on,
+    retainedStartsLocalTime: row.retained_starts_local_time,
+    retainedEndsOn: row.retained_ends_on,
+    retainedEndsLocalTime: row.retained_ends_local_time,
+    scheduleSource: row.schedule_source as LitterCareTaskScheduleSource,
+    isScheduleLocked: row.is_schedule_locked,
+    scheduleLockedAt: row.schedule_locked_at,
+    scheduleLockedBy: row.schedule_locked_by,
+    revisionNo: row.revision_no,
     status: row.status as LitterCareTaskSummary["status"],
     resolvedAt: row.resolved_at,
     resolvedTimezoneName: row.resolved_timezone_name,
@@ -937,6 +1078,30 @@ function mapTask(
     resolutionNote: row.resolution_note,
     createdAt: row.created_at,
   };
+}
+
+export function getLitterCareTaskWindowState(
+  task: Pick<
+    LitterCareTaskSummary,
+    "itemKind" | "status" | "retainedStartsOn" | "retainedEndsOn"
+  >,
+  todayDate: string,
+): LitterCareTaskWindowState | null {
+  const today = normalizeCivilDate(todayDate);
+  if (
+    task.itemKind !== "window" ||
+    !today ||
+    !task.retainedStartsOn ||
+    !task.retainedEndsOn
+  ) {
+    return null;
+  }
+  if (task.status === "done") return "treated";
+  if (task.status === "cancelled") return "cancelled";
+  if (task.status === "not_applicable") return "not_applicable";
+  if (today < task.retainedStartsOn) return "upcoming";
+  if (today <= task.retainedEndsOn) return "open";
+  return "overdue";
 }
 
 function litterAnchorDate(
@@ -1490,7 +1655,9 @@ export async function listLitterCareTasksForLitterCore(
     if (left.status !== "planned" && right.status === "planned") return 1;
     if (left.status === "planned" && right.status === "planned") {
       return (
-        left.plannedFor.localeCompare(right.plannedFor) ||
+        (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(
+          right.plannedFor ?? right.retainedStartsOn ?? "",
+        ) ||
         left.createdAt.localeCompare(right.createdAt)
       );
     }
@@ -1607,4 +1774,232 @@ export async function resolveLitterCareTaskCore(
     status: result.status,
     replayed: result.replayed === true,
   };
+}
+
+function mapScheduleCommandResult(
+  row:
+    | {
+        outcome: string;
+        task_id: string | null;
+        litter_id: string | null;
+        revision_no: number | null;
+        change_id: string | null;
+        replayed: boolean | null;
+        reason: string | null;
+      }
+    | null
+    | undefined,
+): LitterCareTaskScheduleCommandResult {
+  if (!row || row.outcome !== "success") {
+    return scheduleFailure(row?.reason ?? null);
+  }
+  const taskId = normalizeUuid(row.task_id);
+  const litterId = normalizeUuid(row.litter_id);
+  const changeId = normalizeUuid(row.change_id);
+  if (
+    !taskId ||
+    !litterId ||
+    !changeId ||
+    !isPostgresInteger(row.revision_no) ||
+    row.revision_no < 1
+  ) {
+    return databaseFailure("litter_care_task_schedule_invalid_result", row);
+  }
+  return {
+    outcome: "success",
+    taskId,
+    litterId,
+    revisionNo: row.revision_no,
+    changeId,
+    replayed: row.replayed === true,
+  };
+}
+
+async function changePointSchedule(
+  input: RescheduleLitterCareTaskPointInput,
+  supabase: Supabase,
+  replaceLocked: boolean,
+): Promise<LitterCareTaskScheduleCommandResult> {
+  const taskId = normalizeUuid(input.taskId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const plannedFor = normalizeCivilDate(input.plannedFor);
+  const localTime = normalizeOptionalLocalTime(input.scheduledLocalTime);
+  const timezoneName = normalizeOptionalTimezone(input.timezoneName);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (
+    !taskId ||
+    !clientCommandId ||
+    !isPostgresInteger(input.expectedRevisionNo) ||
+    input.expectedRevisionNo < 0 ||
+    !plannedFor ||
+    localTime === undefined ||
+    timezoneName === undefined ||
+    reason === undefined ||
+    (localTime !== null && timezoneName === null)
+  ) {
+    return invalidInput();
+  }
+  const rpc = replaceLocked
+    ? "replace_locked_litter_care_task_point_schedule"
+    : "reschedule_litter_care_task_point";
+  const result = await supabase.rpc(rpc, {
+    p_task_id: taskId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_planned_for: plannedFor,
+    p_scheduled_local_time: localTime,
+    p_schedule_timezone_name: timezoneName,
+    p_reason: reason,
+  });
+  if (result.error) {
+    return databaseFailure("litter_care_task_point_schedule_failed", result.error);
+  }
+  return mapScheduleCommandResult(result.data?.[0]);
+}
+
+export function rescheduleLitterCareTaskPointCore(
+  input: RescheduleLitterCareTaskPointInput,
+  supabase: Supabase,
+) {
+  return changePointSchedule(input, supabase, false);
+}
+
+export function replaceLockedLitterCareTaskPointScheduleCore(
+  input: RescheduleLitterCareTaskPointInput,
+  supabase: Supabase,
+) {
+  return changePointSchedule(input, supabase, true);
+}
+
+async function changeWindowSchedule(
+  input: RescheduleLitterCareTaskWindowInput,
+  supabase: Supabase,
+  replaceLocked: boolean,
+): Promise<LitterCareTaskScheduleCommandResult> {
+  const taskId = normalizeUuid(input.taskId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const startsOn = normalizeCivilDate(input.retainedStartsOn);
+  const endsOn = normalizeCivilDate(input.retainedEndsOn);
+  const startsTime = normalizeOptionalLocalTime(input.retainedStartsLocalTime);
+  const endsTime = normalizeOptionalLocalTime(input.retainedEndsLocalTime);
+  const timezoneName = normalizeOptionalTimezone(input.timezoneName);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (
+    !taskId ||
+    !clientCommandId ||
+    !isPostgresInteger(input.expectedRevisionNo) ||
+    input.expectedRevisionNo < 0 ||
+    !startsOn ||
+    !endsOn ||
+    startsOn > endsOn ||
+    (startsOn === endsOn &&
+      startsTime !== null &&
+      startsTime !== undefined &&
+      endsTime !== null &&
+      endsTime !== undefined &&
+      startsTime > endsTime) ||
+    startsTime === undefined ||
+    endsTime === undefined ||
+    timezoneName === undefined ||
+    reason === undefined ||
+    ((startsTime !== null || endsTime !== null) && timezoneName === null)
+  ) {
+    return invalidInput();
+  }
+  const rpc = replaceLocked
+    ? "replace_locked_litter_care_task_window_schedule"
+    : "reschedule_litter_care_task_window";
+  const result = await supabase.rpc(rpc, {
+    p_task_id: taskId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_retained_starts_on: startsOn,
+    p_retained_starts_local_time: startsTime,
+    p_retained_ends_on: endsOn,
+    p_retained_ends_local_time: endsTime,
+    p_schedule_timezone_name: timezoneName,
+    p_reason: reason,
+  });
+  if (result.error) {
+    return databaseFailure("litter_care_task_window_schedule_failed", result.error);
+  }
+  return mapScheduleCommandResult(result.data?.[0]);
+}
+
+export function rescheduleLitterCareTaskWindowCore(
+  input: RescheduleLitterCareTaskWindowInput,
+  supabase: Supabase,
+) {
+  return changeWindowSchedule(input, supabase, false);
+}
+
+export function replaceLockedLitterCareTaskWindowScheduleCore(
+  input: RescheduleLitterCareTaskWindowInput,
+  supabase: Supabase,
+) {
+  return changeWindowSchedule(input, supabase, true);
+}
+
+export async function setLitterCareTaskScheduleLockCore(
+  input: SetLitterCareTaskScheduleLockInput,
+  supabase: Supabase,
+): Promise<LitterCareTaskScheduleCommandResult> {
+  const taskId = normalizeUuid(input.taskId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (
+    !taskId ||
+    !clientCommandId ||
+    !isPostgresInteger(input.expectedRevisionNo) ||
+    input.expectedRevisionNo < 0 ||
+    typeof input.isLocked !== "boolean" ||
+    reason === undefined
+  ) {
+    return invalidInput();
+  }
+  const result = await supabase.rpc("set_litter_care_task_schedule_lock", {
+    p_task_id: taskId,
+    p_client_command_id: clientCommandId,
+    p_expected_revision_no: input.expectedRevisionNo,
+    p_is_locked: input.isLocked,
+    p_reason: reason,
+  });
+  if (result.error) {
+    return databaseFailure("litter_care_task_schedule_lock_failed", result.error);
+  }
+  return mapScheduleCommandResult(result.data?.[0]);
+}
+
+export async function reapplyLitterCareTaskScheduleSuggestionCore(
+  input: ReapplyLitterCareTaskScheduleSuggestionInput,
+  supabase: Supabase,
+): Promise<LitterCareTaskScheduleCommandResult> {
+  const taskId = normalizeUuid(input.taskId);
+  const clientCommandId = normalizeUuid(input.clientCommandId);
+  const reason = normalizeOptionalText(input.reason, 500);
+  if (
+    !taskId ||
+    !clientCommandId ||
+    !isPostgresInteger(input.expectedRevisionNo) ||
+    input.expectedRevisionNo < 0 ||
+    reason === undefined
+  ) {
+    return invalidInput();
+  }
+  const result = await supabase.rpc(
+    "reapply_litter_care_task_schedule_suggestion",
+    {
+      p_task_id: taskId,
+      p_client_command_id: clientCommandId,
+      p_expected_revision_no: input.expectedRevisionNo,
+      p_reason: reason,
+    },
+  );
+  if (result.error) {
+    return databaseFailure(
+      "litter_care_task_schedule_reapply_failed",
+      result.error,
+    );
+  }
+  return mapScheduleCommandResult(result.data?.[0]);
 }

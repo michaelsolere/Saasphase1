@@ -501,7 +501,9 @@ function PlannedTasks({
         <ul className="mt-3 divide-y divide-border rounded-xl border">
           {tasks.map((task) => {
             const resolutionAction = actions.get(task.id);
-            const overdue = today !== null && task.plannedFor < today;
+            const dueDate = task.plannedFor ?? task.retainedEndsOn;
+            const overdue =
+              today !== null && dueDate !== null && dueDate < today;
 
             return (
               <li key={task.id} className="min-w-0 p-4 sm:p-5">
@@ -516,7 +518,13 @@ function PlannedTasks({
                       ) : null}
                     </div>
                     <p className="mt-1 text-sm text-muted">
-                      Prévue le {formatCivilDate(task.plannedFor)}
+                      {task.itemKind === "window" &&
+                      task.retainedStartsOn &&
+                      task.retainedEndsOn
+                        ? `Fenêtre du ${formatCivilDate(task.retainedStartsOn)} au ${formatCivilDate(task.retainedEndsOn)}`
+                        : task.plannedFor
+                          ? `Prévue le ${formatCivilDate(task.plannedFor)}`
+                          : "Planification indisponible"}
                     </p>
                     <TaskMetadata task={task} />
                     {task.description ? (
@@ -559,7 +567,13 @@ function TaskHistory({ tasks }: { tasks: LitterCareTaskSummary[] }) {
                 <div className="min-w-0">
                   <p className="break-words font-semibold">{task.title}</p>
                   <p className="mt-1 text-sm text-muted">
-                    Prévue le {formatCivilDate(task.plannedFor)}
+                    {task.itemKind === "window" &&
+                    task.retainedStartsOn &&
+                    task.retainedEndsOn
+                      ? `Fenêtre du ${formatCivilDate(task.retainedStartsOn)} au ${formatCivilDate(task.retainedEndsOn)}`
+                      : task.plannedFor
+                        ? `Prévue le ${formatCivilDate(task.plannedFor)}`
+                        : "Planification indisponible"}
                   </p>
                 </div>
                 <span className="w-fit shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold">

@@ -15,7 +15,13 @@ import {
   listLitterCareTaskTemplatesCore,
   listLitterCareTasksForLitterCore,
   planLitterCareTaskGenerationCore,
+  reapplyLitterCareTaskScheduleSuggestionCore,
+  replaceLockedLitterCareTaskPointScheduleCore,
+  replaceLockedLitterCareTaskWindowScheduleCore,
+  rescheduleLitterCareTaskPointCore,
+  rescheduleLitterCareTaskWindowCore,
   resolveLitterCareTaskCore,
+  setLitterCareTaskScheduleLockCore,
   setLitterCareTaskTemplateActiveCore,
   updateLitterCareTaskTemplateCore,
 } from "./litter-care-tasks-core";
@@ -32,7 +38,11 @@ export type {
   ImportLitterCareTaskLibraryTemplatesResult,
   LitterCareTaskAnchorType,
   LitterCareTaskCategory,
+  LitterCareTaskItemKind,
+  LitterCareTaskPriority,
   LitterCareTaskResolutionStatus,
+  LitterCareTaskScheduleCommandResult,
+  LitterCareTaskScheduleSource,
   LitterCareTaskServiceError,
   LitterCareTaskServiceErrorCode,
   LitterCareTaskGenerationPlanEntry,
@@ -48,6 +58,7 @@ export type {
   LitterCareTaskTargetScope,
   LitterCareTaskTemplateSummary,
   LitterCareTaskTemplateMutationResult,
+  LitterCareTaskWindowState,
   ListLitterCareTaskTemplatesForOrganizationInput,
   ListLitterCareTaskTemplatesForOrganizationResult,
   ListLitterCareTaskLibraryInput,
@@ -58,8 +69,12 @@ export type {
   ListLitterCareTasksForLitterResult,
   PlanLitterCareTaskGenerationInput,
   PlanLitterCareTaskGenerationResult,
+  ReapplyLitterCareTaskScheduleSuggestionInput,
+  RescheduleLitterCareTaskPointInput,
+  RescheduleLitterCareTaskWindowInput,
   ResolveLitterCareTaskInput,
   ResolveLitterCareTaskResult,
+  SetLitterCareTaskScheduleLockInput,
   SetLitterCareTaskTemplateActiveInput,
   UpdateLitterCareTaskTemplateInput,
 } from "./litter-care-tasks-core";
@@ -68,6 +83,8 @@ export {
   LITTER_CARE_TASK_ANCHOR_TYPES,
   LITTER_CARE_TASK_CATEGORIES,
   LITTER_CARE_TASK_GENERATION_STATES,
+  LITTER_CARE_TASK_ITEM_KINDS,
+  LITTER_CARE_TASK_PRIORITIES,
   LITTER_CARE_TASK_RESOLUTION_STATUSES,
   LITTER_CARE_TASK_TARGET_SCOPES,
 } from "./litter-care-tasks-core";
@@ -184,4 +201,64 @@ export async function resolveLitterCareTask(
   suppliedClient?: Supabase,
 ) {
   return resolveLitterCareTaskCore(input, await serverClient(suppliedClient));
+}
+
+export async function rescheduleLitterCareTaskPoint(
+  input: Parameters<typeof rescheduleLitterCareTaskPointCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return rescheduleLitterCareTaskPointCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function replaceLockedLitterCareTaskPointSchedule(
+  input: Parameters<typeof replaceLockedLitterCareTaskPointScheduleCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return replaceLockedLitterCareTaskPointScheduleCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function rescheduleLitterCareTaskWindow(
+  input: Parameters<typeof rescheduleLitterCareTaskWindowCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return rescheduleLitterCareTaskWindowCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function replaceLockedLitterCareTaskWindowSchedule(
+  input: Parameters<typeof replaceLockedLitterCareTaskWindowScheduleCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return replaceLockedLitterCareTaskWindowScheduleCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function setLitterCareTaskScheduleLock(
+  input: Parameters<typeof setLitterCareTaskScheduleLockCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return setLitterCareTaskScheduleLockCore(
+    input,
+    await serverClient(suppliedClient),
+  );
+}
+
+export async function reapplyLitterCareTaskScheduleSuggestion(
+  input: Parameters<typeof reapplyLitterCareTaskScheduleSuggestionCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return reapplyLitterCareTaskScheduleSuggestionCore(
+    input,
+    await serverClient(suppliedClient),
+  );
 }
