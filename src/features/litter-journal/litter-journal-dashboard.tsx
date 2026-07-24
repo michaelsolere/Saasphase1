@@ -22,6 +22,7 @@ import type {
   LitterCareTaskActionState,
 } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
+import { LitterCareTodayPanel } from "./litter-care-today-panel";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type { LitterPlanTimeline } from "./litter-plan-timeline";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
@@ -205,6 +206,8 @@ export function LitterJournalDashboard({
   litterCareTaskResolutionActions,
   litterCareTaskScheduleActions,
   litterCareTasksLoadError,
+  litterCareTodayDate,
+  litterCareTodayLocalTime,
   litterPlanTimeline,
   litterPlanLoadError,
   whelpingSession,
@@ -269,6 +272,8 @@ export function LitterJournalDashboard({
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
   litterCareTaskScheduleActions: LitterCareTaskScheduleActions[];
   litterCareTasksLoadError: boolean;
+  litterCareTodayDate: string;
+  litterCareTodayLocalTime: string;
   litterPlanTimeline: LitterPlanTimeline | null;
   litterPlanLoadError: boolean;
   whelpingSession: WhelpingSessionSummary | null;
@@ -393,6 +398,13 @@ export function LitterJournalDashboard({
           </div>
         </dl>
       </section>
+
+      <LitterCareTodayPanel
+        tasks={litterCareTasks}
+        todayDate={litterCareTodayDate}
+        todayLocalTime={litterCareTodayLocalTime}
+        unavailable={litterCareTasksLoadError}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ContextCard litter={litter} details={details} />

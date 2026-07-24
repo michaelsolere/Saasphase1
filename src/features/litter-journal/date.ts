@@ -13,6 +13,13 @@ const businessDateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
 });
 
+const businessTimeFormatter = new Intl.DateTimeFormat("en-GB", {
+  timeZone: LITTER_JOURNAL_TIME_ZONE,
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
 function getPart(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   const value = parts.find((part) => part.type === type)?.value;
 
@@ -56,6 +63,14 @@ export function formatLitterJournalBusinessDate(instant: Date) {
   const { year, month, day } = getLitterJournalBusinessDateParts(instant);
 
   return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
+export function getLitterJournalBusinessLocalTime(instant: Date) {
+  const parts = businessTimeFormatter.formatToParts(instant);
+  const hour = getPart(parts, "hour");
+  const minute = getPart(parts, "minute");
+
+  return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
 }
 
 export function compareSqlDateToLitterJournalBusinessDay(

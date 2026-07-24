@@ -760,7 +760,7 @@ export function LitterCareTasksPanel({
   );
 
   return (
-    <section className="rounded-2xl border bg-surface p-5 sm:p-6">
+    <section id="litter-care-tasks" className="rounded-2xl border bg-surface p-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
           <h2 className="text-lg font-semibold">Tâches de suivi</h2>
