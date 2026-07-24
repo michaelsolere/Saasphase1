@@ -15,8 +15,9 @@ function dateLabel(date: string | null) {
 function Point({ item }: { item: Exclude<LitterPlanTimelineScheduledItem, { kind: "window" }> }) {
   const type = item.kind === "milestone" ? "Jalon" : "Tâche";
   const symbol = item.kind === "milestone" ? "●" : "◇";
+  const alignment = item.startPercent === 0 ? "translate-x-0" : item.startPercent === 100 ? "-translate-x-full" : "-translate-x-1/2";
   return (
-    <li className="absolute top-3 w-40 -translate-x-1/2" style={{ left: `${item.startPercent}%` }} aria-label={`${type} : ${item.title}`}>
+    <li className={`absolute top-3 w-40 ${alignment}`} style={{ left: `${item.startPercent}%` }} aria-label={`${type} : ${item.title}`}>
       <span aria-hidden="true" className="block text-center text-lg font-bold">{symbol}</span>
       <div className="mt-1 rounded border bg-surface px-2 py-1.5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-muted">{type}</p>
@@ -30,8 +31,11 @@ function Point({ item }: { item: Exclude<LitterPlanTimelineScheduledItem, { kind
 function Window({ item }: { item: Extract<LitterPlanTimelineScheduledItem, { kind: "window" }> }) {
   const width = item.endPercent - item.startPercent;
   return (
-    <li className="absolute top-4 h-16 border-l" style={{ left: `${item.startPercent}%`, width: `${width}%` }} aria-label={`Fenêtre : ${item.title}`}>
-      <div className="absolute inset-y-0 left-0 min-w-36 rounded-md border border-current bg-background px-3 py-2 text-sm">
+    <li className="absolute top-4 h-16" style={{ left: `${item.startPercent}%`, width: `${width}%` }} aria-label={`Fenêtre : ${item.title}`} data-timeline-window data-start-percent={item.startPercent} data-end-percent={item.endPercent}>
+      <div className="absolute inset-x-0 top-7 h-3 rounded-full bg-accent/30" aria-hidden="true" data-timeline-window-band />
+      <span className="absolute left-0 top-6 h-5 border-l-2 border-accent" aria-hidden="true" data-timeline-window-start />
+      <span className="absolute right-0 top-6 h-5 border-r-2 border-accent" aria-hidden="true" data-timeline-window-end />
+      <div className="absolute -top-2 left-0 min-w-36 rounded-md border border-current bg-background px-3 py-2 text-sm">
         <p className="text-xs font-semibold uppercase tracking-wide">Fenêtre</p>
         <p className="mt-1 font-medium">{item.title}</p>
         <p className="mt-1 text-xs">Du {dateLabel(item.startsOn)} au {dateLabel(item.endsOn)}</p>
