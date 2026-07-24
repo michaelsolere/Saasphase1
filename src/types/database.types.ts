@@ -2417,6 +2417,24 @@ export type Database = {
           },
         ]
       }
+      litter_planning_model_commands: {
+        Row: { client_command_id: string; created_at: string; created_by: string; id: string; model_id: string | null; operation: string; organization_id: string; outcome: string; payload: Json; reason: string | null; result_is_active: boolean | null; result_revision: number | null }
+        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; model_id?: string | null; operation: string; organization_id: string; outcome: string; payload: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
+        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; model_id?: string | null; operation?: string; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
+        Relationships: []
+      }
+      litter_planning_model_items: {
+        Row: { anchor_type: string; created_at: string; created_by: string; display_order: number; id: string; is_required: boolean; is_selected_by_default: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
+        Insert: { anchor_type: string; created_at?: string; created_by: string; display_order: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Update: { anchor_type?: string; created_at?: string; created_by?: string; display_order?: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind?: string; model_id?: string; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Relationships: []
+      }
+      litter_planning_models: {
+        Row: { breed: string | null; created_at: string; created_by: string; description: string | null; id: string; is_active: boolean; organization_id: string; revision: number; species: string | null; title: string; updated_at: string; updated_by: string }
+        Insert: { breed?: string | null; created_at?: string; created_by: string; description?: string | null; id?: string; is_active?: boolean; organization_id: string; revision?: number; species?: string | null; title: string; updated_at?: string; updated_by: string }
+        Update: { breed?: string | null; created_at?: string; created_by?: string; description?: string | null; id?: string; is_active?: boolean; organization_id?: string; revision?: number; species?: string | null; title?: string; updated_at?: string; updated_by?: string }
+        Relationships: []
+      }
       litter_care_tasks: {
         Row: {
           anchor_date: string | null
@@ -6000,6 +6018,10 @@ export type Database = {
           template_id: string
         }[]
       }
+      create_litter_planning_model: {
+        Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_is_active: boolean; p_items: Json; p_organization_id: string; p_species: string | null; p_title: string }
+        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
+      }
       create_organization_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: string
@@ -6426,6 +6448,10 @@ export type Database = {
           task_id: string | null
         }[]
       }
+      replace_litter_planning_model: {
+        Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_expected_revision: number; p_items: Json; p_model_id: string; p_species: string | null; p_title: string }
+        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
+      }
       reschedule_litter_care_task_point: {
         Args: {
           p_client_command_id: string
@@ -6551,6 +6577,10 @@ export type Database = {
           revision: number
           template_id: string
         }[]
+      }
+      set_litter_planning_model_active: {
+        Args: { p_client_command_id: string; p_expected_revision: number; p_is_active: boolean; p_model_id: string }
+        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
       }
       shares_organization_with: {
         Args: { other_profile_id: string }

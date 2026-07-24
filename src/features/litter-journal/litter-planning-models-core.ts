@@ -1,58 +1,279 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type { Database } from "@/types/database.types";
+import type { Database, Json } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
-type PlanningDb = SupabaseClient<Record<string, never>>;
 type Role = "owner" | "admin" | "member" | "viewer";
-type RawRow = Record<string, unknown>;
-type RawRpc = (name: string, args: Record<string, unknown>) => Promise<{ data: RawRow[] | null; error: unknown }>;
+type ModelRow = Database["public"]["Tables"]["litter_planning_models"]["Row"];
+type ItemRow = Database["public"]["Tables"]["litter_planning_model_items"]["Row"];
 
-export const LITTER_PLANNING_MODEL_ITEM_KINDS = ["milestone", "task", "window"] as const;
-export const LITTER_PLANNING_MODEL_PRIORITIES = ["normal", "important", "organization_critical"] as const;
-export const LITTER_PLANNING_MODEL_ANCHORS = ["first_mating", "estimated_ovulation", "expected_birth", "actual_birth", "offspring_age"] as const;
-export type LitterPlanningModelItemKind = (typeof LITTER_PLANNING_MODEL_ITEM_KINDS)[number];
-export type LitterPlanningModelPriority = (typeof LITTER_PLANNING_MODEL_PRIORITIES)[number];
-export type LitterPlanningModelAnchor = (typeof LITTER_PLANNING_MODEL_ANCHORS)[number];
-export type LitterPlanningModelItemInput = { organizationTemplateId: string; itemKind: LitterPlanningModelItemKind; priority: LitterPlanningModelPriority; anchorType: LitterPlanningModelAnchor; pointOffsetDays?: number; pointLocalTime?: string | null; windowStartsOffsetDays?: number; windowStartsLocalTime?: string | null; windowEndsOffsetDays?: number; windowEndsLocalTime?: string | null; displayOrder: number; isRequired: boolean; isSelectedByDefault: boolean };
-export type LitterPlanningModelInput = { title: string; description?: string | null; species?: "dog" | "cat" | null; breed?: string | null; isActive?: boolean; items: LitterPlanningModelItemInput[] };
+export const LITTER_PLANNING_MODEL_ITEM_KINDS = [
+  "milestone",
+  "task",
+  "window",
+] as const;
+export const LITTER_PLANNING_MODEL_PRIORITIES = [
+  "normal",
+  "important",
+  "organization_critical",
+] as const;
+export const LITTER_PLANNING_MODEL_ANCHORS = [
+  "first_mating",
+  "estimated_ovulation",
+  "expected_birth",
+  "actual_birth",
+  "offspring_age",
+] as const;
+
+export type LitterPlanningModelItemKind =
+  (typeof LITTER_PLANNING_MODEL_ITEM_KINDS)[number];
+export type LitterPlanningModelPriority =
+  (typeof LITTER_PLANNING_MODEL_PRIORITIES)[number];
+export type LitterPlanningModelAnchor =
+  (typeof LITTER_PLANNING_MODEL_ANCHORS)[number];
+
+export type LitterPlanningModelItemInput = {
+  organizationTemplateId: string;
+  itemKind: LitterPlanningModelItemKind;
+  priority: LitterPlanningModelPriority;
+  anchorType: LitterPlanningModelAnchor;
+  pointOffsetDays?: number;
+  pointLocalTime?: string;
+  windowStartsOffsetDays?: number;
+  windowStartsLocalTime?: string;
+  windowEndsOffsetDays?: number;
+  windowEndsLocalTime?: string;
+  displayOrder: number;
+  isRequired: boolean;
+  isSelectedByDefault: boolean;
+};
+
+export type CreateLitterPlanningModelInput = {
+  title: string;
+  description?: string | null;
+  species?: "dog" | "cat" | null;
+  breed?: string | null;
+  isActive?: boolean;
+  items: LitterPlanningModelItemInput[];
+};
+
+export type ReplaceLitterPlanningModelInput = Omit<
+  CreateLitterPlanningModelInput,
+  "isActive"
+>;
+
 export type LitterPlanningModelItem = LitterPlanningModelItemInput & { id: string };
-export type LitterPlanningModel = { id: string; title: string; description: string | null; species: "dog" | "cat" | null; breed: string | null; isActive: boolean; revision: number; items: LitterPlanningModelItem[] };
-export type LitterPlanningModelErrorCode = "invalid_input" | "unauthenticated" | "forbidden" | "not_found" | "conflict" | "stale_revision" | "database_error";
-export type LitterPlanningModelResult = { outcome: "success"; modelId: string; revision: number; isActive: boolean; replayed: boolean } | { outcome: "error"; error: { code: LitterPlanningModelErrorCode; message: string } };
+export type LitterPlanningModel = {
+  id: string;
+  title: string;
+  description: string | null;
+  species: "dog" | "cat" | null;
+  breed: string | null;
+  isActive: boolean;
+  revision: number;
+  items: LitterPlanningModelItem[];
+};
+export type LitterPlanningModelErrorCode =
+  | "invalid_input"
+  | "unauthenticated"
+  | "forbidden"
+  | "not_found"
+  | "stale_revision"
+  | "conflict"
+  | "database_error";
+export type LitterPlanningModelResult =
+  | {
+      outcome: "success";
+      modelId: string;
+      revision: number;
+      isActive: boolean;
+      replayed: boolean;
+    }
+  | { outcome: "error"; error: { code: LitterPlanningModelErrorCode; message: string } };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TIME = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-const db = (supabase: Supabase) => supabase as unknown as PlanningDb;
-const rpc = (supabase: Supabase, name: string, args: Record<string, unknown>) => (db(supabase).rpc as unknown as RawRpc)(name, args);
-const failure = (code: LitterPlanningModelErrorCode, message: string): LitterPlanningModelResult => ({ outcome: "error", error: { code, message } });
-const uuid = (value: unknown) => typeof value === "string" && UUID.test(value.trim()) ? value.trim().toLowerCase() : null;
-const text = (value: unknown, limit: number, required = false) => { if (value == null || value === "") return required ? null : null; if (typeof value !== "string") return undefined; const normalized = value.trim(); return (!required || normalized) && normalized.length <= limit ? (normalized || null) : undefined; };
-const integer = (value: unknown) => typeof value === "number" && Number.isInteger(value) ? value : null;
-const time = (value: unknown) => value == null || value === "" ? null : typeof value === "string" && TIME.test(value.trim()) ? value.trim() : undefined;
+const LOCAL_TIME = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 
-function normalizeItems(value: unknown): LitterPlanningModelItemInput[] | null {
-  if (!Array.isArray(value) || value.length > 100) return null;
-  const orders = new Set<number>();
-  const items: LitterPlanningModelItemInput[] = [];
-  for (const raw of value) {
-    if (!raw || typeof raw !== "object") return null;
-    const item = raw as Record<string, unknown>; const organizationTemplateId = uuid(item.organizationTemplateId); const displayOrder = integer(item.displayOrder);
-    const pointOffsetDays = item.pointOffsetDays === undefined ? undefined : integer(item.pointOffsetDays); const start = item.windowStartsOffsetDays === undefined ? undefined : integer(item.windowStartsOffsetDays); const end = item.windowEndsOffsetDays === undefined ? undefined : integer(item.windowEndsOffsetDays);
-    const pointLocalTime = time(item.pointLocalTime); const windowStartsLocalTime = time(item.windowStartsLocalTime); const windowEndsLocalTime = time(item.windowEndsLocalTime);
-    if (!organizationTemplateId || displayOrder === null || displayOrder < 0 || orders.has(displayOrder) || !LITTER_PLANNING_MODEL_ITEM_KINDS.includes(item.itemKind as LitterPlanningModelItemKind) || !LITTER_PLANNING_MODEL_PRIORITIES.includes(item.priority as LitterPlanningModelPriority) || !LITTER_PLANNING_MODEL_ANCHORS.includes(item.anchorType as LitterPlanningModelAnchor) || typeof item.isRequired !== "boolean" || typeof item.isSelectedByDefault !== "boolean" || pointLocalTime === undefined || windowStartsLocalTime === undefined || windowEndsLocalTime === undefined) return null;
-    if (item.isRequired && !item.isSelectedByDefault) return null;
-    if (item.itemKind === "window") { if (pointOffsetDays !== undefined || pointLocalTime !== null || start === undefined || end === undefined || start > end || (start === end && windowStartsLocalTime && windowEndsLocalTime && windowStartsLocalTime > windowEndsLocalTime)) return null; }
-    else if (pointOffsetDays === undefined || start !== undefined || end !== undefined || windowStartsLocalTime !== null || windowEndsLocalTime !== null) return null;
-    orders.add(displayOrder); items.push({ organizationTemplateId, itemKind: item.itemKind as LitterPlanningModelItemKind, priority: item.priority as LitterPlanningModelPriority, anchorType: item.anchorType as LitterPlanningModelAnchor, pointOffsetDays, pointLocalTime, windowStartsOffsetDays: start, windowStartsLocalTime, windowEndsOffsetDays: end, windowEndsLocalTime, displayOrder, isRequired: item.isRequired, isSelectedByDefault: item.isSelectedByDefault });
-  } return items;
+function failure(code: LitterPlanningModelErrorCode, message: string): LitterPlanningModelResult {
+  return { outcome: "error", error: { code, message } };
 }
 
-function normalizeModel(input: LitterPlanningModelInput) { const title = text(input.title, 255, true); const description = text(input.description, 5000); const breed = text(input.breed, 255); const items = normalizeItems(input.items); return title && description !== undefined && breed !== undefined && items && (input.species == null || input.species === "dog" || input.species === "cat") && (input.isActive === undefined || typeof input.isActive === "boolean") ? { title, description, breed, species: input.species ?? null, isActive: input.isActive ?? true, items } : null; }
-function mapMutation(row: RawRow | undefined): LitterPlanningModelResult { const modelId = uuid(row?.model_id); if (row?.outcome !== "success" || !modelId || !Number.isInteger(row.revision) || typeof row.revision !== "number" || row.revision <= 0 || typeof row.is_active !== "boolean") { const code = row?.reason === "stale_revision" ? "stale_revision" : row?.reason === "client_command_conflict" ? "conflict" : row?.reason === "membership_required" ? "forbidden" : row?.reason === "not_authenticated" ? "unauthenticated" : row?.reason === "model_not_found" ? "not_found" : "invalid_input"; return failure(code, "La modification du modèle n’a pas pu être effectuée."); } return { outcome: "success", modelId, revision: row.revision, isActive: row.is_active, replayed: row.replayed === true }; }
+function normalizeUuid(value: unknown) {
+  return typeof value === "string" && UUID.test(value.trim())
+    ? value.trim().toLowerCase()
+    : null;
+}
 
-export async function listLitterPlanningModelsCore(organizationId: string, supabase: Supabase): Promise<{ outcome: "success"; role: Role; models: Omit<LitterPlanningModel, "items">[] } | LitterPlanningModelResult> { const org = uuid(organizationId); if (!org) return failure("invalid_input", "La demande est invalide."); const membership = await supabase.from("memberships").select("role").eq("organization_id", org).eq("profile_id", (await supabase.auth.getUser()).data.user?.id ?? "").eq("status", "active").is("deleted_at", null).maybeSingle(); if (membership.error) return failure("database_error", "La lecture des modèles est indisponible."); if (!membership.data) return failure("not_found", "Le modèle est introuvable."); const result = await db(supabase).from("litter_planning_models").select("id,title,description,species,breed,is_active,revision").eq("organization_id", org).order("is_active", { ascending: false }).order("title"); if (result.error) return failure("database_error", "La lecture des modèles est indisponible."); return { outcome: "success", role: membership.data.role as Role, models: ((result.data ?? []) as RawRow[]).map((row) => ({ id: row.id as string, title: row.title as string, description: row.description as string | null, species: row.species as "dog" | "cat" | null, breed: row.breed as string | null, isActive: row.is_active as boolean, revision: row.revision as number })) }; }
-export async function getLitterPlanningModelCore(modelId: string, supabase: Supabase): Promise<{ outcome: "success"; role: Role; model: LitterPlanningModel } | LitterPlanningModelResult> { const id = uuid(modelId); if (!id) return failure("invalid_input", "La demande est invalide."); const model = await db(supabase).from("litter_planning_models").select("*").eq("id", id).maybeSingle(); if (model.error) return failure("database_error", "La lecture du modèle est indisponible."); if (!model.data) return failure("not_found", "Le modèle est introuvable."); const rawModel = model.data as RawRow; const organizationId = rawModel.organization_id as string; const auth = await listLitterPlanningModelsCore(organizationId, supabase); if (auth.outcome === "error") return auth; const items = await db(supabase).from("litter_planning_model_items").select("*").eq("organization_id", organizationId).eq("model_id", id).order("display_order"); if (items.error) return failure("database_error", "La lecture du modèle est indisponible."); return { outcome: "success", role: auth.role, model: { id: rawModel.id as string, title: rawModel.title as string, description: rawModel.description as string | null, species: rawModel.species as "dog" | "cat" | null, breed: rawModel.breed as string | null, isActive: rawModel.is_active as boolean, revision: rawModel.revision as number, items: ((items.data ?? []) as RawRow[]).map((row) => ({ id: row.id as string, organizationTemplateId: row.organization_template_id as string, itemKind: row.item_kind as LitterPlanningModelItemKind, priority: row.priority as LitterPlanningModelPriority, anchorType: row.anchor_type as LitterPlanningModelAnchor, pointOffsetDays: row.point_offset_days as number | undefined, pointLocalTime: row.point_local_time as string | null, windowStartsOffsetDays: row.window_starts_offset_days as number | undefined, windowStartsLocalTime: row.window_starts_local_time as string | null, windowEndsOffsetDays: row.window_ends_offset_days as number | undefined, windowEndsLocalTime: row.window_ends_local_time as string | null, displayOrder: row.display_order as number, isRequired: row.is_required as boolean, isSelectedByDefault: row.is_selected_by_default as boolean })) } }; }
-export async function createLitterPlanningModelCore(organizationId: string, clientCommandId: string, input: LitterPlanningModelInput, supabase: Supabase) { const org = uuid(organizationId), command = uuid(clientCommandId), model = normalizeModel(input); if (!org || !command || !model) return failure("invalid_input", "La demande est invalide."); const result = await rpc(supabase, "create_litter_planning_model", { p_organization_id: org, p_client_command_id: command, p_title: model.title, p_description: model.description, p_species: model.species, p_breed: model.breed, p_is_active: model.isActive, p_items: model.items }); return result.error ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data?.[0]); }
-export async function replaceLitterPlanningModelCore(modelId: string, clientCommandId: string, expectedRevision: number, input: LitterPlanningModelInput, supabase: Supabase) { const id = uuid(modelId), command = uuid(clientCommandId), model = normalizeModel(input); if (!id || !command || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || !model) return failure("invalid_input", "La demande est invalide."); const result = await rpc(supabase, "replace_litter_planning_model", { p_model_id: id, p_client_command_id: command, p_expected_revision: expectedRevision, p_title: model.title, p_description: model.description, p_species: model.species, p_breed: model.breed, p_items: model.items }); return result.error ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data?.[0]); }
-export async function setLitterPlanningModelActiveCore(modelId: string, clientCommandId: string, expectedRevision: number, isActive: boolean, supabase: Supabase) { const id = uuid(modelId), command = uuid(clientCommandId); if (!id || !command || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || typeof isActive !== "boolean") return failure("invalid_input", "La demande est invalide."); const result = await rpc(supabase, "set_litter_planning_model_active", { p_model_id: id, p_client_command_id: command, p_expected_revision: expectedRevision, p_is_active: isActive }); return result.error ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data?.[0]); }
+function normalizeText(value: unknown, maxLength: number, required = false) {
+  if (value === undefined || value === null || value === "") return required ? null : null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return (!required || normalized.length > 0) && normalized.length <= maxLength
+    ? normalized || null
+    : undefined;
+}
+
+function normalizeLocalTime(value: unknown) {
+  if (value === undefined) return undefined;
+  return typeof value === "string" && LOCAL_TIME.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Record<string, unknown>;
+  const organizationTemplateId = normalizeUuid(item.organizationTemplateId);
+  const pointLocalTime = normalizeLocalTime(item.pointLocalTime);
+  const windowStartsLocalTime = normalizeLocalTime(item.windowStartsLocalTime);
+  const windowEndsLocalTime = normalizeLocalTime(item.windowEndsLocalTime);
+  const displayOrder = item.displayOrder;
+  const pointOffsetDays = item.pointOffsetDays;
+  const windowStartsOffsetDays = item.windowStartsOffsetDays;
+  const windowEndsOffsetDays = item.windowEndsOffsetDays;
+  if (
+    !organizationTemplateId ||
+    !Number.isInteger(displayOrder) ||
+    (displayOrder as number) < 0 ||
+    !LITTER_PLANNING_MODEL_ITEM_KINDS.includes(item.itemKind as LitterPlanningModelItemKind) ||
+    !LITTER_PLANNING_MODEL_PRIORITIES.includes(item.priority as LitterPlanningModelPriority) ||
+    !LITTER_PLANNING_MODEL_ANCHORS.includes(item.anchorType as LitterPlanningModelAnchor) ||
+    typeof item.isRequired !== "boolean" ||
+    typeof item.isSelectedByDefault !== "boolean" ||
+    pointLocalTime === null ||
+    windowStartsLocalTime === null ||
+    windowEndsLocalTime === null ||
+    (item.isRequired && !item.isSelectedByDefault)
+  ) return null;
+  if (item.itemKind === "window") {
+    if (
+      pointOffsetDays !== undefined ||
+      pointLocalTime !== undefined ||
+      !Number.isInteger(windowStartsOffsetDays) ||
+      !Number.isInteger(windowEndsOffsetDays) ||
+      (windowStartsOffsetDays as number) > (windowEndsOffsetDays as number) ||
+      ((windowStartsOffsetDays as number) === (windowEndsOffsetDays as number) &&
+        windowStartsLocalTime !== undefined &&
+        windowEndsLocalTime !== undefined &&
+        windowStartsLocalTime > windowEndsLocalTime)
+    ) return null;
+  } else if (
+    !Number.isInteger(pointOffsetDays) ||
+    windowStartsOffsetDays !== undefined ||
+    windowStartsLocalTime !== undefined ||
+    windowEndsOffsetDays !== undefined ||
+    windowEndsLocalTime !== undefined
+  ) return null;
+  return {
+    organizationTemplateId,
+    itemKind: item.itemKind as LitterPlanningModelItemKind,
+    priority: item.priority as LitterPlanningModelPriority,
+    anchorType: item.anchorType as LitterPlanningModelAnchor,
+    ...(pointOffsetDays === undefined ? {} : { pointOffsetDays: pointOffsetDays as number }),
+    ...(pointLocalTime === undefined ? {} : { pointLocalTime }),
+    ...(windowStartsOffsetDays === undefined ? {} : { windowStartsOffsetDays: windowStartsOffsetDays as number }),
+    ...(windowStartsLocalTime === undefined ? {} : { windowStartsLocalTime }),
+    ...(windowEndsOffsetDays === undefined ? {} : { windowEndsOffsetDays: windowEndsOffsetDays as number }),
+    ...(windowEndsLocalTime === undefined ? {} : { windowEndsLocalTime }),
+    displayOrder: displayOrder as number,
+    isRequired: item.isRequired,
+    isSelectedByDefault: item.isSelectedByDefault,
+  };
+}
+
+function normalizeItems(items: unknown) {
+  if (!Array.isArray(items) || items.length > 100) return null;
+  const orders = new Set<number>();
+  const normalized = items.map(normalizeItem);
+  if (normalized.some((item) => item === null)) return null;
+  for (const item of normalized) {
+    if (!item || orders.has(item.displayOrder)) return null;
+    orders.add(item.displayOrder);
+  }
+  return normalized as LitterPlanningModelItemInput[];
+}
+
+function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
+  if (
+    !normalizeUuid(row.id) ||
+    typeof row.title !== "string" ||
+    typeof row.is_active !== "boolean" ||
+    !Number.isInteger(row.revision) ||
+    row.revision <= 0 ||
+    (row.species !== null && row.species !== "dog" && row.species !== "cat")
+  ) return null;
+  return { id: row.id, title: row.title, description: row.description, species: row.species, breed: row.breed, isActive: row.is_active, revision: row.revision };
+}
+
+function mapItem(row: ItemRow): LitterPlanningModelItem | null {
+  const input = normalizeItem({ organizationTemplateId: row.organization_template_id, itemKind: row.item_kind, priority: row.priority, anchorType: row.anchor_type, pointOffsetDays: row.point_offset_days ?? undefined, pointLocalTime: row.point_local_time ?? undefined, windowStartsOffsetDays: row.window_starts_offset_days ?? undefined, windowStartsLocalTime: row.window_starts_local_time ?? undefined, windowEndsOffsetDays: row.window_ends_offset_days ?? undefined, windowEndsLocalTime: row.window_ends_local_time ?? undefined, displayOrder: row.display_order, isRequired: row.is_required, isSelectedByDefault: row.is_selected_by_default });
+  return input && normalizeUuid(row.id) ? { id: row.id, ...input } : null;
+}
+
+function mapMutation(row: Database["public"]["Functions"]["create_litter_planning_model"]["Returns"][number]): LitterPlanningModelResult {
+  const modelId = normalizeUuid(row.model_id);
+  const revision = row.revision;
+  const isActive = row.is_active;
+  if (row.outcome === "success" && modelId && typeof revision === "number" && Number.isInteger(revision) && revision > 0 && typeof isActive === "boolean") return { outcome: "success", modelId, revision, isActive, replayed: row.replayed };
+  const code: LitterPlanningModelErrorCode = row.reason === "not_authenticated" ? "unauthenticated" : row.reason === "membership_required" ? "forbidden" : row.reason === "model_not_found" ? "not_found" : row.reason === "stale_revision" ? "stale_revision" : row.reason === "client_command_conflict" ? "conflict" : "invalid_input";
+  return failure(code, "La modification du modèle n’a pas pu être effectuée.");
+}
+
+function itemsJson(items: LitterPlanningModelItemInput[]): Json {
+  return JSON.parse(JSON.stringify(items)) as Json;
+}
+
+export async function listLitterPlanningModelsCore(organizationId: string, supabase: Supabase): Promise<{ outcome: "success"; role: Role; models: Omit<LitterPlanningModel, "items">[] } | LitterPlanningModelResult> {
+  const organizationIdNormalized = normalizeUuid(organizationId);
+  const user = (await supabase.auth.getUser()).data.user;
+  if (!user) return failure("unauthenticated", "Authentification requise.");
+  if (!organizationIdNormalized) return failure("invalid_input", "La demande est invalide.");
+  const membership = await supabase.from("memberships").select("role").eq("organization_id", organizationIdNormalized).eq("profile_id", user.id).eq("status", "active").is("deleted_at", null).maybeSingle();
+  if (membership.error) return failure("database_error", "La lecture des modèles est indisponible.");
+  if (!membership.data) return failure("not_found", "Le modèle est introuvable.");
+  const models = await supabase.from("litter_planning_models").select("*").eq("organization_id", organizationIdNormalized).order("is_active", { ascending: false }).order("title");
+  if (models.error) return failure("database_error", "La lecture des modèles est indisponible.");
+  const mapped = (models.data ?? []).map(mapModel);
+  return mapped.every(Boolean) ? { outcome: "success" as const, role: membership.data.role as Role, models: mapped as Omit<LitterPlanningModel, "items">[] } : failure("database_error", "Les données du modèle sont invalides.");
+}
+
+export async function getLitterPlanningModelCore(modelId: string, supabase: Supabase) {
+  const normalizedModelId = normalizeUuid(modelId);
+  if (!normalizedModelId) return failure("invalid_input", "La demande est invalide.");
+  const model = await supabase.from("litter_planning_models").select("*").eq("id", normalizedModelId).maybeSingle();
+  if (model.error) return failure("database_error", "La lecture du modèle est indisponible.");
+  if (!model.data) return failure("not_found", "Le modèle est introuvable.");
+  const listed = await listLitterPlanningModelsCore(model.data.organization_id, supabase);
+  if (!("role" in listed)) return listed;
+  const items = await supabase.from("litter_planning_model_items").select("*").eq("organization_id", model.data.organization_id).eq("model_id", normalizedModelId).order("display_order");
+  if (items.error) return failure("database_error", "La lecture du modèle est indisponible.");
+  const mappedModel = mapModel(model.data);
+  const mappedItems = (items.data ?? []).map(mapItem);
+  return mappedModel && mappedItems.every(Boolean) ? { outcome: "success" as const, role: listed.role, model: { ...mappedModel, items: mappedItems as LitterPlanningModelItem[] } } : failure("database_error", "Les données du modèle sont invalides.");
+}
+
+export async function createLitterPlanningModelCore(organizationId: string, clientCommandId: string, input: CreateLitterPlanningModelInput, supabase: Supabase) {
+  const title = normalizeText(input.title, 255, true);
+  const description = normalizeText(input.description, 5000);
+  const breed = normalizeText(input.breed, 255);
+  const items = normalizeItems(input.items);
+  if (!normalizeUuid(organizationId) || !normalizeUuid(clientCommandId) || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat") || (input.isActive !== undefined && typeof input.isActive !== "boolean")) return failure("invalid_input", "La demande est invalide.");
+  const result = await supabase.rpc("create_litter_planning_model", { p_organization_id: organizationId, p_client_command_id: clientCommandId, p_title: title, p_description: description, p_species: input.species ?? null, p_breed: breed, p_is_active: input.isActive ?? true, p_items: itemsJson(items) });
+  return result.error || !result.data?.[0] ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data[0]);
+}
+
+export async function replaceLitterPlanningModelCore(modelId: string, clientCommandId: string, expectedRevision: number, input: ReplaceLitterPlanningModelInput, supabase: Supabase) {
+  const title = normalizeText(input.title, 255, true);
+  const description = normalizeText(input.description, 5000);
+  const breed = normalizeText(input.breed, 255);
+  const items = normalizeItems(input.items);
+  if (!normalizeUuid(modelId) || !normalizeUuid(clientCommandId) || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat")) return failure("invalid_input", "La demande est invalide.");
+  const result = await supabase.rpc("replace_litter_planning_model", { p_model_id: modelId, p_client_command_id: clientCommandId, p_expected_revision: expectedRevision, p_title: title, p_description: description, p_species: input.species ?? null, p_breed: breed, p_items: itemsJson(items) });
+  return result.error || !result.data?.[0] ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data[0]);
+}
+
+export async function setLitterPlanningModelActiveCore(modelId: string, clientCommandId: string, expectedRevision: number, isActive: boolean, supabase: Supabase) {
+  if (!normalizeUuid(modelId) || !normalizeUuid(clientCommandId) || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || typeof isActive !== "boolean") return failure("invalid_input", "La demande est invalide.");
+  const result = await supabase.rpc("set_litter_planning_model_active", { p_model_id: modelId, p_client_command_id: clientCommandId, p_expected_revision: expectedRevision, p_is_active: isActive });
+  return result.error || !result.data?.[0] ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data[0]);
+}

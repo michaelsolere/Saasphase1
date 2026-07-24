@@ -29,7 +29,7 @@ for each row execute function public.set_updated_at();
 create table public.litter_planning_model_items (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
-  model_id uuid not null,
+  model_id uuid,
   organization_template_id uuid not null,
   item_kind text not null,
   priority text not null default 'normal',
@@ -89,8 +89,10 @@ create table public.litter_planning_model_commands (
   client_command_id uuid not null,
   operation text not null,
   payload jsonb not null,
-  result_revision integer not null,
-  result_is_active boolean not null,
+  outcome text not null,
+  reason text,
+  result_revision integer,
+  result_is_active boolean,
   created_at timestamptz not null default now(),
   created_by uuid not null references public.profiles(id) on delete restrict,
   constraint litter_planning_model_commands_organization_id_id_key unique (organization_id, id),
@@ -99,7 +101,10 @@ create table public.litter_planning_model_commands (
     references public.litter_planning_models (organization_id, id) on delete restrict,
   constraint litter_planning_model_commands_operation_check check (operation in ('create', 'replace', 'set_active')),
   constraint litter_planning_model_commands_payload_check check (jsonb_typeof(payload) = 'object'),
-  constraint litter_planning_model_commands_result_revision_check check (result_revision > 0)
+  constraint litter_planning_model_commands_outcome_check check (
+    (outcome = 'success' and reason is null and result_revision > 0 and result_is_active is not null)
+    or (outcome = 'error' and reason in ('stale_revision') and result_revision is not null and result_is_active is not null)
+  )
 );
 
 create index litter_planning_model_commands_model_created_at_idx
@@ -118,36 +123,74 @@ create policy litter_planning_model_items_select_member on public.litter_plannin
 
 create or replace function public.litter_planning_model_commands_immutable()
 returns trigger language plpgsql security definer set search_path = '' set row_security = off as $$
-begin raise exception 'litter planning model commands are append-only' using errcode = '42501'; end;
+begin
+  if auth.uid() is not null then
+    raise exception 'litter planning model commands are append-only' using errcode = '42501';
+  end if;
+  if tg_op = 'UPDATE' then
+    raise exception 'litter planning model commands are immutable' using errcode = '42501';
+  end if;
+  return old;
+end;
 $$;
 create trigger litter_planning_model_commands_append_only before update or delete on public.litter_planning_model_commands for each row execute function public.litter_planning_model_commands_immutable();
 
-create or replace function public.assert_litter_planning_model_items(p_items jsonb)
+create or replace function public.assert_litter_planning_model_items(
+  p_organization_id uuid,
+  p_items jsonb
+)
 returns boolean language plpgsql security definer set search_path = '' set row_security = off as $$
-declare v_item jsonb; v_count integer := 0; v_orders integer[] := '{}';
+declare
+  v_item jsonb;
+  v_count integer := 0;
+  v_orders integer[] := '{}';
+  v_keys text[];
+  v_kind text;
+  v_starts integer;
+  v_ends integer;
 begin
   if jsonb_typeof(p_items) <> 'array' then return false; end if;
   for v_item in select value from jsonb_array_elements(p_items) loop
     v_count := v_count + 1;
-    if jsonb_typeof(v_item) <> 'object'
+    if v_count > 100 then return false; end if;
+    if jsonb_typeof(v_item) <> 'object' then return false; end if;
+    select array_agg(key order by key) into v_keys from jsonb_object_keys(v_item) key;
+    if
       or not (v_item ? 'organizationTemplateId' and v_item ? 'itemKind' and v_item ? 'priority' and v_item ? 'anchorType' and v_item ? 'displayOrder' and v_item ? 'isRequired' and v_item ? 'isSelectedByDefault')
       or coalesce(v_item->>'itemKind','') not in ('milestone','task','window')
       or coalesce(v_item->>'priority','') not in ('normal','important','organization_critical')
       or coalesce(v_item->>'anchorType','') not in ('first_mating','estimated_ovulation','expected_birth','actual_birth','offspring_age')
       or (v_item->>'organizationTemplateId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
-      or (v_item->>'displayOrder') !~ '^[0-9]+$'
+      or (v_item->>'displayOrder') !~ '^(0|[1-9][0-9]{0,9})$'
+      or (v_item->>'displayOrder')::numeric > 2147483647
       or jsonb_typeof(v_item->'isRequired') <> 'boolean' or jsonb_typeof(v_item->'isSelectedByDefault') <> 'boolean'
+      or ((v_item->>'isRequired')::boolean and not (v_item->>'isSelectedByDefault')::boolean)
     then return false; end if;
     v_orders := array_append(v_orders, (v_item->>'displayOrder')::integer);
-    if v_item->>'itemKind' in ('milestone','task') then
-      if not (v_item ? 'pointOffsetDays') or (v_item->>'pointOffsetDays') !~ '^-?[0-9]+$'
-        or v_item ? 'windowStartsOffsetDays' or v_item ? 'windowStartsLocalTime' or v_item ? 'windowEndsOffsetDays' or v_item ? 'windowEndsLocalTime' then return false; end if;
+    v_kind := v_item->>'itemKind';
+    if v_kind in ('milestone','task') then
+      if v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','pointLocalTime','pointOffsetDays','priority']
+        and v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','pointOffsetDays','priority']
+        or not (v_item ? 'pointOffsetDays') or (v_item->>'pointOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
+        or (v_item->>'pointOffsetDays')::numeric not between -2147483648 and 2147483647
+        or (v_item ? 'pointLocalTime' and (jsonb_typeof(v_item->'pointLocalTime') <> 'string' or v_item->>'pointLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+      then return false; end if;
     else
-      if v_item ? 'pointOffsetDays' or v_item ? 'pointLocalTime' or not (v_item ? 'windowStartsOffsetDays' and v_item ? 'windowEndsOffsetDays')
-        or (v_item->>'windowStartsOffsetDays') !~ '^-?[0-9]+$' or (v_item->>'windowEndsOffsetDays') !~ '^-?[0-9]+$' then return false; end if;
+      if v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','priority','windowEndsLocalTime','windowEndsOffsetDays','windowStartsLocalTime','windowStartsOffsetDays']
+        and v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','priority','windowEndsOffsetDays','windowStartsOffsetDays']
+        or not (v_item ? 'windowStartsOffsetDays' and v_item ? 'windowEndsOffsetDays')
+        or (v_item->>'windowStartsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$' or (v_item->>'windowEndsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
+        or (v_item->>'windowStartsOffsetDays')::numeric not between -2147483648 and 2147483647 or (v_item->>'windowEndsOffsetDays')::numeric not between -2147483648 and 2147483647
+        or (v_item ? 'windowStartsLocalTime' and (jsonb_typeof(v_item->'windowStartsLocalTime') <> 'string' or v_item->>'windowStartsLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+        or (v_item ? 'windowEndsLocalTime' and (jsonb_typeof(v_item->'windowEndsLocalTime') <> 'string' or v_item->>'windowEndsLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
+      then return false; end if;
+      v_starts := (v_item->>'windowStartsOffsetDays')::integer;
+      v_ends := (v_item->>'windowEndsOffsetDays')::integer;
+      if v_starts > v_ends or (v_starts = v_ends and v_item ? 'windowStartsLocalTime' and v_item ? 'windowEndsLocalTime' and (v_item->>'windowStartsLocalTime')::time > (v_item->>'windowEndsLocalTime')::time) then return false; end if;
     end if;
+    if not exists (select 1 from public.litter_care_task_templates template where template.organization_id = p_organization_id and template.id = (v_item->>'organizationTemplateId')::uuid) then return false; end if;
   end loop;
-  return v_count <= 100 and cardinality(v_orders) = cardinality(array(select distinct unnest(v_orders)));
+  return cardinality(v_orders) = cardinality(array(select distinct unnest(v_orders)));
 end; $$;
 
 create or replace function public.mutate_litter_planning_model(
@@ -170,16 +213,23 @@ begin
   select * into v_command from public.litter_planning_model_commands where organization_id=v_org and client_command_id=p_client_command_id;
   if found then
     if v_command.operation <> p_operation or v_command.payload <> v_payload then reason := 'client_command_conflict'; return next; return; end if;
-    outcome := 'success'; model_id := v_command.model_id; revision := v_command.result_revision; is_active := v_command.result_is_active; replayed := true; return next; return;
+    outcome := v_command.outcome; model_id := v_command.model_id; revision := v_command.result_revision; is_active := v_command.result_is_active; reason := v_command.reason; replayed := true; return next; return;
   end if;
-  if p_operation in ('create','replace') and (p_title is null or char_length(btrim(p_title)) not between 1 and 255 or (p_description is not null and char_length(btrim(p_description)) > 5000) or p_species is not null and p_species not in ('dog','cat') or p_breed is not null and char_length(btrim(p_breed)) not between 1 and 255 or not public.assert_litter_planning_model_items(p_items)) then reason := 'invalid_input'; return next; return; end if;
+  if p_operation in ('create','replace') and (p_title is null or char_length(btrim(p_title)) not between 1 and 255 or (p_description is not null and char_length(btrim(p_description)) > 5000) or p_species is not null and p_species not in ('dog','cat') or p_breed is not null and char_length(btrim(p_breed)) not between 1 and 255 or not public.assert_litter_planning_model_items(v_org, p_items)) then reason := 'invalid_input'; return next; return; end if;
   if p_operation = 'create' then
     insert into public.litter_planning_models(organization_id,title,description,species,breed,is_active,revision,created_by,updated_by) values(v_org,btrim(p_title),nullif(btrim(p_description),''),p_species,case when p_breed is null then null else btrim(p_breed) end,coalesce(p_is_active,true),1,v_user_id,v_user_id) returning * into v_model;
   else
     select * into v_model from public.litter_planning_models where organization_id=v_org and id=p_model_id for update;
     if not found then reason := 'model_not_found'; return next; return; end if;
     if p_expected_revision is null or p_expected_revision <= 0 then reason := 'invalid_input'; return next; return; end if;
-    if v_model.revision <> p_expected_revision then reason := 'stale_revision'; return next; return; end if;
+    if v_model.revision <> p_expected_revision then
+      insert into public.litter_planning_model_commands(
+        organization_id,model_id,client_command_id,operation,payload,outcome,reason,result_revision,result_is_active,created_by
+      ) values (
+        v_org,v_model.id,p_client_command_id,p_operation,v_payload,'error','stale_revision',v_model.revision,v_model.is_active,v_user_id
+      );
+      reason := 'stale_revision'; revision := v_model.revision; is_active := v_model.is_active; return next; return;
+    end if;
     if p_operation='replace' then
       update public.litter_planning_models set title=btrim(p_title),description=nullif(btrim(p_description),''),species=p_species,breed=case when p_breed is null then null else btrim(p_breed) end,revision=revision+1,updated_by=v_user_id where id=v_model.id returning * into v_model;
       delete from public.litter_planning_model_items where organization_id=v_org and model_id=v_model.id;
@@ -193,7 +243,7 @@ begin
       values(v_org,v_model.id,(v_item->>'organizationTemplateId')::uuid,v_item->>'itemKind',v_item->>'priority',v_item->>'anchorType',case when v_item ? 'pointOffsetDays' then (v_item->>'pointOffsetDays')::integer end,case when v_item ? 'pointLocalTime' then (v_item->>'pointLocalTime')::time end,case when v_item ? 'windowStartsOffsetDays' then (v_item->>'windowStartsOffsetDays')::integer end,case when v_item ? 'windowStartsLocalTime' then (v_item->>'windowStartsLocalTime')::time end,case when v_item ? 'windowEndsOffsetDays' then (v_item->>'windowEndsOffsetDays')::integer end,case when v_item ? 'windowEndsLocalTime' then (v_item->>'windowEndsLocalTime')::time end,(v_item->>'displayOrder')::integer,(v_item->>'isRequired')::boolean,(v_item->>'isSelectedByDefault')::boolean,v_user_id,v_user_id);
     end loop;
   end if;
-  insert into public.litter_planning_model_commands(organization_id,model_id,client_command_id,operation,payload,result_revision,result_is_active,created_by) values(v_org,v_model.id,p_client_command_id,p_operation,v_payload,v_model.revision,v_model.is_active,v_user_id);
+  insert into public.litter_planning_model_commands(organization_id,model_id,client_command_id,operation,payload,outcome,result_revision,result_is_active,created_by) values(v_org,v_model.id,p_client_command_id,p_operation,v_payload,'success',v_model.revision,v_model.is_active,v_user_id);
   outcome := 'success'; model_id := v_model.id; revision := v_model.revision; is_active := v_model.is_active; return next;
 end; $$;
 
@@ -206,7 +256,7 @@ returns table(outcome text,model_id uuid,revision integer,is_active boolean,repl
 
 revoke all on table public.litter_planning_model_commands from anon, authenticated;
 revoke all on function public.litter_planning_model_commands_immutable() from public;
-revoke all on function public.assert_litter_planning_model_items(jsonb) from public;
+revoke all on function public.assert_litter_planning_model_items(uuid,jsonb) from public;
 revoke all on function public.mutate_litter_planning_model(text,uuid,uuid,uuid,integer,text,text,text,text,boolean,jsonb) from public;
 revoke all on function public.create_litter_planning_model(uuid,uuid,text,text,text,text,boolean,jsonb) from public;
 grant execute on function public.create_litter_planning_model(uuid,uuid,text,text,text,text,boolean,jsonb) to authenticated;
