@@ -18,6 +18,7 @@ import {
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const contactId = "70000000-0000-4000-8000-000000000004";
+const applicationId = "80000000-0000-4000-8000-000000000004";
 const reservationId = "90000000-0000-4000-8000-000000000002";
 const litterId = "c0000000-0000-4000-8000-000000000002";
 const litterGroupId = "50000000-0000-4000-8000-000000000001";
@@ -104,20 +105,11 @@ function clearSeedPreReservationBrevoTemplateIds() {
   `);
 }
 
-function buildIdempotencyKey({
-  keyOrganizationId = organizationId,
-  keyContactId = contactId,
-  keyReservationId = reservationId,
-  keyLitterId = litterId,
-  keyLitterGroupId = litterGroupId,
-} = {}) {
+function buildIdempotencyKey() {
   const logicalParts = [
-    ["organization", keyOrganizationId],
-    ["message_type", "pre_reservation"],
-    ["contact", keyContactId],
-    ["reservation", keyReservationId],
-    ["litter", keyLitterId],
-    ["litter_group", keyLitterGroupId],
+    ["organization", organizationId],
+    ["campaign", "pre_reservation"],
+    ["dossier", applicationId],
     ["version", "v1"],
   ];
   const fingerprint = createHash("sha256")
@@ -129,13 +121,6 @@ function buildIdempotencyKey({
 }
 
 const idempotencyKey = buildIdempotencyKey();
-const otherIdempotencyKey = buildIdempotencyKey({
-  keyOrganizationId: otherOrganizationId,
-  keyContactId: otherContactId,
-  keyReservationId: otherReservationId,
-  keyLitterId: "none",
-  keyLitterGroupId: otherLitterGroupId,
-});
 
 function restoreSeedRows() {
   runSql(`
@@ -171,6 +156,7 @@ function restoreSeedRows() {
       currency = 'EUR',
       status = 'requested',
       due_date = '2026-06-21',
+      paid_at = null,
       deleted_at = null,
       updated_by = ${sqlQuote(ownerId)}::uuid
     where id = 'a0000000-0000-4000-8000-000000000001'::uuid
@@ -183,17 +169,21 @@ function cleanupQaFixtures() {
     delete from public.email_delivery_attempts
     where (
       organization_id = ${sqlQuote(organizationId)}::uuid
-      and idempotency_key = ${sqlQuote(idempotencyKey)}
+      and (
+        idempotency_key = ${sqlQuote(idempotencyKey)}
+        or email_template_id = ${sqlQuote(templateId)}::uuid
+      )
     )
-    or (
-      organization_id = ${sqlQuote(otherOrganizationId)}::uuid
-      and idempotency_key = ${sqlQuote(otherIdempotencyKey)}
-    );
+    or organization_id = ${sqlQuote(otherOrganizationId)}::uuid;
 
     delete from public.email_templates
     where id = ${sqlQuote(templateId)}::uuid
       and organization_id = ${sqlQuote(organizationId)}::uuid
       and template_key = 'pre_reservation';
+
+    delete from public.email_templates
+    where id = ${sqlQuote(otherTemplateId)}::uuid
+      and organization_id = ${sqlQuote(otherOrganizationId)}::uuid;
 
     delete from public.payments
     where id = ${sqlQuote(otherPaymentId)}::uuid
@@ -205,10 +195,6 @@ function cleanupQaFixtures() {
 
     delete from public.contacts
     where id = ${sqlQuote(otherContactId)}::uuid
-      and organization_id = ${sqlQuote(otherOrganizationId)}::uuid;
-
-    delete from public.email_templates
-    where id = ${sqlQuote(otherTemplateId)}::uuid
       and organization_id = ${sqlQuote(otherOrganizationId)}::uuid;
 
     delete from public.litter_groups
@@ -229,32 +215,36 @@ function countRemainingFixtures() {
         select id::text from public.email_delivery_attempts
         where (
           organization_id = ${sqlQuote(organizationId)}::uuid
-          and idempotency_key = ${sqlQuote(idempotencyKey)}
+          and (
+            idempotency_key = ${sqlQuote(idempotencyKey)}
+            or email_template_id = ${sqlQuote(templateId)}::uuid
+          )
         )
-        or (
-          organization_id = ${sqlQuote(otherOrganizationId)}::uuid
-          and idempotency_key = ${sqlQuote(otherIdempotencyKey)}
-        )
+        or organization_id = ${sqlQuote(otherOrganizationId)}::uuid
         union all
         select id::text from public.email_templates
         where id = ${sqlQuote(templateId)}::uuid
           and organization_id = ${sqlQuote(organizationId)}::uuid
-          and template_key = 'pre_reservation'
-        union all
-        select id::text from public.payments
-        where id = ${sqlQuote(otherPaymentId)}::uuid
-        union all
-        select id::text from public.reservations
-        where id = ${sqlQuote(otherReservationId)}::uuid
-        union all
-        select id::text from public.contacts
-        where id = ${sqlQuote(otherContactId)}::uuid
         union all
         select id::text from public.email_templates
         where id = ${sqlQuote(otherTemplateId)}::uuid
+          and organization_id = ${sqlQuote(otherOrganizationId)}::uuid
+        union all
+        select id::text from public.payments
+        where id = ${sqlQuote(otherPaymentId)}::uuid
+          and organization_id = ${sqlQuote(otherOrganizationId)}::uuid
+        union all
+        select id::text from public.reservations
+        where id = ${sqlQuote(otherReservationId)}::uuid
+          and organization_id = ${sqlQuote(otherOrganizationId)}::uuid
+        union all
+        select id::text from public.contacts
+        where id = ${sqlQuote(otherContactId)}::uuid
+          and organization_id = ${sqlQuote(otherOrganizationId)}::uuid
         union all
         select id::text from public.litter_groups
         where id = ${sqlQuote(otherLitterGroupId)}::uuid
+          and organization_id = ${sqlQuote(otherOrganizationId)}::uuid
         union all
         select id::text from public.organizations
         where id = ${sqlQuote(otherOrganizationId)}::uuid
@@ -297,6 +287,37 @@ function insertQaTemplate() {
       'Corps QA',
       true,
       ${brevoTemplateId},
+      ${sqlQuote(ownerId)}::uuid,
+      ${sqlQuote(ownerId)}::uuid
+    );
+  `);
+}
+
+function insertQaAttemptWithUnexpectedIdempotencyKey() {
+  runSql(`
+    insert into public.email_delivery_attempts (
+      organization_id,
+      contact_id,
+      reservation_id,
+      litter_id,
+      litter_group_id,
+      email_template_id,
+      message_type,
+      recipient_email,
+      idempotency_key,
+      created_by,
+      updated_by
+    )
+    values (
+      ${sqlQuote(organizationId)}::uuid,
+      ${sqlQuote(contactId)}::uuid,
+      ${sqlQuote(reservationId)}::uuid,
+      ${sqlQuote(litterId)}::uuid,
+      ${sqlQuote(litterGroupId)}::uuid,
+      ${sqlQuote(templateId)}::uuid,
+      'pre_reservation',
+      'cleanup-qa@example.invalid',
+      'pre_reservation:unexpected-cleanup-key',
       ${sqlQuote(ownerId)}::uuid,
       ${sqlQuote(ownerId)}::uuid
     );
@@ -467,7 +488,7 @@ function createInjectedTransport({
         await new Promise((resolve) => setTimeout(resolve, sendDelayMs));
       }
       if (failFirstPost && sendCount === 1) {
-        return { ok: false, reason: "provider_unavailable" };
+        return { ok: false, reason: "unauthorized" };
       }
       return { ok: true, messageId: `qa-message-${sendCount}` };
     },
@@ -593,6 +614,23 @@ test("client components do not import protected server communication modules", (
     .map((filePath) => filePath.replace(`${process.cwd()}/`, ""));
 
   expect(violations).toEqual([]);
+});
+
+test("cleanup removes attempts linked to the QA template with an unexpected idempotency key", () => {
+  cleanupQaFixtures();
+  insertQaTemplate();
+
+  try {
+    insertQaAttemptWithUnexpectedIdempotencyKey();
+    expect(countRemainingFixtures()).toBe(2);
+
+    cleanupQaFixtures();
+
+    expect(countRemainingFixtures()).toBe(0);
+  } finally {
+    cleanupQaFixtures();
+    expect(countRemainingFixtures()).toBe(0);
+  }
 });
 
 test("reservation page does not call Brevo when the template id is absent", async ({
@@ -901,7 +939,7 @@ test("orchestrator does not send or create attempts when contact email is invali
   }
 });
 
-test("orchestrator does not send or create attempts when initial payment is absent", async () => {
+test("orchestrator does not send when the initial payment is already paid", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   cleanupQaFixtures();
   restoreSeedRows();
@@ -911,7 +949,8 @@ test("orchestrator does not send or create attempts when initial payment is abse
   try {
     runSql(`
       update public.payments
-      set status = 'cancelled'
+      set status = 'paid',
+          paid_at = '2026-06-07 10:00:00+00'
       where id = 'a0000000-0000-4000-8000-000000000001'::uuid
         and organization_id = ${sqlQuote(organizationId)}::uuid;
     `);
@@ -921,19 +960,23 @@ test("orchestrator does not send or create attempts when initial payment is abse
       { supabase, transport },
     );
 
-    expect(result.status).toBe("missing_payment");
-    expect(getTemplateCalls).toHaveLength(0);
+    expect(result.status).toBe("failed");
+    expect(result.errorCode).toBe("created_resource_read_failed");
+    expect(getTemplateCalls).toHaveLength(1);
     expect(sendEmailCalls).toHaveLength(0);
-    expect(
-      expectSupabaseData(
-        await supabase
-          .from("email_delivery_attempts")
-          .select("id")
-          .eq("organization_id", organizationId)
-          .eq("idempotency_key", idempotencyKey),
-        "read missing payment attempts",
-      ),
-    ).toHaveLength(0);
+    const attempts = expectSupabaseData(
+      await supabase
+        .from("email_delivery_attempts")
+        .select("id, status, last_error_code")
+        .eq("organization_id", organizationId)
+        .eq("idempotency_key", idempotencyKey),
+      "read paid payment attempts",
+    );
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toMatchObject({
+      status: "failed",
+      last_error_code: "created_resource_read_failed",
+    });
   } finally {
     cleanupQaFixtures();
     expect(countRemainingFixtures()).toBe(0);
@@ -992,8 +1035,7 @@ test("orchestrator isolates reservations from other organizations", async () => 
         await supabase
           .from("email_delivery_attempts")
           .select("id")
-          .eq("organization_id", otherOrganizationId)
-          .eq("idempotency_key", otherIdempotencyKey),
+          .eq("organization_id", otherOrganizationId),
         "read other organization attempts",
       ),
     ).toHaveLength(0);

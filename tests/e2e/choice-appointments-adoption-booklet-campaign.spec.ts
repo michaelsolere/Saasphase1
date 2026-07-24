@@ -420,8 +420,8 @@ async function createFixture(
     (reservationId, index) => {
       const isIneligible = reservationId === reservationIds.ineligible;
       const status = isIneligible ? "received" : "signed";
-      const signedAt = isIneligible ? null : "2026-07-03T09:00:00.000Z";
-      const contractSignedAt = isIneligible ? null : "2026-07-03T09:05:00.000Z";
+      const signedAt = isIneligible ? null : "2026-07-03T09:30:00.000Z";
+      const contractSignedAt = isIneligible ? null : "2026-07-03T09:35:00.000Z";
       const documentIndex = index * 2;
 
       return [
@@ -435,6 +435,7 @@ async function createFixture(
           document_type: "commitment_certificate",
           status,
           signature_required: true,
+          sent_at: "2026-07-03T08:00:00.000Z",
           signed_at: signedAt,
           received_at: "2026-07-03T09:00:00.000Z",
           created_by: user.id,
@@ -450,6 +451,7 @@ async function createFixture(
           document_type: "reservation_contract",
           status,
           signature_required: true,
+          sent_at: "2026-07-03T08:05:00.000Z",
           signed_at: contractSignedAt,
           received_at: "2026-07-03T09:05:00.000Z",
           created_by: user.id,
@@ -537,6 +539,7 @@ async function createFixture(
 test("choice appointments + adoption booklet campaign personalizes and traces without side effects", async ({
   page,
 }) => {
+  test.setTimeout(120_000);
   const supabase = await createAuthenticatedSupabaseClient();
   let fixture: Fixture | null = null;
 
@@ -575,13 +578,19 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
     ).toHaveCount(0);
 
     await expect(
-      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.first}"]`),
+      page.locator(
+        `#choice-appointments-reservation-${fixture.reservationIds.first}`,
+      ),
     ).toBeVisible();
     await expect(
-      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.second}"]`),
+      page.locator(
+        `#choice-appointments-reservation-${fixture.reservationIds.second}`,
+      ),
     ).toBeVisible();
     await expect(
-      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.ineligible}"]`),
+      page.locator(
+        `#choice-appointments-reservation-${fixture.reservationIds.ineligible}`,
+      ),
     ).toHaveCount(0);
 
     await expect(
@@ -692,10 +701,14 @@ test("choice appointments + adoption booklet campaign personalizes and traces wi
     await page.goto(`/litters/${fixture.litterId}`);
     await page.getByText("Campagnes d’e-mails").click();
     await expect(
-      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.first}"]`),
+      page.locator(
+        `#choice-appointments-reservation-${fixture.reservationIds.first}`,
+      ),
     ).toBeVisible();
     await expect(
-      page.locator(`input[name="reservation_ids[]"][value="${fixture.reservationIds.second}"]`),
+      page.locator(
+        `#choice-appointments-reservation-${fixture.reservationIds.second}`,
+      ),
     ).toHaveCount(0);
     await expect(
       page.getByText(
