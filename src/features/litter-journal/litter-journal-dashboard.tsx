@@ -23,6 +23,7 @@ import type {
 } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { LitterCareTodayPanel } from "./litter-care-today-panel";
+import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type { LitterPlanTimeline } from "./litter-plan-timeline";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
@@ -204,6 +205,7 @@ export function LitterJournalDashboard({
   createLitterCareTaskAction,
   createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
+  litterCareTodayQuickActions,
   litterCareTaskScheduleActions,
   litterCareTasksLoadError,
   litterCareTodayDate,
@@ -270,6 +272,7 @@ export function LitterJournalDashboard({
   ) => Promise<LitterCareTaskActionState>) | null;
   createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
+  litterCareTodayQuickActions: LitterCareTodayQuickActions[];
   litterCareTaskScheduleActions: LitterCareTaskScheduleActions[];
   litterCareTasksLoadError: boolean;
   litterCareTodayDate: string;
@@ -401,6 +404,7 @@ export function LitterJournalDashboard({
 
       <LitterCareTodayPanel
         tasks={litterCareTasks}
+        quickActions={litterCareTodayQuickActions}
         todayDate={litterCareTodayDate}
         todayLocalTime={litterCareTodayLocalTime}
         unavailable={litterCareTasksLoadError}
