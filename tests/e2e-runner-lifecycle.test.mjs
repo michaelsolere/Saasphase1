@@ -42,6 +42,48 @@ test("returns the child's failing exit code unchanged", async () => {
   assert.equal(outcome.signal, null);
 });
 
+test("inherits the parent environment and lets explicit process options override it", async () => {
+  const inheritedName = "E2E_RUNNER_PARENT_ONLY";
+  const overriddenName = "E2E_RUNNER_OVERRIDDEN";
+  const previousInherited = process.env[inheritedName];
+  const previousOverridden = process.env[overriddenName];
+  process.env[inheritedName] = "visible-from-parent";
+  process.env[overriddenName] = "parent-value";
+
+  try {
+    const managed = startManagedProcess(
+      process.execPath,
+      [
+        "-e",
+        `process.stdout.write(JSON.stringify({ inherited: process.env.${inheritedName}, supplied: process.env.E2E_RUNNER_SUPPLIED, overridden: process.env.${overriddenName} }))`,
+      ],
+      {
+        env: {
+          E2E_RUNNER_SUPPLIED: "visible-from-options",
+          [overriddenName]: "options-value",
+        },
+        stdio: "pipe",
+      },
+    );
+    let stdout = "";
+    managed.child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    const outcome = await managed.completed;
+    assert.equal(outcome.code, 0);
+    assert.deepEqual(JSON.parse(stdout), {
+      inherited: "visible-from-parent",
+      supplied: "visible-from-options",
+      overridden: "options-value",
+    });
+  } finally {
+    if (previousInherited === undefined) delete process.env[inheritedName];
+    else process.env[inheritedName] = previousInherited;
+    if (previousOverridden === undefined) delete process.env[overriddenName];
+    else process.env[overriddenName] = previousOverridden;
+  }
+});
+
 test("forwards an interruption and waits for the child process group", async () => {
   const managed = fakeChild("process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)");
   await managed.started;
