@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 import {
+  E2E_OWNER_EMAIL,
+  E2E_OWNER_PASSWORD,
   runE2eSql,
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
@@ -346,10 +348,32 @@ commit;
 
 async function loginOwner(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
+
+  const emailInput = page.getByLabel("Email");
+  await Promise.race([
+    page.waitForURL(/\/candidatures/),
+    emailInput.waitFor({ state: "visible" }),
+  ]);
+
+  if (/\/candidatures/.test(page.url())) {
+    return;
+  }
+
+  await emailInput.fill(E2E_OWNER_EMAIL);
+  await page.getByLabel("Mot de passe").fill(E2E_OWNER_PASSWORD);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/\/candidatures/);
+
+  const alert = page.locator("form").getByRole("alert");
+  const outcome = await Promise.race([
+    page.waitForURL(/\/candidatures/).then(() => "authenticated" as const),
+    alert.waitFor({ state: "visible" }).then(() => "error" as const),
+  ]);
+
+  if (outcome === "error") {
+    throw new Error(
+      `Owner E2E login failed: ${(await alert.textContent())?.trim() || "unknown login alert"}`,
+    );
+  }
 }
 
 test("keeps reservation and animal statuses coherent when assigning and unassigning", async ({
@@ -427,11 +451,7 @@ test("keeps reservation and animal statuses coherent when assigning and unassign
 
     expect(animalInsertError).toBeNull();
 
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await expect(page).toHaveURL(/\/candidatures/);
+    await loginOwner(page);
 
     await page.goto(`/reservations/${reservationId}`);
     await page.getByLabel("Attribuer un animal").selectOption(animalId);
@@ -813,11 +833,7 @@ test("requires produced offspring to be available before attribution", async ({
 
     expect(reservationError).toBeNull();
 
-    await page.goto("/login");
-    await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
-    await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await expect(page).toHaveURL(/\/candidatures/);
+    await loginOwner(page);
 
     await page.goto(`/litters/${litterId}`);
     await expect(page.locator("#animaux-lies")).toContainText(`QA Ne ${suffix}`);
