@@ -2,7 +2,16 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { resolve } from "node:path";
 
 import {
+  acquireRunnerLock,
+  resolveTerminalResult,
+  restoreFile,
+  startManagedProcess,
+  stopManagedProcess,
+} from "./runner-lifecycle.mjs";
+
+import {
   apiPort,
+  appPort,
   assertContainers,
   assertNoActiveDemoManifests,
   assertPortFree,
@@ -26,6 +35,7 @@ import {
 
 const tsconfigPath = resolve(repoRoot, "tsconfig.json");
 const originalTsconfig = readFileSync(tsconfigPath, "utf8");
+const runnerLockPath = resolve(repoRoot, ".e2e-runner.lock");
 const runnerFlags = new Set(["--reuse", "--stop"]);
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
@@ -39,9 +49,7 @@ async function assertE2ePortsFree() {
 }
 
 function restoreTsconfig() {
-  if (readFileSync(tsconfigPath, "utf8") !== originalTsconfig) {
-    writeFileSync(tsconfigPath, originalTsconfig);
-  }
+  restoreFile(tsconfigPath, originalTsconfig);
 }
 
 function clearSessionMarker() {
@@ -83,10 +91,25 @@ function removeWorkdir() {
   rmSync(workdir, { recursive: true, force: true });
 }
 
-function runPlaywright(supabaseEnv) {
-  run("node_modules/.bin/playwright", ["test", ...playwrightArgs], {
+async function runPlaywright(supabaseEnv) {
+  const managedProcess = startManagedProcess("node_modules/.bin/playwright", ["test", ...playwrightArgs], {
+    cwd: repoRoot,
     env: { ...e2eEnv, ...supabaseEnv },
   });
+  activePlaywright = managedProcess;
+  try {
+    const outcome = await managedProcess.completed;
+    const deadline = Date.now() + 10_000;
+    while (await isPortOpen(appPort)) {
+      if (Date.now() >= deadline) {
+        throw new Error(`Playwright left its Next server listening on E2E port ${appPort}`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return outcome;
+  } finally {
+    activePlaywright = undefined;
+  }
 }
 
 async function startFreshStack({ resetDatabase }) {
@@ -133,11 +156,12 @@ async function runEphemeral() {
     assertContainers();
     run("supabase", ["db", "reset", "--workdir", workdir]);
     const supabaseEnv = readStatusEnv();
-    runPlaywright(supabaseEnv);
+    return await runPlaywright(supabaseEnv);
   } finally {
     stopE2eStack();
     removeE2eVolumes();
     clearSessionMarker();
+    removeWorkdir();
     restoreTsconfig();
   }
 }
@@ -146,7 +170,7 @@ async function runReuse() {
   try {
     await ensureReusableStack();
     const supabaseEnv = readStatusEnv();
-    runPlaywright(supabaseEnv);
+    return await runPlaywright(supabaseEnv);
   } finally {
     restoreTsconfig();
   }
@@ -162,13 +186,59 @@ function runStop() {
   console.log("E2E stop: done.");
 }
 
-assertSafeE2eConfig();
-assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
+let activePlaywright;
+let interruptedSignal;
+let releaseRunnerLock;
 
-if (mode === "stop") {
-  runStop();
-} else if (mode === "reuse") {
-  await runReuse();
-} else {
-  await runEphemeral();
+async function handleSignal(signal) {
+  if (interruptedSignal) {
+    return;
+  }
+  interruptedSignal = signal;
+  if (activePlaywright) {
+    try {
+      await stopManagedProcess(activePlaywright, signal);
+    } catch (error) {
+      console.error(`Unable to stop Playwright after ${signal}: ${error.message}`);
+    }
+  }
 }
+
+process.on("SIGINT", () => void handleSignal("SIGINT"));
+process.on("SIGTERM", () => void handleSignal("SIGTERM"));
+
+function reportTerminalResult(outcome) {
+  const result = resolveTerminalResult(outcome, interruptedSignal);
+  console.log(result.line);
+  process.exitCode = result.exitCode;
+}
+
+async function main() {
+  assertSafeE2eConfig();
+  assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
+  releaseRunnerLock = acquireRunnerLock(runnerLockPath);
+
+  try {
+    let outcome;
+    if (mode === "stop") {
+      runStop();
+      outcome = { code: 0 };
+    } else if (mode === "reuse") {
+      outcome = await runReuse();
+    } else {
+      outcome = await runEphemeral();
+    }
+
+    reportTerminalResult(outcome);
+  } catch (error) {
+    if (!interruptedSignal) {
+      console.error(error.stack ?? error.message);
+    }
+    reportTerminalResult();
+  } finally {
+    restoreTsconfig();
+    releaseRunnerLock?.();
+  }
+}
+
+await main();
