@@ -146,7 +146,7 @@ returns boolean language plpgsql security definer set search_path = '' set row_s
 declare
   v_item jsonb;
   v_count integer := 0;
-  v_orders integer[] := '{}';
+  v_orders integer[] := '{}'::integer[];
   v_keys text[];
   v_kind text;
   v_display_order integer;
@@ -421,10 +421,12 @@ begin
       reason := 'stale_revision'; revision := v_model.revision; is_active := v_model.is_active; return next; return;
     end if;
     if p_operation='replace' then
-      update public.litter_planning_models set title=btrim(p_title),description=nullif(btrim(p_description),''),species=p_species,breed=case when p_breed is null then null else btrim(p_breed) end,revision=revision+1,updated_by=v_user_id where id=v_model.id returning * into v_model;
-      delete from public.litter_planning_model_items where organization_id=v_org and model_id=v_model.id;
+      update public.litter_planning_models as planning_model set title=btrim(p_title),description=nullif(btrim(p_description),''),species=p_species,breed=case when p_breed is null then null else btrim(p_breed) end,revision=planning_model.revision+1,updated_by=v_user_id where planning_model.id=v_model.id returning planning_model.* into v_model;
+      delete from public.litter_planning_model_items as planning_item
+      where planning_item.organization_id=v_org
+        and planning_item.model_id=v_model.id;
     elsif v_model.is_active is distinct from p_is_active then
-      update public.litter_planning_models set is_active=p_is_active,revision=revision+1,updated_by=v_user_id where id=v_model.id returning * into v_model;
+      update public.litter_planning_models as planning_model set is_active=p_is_active,revision=planning_model.revision+1,updated_by=v_user_id where planning_model.id=v_model.id returning planning_model.* into v_model;
     end if;
   end if;
   if p_operation in ('create','replace') then
@@ -445,6 +447,8 @@ create or replace function public.set_litter_planning_model_active(p_model_id uu
 returns table(outcome text,model_id uuid,revision integer,is_active boolean,replayed boolean,reason text) language sql security definer set search_path = '' as $$ select * from public.mutate_litter_planning_model('set_active',p_model_id,null,p_client_command_id,p_expected_revision,null,null,null,null,p_is_active,null); $$;
 
 revoke all on table public.litter_planning_model_commands from anon, authenticated;
+grant select on table public.litter_planning_models to authenticated;
+grant select on table public.litter_planning_model_items to authenticated;
 revoke all on function public.litter_planning_model_commands_immutable() from public;
 revoke all on function public.assert_litter_planning_model_items(uuid,text,text,jsonb) from public;
 revoke all on function public.mutate_litter_planning_model(text,uuid,uuid,uuid,integer,text,text,text,text,boolean,jsonb) from public;

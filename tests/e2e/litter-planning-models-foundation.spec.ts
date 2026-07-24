@@ -110,6 +110,7 @@ function cleanup() {
     delete from public.litter_care_task_templates
     where id = any(${uuidArray(templateIds)});
 
+    alter table public.memberships disable trigger memberships_protect_owner;
     delete from public.memberships
     where id in (
       ${q(ids.adminMembership)}::uuid,
@@ -118,6 +119,7 @@ function cleanup() {
       ${q(ids.inactiveMembership)}::uuid,
       ${q(ids.foreignMembership)}::uuid
     );
+    alter table public.memberships enable trigger memberships_protect_owner;
     delete from auth.identities
     where id in (
       ${q(ids.adminIdentity)}::uuid,
