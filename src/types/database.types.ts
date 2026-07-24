@@ -2423,6 +2423,24 @@ export type Database = {
         Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; model_id?: string; operation?: string; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
         Relationships: []
       }
+      litter_plan_application_commands: {
+        Row: { client_command_id: string; created_at: string; created_by: string; id: string; litter_id: string; litter_plan_id: string | null; materialized_count: number; organization_id: string; outcome: string; payload: Json; pending_anchor_count: number; planning_model_id: string; reason: string | null; result: Json; result_plan_revision: number | null; snapshot_count: number }
+        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; litter_id: string; litter_plan_id?: string | null; materialized_count?: number; organization_id: string; outcome: string; payload: Json; pending_anchor_count?: number; planning_model_id: string; reason?: string | null; result: Json; result_plan_revision?: number | null; snapshot_count?: number }
+        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; litter_id?: string; litter_plan_id?: string | null; materialized_count?: number; organization_id?: string; outcome?: string; payload?: Json; pending_anchor_count?: number; planning_model_id?: string; reason?: string | null; result?: Json; result_plan_revision?: number | null; snapshot_count?: number }
+        Relationships: []
+      }
+      litter_plan_items: {
+        Row: { anchor_adjustment_days: number | null; anchor_date_snapshot: string | null; anchor_resolution_source: string | null; anchor_source_date_snapshot: string | null; anchor_type: string; category: string; created_at: string; created_by: string; description: string | null; display_order: number; id: string; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at: string | null; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; revision_no: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
+        Insert: { anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type: string; category: string; created_at?: string; created_by: string; description?: string | null; display_order: number; id?: string; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at?: string | null; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority: string; revision_no?: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Update: { anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type?: string; category?: string; created_at?: string; created_by?: string; description?: string | null; display_order?: number; id?: string; is_required_snapshot?: boolean; is_selected_by_default_snapshot?: boolean; item_kind?: string; litter_id?: string; litter_plan_id?: string; materialization_state?: string; materialized_at?: string | null; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; revision_no?: number; source_model_display_order?: number; source_model_item_id?: string; source_planning_model_id?: string; source_planning_model_revision?: number; target_scope?: string; title?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Relationships: []
+      }
+      litter_plans: {
+        Row: { created_at: string; created_by: string; id: string; litter_id: string; organization_id: string; revision: number; status: string; timezone_name: string; title: string; updated_at: string; updated_by: string }
+        Insert: { created_at?: string; created_by: string; id?: string; litter_id: string; organization_id: string; revision?: number; status?: string; timezone_name: string; title: string; updated_at?: string; updated_by: string }
+        Update: { created_at?: string; created_by?: string; id?: string; litter_id?: string; organization_id?: string; revision?: number; status?: string; timezone_name?: string; title?: string; updated_at?: string; updated_by?: string }
+        Relationships: []
+      }
       litter_planning_model_items: {
         Row: { anchor_type: string; created_at: string; created_by: string; display_order: number; id: string; is_required: boolean; is_selected_by_default: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
         Insert: { anchor_type: string; created_at?: string; created_by: string; display_order: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
@@ -2447,6 +2465,7 @@ export type Database = {
           id: string
           is_schedule_locked: boolean
           item_kind: string
+          litter_plan_item_id: string | null
           litter_id: string
           occurrence_no: number
           offset_days: number | null
@@ -2494,6 +2513,7 @@ export type Database = {
           id?: string
           is_schedule_locked?: boolean
           item_kind?: string
+          litter_plan_item_id?: string | null
           litter_id: string
           occurrence_no?: number
           offset_days?: number | null
@@ -2541,6 +2561,7 @@ export type Database = {
           id?: string
           is_schedule_locked?: boolean
           item_kind?: string
+          litter_plan_item_id?: string | null
           litter_id?: string
           occurrence_no?: number
           offset_days?: number | null
@@ -6021,6 +6042,10 @@ export type Database = {
       create_litter_planning_model: {
         Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_is_active: boolean; p_items: Json; p_organization_id: string; p_species: string | null; p_title: string }
         Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
+      }
+      apply_litter_planning_model: {
+        Args: { p_client_command_id: string; p_expected_model_revision: number; p_expected_plan_revision: number | null; p_litter_id: string; p_planning_model_id: string; p_selected_model_item_ids: string[] | null; p_timezone_name: string }
+        Returns: { litter_plan_id: string | null; outcome: string; reason: string | null; replayed: boolean; result: Json; revision: number | null }[]
       }
       create_organization_with_owner: {
         Args: { p_name: string; p_slug: string }
