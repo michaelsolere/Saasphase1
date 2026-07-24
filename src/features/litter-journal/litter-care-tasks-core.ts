@@ -162,6 +162,7 @@ export type LitterCareTaskSummary = {
   id: string;
   litterId: string;
   source: "manual" | "system_template" | "organization_template";
+  litterPlanItemId: string | null;
   organizationTemplateId: string | null;
   systemTemplateCode: string | null;
   occurrenceNo: number;
@@ -1041,6 +1042,7 @@ function mapTask(
     id: row.id,
     litterId: row.litter_id,
     source: row.source as LitterCareTaskSummary["source"],
+    litterPlanItemId: row.litter_plan_item_id,
     organizationTemplateId: row.organization_template_id,
     systemTemplateCode: row.system_template_code,
     occurrenceNo: row.occurrence_no,
