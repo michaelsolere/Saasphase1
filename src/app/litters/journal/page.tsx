@@ -210,6 +210,21 @@ export default async function LitterJournalPage({
           };
         })
     : [];
+  const todayQuickActions = litterCareTaskCanWrite
+    ? (litterCareTasksLoaded?.tasks ?? [])
+        .filter((task) => task.status === "planned")
+        .map((task) => ({
+          taskId: task.id,
+          doneAction: resolveLitterCareTaskAction.bind(null, {
+            taskId: task.id,
+            clientCommandId: crypto.randomUUID(),
+          }),
+          notApplicableAction: resolveLitterCareTaskAction.bind(null, {
+            taskId: task.id,
+            clientCommandId: crypto.randomUUID(),
+          }),
+        }))
+    : [];
   const scheduleActions = litterCareTaskCanWrite
     ? (litterCareTasksLoaded?.tasks ?? [])
         .filter((task) => task.status === "planned")
@@ -354,6 +369,7 @@ export default async function LitterJournalPage({
             createLitterCareTaskAction={createTaskAction}
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
+            litterCareTodayQuickActions={todayQuickActions}
             litterCareTaskScheduleActions={scheduleActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
             litterCareTodayDate={litterJournalTodayDate}
