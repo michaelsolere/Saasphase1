@@ -15,8 +15,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  ScheduleTaskDialog,
+  type LitterCareTaskScheduleActions,
+} from "./litter-care-task-schedule-dialog";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
+import type { LitterCareTaskSummary } from "./litter-care-tasks";
 
 const initialState: LitterCareTaskActionState = { status: "idle" };
 
@@ -63,14 +68,17 @@ function ActionMessage({ state }: { state: LitterCareTaskActionState }) {
 }
 
 export function LitterCareTodayQuickActions({
-  taskTitle,
+  task,
   actions,
+  scheduleActions,
 }: {
-  taskTitle: string;
+  task: LitterCareTaskSummary;
   actions: LitterCareTodayQuickActions;
+  scheduleActions: LitterCareTaskScheduleActions | null;
 }) {
   const router = useRouter();
   const [notApplicableOpen, setNotApplicableOpen] = useState(false);
+  const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
   const doneResolvedAtRef = useRef<HTMLInputElement>(null);
   const doneTimezoneNameRef = useRef<HTMLInputElement>(null);
   const notApplicableResolvedAtRef = useRef<HTMLInputElement>(null);
@@ -111,7 +119,7 @@ export function LitterCareTodayQuickActions({
           <AlertDialogHeader>
             <AlertDialogTitle>Déclarer cet élément non applicable ?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="block font-medium text-foreground">{taskTitle}</span>
+              <span className="block font-medium text-foreground">{task.title}</span>
               Cet élément quittera les actions en attente.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -131,7 +139,17 @@ export function LitterCareTodayQuickActions({
           </form>
         </AlertDialogContent>
       </AlertDialog>
+      {scheduleActions ? (
+        <ScheduleTaskDialog
+          key={`today-${task.id}-${task.revisionNo}`}
+          task={task}
+          actions={scheduleActions}
+          onSuccess={setScheduleMessage}
+          triggerLabel="Reporter"
+        />
+      ) : null}
       <ActionMessage state={doneState} />
+      {scheduleMessage ? <p role="status" className="text-sm text-foreground">{scheduleMessage}</p> : null}
     </div>
   );
 }
