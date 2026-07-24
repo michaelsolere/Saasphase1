@@ -5,6 +5,9 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   createAuthenticatedSupabaseClient,
   expectSupabaseData,
+  runE2eSql,
+  E2E_OWNER_EMAIL,
+  E2E_OWNER_PASSWORD,
   type SupabaseTestClient,
 } from "./helpers/supabase";
 
@@ -24,88 +27,209 @@ type Fixture = {
     draft: string;
     groupDue: string;
   };
+  paymentIds: string[];
 };
 
 async function login(page: Page) {
   await page.goto("/login");
-  await page.getByLabel("Email").fill("e2e-owner@saasphase1.invalid");
-  await page.getByLabel("Mot de passe").fill("LocalE2EOwner-2026!");
+
+  const email = page.getByLabel("Email");
+  const loginAlert = page.locator("form").getByRole("alert");
+  const outcome = await Promise.race([
+    page.waitForURL(/\/candidatures(?:\?|$)/).then(() => "authenticated" as const),
+    email.waitFor({ state: "visible" }).then(() => "form" as const),
+  ]);
+
+  if (outcome === "authenticated") {
+    return;
+  }
+
+  await email.fill(E2E_OWNER_EMAIL);
+  await page.getByLabel("Mot de passe").fill(E2E_OWNER_PASSWORD);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).toHaveURL(/connexion=success/);
+
+  const result = await Promise.race([
+    page.waitForURL(/\/candidatures(?:\?|$)/).then(() => "authenticated" as const),
+    loginAlert.waitFor({ state: "visible" }).then(() => "error" as const),
+  ]);
+
+  if (result === "error") {
+    const message = (await loginAlert.textContent())?.trim() || "alerte inconnue";
+    throw new Error(`Owner E2E login failed: ${message}`);
+  }
 }
 
 async function confirmDepartureBalanceCampaign(page: Page) {
-  const button = page.getByRole("button", { name: "Campagne solde envoyée" });
+  const button = page.getByRole("button", {
+    name: "Campagne solde envoyée",
+    exact: true,
+  });
 
   if (!(await button.isVisible({ timeout: 1_000 }).catch(() => false))) {
-    await page.getByText("Campagnes d’e-mails").click();
+    await page.getByText("Campagnes d’e-mails", { exact: true }).click();
   }
 
-  await button.click({ force: true, timeout: 5_000 });
+  await expect(button).toBeVisible();
+  await expect(button).toBeEnabled();
+  await Promise.all([
+    page.waitForURL(/departure_balance_campaign_status=/),
+    button.click(),
+  ]);
 }
 
-async function cleanupFixture(
-  supabase: SupabaseTestClient,
-  fixture: Fixture | null,
-) {
+async function cleanupFixture(fixture: Fixture | null) {
   if (!fixture) {
     return;
   }
 
   const reservationIds = Object.values(fixture.reservationIds);
-  const now = new Date().toISOString();
+  const reservationUuidArray = sqlUuidArray(reservationIds);
+  const contactUuidArray = sqlUuidArray(fixture.contactIds);
+  const litterUuidArray = sqlUuidArray([fixture.litterId, fixture.groupOnlyLitterId]);
+  const paymentUuidArray = sqlUuidArray(fixture.paymentIds);
+  const groupId = sqlUuid(fixture.groupId);
+  const organization = sqlUuid(organizationId);
 
-  const { error: paymentsError } = await supabase
-    .from("payments")
-    .update({ deleted_at: now })
-    .in("reservation_id", reservationIds)
-    .is("deleted_at", null);
-  if (paymentsError) {
-    throw new Error(`cleanup departure balance payments: ${paymentsError.message}`);
-  }
+  const cleanupSql = `
+begin;
+create temporary table fixture_reservations (id uuid primary key) on commit drop;
+insert into fixture_reservations select unnest(${reservationUuidArray});
+create temporary table fixture_payments (id uuid primary key) on commit drop;
+insert into fixture_payments
+select id from public.payments
+where organization_id = ${organization}
+  and (reservation_id in (select id from fixture_reservations) or id = any(${paymentUuidArray}));
+create temporary table fixture_documents (id uuid primary key) on commit drop;
+insert into fixture_documents
+select id from public.documents
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or reservation_id in (select id from fixture_reservations)
+    or litter_id = any(${litterUuidArray})
+    or payment_id in (select id from fixture_payments));
 
-  const { error: reservationsError } = await supabase
-    .from("reservations")
-    .update({ deleted_at: now })
-    .in("id", reservationIds)
-    .is("deleted_at", null);
-  if (reservationsError) {
-    throw new Error(
-      `cleanup departure balance reservations: ${reservationsError.message}`,
-    );
-  }
+delete from public.events
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or reservation_id in (select id from fixture_reservations)
+    or litter_id = any(${litterUuidArray})
+    or payment_id in (select id from fixture_payments)
+    or document_id in (select id from fixture_documents));
+delete from public.notes
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or reservation_id in (select id from fixture_reservations)
+    or litter_id = any(${litterUuidArray})
+    or payment_id in (select id from fixture_payments)
+    or document_id in (select id from fixture_documents));
+delete from public.email_delivery_attempts
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or reservation_id in (select id from fixture_reservations)
+    or litter_id = any(${litterUuidArray})
+    or litter_group_id = ${groupId});
+delete from public.media
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or reservation_id in (select id from fixture_reservations)
+    or litter_id = any(${litterUuidArray}));
+delete from public.credit_usages
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or target_reservation_id in (select id from fixture_reservations)
+    or target_payment_id in (select id from fixture_payments));
+delete from public.credits
+where organization_id = ${organization}
+  and (contact_id = any(${contactUuidArray})
+    or origin_reservation_id in (select id from fixture_reservations)
+    or origin_payment_id in (select id from fixture_payments));
+update public.payments set document_id = null
+where organization_id = ${organization} and id in (select id from fixture_payments);
+delete from public.documents
+where organization_id = ${organization} and id in (select id from fixture_documents);
+delete from public.payments
+where organization_id = ${organization} and id in (select id from fixture_payments);
+delete from public.contact_roles
+where organization_id = ${organization} and contact_id = any(${contactUuidArray});
+delete from public.applications
+where organization_id = ${organization} and contact_id = any(${contactUuidArray});
+delete from public.reservations
+where organization_id = ${organization} and id in (select id from fixture_reservations);
+delete from public.contacts
+where organization_id = ${organization} and id = any(${contactUuidArray});
+delete from public.litters
+where organization_id = ${organization} and id = any(${litterUuidArray});
+delete from public.litter_groups
+where organization_id = ${organization} and id = ${groupId};
+commit;
+`;
 
-  const { error: contactsError } = await supabase
-    .from("contacts")
-    .update({ deleted_at: now })
-    .in("id", fixture.contactIds)
-    .is("deleted_at", null);
-  if (contactsError) {
-    throw new Error(`cleanup departure balance contacts: ${contactsError.message}`);
-  }
+  await runE2eSql(cleanupSql);
 
-  const { error: littersError } = await supabase
-    .from("litters")
-    .update({ deleted_at: now })
-    .in("id", [fixture.litterId, fixture.groupOnlyLitterId])
-    .is("deleted_at", null);
-  if (littersError) {
-    throw new Error(`cleanup departure balance litters: ${littersError.message}`);
-  }
+  const remaining = JSON.parse(
+    (await runE2eSql(`
+select json_build_object(
+  'payments', (select count(*) from public.payments where organization_id = ${organization} and (reservation_id = any(${reservationUuidArray}) or id = any(${paymentUuidArray}))),
+  'reservations', (select count(*) from public.reservations where organization_id = ${organization} and id = any(${reservationUuidArray})),
+  'contacts', (select count(*) from public.contacts where organization_id = ${organization} and id = any(${contactUuidArray})),
+  'litters', (select count(*) from public.litters where organization_id = ${organization} and id = any(${litterUuidArray})),
+  'group', (select count(*) from public.litter_groups where organization_id = ${organization} and id = ${groupId}),
+  'traces', (select count(*) from public.notes where organization_id = ${organization} and (contact_id = any(${contactUuidArray}) or reservation_id = any(${reservationUuidArray}) or litter_id = any(${litterUuidArray}) or payment_id = any(${paymentUuidArray}))
+              ) + (select count(*) from public.events where organization_id = ${organization} and (contact_id = any(${contactUuidArray}) or reservation_id = any(${reservationUuidArray}) or litter_id = any(${litterUuidArray}) or payment_id = any(${paymentUuidArray}))),
+  'prefixes', (select count(*) from public.contacts where organization_id = ${organization} and display_name like 'E2E %solde%')
+    + (select count(*) from public.litters where organization_id = ${organization} and name like 'E2E portée%solde%')
+    + (select count(*) from public.litter_groups where organization_id = ${organization} and name like 'E2E solde départ%')
+    + (select count(*) from public.payments where organization_id = ${organization} and notes like 'Demande de solde avant départ%')
+)::text;
+`)).trim(),
+  ) as Record<string, number>;
 
-  const { error: groupError } = await supabase
-    .from("litter_groups")
-    .update({ deleted_at: now })
-    .eq("id", fixture.groupId)
-    .is("deleted_at", null);
-  if (groupError) {
-    throw new Error(`cleanup departure balance group: ${groupError.message}`);
+  for (const [name, count] of Object.entries(remaining)) {
+    expect(count, `${name} departure-balance fixtures must be hard-deleted`).toBe(0);
   }
+}
+
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function sqlUuid(value: string) {
+  if (!uuidPattern.test(value)) {
+    throw new Error(`Invalid fixture UUID: ${value}`);
+  }
+  return `'${value}'::uuid`;
+}
+
+function sqlUuidArray(values: string[]) {
+  return values.length === 0
+    ? "array[]::uuid[]"
+    : `array[${values.map(sqlUuid).join(", ")}]`;
+}
+
+function allocateFixture(): Fixture {
+  const groupId = randomUUID();
+
+  return {
+    suffix: groupId.slice(0, 8),
+    groupId,
+    litterId: randomUUID(),
+    groupOnlyLitterId: randomUUID(),
+    contactIds: Array.from({ length: 6 }, () => randomUUID()),
+    reservationIds: {
+      due: randomUUID(),
+      sold: randomUUID(),
+      activeRequest: randomUUID(),
+      missingPrice: randomUUID(),
+      draft: randomUUID(),
+      groupDue: randomUUID(),
+    },
+    paymentIds: [],
+  };
 }
 
 async function createFixture(
   supabase: SupabaseTestClient,
-): Promise<Fixture> {
+  fixture: Fixture,
+): Promise<void> {
   const {
     data: { user },
     error: userError,
@@ -115,19 +239,14 @@ async function createFixture(
     throw new Error("Unable to read authenticated test user");
   }
 
-  const groupId = randomUUID();
-  const litterId = randomUUID();
-  const groupOnlyLitterId = randomUUID();
-  const suffix = groupId.slice(0, 8);
-  const contactIds = Array.from({ length: 6 }, () => randomUUID());
-  const reservationIds = {
-    due: randomUUID(),
-    sold: randomUUID(),
-    activeRequest: randomUUID(),
-    missingPrice: randomUUID(),
-    draft: randomUUID(),
-    groupDue: randomUUID(),
-  };
+  const {
+    groupId,
+    litterId,
+    groupOnlyLitterId,
+    suffix,
+    contactIds,
+    reservationIds,
+  } = fixture;
 
   const { error: groupError } = await supabase.from("litter_groups").insert({
     id: groupId,
@@ -375,14 +494,25 @@ async function createFixture(
     throw new Error(`create payments: ${paymentsError.message}`);
   }
 
-  return {
-    suffix,
-    groupId,
-    litterId,
-    groupOnlyLitterId,
-    contactIds,
-    reservationIds,
-  };
+}
+
+async function rememberPaymentIds(
+  supabase: SupabaseTestClient,
+  fixture: Fixture,
+) {
+  const { data, error } = await supabase
+    .from("payments")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .in("reservation_id", Object.values(fixture.reservationIds));
+
+  if (error) {
+    throw new Error(`read departure balance payment ids: ${error.message}`);
+  }
+
+  fixture.paymentIds = [
+    ...new Set([...fixture.paymentIds, ...(data ?? []).map(({ id }) => id)]),
+  ];
 }
 
 async function readBalanceRequests(
@@ -408,10 +538,10 @@ test("departure balance campaigns create only missing balance requests", async (
   test.setTimeout(90_000);
 
   const supabase = await createAuthenticatedSupabaseClient();
-  let fixture: Fixture | null = null;
+  const fixture = allocateFixture();
 
   try {
-    fixture = await createFixture(supabase);
+    await createFixture(supabase, fixture);
     await login(page);
 
     await page.goto(`/litters/${fixture.litterId}`);
@@ -437,6 +567,7 @@ test("departure balance campaigns create only missing balance requests", async (
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.due),
     ).toMatchObject([{ amount_cents: 80000, status: "requested" }]);
+    await rememberPaymentIds(supabase, fixture);
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.sold),
     ).toHaveLength(0);
@@ -460,26 +591,31 @@ test("departure balance campaigns create only missing balance requests", async (
 
     await page.goto(`/litter-groups/${fixture.groupId}`);
     await confirmDepartureBalanceCampaign(page);
-    await expect(page.getByRole("alert")).toContainText(
-      "Une erreur est survenue lors du lancement de la campagne.",
+    await expect(page).toHaveURL(
+      /departure_balance_campaign_status=success&departure_balance_campaign_count=6&departure_balance_campaign_payment_count=1/,
     );
+    await expect(page.getByRole("status")).toContainText(
+      "Campagne confirmée — 6 dossier(s), 1 demande(s) de solde créée(s).",
+    );
+    await rememberPaymentIds(supabase, fixture);
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.groupDue),
-    ).toHaveLength(0);
+    ).toMatchObject([{ amount_cents: 90000, status: "requested" }]);
 
     await confirmDepartureBalanceCampaign(page);
-    await expect(page.getByRole("alert")).toContainText(
-      "Une erreur est survenue lors du lancement de la campagne.",
+    await expect(page).toHaveURL(
+      /departure_balance_campaign_status=success&departure_balance_campaign_count=6&departure_balance_campaign_payment_count=0/,
     );
+    await rememberPaymentIds(supabase, fixture);
     expect(
       await readBalanceRequests(supabase, fixture.reservationIds.groupDue),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
 
     await page.goto("/payments?filter=expected");
     await expect(
       page.getByRole("link", { name: `E2E solde restant ${fixture.suffix}` }),
     ).toBeVisible();
   } finally {
-    await cleanupFixture(supabase, fixture);
+    await cleanupFixture(fixture);
   }
 });
