@@ -602,7 +602,9 @@ test("fonde les modèles et tâches de suivi de portée", async () => {
     expect(list).toMatchObject({ outcome: "success", role: "owner" });
     if (list.outcome === "success") {
       expect(list.tasks.slice(0, 2).every((task) => task.status === "planned")).toBe(true);
-      expect(list.tasks[0].plannedFor <= list.tasks[1].plannedFor).toBe(true);
+      expect(list.tasks[0].plannedFor).not.toBeNull();
+      expect(list.tasks[1].plannedFor).not.toBeNull();
+      expect(list.tasks[0].plannedFor! <= list.tasks[1].plannedFor!).toBe(true);
     }
 
     const done = await createLitterCareTaskCore(manualInput(ids.doneCreateCommand, "2026-07-25"), owner);

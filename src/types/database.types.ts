@@ -2427,20 +2427,39 @@ export type Database = {
           creation_command_id: string
           description: string | null
           id: string
+          is_schedule_locked: boolean
+          item_kind: string
           litter_id: string
           occurrence_no: number
           offset_days: number | null
           organization_id: string
           organization_template_id: string | null
-          planned_for: string
+          planned_for: string | null
+          priority: string
+          retained_ends_local_time: string | null
+          retained_ends_on: string | null
+          retained_starts_local_time: string | null
+          retained_starts_on: string | null
+          revision_no: number
           resolution_command_id: string | null
           resolution_note: string | null
           resolved_at: string | null
           resolved_by: string | null
           resolved_timezone_name: string | null
+          schedule_locked_at: string | null
+          schedule_locked_by: string | null
+          schedule_source: string
+          schedule_timezone_name: string | null
+          scheduled_local_time: string | null
           source: string
           status: string
           system_template_code: string | null
+          suggested_ends_local_time: string | null
+          suggested_ends_on: string | null
+          suggested_for: string | null
+          suggested_local_time: string | null
+          suggested_starts_local_time: string | null
+          suggested_starts_on: string | null
           target_scope: string
           title: string
           updated_at: string
@@ -2455,20 +2474,39 @@ export type Database = {
           creation_command_id: string
           description?: string | null
           id?: string
+          is_schedule_locked?: boolean
+          item_kind?: string
           litter_id: string
           occurrence_no?: number
           offset_days?: number | null
           organization_id: string
           organization_template_id?: string | null
-          planned_for: string
+          planned_for?: string | null
+          priority?: string
+          retained_ends_local_time?: string | null
+          retained_ends_on?: string | null
+          retained_starts_local_time?: string | null
+          retained_starts_on?: string | null
+          revision_no?: number
           resolution_command_id?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           resolved_timezone_name?: string | null
+          schedule_locked_at?: string | null
+          schedule_locked_by?: string | null
+          schedule_source?: string
+          schedule_timezone_name?: string | null
+          scheduled_local_time?: string | null
           source: string
           status?: string
           system_template_code?: string | null
+          suggested_ends_local_time?: string | null
+          suggested_ends_on?: string | null
+          suggested_for?: string | null
+          suggested_local_time?: string | null
+          suggested_starts_local_time?: string | null
+          suggested_starts_on?: string | null
           target_scope: string
           title: string
           updated_at?: string
@@ -2483,20 +2521,39 @@ export type Database = {
           creation_command_id?: string
           description?: string | null
           id?: string
+          is_schedule_locked?: boolean
+          item_kind?: string
           litter_id?: string
           occurrence_no?: number
           offset_days?: number | null
           organization_id?: string
           organization_template_id?: string | null
-          planned_for?: string
+          planned_for?: string | null
+          priority?: string
+          retained_ends_local_time?: string | null
+          retained_ends_on?: string | null
+          retained_starts_local_time?: string | null
+          retained_starts_on?: string | null
+          revision_no?: number
           resolution_command_id?: string | null
           resolution_note?: string | null
           resolved_at?: string | null
           resolved_by?: string | null
           resolved_timezone_name?: string | null
+          schedule_locked_at?: string | null
+          schedule_locked_by?: string | null
+          schedule_source?: string
+          schedule_timezone_name?: string | null
+          scheduled_local_time?: string | null
           source?: string
           status?: string
           system_template_code?: string | null
+          suggested_ends_local_time?: string | null
+          suggested_ends_on?: string | null
+          suggested_for?: string | null
+          suggested_local_time?: string | null
+          suggested_starts_local_time?: string | null
+          suggested_starts_on?: string | null
           target_scope?: string
           title?: string
           updated_at?: string
@@ -2544,6 +2601,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_schedule_locked_by_membership_fk"
+            columns: ["organization_id", "schedule_locked_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
           },
           {
             foreignKeyName: "litter_care_tasks_updated_by_fkey"
@@ -6155,6 +6219,23 @@ export type Database = {
         }
         Returns: string
       }
+      reapply_litter_care_task_schedule_suggestion: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
+        }[]
+      }
       recalculate_whelping_litter_birth_projections: {
         Args: {
           p_litter_id: string
@@ -6303,6 +6384,90 @@ export type Database = {
           session_id: string
         }[]
       }
+      replace_locked_litter_care_task_point_schedule: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_planned_for: string
+          p_reason: string | null
+          p_schedule_timezone_name: string | null
+          p_scheduled_local_time: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
+        }[]
+      }
+      replace_locked_litter_care_task_window_schedule: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string | null
+          p_retained_ends_local_time: string | null
+          p_retained_ends_on: string
+          p_retained_starts_local_time: string | null
+          p_retained_starts_on: string
+          p_schedule_timezone_name: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
+        }[]
+      }
+      reschedule_litter_care_task_point: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_planned_for: string
+          p_reason: string | null
+          p_schedule_timezone_name: string | null
+          p_scheduled_local_time: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
+        }[]
+      }
+      reschedule_litter_care_task_window: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reason: string | null
+          p_retained_ends_local_time: string | null
+          p_retained_ends_on: string
+          p_retained_starts_local_time: string | null
+          p_retained_starts_on: string
+          p_schedule_timezone_name: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
+        }[]
+      }
       reservation_document_variant_version_is_used: {
         Args: { p_organization_id: string; p_version_id: string }
         Returns: boolean
@@ -6351,6 +6516,24 @@ export type Database = {
         Returns: {
           asset_id: string
           outcome: string
+        }[]
+      }
+      set_litter_care_task_schedule_lock: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_is_locked: boolean
+          p_reason: string | null
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string | null
+          litter_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          revision_no: number | null
+          task_id: string | null
         }[]
       }
       set_litter_care_task_template_active: {
