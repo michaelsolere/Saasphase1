@@ -1,7 +1,10 @@
 import Link from "next/link";
 
 import { litterCareTaskCategoryLabels } from "./litter-care-task-labels";
-import { projectLitterCareToday } from "./litter-care-today";
+import {
+  getLitterCareTaskResolvedBusinessDateTime,
+  projectLitterCareToday,
+} from "./litter-care-today";
 import type { LitterCareTaskSummary } from "./litter-care-tasks-core";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
@@ -53,7 +56,11 @@ function scheduleLabel(task: LitterCareTaskSummary) {
 
 function TodayTask({ task, active }: { task: LitterCareTaskSummary; active: boolean }) {
   const priority = priorityLabels[task.priority];
-  const schedule = scheduleLabel(task);
+  const schedule = active
+    ? scheduleLabel(task)
+    : task.resolvedAt
+      ? `Traité à ${formatTime(getLitterCareTaskResolvedBusinessDateTime(task.resolvedAt).time)}`
+      : null;
 
   return (
     <li className="rounded-xl border bg-background px-4 py-3">

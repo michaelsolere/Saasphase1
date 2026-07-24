@@ -1,4 +1,7 @@
-import { formatLitterJournalBusinessDate } from "./date";
+import {
+  formatLitterJournalBusinessDate,
+  getLitterJournalBusinessLocalTime,
+} from "./date";
 import {
   getLitterCareTaskWindowState,
   type LitterCareTaskSummary,
@@ -47,6 +50,34 @@ function sorted(tasks: LitterCareTaskSummary[]) {
   return [...tasks].sort(compareTasks);
 }
 
+export function getLitterCareTaskResolvedBusinessDateTime(resolvedAt: string) {
+  const instant = new Date(resolvedAt);
+
+  return {
+    date: formatLitterJournalBusinessDate(instant),
+    time: getLitterJournalBusinessLocalTime(instant),
+  };
+}
+
+function compareHandledTasks(left: LitterCareTaskSummary, right: LitterCareTaskSummary) {
+  const priorityDifference = priorityOrder[left.priority] - priorityOrder[right.priority];
+  if (priorityDifference !== 0) return priorityDifference;
+
+  const leftResolved = getLitterCareTaskResolvedBusinessDateTime(left.resolvedAt!);
+  const rightResolved = getLitterCareTaskResolvedBusinessDateTime(right.resolvedAt!);
+  const dateDifference = leftResolved.date.localeCompare(rightResolved.date);
+  if (dateDifference !== 0) return dateDifference;
+
+  const timeDifference = leftResolved.time.localeCompare(rightResolved.time);
+  if (timeDifference !== 0) return timeDifference;
+
+  return left.title.localeCompare(right.title, "fr");
+}
+
+function sortedHandled(tasks: LitterCareTaskSummary[]) {
+  return [...tasks].sort(compareHandledTasks);
+}
+
 export function projectLitterCareToday(
   tasks: LitterCareTaskSummary[],
   reference: { date: string; localTime: string },
@@ -60,7 +91,7 @@ export function projectLitterCareToday(
     if (task.status !== "planned") {
       if (
         task.resolvedAt &&
-        formatLitterJournalBusinessDate(new Date(task.resolvedAt)) === reference.date
+        getLitterCareTaskResolvedBusinessDateTime(task.resolvedAt).date === reference.date
       ) {
         handledToday.push(task);
       }
@@ -83,6 +114,6 @@ export function projectLitterCareToday(
     dueToday: sorted(dueToday),
     overdue: sorted(overdue),
     openWindows: sorted(openWindows),
-    handledToday: sorted(handledToday),
+    handledToday: sortedHandled(handledToday),
   };
 }

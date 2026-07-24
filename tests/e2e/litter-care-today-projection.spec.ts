@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date";
-import { projectLitterCareToday } from "@/features/litter-journal/litter-care-today";
+import {
+  getLitterCareTaskResolvedBusinessDateTime,
+  projectLitterCareToday,
+} from "@/features/litter-journal/litter-care-today";
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 
 const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary => ({
@@ -39,7 +42,7 @@ test("projette les actions ponctuelles, les fenêtres et les éléments traités
   expect(projection.overdue.map((item) => item.id)).toEqual(["window-overdue", "milestone-overdue"]);
   expect(projection.openWindows.map((item) => item.id)).toEqual(["open-all-day", "open-timed"]);
   expect(projection.handledToday.map((item) => [item.id, item.status])).toEqual([
-    ["cancelled", "cancelled"], ["not-applicable", "not_applicable"], ["done-today", "done"],
+    ["done-today", "done"], ["cancelled", "cancelled"], ["not-applicable", "not_applicable"],
   ]);
 });
 
@@ -66,4 +69,19 @@ test("classe resolvedAt selon la journée Europe/Paris, sans son fuseau de réso
   ], { date: "2026-07-25", localTime: "00:30" });
 
   expect(projection.handledToday.map((item) => item.id)).toEqual(["paris-today"]);
+});
+
+test("trie les éléments traités par leur moment réel de résolution en Europe/Paris", () => {
+  const projection = projectLitterCareToday([
+    task({ id: "planned-first-resolved-late", title: "Plus tard", status: "done", plannedFor: "2026-07-01", scheduledLocalTime: "08:00", resolvedAt: "2026-07-25T12:45:00Z" }),
+    task({ id: "planned-last-resolved-early", title: "Plus tôt", status: "done", plannedFor: "2026-07-31", scheduledLocalTime: "18:00", resolvedAt: "2026-07-25T07:15:00Z" }),
+  ], reference);
+
+  expect(projection.handledToday.map((item) => item.id)).toEqual([
+    "planned-last-resolved-early", "planned-first-resolved-late",
+  ]);
+  expect(getLitterCareTaskResolvedBusinessDateTime("2026-07-24T22:30:00Z")).toEqual({
+    date: "2026-07-25",
+    time: "00:30",
+  });
 });
