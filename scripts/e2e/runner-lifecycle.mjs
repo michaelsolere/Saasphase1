@@ -75,7 +75,10 @@ export function startManagedProcess(command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: options.cwd,
     detached: process.platform !== "win32",
-    env: options.env,
+    env: {
+      ...process.env,
+      ...(options.env ?? {}),
+    },
     stdio: options.stdio ?? "inherit",
   });
 
