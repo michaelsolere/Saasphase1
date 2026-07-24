@@ -35,8 +35,43 @@ import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightAdjustmentHistory, listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
 import { cancelLitterRoutineWeightAction, cancelLitterWeighingSessionAction, correctLitterRoutineWeightAction, recordLitterRoutineWeightsAction } from "@/features/litter-weights/litter-weights-actions";
 import { getRoutineWeightEligibility } from "@/features/litter-weights/routine-weight-eligibility";
+import type { LitterCareTaskScheduleActions } from "@/features/litter-journal/litter-care-task-schedule-dialog";
+import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 
 export const dynamic = "force-dynamic";
+
+function bindLitterCareTaskScheduleActions(
+  task: LitterCareTaskSummary,
+): LitterCareTaskScheduleActions {
+  const base = { taskId: task.id, expectedRevisionNo: task.revisionNo };
+  const isWindow = task.itemKind === "window";
+  const hasSuggestion = isWindow
+    ? Boolean(task.suggestedStartsOn && task.suggestedEndsOn)
+    : Boolean(task.suggestedFor);
+
+  return {
+    taskId: task.id,
+    rescheduleAction: (isWindow
+      ? rescheduleLitterCareTaskWindowAction
+      : rescheduleLitterCareTaskPointAction
+    ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
+    replaceLockedAction: (isWindow
+      ? replaceLockedLitterCareTaskWindowScheduleAction
+      : replaceLockedLitterCareTaskPointScheduleAction
+    ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
+    lockAction: setLitterCareTaskScheduleLockAction.bind(null, {
+      ...base, isLocked: true, clientCommandId: crypto.randomUUID(),
+    }),
+    unlockAction: setLitterCareTaskScheduleLockAction.bind(null, {
+      ...base, isLocked: false, clientCommandId: crypto.randomUUID(),
+    }),
+    reapplySuggestionAction: hasSuggestion
+      ? reapplyLitterCareTaskScheduleSuggestionAction.bind(null, {
+          ...base, clientCommandId: crypto.randomUUID(),
+        })
+      : null,
+  };
+}
 
 function ErrorMessage() {
   return (
@@ -228,43 +263,12 @@ export default async function LitterJournalPage({
   const scheduleActions = litterCareTaskCanWrite
     ? (litterCareTasksLoaded?.tasks ?? [])
         .filter((task) => task.status === "planned")
-        .map((task) => {
-          const base = {
-            taskId: task.id,
-            expectedRevisionNo: task.revisionNo,
-          };
-          const isWindow = task.itemKind === "window";
-          const hasSuggestion = isWindow
-            ? Boolean(task.suggestedStartsOn && task.suggestedEndsOn)
-            : Boolean(task.suggestedFor);
-          return {
-            taskId: task.id,
-            rescheduleAction: (isWindow
-              ? rescheduleLitterCareTaskWindowAction
-              : rescheduleLitterCareTaskPointAction
-            ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
-            replaceLockedAction: (isWindow
-              ? replaceLockedLitterCareTaskWindowScheduleAction
-              : replaceLockedLitterCareTaskPointScheduleAction
-            ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
-            lockAction: setLitterCareTaskScheduleLockAction.bind(null, {
-              ...base,
-              isLocked: true,
-              clientCommandId: crypto.randomUUID(),
-            }),
-            unlockAction: setLitterCareTaskScheduleLockAction.bind(null, {
-              ...base,
-              isLocked: false,
-              clientCommandId: crypto.randomUUID(),
-            }),
-            reapplySuggestionAction: hasSuggestion
-              ? reapplyLitterCareTaskScheduleSuggestionAction.bind(null, {
-                  ...base,
-                  clientCommandId: crypto.randomUUID(),
-                })
-              : null,
-          };
-        })
+        .map(bindLitterCareTaskScheduleActions)
+    : [];
+  const todayScheduleActions = litterCareTaskCanWrite
+    ? (litterCareTasksLoaded?.tasks ?? [])
+        .filter((task) => task.status === "planned")
+        .map(bindLitterCareTaskScheduleActions)
     : [];
   const whelpingWorkspaceLoaded = whelpingWorkspace;
   const selectedLitterId = journal?.selectedLitter?.id ?? null;
@@ -370,6 +374,7 @@ export default async function LitterJournalPage({
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTodayQuickActions={todayQuickActions}
+            litterCareTodayScheduleActions={todayScheduleActions}
             litterCareTaskScheduleActions={scheduleActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
             litterCareTodayDate={litterJournalTodayDate}

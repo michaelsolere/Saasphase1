@@ -10,6 +10,7 @@ import {
   LitterCareTodayQuickActions as LitterCareTodayQuickActionsComponent,
   type LitterCareTodayQuickActions,
 } from "./litter-care-today-quick-actions";
+import type { LitterCareTaskScheduleActions } from "./litter-care-task-schedule-dialog";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",
@@ -58,7 +59,7 @@ function scheduleLabel(task: LitterCareTaskSummary) {
   return time ? `À ${time}` : null;
 }
 
-function TodayTask({ task, active, quickActions }: { task: LitterCareTaskSummary; active: boolean; quickActions: LitterCareTodayQuickActions | null }) {
+function TodayTask({ task, active, quickActions, scheduleActions }: { task: LitterCareTaskSummary; active: boolean; quickActions: LitterCareTodayQuickActions | null; scheduleActions: LitterCareTaskScheduleActions | null }) {
   const priority = priorityLabels[task.priority];
   const schedule = active
     ? scheduleLabel(task)
@@ -81,7 +82,7 @@ function TodayTask({ task, active, quickActions }: { task: LitterCareTaskSummary
           </div>
         </div>
         {active ? <div className="flex shrink-0 flex-wrap items-center gap-3">
-          {quickActions ? <LitterCareTodayQuickActionsComponent taskTitle={task.title} actions={quickActions} /> : null}
+          {quickActions ? <LitterCareTodayQuickActionsComponent task={task} actions={quickActions} scheduleActions={scheduleActions} /> : null}
           <Link href="#litter-care-tasks" className="text-sm font-semibold text-accent hover:underline">Ouvrir le suivi</Link>
         </div> : null}
       </div>
@@ -89,14 +90,14 @@ function TodayTask({ task, active, quickActions }: { task: LitterCareTaskSummary
   );
 }
 
-function TodaySection({ title, tasks, active, quickActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions> }) {
+function TodaySection({ title, tasks, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActions> }) {
   if (tasks.length === 0) return null;
 
   return (
     <section aria-label={title}>
       <h3 className="text-sm font-semibold">{title} <span className="text-muted">({tasks.length})</span></h3>
       <ul className="mt-3 space-y-2">
-        {tasks.map((task) => <TodayTask key={task.id} task={task} active={active} quickActions={active ? quickActionsByTaskId.get(task.id) ?? null : null} />)}
+        {tasks.map((task) => <TodayTask key={task.id} task={task} active={active} quickActions={active ? quickActionsByTaskId.get(task.id) ?? null : null} scheduleActions={active ? scheduleActionsByTaskId.get(task.id) ?? null : null} />)}
       </ul>
     </section>
   );
@@ -107,17 +108,20 @@ export function LitterCareTodayPanel({
   todayDate,
   todayLocalTime,
   quickActions = [],
+  scheduleActions = [],
   unavailable = false,
 }: {
   tasks: LitterCareTaskSummary[];
   todayDate: string;
   todayLocalTime: string;
   quickActions?: LitterCareTodayQuickActions[];
+  scheduleActions?: LitterCareTaskScheduleActions[];
   unavailable?: boolean;
 }) {
   const projection = projectLitterCareToday(tasks, { date: todayDate, localTime: todayLocalTime });
   const total = projection.dueToday.length + projection.overdue.length + projection.openWindows.length + projection.handledToday.length;
   const quickActionsByTaskId = new Map(quickActions.map((actions) => [actions.taskId, actions]));
+  const scheduleActionsByTaskId = new Map(scheduleActions.map((actions) => [actions.taskId, actions]));
 
   return (
     <section className="rounded-2xl border bg-surface p-5 sm:p-6" aria-labelledby="litter-care-today-heading">
@@ -134,10 +138,10 @@ export function LitterCareTodayPanel({
         <p className="mt-5 text-sm text-muted">Rien à signaler aujourd’hui pour cette portée.</p>
       ) : (
         <div className="mt-5 space-y-6">
-          <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} active quickActionsByTaskId={quickActionsByTaskId} />
-          <TodaySection title="En retard" tasks={projection.overdue} active quickActionsByTaskId={quickActionsByTaskId} />
-          <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} active quickActionsByTaskId={quickActionsByTaskId} />
-          <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} active={false} quickActionsByTaskId={quickActionsByTaskId} />
+          <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+          <TodaySection title="En retard" tasks={projection.overdue} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+          <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+          <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} active={false} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
         </div>
       )}
     </section>

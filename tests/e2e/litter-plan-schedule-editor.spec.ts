@@ -185,7 +185,17 @@ test("édite la programmation matérialisée sans effacer la suggestion", async 
     await expect(dialog).toBeHidden();
     await point.getByRole("button", { name: "Modifier la programmation" }).click(); dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "Déverrouiller" }).click(); await expect(dialog).toBeHidden();
+    const unlockCommands = JSON.parse(sql(`select coalesce(json_agg(json_build_object('id',id::text,'clientCommandId',client_command_id::text,'outcome',outcome,'reason',reason,'result',result,'createdBy',created_by::text) order by created_at desc), '[]'::json)::text from public.litter_care_task_schedule_commands where task_id=${q(ids.point)}::uuid and command_type='unlock';`));
+    expect(unlockCommands).toHaveLength(1);
+    const unlockCommand = unlockCommands[0];
+    expect(unlockCommand).toMatchObject({ outcome: "success", reason: null, createdBy: ownerId });
+    expect(unlockCommand.result.changeId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(Number.isInteger(unlockCommand.result.revisionNo)).toBe(true);
+    expect(JSON.parse(sql(`select json_build_object('id',id::text,'type',change_type,'taskId',task_id::text,'previousLocked',previous_is_schedule_locked,'resultLocked',result_is_schedule_locked,'changedBy',changed_by::text,'previousRevision',previous_revision_no,'resultRevision',result_revision_no)::text from public.litter_care_task_schedule_changes where id=${q(unlockCommand.result.changeId)}::uuid;`))).toEqual({ id: unlockCommand.result.changeId, type: "unlock", taskId: ids.point, previousLocked: true, resultLocked: false, changedBy: ownerId, previousRevision: unlockCommand.result.revisionNo - 1, resultRevision: unlockCommand.result.revisionNo });
+    await expect.poll(() => JSON.parse(sql(`select json_build_object('locked',is_schedule_locked,'lockedAt',schedule_locked_at,'lockedBy',schedule_locked_by,'revision',revision_no)::text from public.litter_care_tasks where id=${q(ids.point)}::uuid;`))).toEqual({ locked: false, lockedAt: null, lockedBy: null, revision: unlockCommand.result.revisionNo });
+    await expect(point).not.toContainText("Verrouillée");
     await point.getByRole("button", { name: "Modifier la programmation" }).click(); dialog = page.getByRole("dialog");
+    await expect(dialog).not.toContainText("Programmation verrouillée");
     await dialog.getByRole("button", { name: "Revenir à la suggestion" }).click(); await expect(dialog).toBeHidden();
     await expect(point).toContainText("Selon la suggestion");
 
