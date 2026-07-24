@@ -21,6 +21,8 @@ import type {
   LitterCareTaskActionState,
 } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
+import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
+import type { LitterPlanTimeline } from "./litter-plan-timeline";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationPanelItem } from "./maternal-temperature-chart-model";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
@@ -201,6 +203,8 @@ export function LitterJournalDashboard({
   createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
   litterCareTasksLoadError,
+  litterPlanTimeline,
+  litterPlanLoadError,
   whelpingSession,
   whelpingEvents,
   whelpingBirths,
@@ -262,6 +266,8 @@ export function LitterJournalDashboard({
   createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
   litterCareTasksLoadError: boolean;
+  litterPlanTimeline: LitterPlanTimeline | null;
+  litterPlanLoadError: boolean;
   whelpingSession: WhelpingSessionSummary | null;
   whelpingEvents: WhelpingEventSummary[];
   whelpingBirths: WhelpingBirthSummary[];
@@ -389,6 +395,7 @@ export function LitterJournalDashboard({
         <ContextCard litter={litter} details={details} />
         <SummaryCard litter={litter} />
       </div>
+      <LitterPlanTimelinePanel timeline={litterPlanTimeline} unavailable={litterPlanLoadError} />
       <WhelpingPanel
         displayMode="journal"
         session={whelpingSession}

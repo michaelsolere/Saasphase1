@@ -16,6 +16,8 @@ import {
   listLitterCareTasksForLitter,
   planLitterCareTaskGeneration,
 } from "@/features/litter-journal/litter-care-tasks";
+import { getActiveLitterPlanForLitter } from "@/features/litter-journal/litter-plans";
+import { projectLitterPlanTimeline } from "@/features/litter-journal/litter-plan-timeline";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
@@ -66,6 +68,7 @@ export default async function LitterJournalPage({
   let litterCareTaskGenerationPlan: Awaited<
     ReturnType<typeof planLitterCareTaskGeneration>
   > | null = null;
+  let activeLitterPlan: Awaited<ReturnType<typeof getActiveLitterPlanForLitter>> | null = null;
   let whelpingWorkspace: Awaited<
     ReturnType<typeof loadWhelpingWorkspace>
   > | null = null;
@@ -82,11 +85,12 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
+    const [maternalResult, tasksResult, generationPlanResult, activePlanResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
+        getActiveLitterPlanForLitter(litterId, supabase),
         loadWhelpingWorkspace(litterId, supabase),
         listLitterWeightHistory({
           litterId,
@@ -105,6 +109,8 @@ export default async function LitterJournalPage({
       generationPlanResult.status === "fulfilled"
         ? generationPlanResult.value
         : null;
+    activeLitterPlan =
+      activePlanResult.status === "fulfilled" ? activePlanResult.value : null;
     whelpingWorkspace =
       whelpingResult.status === "fulfilled" ? whelpingResult.value : null;
     litterWeightHistory =
@@ -124,6 +130,17 @@ export default async function LitterJournalPage({
       : null;
   const litterCareTasksLoaded =
     litterCareTasks?.outcome === "success" ? litterCareTasks : null;
+  const litterPlanLoadError =
+    activeLitterPlan === null ||
+    litterCareTasksLoaded === null ||
+    ("outcome" in activeLitterPlan && activeLitterPlan.error.code !== "not_found");
+  const litterPlanTimeline =
+    !litterPlanLoadError &&
+    activeLitterPlan &&
+    !("outcome" in activeLitterPlan) &&
+    litterCareTasksLoaded
+      ? projectLitterPlanTimeline(activeLitterPlan, litterCareTasksLoaded.tasks)
+      : null;
   const litterCareTaskGenerationPlanLoaded =
     litterCareTaskGenerationPlan?.outcome === "success"
       ? litterCareTaskGenerationPlan
@@ -287,6 +304,8 @@ export default async function LitterJournalPage({
             createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
+            litterPlanTimeline={litterPlanTimeline}
+            litterPlanLoadError={litterPlanLoadError}
             whelpingSession={whelpingWorkspaceLoaded?.session ?? null}
             whelpingEvents={whelpingWorkspaceLoaded?.events ?? []}
             whelpingBirths={whelpingWorkspaceLoaded?.births ?? []}

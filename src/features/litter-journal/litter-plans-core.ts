@@ -8,7 +8,7 @@ type Item = Database["public"]["Tables"]["litter_plan_items"]["Row"];
 
 export type LitterPlanErrorCode = "invalid_input" | "unauthenticated" | "forbidden" | "not_found" | "invalid_litter" | "stale_model" | "stale_plan" | "already_applied" | "conflict" | "database_error";
 export type LitterPlanResult = { outcome: "success"; planId: string; revision: number; replayed: boolean; result: Json } | { outcome: "error"; error: { code: LitterPlanErrorCode; message: string } };
-export type LitterPlanDetail = { header: Plan; items: Array<Item & { taskId: string | null }> };
+export type LitterPlanDetail = { header: Plan; items: Item[] };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const timezone = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 255 ? value : null;
@@ -34,10 +34,7 @@ export async function getActiveLitterPlanForLitter(litterId: string, supabase: S
   if (!plan.data) return error("not_found");
   const items = await supabase.from("litter_plan_items").select("*").eq("litter_plan_id", plan.data.id).order("display_order");
   if (items.error) return error("database_error");
-  const tasks = await supabase.from("litter_care_tasks").select("id,litter_plan_item_id").eq("litter_id", normalized).not("litter_plan_item_id", "is", null);
-  if (tasks.error) return error("database_error");
-  const taskByItem = new Map((tasks.data ?? []).flatMap((task) => task.litter_plan_item_id ? [[task.litter_plan_item_id, task.id] as const] : []));
-  return { header: plan.data, items: (items.data ?? []).map((item) => ({ ...item, taskId: taskByItem.get(item.id) ?? null })) };
+  return { header: plan.data, items: items.data ?? [] };
 }
 
 export async function applyLitterPlanningModel(input: { litterId: string; planningModelId: string; clientCommandId: string; expectedModelRevision: number; expectedPlanRevision?: number | null; selectedModelItemIds?: string[] | null; timezoneName: string }, supabase: Supabase): Promise<LitterPlanResult> {
