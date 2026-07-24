@@ -9,6 +9,12 @@ import {
   LITTER_CARE_TASK_RESOLUTION_STATUSES,
   LITTER_CARE_TASK_TARGET_SCOPES,
   resolveLitterCareTask,
+  reapplyLitterCareTaskScheduleSuggestion,
+  replaceLockedLitterCareTaskPointSchedule,
+  replaceLockedLitterCareTaskWindowSchedule,
+  rescheduleLitterCareTaskPoint,
+  rescheduleLitterCareTaskWindow,
+  setLitterCareTaskScheduleLock,
   type LitterCareTaskCategory,
   type LitterCareTaskGenerationReadyPlanItem,
   type LitterCareTaskResolutionStatus,
@@ -41,6 +47,12 @@ export type GenerateLitterCareTasksSubmission = {
   readyPlan: LitterCareTaskGenerationReadyPlanItem[];
 };
 
+export type LitterCareTaskScheduleSubmission = {
+  taskId: string;
+  expectedRevisionNo: number;
+  clientCommandId: string;
+};
+
 function value(formData: FormData, name: string) {
   const entry = formData.get(name);
   return typeof entry === "string" ? entry : "";
@@ -65,6 +77,145 @@ function isCivilDate(input: string) {
     date.getUTCMonth() === month - 1 &&
     date.getUTCDate() === day
   );
+}
+
+function isLocalTime(input: string) {
+  return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(input);
+}
+
+function validTimezone(input: string) {
+  if (!input || input.length > 255) return false;
+  try {
+    Intl.DateTimeFormat("fr-FR", { timeZone: input });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleErrorMessage(code: string) {
+  switch (code) {
+    case "not_planned":
+      return "Cet élément a déjà été traité.";
+    case "stale_revision":
+      return "La révision est périmée : demandez de recharger le Journal.";
+    case "conflict":
+      return "Cette modification est incompatible avec le verrou actuel.";
+    case "forbidden":
+    case "unauthenticated":
+      return "Vous n’avez pas les droits suffisants pour modifier cette programmation.";
+    case "not_found":
+      return "Cet élément est introuvable ou inaccessible.";
+    default:
+      return "La programmation ne peut pas être modifiée pour le moment.";
+  }
+}
+
+function scheduleInput(
+  formData: FormData,
+  names: { start: string; end?: string },
+) {
+  const start = value(formData, names.start);
+  const end = names.end ? value(formData, names.end) : null;
+  const startTime = optionalValue(formData, `${names.start}_local_time`);
+  const endTime = names.end
+    ? optionalValue(formData, `${names.end}_local_time`)
+    : null;
+  const timezoneName = optionalValue(formData, "timezone_name");
+  const reason = optionalValue(formData, "reason");
+  if (!isCivilDate(start) || (end !== null && !isCivilDate(end))) {
+    return { error: "La date retenue est invalide." } as const;
+  }
+  if ((startTime && !isLocalTime(startTime)) || (endTime && !isLocalTime(endTime))) {
+    return { error: "L’heure locale est invalide." } as const;
+  }
+  if ((startTime || endTime) && (!timezoneName || !validTimezone(timezoneName))) {
+    return { error: "Le fuseau horaire IANA est invalide." } as const;
+  }
+  if (timezoneName && !validTimezone(timezoneName)) {
+    return { error: "Le fuseau horaire IANA est invalide." } as const;
+  }
+  if (reason && reason.length > 500) {
+    return { error: "Le motif ne doit pas dépasser 500 caractères." } as const;
+  }
+  if (end && (start > end || (start === end && startTime && endTime && startTime > endTime))) {
+    return { error: "La date de début doit précéder ou égaler la date de fin." } as const;
+  }
+  return { start, end, startTime, endTime, timezoneName, reason } as const;
+}
+
+async function runScheduleCommand(
+  command: Promise<Awaited<ReturnType<typeof rescheduleLitterCareTaskPoint>>>,
+  successMessage: string,
+): Promise<LitterCareTaskActionState> {
+  const result = await command;
+  if (result.outcome === "error") {
+    return { status: "error", message: scheduleErrorMessage(result.error.code) };
+  }
+  revalidatePath("/litters/journal");
+  return { status: "success", message: successMessage };
+}
+
+export async function rescheduleLitterCareTaskPointAction(
+  submission: LitterCareTaskScheduleSubmission,
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  const input = scheduleInput(formData, { start: "planned_for" });
+  if ("error" in input) return { status: "error", message: input.error ?? "La date retenue est invalide." };
+  return runScheduleCommand(rescheduleLitterCareTaskPoint({ ...submission, plannedFor: input.start, scheduledLocalTime: input.startTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation a été modifiée.");
+}
+
+export async function rescheduleLitterCareTaskWindowAction(
+  submission: LitterCareTaskScheduleSubmission,
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  const input = scheduleInput(formData, { start: "retained_starts_on", end: "retained_ends_on" });
+  if ("error" in input || !input.end) return { status: "error", message: "Les bornes retenues sont invalides." };
+  return runScheduleCommand(rescheduleLitterCareTaskWindow({ ...submission, retainedStartsOn: input.start, retainedStartsLocalTime: input.startTime, retainedEndsOn: input.end, retainedEndsLocalTime: input.endTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation a été modifiée.");
+}
+
+export async function replaceLockedLitterCareTaskPointScheduleAction(
+  submission: LitterCareTaskScheduleSubmission,
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  if (value(formData, "locked_confirmation") !== "confirmed") return { status: "error", message: "La confirmation du remplacement verrouillé est requise." };
+  const input = scheduleInput(formData, { start: "planned_for" });
+  if ("error" in input) return { status: "error", message: input.error ?? "La date retenue est invalide." };
+  return runScheduleCommand(replaceLockedLitterCareTaskPointSchedule({ ...submission, plannedFor: input.start, scheduledLocalTime: input.startTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation verrouillée a été remplacée.");
+}
+
+export async function replaceLockedLitterCareTaskWindowScheduleAction(
+  submission: LitterCareTaskScheduleSubmission,
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  if (value(formData, "locked_confirmation") !== "confirmed") return { status: "error", message: "La confirmation du remplacement verrouillé est requise." };
+  const input = scheduleInput(formData, { start: "retained_starts_on", end: "retained_ends_on" });
+  if ("error" in input || !input.end) return { status: "error", message: "Les bornes retenues sont invalides." };
+  return runScheduleCommand(replaceLockedLitterCareTaskWindowSchedule({ ...submission, retainedStartsOn: input.start, retainedStartsLocalTime: input.startTime, retainedEndsOn: input.end, retainedEndsLocalTime: input.endTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation verrouillée a été remplacée.");
+}
+
+export async function setLitterCareTaskScheduleLockAction(
+  submission: LitterCareTaskScheduleSubmission & { isLocked: boolean },
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  const reason = optionalValue(formData, "reason");
+  if (reason && reason.length > 500) return { status: "error", message: "Le motif ne doit pas dépasser 500 caractères." };
+  return runScheduleCommand(setLitterCareTaskScheduleLock({ ...submission, reason }), submission.isLocked ? "La programmation a été verrouillée." : "La programmation a été déverrouillée.");
+}
+
+export async function reapplyLitterCareTaskScheduleSuggestionAction(
+  submission: LitterCareTaskScheduleSubmission,
+  _previousState: LitterCareTaskActionState,
+  formData: FormData,
+): Promise<LitterCareTaskActionState> {
+  const reason = optionalValue(formData, "reason");
+  if (reason && reason.length > 500) return { status: "error", message: "Le motif ne doit pas dépasser 500 caractères." };
+  return runScheduleCommand(reapplyLitterCareTaskScheduleSuggestion({ ...submission, reason }), "Le retour à la suggestion a réussi.");
 }
 
 function category(input: string): LitterCareTaskCategory | null {

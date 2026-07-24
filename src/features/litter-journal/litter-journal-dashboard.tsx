@@ -15,6 +15,7 @@ import {
 import {
   LitterCareTasksPanel,
   type LitterCareTaskResolutionAction,
+  type LitterCareTaskScheduleActions,
 } from "./litter-care-tasks-panel";
 import type {
   GenerateLitterCareTasksActionState,
@@ -202,6 +203,7 @@ export function LitterJournalDashboard({
   createLitterCareTaskAction,
   createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
+  litterCareTaskScheduleActions,
   litterCareTasksLoadError,
   litterPlanTimeline,
   litterPlanLoadError,
@@ -265,6 +267,7 @@ export function LitterJournalDashboard({
   ) => Promise<LitterCareTaskActionState>) | null;
   createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
+  litterCareTaskScheduleActions: LitterCareTaskScheduleActions[];
   litterCareTasksLoadError: boolean;
   litterPlanTimeline: LitterPlanTimeline | null;
   litterPlanLoadError: boolean;
@@ -451,6 +454,7 @@ export function LitterJournalDashboard({
         createAction={createLitterCareTaskAction}
         createClientCommandId={createLitterCareTaskClientCommandId}
         resolutionActions={litterCareTaskResolutionActions}
+        scheduleActions={litterCareTaskScheduleActions}
         loadError={litterCareTasksLoadError}
       />
       <QuickLinks litter={litter} />
