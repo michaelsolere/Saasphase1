@@ -25,7 +25,10 @@ import {
 import { getActiveLitterPlanForLitter } from "@/features/litter-journal/litter-plans";
 import { projectLitterPlanTimeline } from "@/features/litter-journal/litter-plan-timeline";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
-import { formatLitterJournalBusinessDate } from "@/features/litter-journal/date";
+import {
+  formatLitterJournalBusinessDate,
+  getLitterJournalBusinessLocalTime,
+} from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
 import { createClient } from "@/lib/supabase/server";
@@ -62,8 +65,9 @@ export default async function LitterJournalPage({
     redirect("/login");
   }
 
-  const litterJournalTodayDate =
-    formatLitterJournalBusinessDate(new Date());
+  const litterJournalNow = new Date();
+  const litterJournalTodayDate = formatLitterJournalBusinessDate(litterJournalNow);
+  const litterJournalTodayLocalTime = getLitterJournalBusinessLocalTime(litterJournalNow);
 
   let journal: LitterJournalSelection | null = null;
   let hasLoadingError = false;
@@ -352,6 +356,8 @@ export default async function LitterJournalPage({
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTaskScheduleActions={scheduleActions}
             litterCareTasksLoadError={litterCareTasksLoaded === null}
+            litterCareTodayDate={litterJournalTodayDate}
+            litterCareTodayLocalTime={litterJournalTodayLocalTime}
             litterPlanTimeline={litterPlanTimeline}
             litterPlanLoadError={litterPlanLoadError}
             whelpingSession={whelpingWorkspaceLoaded?.session ?? null}
