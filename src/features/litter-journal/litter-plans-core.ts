@@ -8,12 +8,13 @@ type Item = Database["public"]["Tables"]["litter_plan_items"]["Row"];
 
 export type LitterPlanErrorCode = "invalid_input" | "unauthenticated" | "forbidden" | "not_found" | "invalid_litter" | "stale_model" | "stale_plan" | "already_applied" | "conflict" | "database_error";
 export type LitterPlanResult = { outcome: "success"; planId: string; revision: number; replayed: boolean; result: Json } | { outcome: "error"; error: { code: LitterPlanErrorCode; message: string } };
+export type LitterPlanErrorResult = Extract<LitterPlanResult, { outcome: "error" }>;
 export type LitterPlanDetail = { header: Plan; items: Item[] };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const timezone = (value: unknown) => typeof value === "string" && value.length > 0 && value.length <= 255 ? value : null;
 const uuid = (value: unknown) => typeof value === "string" && UUID.test(value) ? value.toLowerCase() : null;
-const error = (code: LitterPlanErrorCode): LitterPlanResult => ({ outcome: "error", error: { code, message: "Le planning n’a pas pu être appliqué." } });
+const error = (code: LitterPlanErrorCode): LitterPlanErrorResult => ({ outcome: "error", error: { code, message: "Le planning n’a pas pu être appliqué." } });
 
 function code(reason: string | null): LitterPlanErrorCode {
   if (reason === "not_authenticated") return "unauthenticated";
@@ -27,7 +28,7 @@ function code(reason: string | null): LitterPlanErrorCode {
   return "invalid_input";
 }
 
-export async function getActiveLitterPlanForLitter(litterId: string, supabase: Supabase): Promise<LitterPlanDetail | LitterPlanResult> {
+export async function getActiveLitterPlanForLitter(litterId: string, supabase: Supabase): Promise<LitterPlanDetail | LitterPlanErrorResult> {
   const normalized = uuid(litterId); if (!normalized) return error("invalid_input");
   const plan = await supabase.from("litter_plans").select("*").eq("litter_id", normalized).eq("status", "active").maybeSingle();
   if (plan.error) return error("database_error");
