@@ -29,7 +29,7 @@ for each row execute function public.set_updated_at();
 create table public.litter_planning_model_items (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete restrict,
-  model_id uuid,
+  model_id uuid not null,
   organization_template_id uuid not null,
   item_kind text not null,
   priority text not null default 'normal',
@@ -146,51 +146,194 @@ declare
   v_orders integer[] := '{}';
   v_keys text[];
   v_kind text;
+  v_display_order integer;
   v_starts integer;
   v_ends integer;
 begin
-  if jsonb_typeof(p_items) <> 'array' then return false; end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    return false;
+  end if;
+
   for v_item in select value from jsonb_array_elements(p_items) loop
     v_count := v_count + 1;
-    if v_count > 100 then return false; end if;
-    if jsonb_typeof(v_item) <> 'object' then return false; end if;
-    select array_agg(key order by key) into v_keys from jsonb_object_keys(v_item) key;
-    if
-      or not (v_item ? 'organizationTemplateId' and v_item ? 'itemKind' and v_item ? 'priority' and v_item ? 'anchorType' and v_item ? 'displayOrder' and v_item ? 'isRequired' and v_item ? 'isSelectedByDefault')
-      or coalesce(v_item->>'itemKind','') not in ('milestone','task','window')
-      or coalesce(v_item->>'priority','') not in ('normal','important','organization_critical')
-      or coalesce(v_item->>'anchorType','') not in ('first_mating','estimated_ovulation','expected_birth','actual_birth','offspring_age')
-      or (v_item->>'organizationTemplateId') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    if v_count > 100 or jsonb_typeof(v_item) <> 'object' then
+      return false;
+    end if;
+
+    if not (
+      v_item ? 'organizationTemplateId'
+      and v_item ? 'itemKind'
+      and v_item ? 'priority'
+      and v_item ? 'anchorType'
+      and v_item ? 'displayOrder'
+      and v_item ? 'isRequired'
+      and v_item ? 'isSelectedByDefault'
+    ) then
+      return false;
+    end if;
+
+    if (
+      jsonb_typeof(v_item->'organizationTemplateId') <> 'string'
+      or jsonb_typeof(v_item->'itemKind') <> 'string'
+      or jsonb_typeof(v_item->'priority') <> 'string'
+      or jsonb_typeof(v_item->'anchorType') <> 'string'
+      or jsonb_typeof(v_item->'displayOrder') <> 'number'
+      or jsonb_typeof(v_item->'isRequired') <> 'boolean'
+      or jsonb_typeof(v_item->'isSelectedByDefault') <> 'boolean'
+    ) then
+      return false;
+    end if;
+
+    if (
+      coalesce(v_item->>'itemKind', '') not in ('milestone', 'task', 'window')
+      or coalesce(v_item->>'priority', '') not in (
+        'normal', 'important', 'organization_critical'
+      )
+      or coalesce(v_item->>'anchorType', '') not in (
+        'first_mating', 'estimated_ovulation', 'expected_birth',
+        'actual_birth', 'offspring_age'
+      )
+      or (v_item->>'organizationTemplateId') !~*
+        '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or (v_item->>'displayOrder') !~ '^(0|[1-9][0-9]{0,9})$'
-      or (v_item->>'displayOrder')::numeric > 2147483647
-      or jsonb_typeof(v_item->'isRequired') <> 'boolean' or jsonb_typeof(v_item->'isSelectedByDefault') <> 'boolean'
-      or ((v_item->>'isRequired')::boolean and not (v_item->>'isSelectedByDefault')::boolean)
-    then return false; end if;
-    v_orders := array_append(v_orders, (v_item->>'displayOrder')::integer);
+    ) then
+      return false;
+    end if;
+
+    if (v_item->>'displayOrder')::numeric > 2147483647 then
+      return false;
+    end if;
+
+    if (
+      (v_item->>'isRequired')::boolean
+      and not (v_item->>'isSelectedByDefault')::boolean
+    ) then
+      return false;
+    end if;
+
+    v_display_order := (v_item->>'displayOrder')::integer;
+    if v_display_order = any(v_orders) then
+      return false;
+    end if;
+    v_orders := array_append(v_orders, v_display_order);
     v_kind := v_item->>'itemKind';
-    if v_kind in ('milestone','task') then
-      if v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','pointLocalTime','pointOffsetDays','priority']
-        and v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','pointOffsetDays','priority']
-        or not (v_item ? 'pointOffsetDays') or (v_item->>'pointOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
-        or (v_item->>'pointOffsetDays')::numeric not between -2147483648 and 2147483647
-        or (v_item ? 'pointLocalTime' and (jsonb_typeof(v_item->'pointLocalTime') <> 'string' or v_item->>'pointLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
-      then return false; end if;
+
+    select array_agg(key order by key)
+    into v_keys
+    from jsonb_object_keys(v_item) as keys(key);
+
+    if v_kind in ('milestone', 'task') then
+      if not (
+        v_keys <@ array[
+          'anchorType', 'displayOrder', 'isRequired', 'isSelectedByDefault',
+          'itemKind', 'organizationTemplateId', 'pointLocalTime',
+          'pointOffsetDays', 'priority'
+        ]
+        and v_item ? 'pointOffsetDays'
+      ) then
+        return false;
+      end if;
+
+      if (
+        jsonb_typeof(v_item->'pointOffsetDays') <> 'number'
+        or (v_item->>'pointOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
+      ) then
+        return false;
+      end if;
+
+      if (v_item->>'pointOffsetDays')::numeric not between -2147483648 and 2147483647 then
+        return false;
+      end if;
+      if (
+        v_item ? 'pointLocalTime'
+        and (
+          jsonb_typeof(v_item->'pointLocalTime') <> 'string'
+          or (v_item->>'pointLocalTime') !~
+            '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+        )
+      ) then
+        return false;
+      end if;
     else
-      if v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','priority','windowEndsLocalTime','windowEndsOffsetDays','windowStartsLocalTime','windowStartsOffsetDays']
-        and v_keys <> array['anchorType','displayOrder','isRequired','isSelectedByDefault','itemKind','organizationTemplateId','priority','windowEndsOffsetDays','windowStartsOffsetDays']
-        or not (v_item ? 'windowStartsOffsetDays' and v_item ? 'windowEndsOffsetDays')
-        or (v_item->>'windowStartsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$' or (v_item->>'windowEndsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
-        or (v_item->>'windowStartsOffsetDays')::numeric not between -2147483648 and 2147483647 or (v_item->>'windowEndsOffsetDays')::numeric not between -2147483648 and 2147483647
-        or (v_item ? 'windowStartsLocalTime' and (jsonb_typeof(v_item->'windowStartsLocalTime') <> 'string' or v_item->>'windowStartsLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
-        or (v_item ? 'windowEndsLocalTime' and (jsonb_typeof(v_item->'windowEndsLocalTime') <> 'string' or v_item->>'windowEndsLocalTime' !~ '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'))
-      then return false; end if;
+      if not (
+        v_keys <@ array[
+          'anchorType', 'displayOrder', 'isRequired', 'isSelectedByDefault',
+          'itemKind', 'organizationTemplateId', 'priority',
+          'windowEndsLocalTime', 'windowEndsOffsetDays',
+          'windowStartsLocalTime', 'windowStartsOffsetDays'
+        ]
+        and v_item ? 'windowStartsOffsetDays'
+        and v_item ? 'windowEndsOffsetDays'
+      ) then
+        return false;
+      end if;
+
+      if (
+        jsonb_typeof(v_item->'windowStartsOffsetDays') <> 'number'
+        or jsonb_typeof(v_item->'windowEndsOffsetDays') <> 'number'
+        or (v_item->>'windowStartsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
+        or (v_item->>'windowEndsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
+      ) then
+        return false;
+      end if;
+
+      if (
+        (v_item->>'windowStartsOffsetDays')::numeric
+          not between -2147483648 and 2147483647
+        or (v_item->>'windowEndsOffsetDays')::numeric
+          not between -2147483648 and 2147483647
+      ) then
+        return false;
+      end if;
+
+      if (
+        (
+          v_item ? 'windowStartsLocalTime'
+          and (
+            jsonb_typeof(v_item->'windowStartsLocalTime') <> 'string'
+            or (v_item->>'windowStartsLocalTime') !~
+              '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+          )
+        )
+        or (
+          v_item ? 'windowEndsLocalTime'
+          and (
+            jsonb_typeof(v_item->'windowEndsLocalTime') <> 'string'
+            or (v_item->>'windowEndsLocalTime') !~
+              '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'
+          )
+        )
+      ) then
+        return false;
+      end if;
+
       v_starts := (v_item->>'windowStartsOffsetDays')::integer;
       v_ends := (v_item->>'windowEndsOffsetDays')::integer;
-      if v_starts > v_ends or (v_starts = v_ends and v_item ? 'windowStartsLocalTime' and v_item ? 'windowEndsLocalTime' and (v_item->>'windowStartsLocalTime')::time > (v_item->>'windowEndsLocalTime')::time) then return false; end if;
+      if (
+        v_starts > v_ends
+        or (
+          v_starts = v_ends
+          and v_item ? 'windowStartsLocalTime'
+          and v_item ? 'windowEndsLocalTime'
+          and (v_item->>'windowStartsLocalTime')::time
+            > (v_item->>'windowEndsLocalTime')::time
+        )
+      ) then
+        return false;
+      end if;
     end if;
-    if not exists (select 1 from public.litter_care_task_templates template where template.organization_id = p_organization_id and template.id = (v_item->>'organizationTemplateId')::uuid) then return false; end if;
+
+    if not exists (
+      select 1
+      from public.litter_care_task_templates template
+      where template.organization_id = p_organization_id
+        and template.id = (v_item->>'organizationTemplateId')::uuid
+    ) then
+      return false;
+    end if;
   end loop;
-  return cardinality(v_orders) = cardinality(array(select distinct unnest(v_orders)));
+
+  return true;
 end; $$;
 
 create or replace function public.mutate_litter_planning_model(

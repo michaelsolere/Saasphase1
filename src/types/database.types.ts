@@ -2418,9 +2418,9 @@ export type Database = {
         ]
       }
       litter_planning_model_commands: {
-        Row: { client_command_id: string; created_at: string; created_by: string; id: string; model_id: string | null; operation: string; organization_id: string; outcome: string; payload: Json; reason: string | null; result_is_active: boolean | null; result_revision: number | null }
-        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; model_id?: string | null; operation: string; organization_id: string; outcome: string; payload: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
-        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; model_id?: string | null; operation?: string; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
+        Row: { client_command_id: string; created_at: string; created_by: string; id: string; model_id: string; operation: string; organization_id: string; outcome: string; payload: Json; reason: string | null; result_is_active: boolean | null; result_revision: number | null }
+        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; model_id: string; operation: string; organization_id: string; outcome: string; payload: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
+        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; model_id?: string; operation?: string; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
         Relationships: []
       }
       litter_planning_model_items: {
