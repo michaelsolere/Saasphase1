@@ -3,6 +3,25 @@ import { closeSync, existsSync, openSync, readFileSync, rmSync, writeFileSync } 
 
 export const defaultShutdownTimeoutMs = 10_000;
 
+export function resolveTerminalResult(outcome, interruptedSignal) {
+  if (interruptedSignal) {
+    return {
+      line: `E2E_INTERRUPTED=${interruptedSignal}`,
+      exitCode: interruptedSignal === "SIGINT" ? 130 : 143,
+    };
+  }
+
+  if (Number.isInteger(outcome?.code)) {
+    return { line: `E2E_EXIT=${outcome.code}`, exitCode: outcome.code };
+  }
+
+  if (outcome?.signal) {
+    return { line: `E2E_CHILD_SIGNAL=${outcome.signal}`, exitCode: 1 };
+  }
+
+  return { line: "E2E_EXIT=1", exitCode: 1 };
+}
+
 function isProcessRunning(pid) {
   try {
     process.kill(pid, 0);

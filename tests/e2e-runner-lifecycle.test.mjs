@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   acquireRunnerLock,
+  resolveTerminalResult,
   restoreFile,
   startManagedProcess,
   stopManagedProcess,
@@ -19,6 +20,15 @@ function tempDirectory() {
 function fakeChild(script) {
   return startManagedProcess(process.execPath, ["-e", script], { stdio: "pipe" });
 }
+
+test("resolves Playwright terminal outcomes without treating child signals as success", () => {
+  assert.deepEqual(resolveTerminalResult({ code: 0, signal: null }), { line: "E2E_EXIT=0", exitCode: 0 });
+  assert.deepEqual(resolveTerminalResult({ code: 7, signal: null }), { line: "E2E_EXIT=7", exitCode: 7 });
+  assert.deepEqual(resolveTerminalResult({ code: null, signal: "SIGTERM" }), {
+    line: "E2E_CHILD_SIGNAL=SIGTERM",
+    exitCode: 1,
+  });
+});
 
 test("returns the child's successful exit code", async () => {
   const outcome = await fakeChild("process.exit(0)").completed;

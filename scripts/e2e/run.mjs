@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import {
   acquireRunnerLock,
+  resolveTerminalResult,
   restoreFile,
   startManagedProcess,
   stopManagedProcess,
@@ -206,6 +207,12 @@ async function handleSignal(signal) {
 process.on("SIGINT", () => void handleSignal("SIGINT"));
 process.on("SIGTERM", () => void handleSignal("SIGTERM"));
 
+function reportTerminalResult(outcome) {
+  const result = resolveTerminalResult(outcome, interruptedSignal);
+  console.log(result.line);
+  process.exitCode = result.exitCode;
+}
+
 async function main() {
   assertSafeE2eConfig();
   assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
@@ -222,23 +229,12 @@ async function main() {
       outcome = await runEphemeral();
     }
 
-    if (interruptedSignal) {
-      console.log(`E2E_INTERRUPTED=${interruptedSignal}`);
-      process.exitCode = interruptedSignal === "SIGINT" ? 130 : 143;
-    } else {
-      const code = outcome?.code ?? 0;
-      console.log(`E2E_EXIT=${code}`);
-      process.exitCode = code;
-    }
+    reportTerminalResult(outcome);
   } catch (error) {
-    if (interruptedSignal) {
-      console.log(`E2E_INTERRUPTED=${interruptedSignal}`);
-      process.exitCode = interruptedSignal === "SIGINT" ? 130 : 143;
-    } else {
+    if (!interruptedSignal) {
       console.error(error.stack ?? error.message);
-      console.log("E2E_EXIT=1");
-      process.exitCode = 1;
     }
+    reportTerminalResult();
   } finally {
     restoreTsconfig();
     releaseRunnerLock?.();
