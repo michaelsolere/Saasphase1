@@ -395,7 +395,7 @@ export function LitterJournalDashboard({
         <ContextCard litter={litter} details={details} />
         <SummaryCard litter={litter} />
       </div>
-      {!litterPlanLoadError ? <LitterPlanTimelinePanel timeline={litterPlanTimeline} /> : null}
+      <LitterPlanTimelinePanel timeline={litterPlanTimeline} unavailable={litterPlanLoadError} />
       <WhelpingPanel
         displayMode="journal"
         session={whelpingSession}
