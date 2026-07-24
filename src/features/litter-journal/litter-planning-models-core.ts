@@ -200,7 +200,8 @@ function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
     typeof row.is_active !== "boolean" ||
     !Number.isInteger(row.revision) ||
     row.revision <= 0 ||
-    (row.species !== null && row.species !== "dog" && row.species !== "cat")
+    (row.species !== null && row.species !== "dog" && row.species !== "cat") ||
+    (row.breed !== null && row.species === null)
   ) return null;
   return { id: row.id, title: row.title, description: row.description, species: row.species, breed: row.breed, isActive: row.is_active, revision: row.revision };
 }
@@ -257,7 +258,7 @@ export async function createLitterPlanningModelCore(organizationId: string, clie
   const description = normalizeText(input.description, 5000);
   const breed = normalizeText(input.breed, 255);
   const items = normalizeItems(input.items);
-  if (!normalizeUuid(organizationId) || !normalizeUuid(clientCommandId) || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat") || (input.isActive !== undefined && typeof input.isActive !== "boolean")) return failure("invalid_input", "La demande est invalide.");
+  if (!normalizeUuid(organizationId) || !normalizeUuid(clientCommandId) || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat") || (breed !== null && input.species == null) || (input.isActive !== undefined && typeof input.isActive !== "boolean")) return failure("invalid_input", "La demande est invalide.");
   const result = await supabase.rpc("create_litter_planning_model", { p_organization_id: organizationId, p_client_command_id: clientCommandId, p_title: title, p_description: description, p_species: input.species ?? null, p_breed: breed, p_is_active: input.isActive ?? true, p_items: itemsJson(items) });
   return result.error || !result.data?.[0] ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data[0]);
 }
@@ -267,7 +268,7 @@ export async function replaceLitterPlanningModelCore(modelId: string, clientComm
   const description = normalizeText(input.description, 5000);
   const breed = normalizeText(input.breed, 255);
   const items = normalizeItems(input.items);
-  if (!normalizeUuid(modelId) || !normalizeUuid(clientCommandId) || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat")) return failure("invalid_input", "La demande est invalide.");
+  if (!normalizeUuid(modelId) || !normalizeUuid(clientCommandId) || !Number.isInteger(expectedRevision) || expectedRevision <= 0 || !title || description === undefined || breed === undefined || !items || (input.species !== undefined && input.species !== null && input.species !== "dog" && input.species !== "cat") || (breed !== null && input.species == null)) return failure("invalid_input", "La demande est invalide.");
   const result = await supabase.rpc("replace_litter_planning_model", { p_model_id: modelId, p_client_command_id: clientCommandId, p_expected_revision: expectedRevision, p_title: title, p_description: description, p_species: input.species ?? null, p_breed: breed, p_items: itemsJson(items) });
   return result.error || !result.data?.[0] ? failure("database_error", "La modification du modèle n’a pas pu être effectuée.") : mapMutation(result.data[0]);
 }

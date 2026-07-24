@@ -29,6 +29,10 @@ const ids = {
   template: `${prefix}03`,
   schemaItem: `${prefix}04`,
   foreignItem: `${prefix}05`,
+  catTemplate: `${prefix}06`,
+  otherBreedTemplate: `${prefix}07`,
+  genericDogTemplate: `${prefix}08`,
+  missingModel: `${prefix}09`,
   adminUser: `${prefix}10`,
   adminIdentity: `${prefix}11`,
   adminMembership: `${prefix}12`,
@@ -60,6 +64,13 @@ const commandIds = new Set(
 const createdModelIds = new Set<string>();
 const createdItemIds = new Set<string>();
 const createdCommandIds = new Set<string>();
+const templateIds = new Set([
+  ids.template,
+  ids.foreignTemplate,
+  ids.catTemplate,
+  ids.otherBreedTemplate,
+  ids.genericDogTemplate,
+]);
 
 function command(suffix: number) {
   return `${prefix}${String(suffix).padStart(2, "0")}`;
@@ -94,10 +105,10 @@ function cleanup() {
     where id = any(${uuidArray(createdModelIds)});
 
     delete from public.litter_care_task_template_commands
-    where template_id in (${q(ids.template)}::uuid, ${q(ids.foreignTemplate)}::uuid);
+    where template_id = any(${uuidArray(templateIds)});
 
     delete from public.litter_care_task_templates
-    where id in (${q(ids.template)}::uuid, ${q(ids.foreignTemplate)}::uuid);
+    where id = any(${uuidArray(templateIds)});
 
     delete from public.memberships
     where id in (
@@ -150,7 +161,7 @@ function remainingCounts() {
         ),
         'templates', (
           select count(*) from public.litter_care_task_templates
-          where id in (${q(ids.template)}::uuid, ${q(ids.foreignTemplate)}::uuid)
+          where id = any(${uuidArray(templateIds)})
         ),
         'memberships', (
           select count(*) from public.memberships where id in (
@@ -185,10 +196,7 @@ function remainingCounts() {
         ),
         'tasks', (
           select count(*) from public.litter_care_tasks
-          where organization_template_id in (
-            ${q(ids.template)}::uuid,
-            ${q(ids.foreignTemplate)}::uuid
-          )
+          where organization_template_id = any(${uuidArray(templateIds)})
         )
       )::text;
     `),
@@ -281,17 +289,34 @@ function createFixtures() {
 
     insert into public.litter_care_task_templates (
       id, organization_id, title, category, target_scope, anchor_type,
-      offset_days, species, sort_order, revision, created_by, updated_by
+      offset_days, species, breed, sort_order, revision, created_by, updated_by
     ) values
       (
         ${q(ids.template)}::uuid, ${q(organizationId)}::uuid,
         'E2E planning element', 'other', 'litter', 'expected_birth',
-        0, 'dog', 0, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+        0, 'dog', ' Golden Retriever ', 0, 1,
+        ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
       ),
       (
         ${q(ids.foreignTemplate)}::uuid, ${q(ids.foreignOrganization)}::uuid,
         'E2E planning foreign element', 'other', 'litter', 'expected_birth',
-        0, 'dog', 0, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+        0, 'dog', null, 0, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.catTemplate)}::uuid, ${q(organizationId)}::uuid,
+        'E2E planning cat element', 'other', 'litter', 'expected_birth',
+        0, 'cat', null, 0, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.otherBreedTemplate)}::uuid, ${q(organizationId)}::uuid,
+        'E2E planning other breed element', 'other', 'litter', 'expected_birth',
+        0, 'dog', 'Labrador Retriever', 0, 1,
+        ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.genericDogTemplate)}::uuid, ${q(organizationId)}::uuid,
+        'E2E planning generic dog element', 'other', 'litter', 'expected_birth',
+        0, 'dog', null, 0, 1, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
       );
   `);
 }
@@ -310,7 +335,7 @@ function point(
   overrides: Partial<LitterPlanningModelItemInput> = {},
 ): LitterPlanningModelItemInput {
   return {
-    organizationTemplateId: ids.template,
+    organizationTemplateId: ids.genericDogTemplate,
     itemKind: "milestone",
     priority: "normal",
     anchorType: "expected_birth",
@@ -408,14 +433,15 @@ async function invalidRpc(
   owner: Supabase,
   clientCommandId: string,
   items: Json,
+  taxonomy: { species?: string | null; breed?: string | null } = {},
 ) {
   const result = await owner.rpc("create_litter_planning_model", {
     p_organization_id: organizationId,
     p_client_command_id: clientCommandId,
     p_title: "Invalid payload must be atomic",
     p_description: null,
-    p_species: "dog",
-    p_breed: null,
+    p_species: taxonomy.species === undefined ? "dog" : taxonomy.species,
+    p_breed: taxonomy.breed ?? null,
     p_is_active: true,
     p_items: items,
   });
@@ -437,8 +463,14 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
     const inactive = await authenticatedClient(...credentials.inactive);
     const foreign = await authenticatedClient(...credentials.foreign);
 
-    const modelCountBeforeInvalid = Number(
-      sql(`select count(*) from public.litter_planning_models where organization_id=${q(organizationId)}::uuid;`),
+    const modelIdsBeforeInvalid = new Set(
+      JSON.parse(
+        sql(`
+          select coalesce(json_agg(id::text order by id), '[]'::json)::text
+          from public.litter_planning_models
+          where organization_id=${q(organizationId)}::uuid;
+        `),
+      ) as string[],
     );
     const itemCountBeforeInvalid = Number(
       sql(`select count(*) from public.litter_planning_model_items where organization_id=${q(organizationId)}::uuid;`),
@@ -492,11 +524,35 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
     await invalidRpc(owner, command(63), [
       { ...point(), pointOffsetDays: "1" },
     ]);
-    expect(
-      Number(
-        sql(`select count(*) from public.litter_planning_models where organization_id=${q(organizationId)}::uuid;`),
-      ),
-    ).toBe(modelCountBeforeInvalid);
+    await invalidRpc(
+      owner,
+      command(70),
+      [point({ organizationTemplateId: ids.catTemplate })],
+      { species: "dog" },
+    );
+    await invalidRpc(
+      owner,
+      command(71),
+      [point({ organizationTemplateId: ids.otherBreedTemplate })],
+      { species: "dog", breed: "Golden Retriever" },
+    );
+    await invalidRpc(
+      owner,
+      command(72),
+      [point()],
+      { species: null, breed: "Golden Retriever" },
+    );
+    const modelIdsAfterInvalid = JSON.parse(
+      sql(`
+        select coalesce(json_agg(id::text order by id), '[]'::json)::text
+        from public.litter_planning_models
+        where organization_id=${q(organizationId)}::uuid;
+      `),
+    ) as string[];
+    for (const modelId of modelIdsAfterInvalid) {
+      if (!modelIdsBeforeInvalid.has(modelId)) createdModelIds.add(modelId);
+    }
+    expect(modelIdsAfterInvalid).toEqual([...modelIdsBeforeInvalid]);
     expect(
       Number(
         sql(`select count(*) from public.litter_planning_model_items where organization_id=${q(organizationId)}::uuid;`),
@@ -526,6 +582,48 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
       `),
     ) as string[];
     for (const itemId of itemIds) createdItemIds.add(itemId);
+    expect(
+      itemIds,
+      "a same-species generic task template must remain compatible with a breed planning model",
+    ).toHaveLength(2);
+
+    const incompatibleReplacement = await replaceLitterPlanningModelCore(
+      creation.modelId,
+      command(73),
+      1,
+      {
+        title: "Incompatible replacement",
+        species: "dog",
+        breed: "Golden Retriever",
+        items: [point({ organizationTemplateId: ids.catTemplate })],
+      },
+      owner,
+    );
+    expect(incompatibleReplacement).toMatchObject({
+      outcome: "error",
+      error: { code: "invalid_input" },
+    });
+    expect(
+      JSON.parse(
+        sql(`
+          select json_build_object(
+            'title', title,
+            'revision', revision,
+            'items', (
+              select json_agg(item.id::text order by item.display_order)
+              from public.litter_planning_model_items item
+              where item.model_id=${q(creation.modelId)}::uuid
+            )
+          )::text
+          from public.litter_planning_models
+          where id=${q(creation.modelId)}::uuid;
+        `),
+      ),
+    ).toEqual({
+      title: "E2E composed planning",
+      revision: 1,
+      items: itemIds,
+    });
 
     for (const [client, role] of [
       [owner, "owner"],
@@ -566,8 +664,6 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
     for (const [client, suffix] of [
       [member, 52],
       [viewer, 53],
-      [inactive, 54],
-      [foreign, 55],
     ] as const) {
       expect(
         await setLitterPlanningModelActiveCore(
@@ -579,6 +675,81 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
         ),
       ).toMatchObject({ outcome: "error", error: { code: "forbidden" } });
     }
+    for (const [client, suffix] of [
+      [inactive, 54],
+      [foreign, 55],
+    ] as const) {
+      expect(
+        await setLitterPlanningModelActiveCore(
+          creation.modelId,
+          command(suffix),
+          2,
+          true,
+          client,
+        ),
+      ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    }
+    expect(
+      await setLitterPlanningModelActiveCore(
+        ids.missingModel,
+        command(74),
+        1,
+        true,
+        owner,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+
+    const inaccessibleCreateInput = {
+      title: "Inaccessible organization",
+      species: "dog" as const,
+      items: [point()],
+    };
+    expect(
+      await createLitterPlanningModelCore(
+        organizationId,
+        command(75),
+        inaccessibleCreateInput,
+        inactive,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    expect(
+      await createLitterPlanningModelCore(
+        organizationId,
+        command(76),
+        inaccessibleCreateInput,
+        foreign,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    expect(
+      await createLitterPlanningModelCore(
+        ids.foreignOrganization,
+        command(77),
+        {
+          title: "Foreign organization hidden",
+          species: "dog",
+          items: [
+            point({ organizationTemplateId: ids.foreignTemplate }),
+          ],
+        },
+        owner,
+      ),
+    ).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    expect(
+      sql(`
+        select count(*) from public.litter_planning_model_commands
+        where client_command_id in (
+          ${q(command(52))}::uuid,
+          ${q(command(53))}::uuid,
+          ${q(command(54))}::uuid,
+          ${q(command(55))}::uuid,
+          ${q(command(73))}::uuid,
+          ${q(command(74))}::uuid,
+          ${q(command(75))}::uuid,
+          ${q(command(76))}::uuid,
+          ${q(command(77))}::uuid
+        );
+      `),
+    ).toBe("0");
 
     const staleInput = { title: "Stale intent", items: [point()] };
     expect(
@@ -733,18 +904,15 @@ test("fonde les modèles composés de planning de façon sûre et atomique", asy
     expect(
       sql(`
         select count(*) from public.litter_care_tasks
-        where organization_template_id in (
-          ${q(ids.template)}::uuid,
-          ${q(ids.foreignTemplate)}::uuid
-        );
+        where organization_template_id = any(${uuidArray(templateIds)});
       `),
     ).toBe("0");
     expect(
       sql(`
         select count(*) from public.litter_care_task_templates
-        where id in (${q(ids.template)}::uuid, ${q(ids.foreignTemplate)}::uuid);
+        where id = any(${uuidArray(templateIds)});
       `),
-    ).toBe("2");
+    ).toBe(String(templateIds.size));
 
     const commandRows = JSON.parse(
       sql(`

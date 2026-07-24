@@ -16,6 +16,7 @@ create table public.litter_planning_models (
   constraint litter_planning_models_description_check check (description is null or char_length(description) <= 5000),
   constraint litter_planning_models_species_check check (species is null or species in ('dog', 'cat')),
   constraint litter_planning_models_breed_check check (breed is null or char_length(btrim(breed)) between 1 and 255),
+  constraint litter_planning_models_breed_species_check check (breed is null or species is not null),
   constraint litter_planning_models_revision_check check (revision > 0)
 );
 
@@ -137,6 +138,8 @@ create trigger litter_planning_model_commands_append_only before update or delet
 
 create or replace function public.assert_litter_planning_model_items(
   p_organization_id uuid,
+  p_species text,
+  p_breed text,
   p_items jsonb
 )
 returns boolean language plpgsql security definer set search_path = '' set row_security = off as $$
@@ -328,6 +331,15 @@ begin
       from public.litter_care_task_templates template
       where template.organization_id = p_organization_id
         and template.id = (v_item->>'organizationTemplateId')::uuid
+        and (
+          p_species is null
+          or template.species = p_species
+        )
+        and (
+          p_breed is null
+          or template.breed is null
+          or lower(btrim(template.breed)) = lower(btrim(p_breed))
+        )
     ) then
       return false;
     end if;
@@ -347,10 +359,32 @@ begin
   outcome := 'error'; model_id := p_model_id; revision := null; is_active := null; replayed := false; reason := null;
   if v_user_id is null then reason := 'not_authenticated'; return next; return; end if;
   if p_operation not in ('create','replace','set_active') or p_client_command_id is null then reason := 'invalid_input'; return next; return; end if;
-  if p_operation = 'create' then v_org := p_organization_id; else select organization_id into v_org from public.litter_planning_models where id = p_model_id; end if;
-  if v_org is null or not exists(select 1 from public.organizations where id=v_org and deleted_at is null) then reason := 'model_not_found'; return next; return; end if;
-  select role into v_role from public.memberships where organization_id=v_org and profile_id=v_user_id and status='active' and deleted_at is null for share;
-  if not found or v_role not in ('owner','admin') then reason := 'membership_required'; return next; return; end if;
+  if p_operation = 'create' then
+    select organization.id
+    into v_org
+    from public.organizations organization
+    where organization.id = p_organization_id
+      and organization.deleted_at is null;
+  else
+    select planning_model.organization_id
+    into v_org
+    from public.litter_planning_models planning_model
+    join public.organizations organization
+      on organization.id = planning_model.organization_id
+     and organization.deleted_at is null
+    where planning_model.id = p_model_id;
+  end if;
+  if not found or v_org is null then reason := 'model_not_found'; return next; return; end if;
+  select membership.role
+  into v_role
+  from public.memberships membership
+  where membership.organization_id = v_org
+    and membership.profile_id = v_user_id
+    and membership.status = 'active'
+    and membership.deleted_at is null
+  for share;
+  if not found then reason := 'model_not_found'; return next; return; end if;
+  if v_role not in ('owner','admin') then reason := 'membership_required'; return next; return; end if;
   v_payload := jsonb_build_object('operation',p_operation,'modelId',p_model_id,'organizationId',case when p_operation='create' then v_org else null end,'expectedRevision',p_expected_revision,'title',p_title,'description',p_description,'species',p_species,'breed',p_breed,'isActive',p_is_active,'items',coalesce(p_items,'null'::jsonb));
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('litter_planning_model_commands:'||v_org::text||':'||p_client_command_id::text,0));
   select * into v_command from public.litter_planning_model_commands where organization_id=v_org and client_command_id=p_client_command_id;
@@ -358,7 +392,20 @@ begin
     if v_command.operation <> p_operation or v_command.payload <> v_payload then reason := 'client_command_conflict'; return next; return; end if;
     outcome := v_command.outcome; model_id := v_command.model_id; revision := v_command.result_revision; is_active := v_command.result_is_active; reason := v_command.reason; replayed := true; return next; return;
   end if;
-  if p_operation in ('create','replace') and (p_title is null or char_length(btrim(p_title)) not between 1 and 255 or (p_description is not null and char_length(btrim(p_description)) > 5000) or p_species is not null and p_species not in ('dog','cat') or p_breed is not null and char_length(btrim(p_breed)) not between 1 and 255 or not public.assert_litter_planning_model_items(v_org, p_items)) then reason := 'invalid_input'; return next; return; end if;
+  if p_operation in ('create','replace') and (
+    p_title is null
+    or char_length(btrim(p_title)) not between 1 and 255
+    or (p_description is not null and char_length(btrim(p_description)) > 5000)
+    or (p_species is not null and p_species not in ('dog','cat'))
+    or (p_breed is not null and char_length(btrim(p_breed)) not between 1 and 255)
+    or (p_breed is not null and p_species is null)
+    or not public.assert_litter_planning_model_items(
+      v_org,
+      p_species,
+      p_breed,
+      p_items
+    )
+  ) then reason := 'invalid_input'; return next; return; end if;
   if p_operation = 'create' then
     insert into public.litter_planning_models(organization_id,title,description,species,breed,is_active,revision,created_by,updated_by) values(v_org,btrim(p_title),nullif(btrim(p_description),''),p_species,case when p_breed is null then null else btrim(p_breed) end,coalesce(p_is_active,true),1,v_user_id,v_user_id) returning * into v_model;
   else
@@ -399,7 +446,7 @@ returns table(outcome text,model_id uuid,revision integer,is_active boolean,repl
 
 revoke all on table public.litter_planning_model_commands from anon, authenticated;
 revoke all on function public.litter_planning_model_commands_immutable() from public;
-revoke all on function public.assert_litter_planning_model_items(uuid,jsonb) from public;
+revoke all on function public.assert_litter_planning_model_items(uuid,text,text,jsonb) from public;
 revoke all on function public.mutate_litter_planning_model(text,uuid,uuid,uuid,integer,text,text,text,text,boolean,jsonb) from public;
 revoke all on function public.create_litter_planning_model(uuid,uuid,text,text,text,text,boolean,jsonb) from public;
 grant execute on function public.create_litter_planning_model(uuid,uuid,text,text,text,text,boolean,jsonb) to authenticated;
