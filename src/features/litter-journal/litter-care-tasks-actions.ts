@@ -80,7 +80,7 @@ function isCivilDate(input: string) {
 }
 
 function isLocalTime(input: string) {
-  return /^([01]\d|2[0-3]):[0-5]\d$/.test(input);
+  return /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(input);
 }
 
 function validTimezone(input: string) {

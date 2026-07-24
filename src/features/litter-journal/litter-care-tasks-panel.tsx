@@ -111,14 +111,23 @@ function formatResolvedAt(task: LitterCareTaskSummary) {
   }
 }
 
+function timeInputValue(value: string | null) {
+  const match = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.exec(
+    value ?? "",
+  );
+
+  return match?.[0].slice(0, 5) ?? "";
+}
+
 function formatLocalTime(value: string | null) {
-  return value ? ` à ${value.replace(":", " h ")}` : "";
+  const time = timeInputValue(value);
+  return time ? ` à ${time.replace(":", " h ")}` : "";
 }
 
 function scheduleDetails(task: LitterCareTaskSummary) {
   if (task.itemKind === "window") {
     const suggested = task.suggestedStartsOn && task.suggestedEndsOn
-      ? `Fenêtre suggérée : du ${formatCivilDate(task.suggestedStartsOn)} au ${formatCivilDate(task.suggestedEndsOn)}`
+      ? `Fenêtre suggérée : du ${formatCivilDate(task.suggestedStartsOn)}${formatLocalTime(task.suggestedStartsLocalTime)} au ${formatCivilDate(task.suggestedEndsOn)}${formatLocalTime(task.suggestedEndsLocalTime)}`
       : null;
     const retained = task.retainedStartsOn && task.retainedEndsOn
       ? `Fenêtre retenue : du ${formatCivilDate(task.retainedStartsOn)}${formatLocalTime(task.retainedStartsLocalTime)} au ${formatCivilDate(task.retainedEndsOn)}${formatLocalTime(task.retainedEndsLocalTime)}`
@@ -524,10 +533,11 @@ function ScheduleTaskDialog({ task, actions, onSuccess }: { task: LitterCareTask
   const [plannedFor, setPlannedFor] = useState(task.plannedFor ?? "");
   const [start, setStart] = useState(task.retainedStartsOn ?? "");
   const [end, setEnd] = useState(task.retainedEndsOn ?? "");
-  const [startTime, setStartTime] = useState(task.itemKind === "window" ? task.retainedStartsLocalTime ?? "" : task.scheduledLocalTime ?? "");
-  const [endTime, setEndTime] = useState(task.retainedEndsLocalTime ?? "");
+  const [startTime, setStartTime] = useState(timeInputValue(task.itemKind === "window" ? task.retainedStartsLocalTime : task.scheduledLocalTime));
+  const [endTime, setEndTime] = useState(timeInputValue(task.retainedEndsLocalTime));
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
+  const [timezone, setTimezone] = useState(task.scheduleTimezoneName ?? "UTC");
   const action = task.isScheduleLocked ? actions.replaceLockedAction : actions.rescheduleAction;
   const submitAction = useCallback(async (previousState: LitterCareTaskActionState, formData: FormData) => {
     const nextState = await action(previousState, formData);
@@ -540,11 +550,14 @@ function ScheduleTaskDialog({ task, actions, onSuccess }: { task: LitterCareTask
   const isWindow = task.itemKind === "window";
   const suggestion = scheduleDetails(task);
   const boundsValid = !isWindow || (!!start && !!end && (start < end || (start === end && (!startTime || !endTime || startTime <= endTime))));
-  const timezone = task.scheduleTimezoneName || browserTimezone();
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen && !task.scheduleTimezoneName) setTimezone(browserTimezone());
+    setOpen(nextOpen);
+  };
 
-  return <Dialog open={open} onOpenChange={setOpen}>
+  return <Dialog open={open} onOpenChange={handleOpenChange}>
     <DialogTrigger asChild><Button type="button" variant="outline" size="sm">Modifier la programmation</Button></DialogTrigger>
-    <DialogContent className="fixed right-0 top-0 h-dvh max-h-dvh w-full translate-x-0 translate-y-0 overflow-y-auto rounded-none border-l sm:max-w-xl" aria-describedby="litter-care-task-schedule-description">
+    <DialogContent className="fixed left-auto right-0 top-0 h-dvh max-h-dvh w-full translate-x-0 translate-y-0 overflow-y-auto rounded-none border-l sm:max-w-xl sm:rounded-none" aria-describedby="litter-care-task-schedule-description">
       <DialogHeader><DialogTitle>Modifier la programmation</DialogTitle><DialogDescription id="litter-care-task-schedule-description">{task.title}</DialogDescription></DialogHeader>
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="timezone_name" value={timezone} />
@@ -648,7 +661,7 @@ function PlannedTasks({
                       onSuccess={onSuccess}
                     />
                   ) : null}
-                  {scheduleAction ? <ScheduleTaskDialog task={task} actions={scheduleAction} onSuccess={onSuccess} /> : null}
+                  {scheduleAction ? <ScheduleTaskDialog key={`${task.id}-${task.revisionNo}`} task={task} actions={scheduleAction} onSuccess={onSuccess} /> : null}
                 </div>
               </li>
             );
