@@ -24,6 +24,17 @@ function adjacentMonth(month: string, difference: number) {
   const date = new Date(Date.UTC(year, monthNumber - 1 + difference, 1));
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
+function weekStart(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  return new Date(value.getTime() - ((value.getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+}
+function addDays(date: string, difference: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + difference)).toISOString().slice(0, 10);
+}
+function nextWeek(date: string, difference: number) { return addDays(date, difference * 7); }
+function weekEnd(date: string) { return addDays(date, 6); }
 
 function q(value: string) { return `'${value.replaceAll("'", "''")}'`; }
 function sql(statement: string) { return runE2eSqlSync(statement); }
@@ -122,6 +133,29 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     await page.getByRole("link", { name: "Mois suivant" }).click(); await page.waitForURL((url) => url.searchParams.get("month") === nextMonth); await expect(page.getByText(formatMonthLabel(nextMonth))).toBeVisible(); await page.getByRole("link", { name: "Mois précédent" }).click();
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible(); await page.getByRole("link", { name: "Aujourd’hui" }).click();
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible();
+    const weekDate = dateInMonth(currentMonth, 13);
+    const weekStartDate = weekStart(weekDate);
+    await page.goto(`${calendarUrl}&view=week&date=${weekDate}&kind=window&category=veterinary`);
+    const weekSection = page.getByRole("region", { name: `Semaine du ${weekStartDate} au ${weekEnd(weekStartDate)}` });
+    await expect(weekSection).toBeVisible();
+    await expect(page.getByRole("link", { name: "Mois" })).toHaveAttribute("href", new RegExp(`litter=${ids.litter}.*kind=window.*category=veterinary`));
+    await expect(weekSection.getByText(`${namePrefix} fenêtre vétérinaire`, { exact: true })).toHaveCount(2);
+    await expect(weekSection.getByText("08:00", { exact: true })).toHaveCount(1);
+    await page.getByRole("link", { name: "Semaine suivante" }).click();
+    await page.waitForURL((url) => url.searchParams.get("date") === nextWeek(weekStartDate, 1));
+    await page.getByRole("link", { name: "Semaine précédente" }).click();
+    await page.waitForURL((url) => url.searchParams.get("date") === weekStartDate);
+    await page.getByRole("link", { name: "Agenda" }).click();
+    await page.waitForURL((url) => url.searchParams.get("view") === "agenda" && url.searchParams.get("date") === weekStartDate);
+    const agendaSection = page.getByRole("region", { name: `Agenda du ${weekStartDate} au ${weekEnd(weekStartDate)}` });
+    await expect(agendaSection).toBeVisible();
+    await expect(agendaSection.getByText(`${namePrefix} fenêtre vétérinaire`, { exact: true })).toHaveCount(1);
+    await expect(agendaSection.getByText(`Du ${dateInMonth(currentMonth, 13)} à 08:00 au ${dateInMonth(currentMonth, 15)} à 18:00`, { exact: true })).toBeVisible();
+    const agendaDates = await agendaSection.locator("[data-agenda-date]").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-agenda-date")));
+    expect(agendaDates).toEqual([...agendaDates].sort());
+    await page.setViewportSize({ width: 375, height: 800 }); await page.goto(`${calendarUrl}&view=agenda&date=${weekDate}`);
+    const agendaMobileLayout = await page.evaluate(() => ({ bodyClientWidth: document.body.clientWidth, bodyScrollWidth: document.body.scrollWidth }));
+    expect(agendaMobileLayout.bodyScrollWidth).toBeLessThanOrEqual(agendaMobileLayout.bodyClientWidth + 1);
     await page.goto(calendarUrl); await page.getByText(`${namePrefix} jalon`).click();
     await expect(page).toHaveURL(/#litter-care-tasks$/);
     await page.setViewportSize({ width: 375, height: 800 }); await page.goto(calendarUrl);
