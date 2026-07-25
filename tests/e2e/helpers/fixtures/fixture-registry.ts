@@ -1,4 +1,5 @@
 export const fixtureTables = [
+  "notes",
   "events",
   "documents",
   "payments",
@@ -26,6 +27,7 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "notes",
   "events",
   "documents",
   "payments",

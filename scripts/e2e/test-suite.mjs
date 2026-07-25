@@ -10,6 +10,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/adopter-cancellation-fixtures.spec.ts",
   "tests/e2e/adopter-document-fixtures.spec.ts",
   "tests/e2e/adopter-finalization-fixtures.spec.ts",
+  "tests/e2e/adopter-note-fixtures.spec.ts",
   "tests/e2e/adopter-payment-fixtures.spec.ts",
   "tests/e2e/adopter-refund-fixtures.spec.ts",
   "tests/e2e/animal-weight-relative-series.spec.ts",
