@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { resolvePlaywrightRunMode } from "./scripts/e2e/test-suite.mjs";
+
+const { managedRunner } = resolvePlaywrightRunMode();
+const nextDevDir = process.env.NEXT_DEV_DIR ?? ".supabase-e2e/next";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   outputDir: "/tmp/saasphase1-playwright-results",
@@ -16,11 +21,13 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    command:
-      "NEXT_DEV_DIR=${NEXT_DEV_DIR:-.next-playwright} node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
-    url: "http://127.0.0.1:3100",
-    reuseExistingServer: process.env.E2E_REUSE_EXISTING_SERVER === "1",
-    timeout: 120_000,
-  },
+  webServer: managedRunner
+    ? {
+        command: "node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
+        env: { NEXT_DEV_DIR: nextDevDir },
+        url: "http://127.0.0.1:3100",
+        reuseExistingServer: process.env.E2E_REUSE_EXISTING_SERVER === "1",
+        timeout: 120_000,
+      }
+    : undefined,
 });

@@ -47,7 +47,8 @@ pnpm build
 
 ```bash
 pnpm dev
-pnpm test:e2e
+pnpm test:e2e -- tests/e2e/breeding-calendar.spec.ts
+pnpm test:e2e:pure -- tests/e2e/breeding-calendar-core.spec.ts
 ```
 
 `pnpm dev` utilise la stack Supabase locale de développement `saasphase1`,
@@ -56,6 +57,21 @@ le port applicatif `3000` et les ports Supabase `54320–54329`.
 `pnpm test:e2e` génère un workdir Supabase ignoré pour `saasphase1-e2e`,
 utilise l’application sur `127.0.0.1:3100` et les ports Supabase
 `55320–55329`, puis arrête uniquement cette stack E2E.
+
+Toute spec intégrée doit être exécutée exclusivement par le runner géré :
+
+```bash
+pnpm test:e2e -- tests/e2e/breeding-calendar.spec.ts
+```
+
+Un lancement direct `pnpm exec playwright test` d’une spec intégrée est refusé
+avant le démarrage de Next ou de Supabase. Les specs pures sont déclarées dans
+`scripts/e2e/test-suite.mjs` et peuvent être exécutées sans Docker ni variables
+Supabase :
+
+```bash
+pnpm test:e2e:pure -- tests/e2e/breeding-calendar-core.spec.ts
+```
 
 Les démonstrations durables utilisent la même isolation E2E, mais un cycle
 explicite distinct de Playwright. Elles conservent le serveur `3100` et leurs
