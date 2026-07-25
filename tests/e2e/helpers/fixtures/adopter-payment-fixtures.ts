@@ -109,7 +109,7 @@ export async function createTestReceivedPayment(execute: SqlExecutor, registry: 
   if (JSON.stringify(input) !== JSON.stringify(snapshot)) throw new Error("E2E received payment fixture mutated its input"); return { ...reservation, id: entityId, amountCents: input.amountCents } satisfies Payment;
 }
 
-export async function createTestContactRole(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; ownerId: string; role: "candidate" | "pre_reservation_holder"; isActive?: boolean }) {
+export async function createTestContactRole(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; ownerId: string; role: "candidate" | "pre_reservation_holder" | "reservation_holder"; isActive?: boolean }) {
   const contact = state(registry).contacts.get(input.contactId); if (!contact || contact.organizationId !== input.organizationId) throw new Error("E2E contact role belongs to another organization");
   const entityId = id(input.id); await insert(execute, registry, "contact_roles", { id: entityId, organization_id: input.organizationId, contact_id: input.contactId, role: input.role, started_at: "2026-07-10", is_active: input.isActive ?? true ? "true" : "false", created_by: input.ownerId, updated_by: input.ownerId }); return entityId;
 }
