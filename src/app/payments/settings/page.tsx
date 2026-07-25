@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { resolveDepositSettings } from "@/features/payments/deposit-thresholds";
 import { formatPrice } from "@/features/reservations/formatters";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
@@ -229,9 +230,9 @@ export default async function PaymentSettingsPage({
         normalizeCurrency(settings.default_currency) ??
         "EUR"
       : "EUR";
+  const resolvedDepositSettings = resolveDepositSettings(settings);
   const totalDepositCents = settings
-    ? settings.default_pre_reservation_deposit_cents +
-      settings.default_arrhes_second_payment_cents
+    ? resolvedDepositSettings.completeDepositCents
     : null;
 
   return (

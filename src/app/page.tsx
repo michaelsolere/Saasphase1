@@ -224,7 +224,7 @@ export default async function Home() {
         .from("payments")
         .select("reservation_id, amount_cents")
         .in("reservation_id", reservationIds)
-        .eq("payment_type", "arrhes")
+        .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
         .eq("status", "paid")
         .is("deleted_at", null)
     : { data: [] };
@@ -258,8 +258,9 @@ export default async function Home() {
       ? paidArrhesCentsByReservationId.get(r.id) ?? 0
       : 0;
     const completeDepositCents = r.organization_id
-      ? completeDepositCentsByOrganizationId.get(r.organization_id)
-      : undefined;
+      ? completeDepositCentsByOrganizationId.get(r.organization_id) ??
+        resolveDepositSettings(null).completeDepositCents
+      : resolveDepositSettings(null).completeDepositCents;
     return reservationNeedsAttention(r, paidArrhesCents, completeDepositCents);
   });
 
