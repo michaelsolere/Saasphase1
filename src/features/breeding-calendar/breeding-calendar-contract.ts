@@ -4,3 +4,11 @@ export const BREEDING_CALENDAR_SOURCE_TYPES = ["litter_care"] as const;
 export type BreedingCalendarSourceType = (typeof BREEDING_CALENDAR_SOURCE_TYPES)[number];
 export type BreedingCalendarEvent = { identitySource: "litter-care"; sourceType: BreedingCalendarSourceType; category: string; title: string; contextLabel: string; startsOn: string; startsLocalTime: string | null; endsOn: string | null; endsLocalTime: string | null; timezoneName: string | null; isAllDay: boolean; revision: number; lastModifiedAt: string; sourceRecordId: string; litterId: string; itemKind: LitterCareTaskSummary["itemKind"] };
 export type OrganizationBreedingCalendar = { organizationId: string; events: BreedingCalendarEvent[]; litterNames: Record<string, string> };
+
+export function toBreedingCalendarEvent(task: LitterCareTaskSummary, litterName: string): BreedingCalendarEvent | null {
+  if (task.status !== "planned") return null;
+  const isWindow = task.itemKind === "window";
+  const startsOn = isWindow ? task.retainedStartsOn : task.plannedFor;
+  if (!startsOn) return null;
+  return { identitySource: "litter-care", sourceType: "litter_care", category: task.category, title: task.title, contextLabel: litterName, startsOn, startsLocalTime: isWindow ? task.retainedStartsLocalTime : task.scheduledLocalTime, endsOn: isWindow ? task.retainedEndsOn : null, endsLocalTime: isWindow ? task.retainedEndsLocalTime : null, timezoneName: task.scheduleTimezoneName, isAllDay: isWindow ? !(task.retainedStartsLocalTime && task.retainedEndsLocalTime) : !task.scheduledLocalTime, revision: task.revisionNo, lastModifiedAt: task.createdAt, sourceRecordId: task.id, litterId: task.litterId, itemKind: task.itemKind };
+}
