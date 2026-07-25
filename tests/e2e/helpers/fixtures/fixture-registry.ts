@@ -1,8 +1,26 @@
-export const fixtureTables = ["litter_care_tasks", "litters", "animals", "organizations"] as const;
+export const fixtureTables = [
+  "litter_care_tasks",
+  "litter_weight_adjustment_commands",
+  "litter_weight_commands",
+  "animal_weight_measurements",
+  "litter_weighing_sessions",
+  "litters",
+  "animals",
+  "organizations",
+] as const;
 export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
-const cleanupOrder: FixtureTable[] = ["litter_care_tasks", "litters", "animals", "organizations"];
+const cleanupOrder: FixtureTable[] = [
+  "litter_care_tasks",
+  "litter_weight_adjustment_commands",
+  "litter_weight_commands",
+  "animal_weight_measurements",
+  "litter_weighing_sessions",
+  "litters",
+  "animals",
+  "organizations",
+];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function idsSql(ids: string[]) { return ids.map((id) => `'${id}'::uuid`).join(", "); }

@@ -39,6 +39,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/whelping-birth-adjustment-actions-core.spec.ts",
   "tests/e2e/whelping-mobile-selection.spec.ts",
   "tests/e2e/whelping-quick-completion-actions-core.spec.ts",
+  "tests/e2e/weighing-fixtures.spec.ts",
 ]);
 
 const pureE2eSpecSet = new Set(pureE2eSpecPaths);
