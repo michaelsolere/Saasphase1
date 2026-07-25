@@ -97,6 +97,11 @@ const sections: SidebarSection[] = [
     ],
   },
   {
+    label: "Calendrier de l’élevage",
+    href: "/calendar",
+    icon: ClipboardList,
+  },
+  {
     label: "Animaux",
     icon: Dog,
     items: [
