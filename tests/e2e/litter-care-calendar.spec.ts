@@ -104,6 +104,19 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
       url.pathname === "/litters/journal/calendar" && url.searchParams.get("litter") === ids.litter,
     );
     await expect(page.getByRole("heading", { name: `${namePrefix} active` })).toBeVisible();
+    const exportLink = page.getByRole("link", { name: "Télécharger le fichier iCalendar" });
+    await expect(exportLink).toBeVisible();
+    await expect(exportLink).toHaveAttribute("href", new RegExp(`^/litters/journal/calendar/export\\?litter=${ids.litter}&kind=all&category=all$`));
+    await expect(page.getByText("Fichier à importer manuellement dans un agenda externe ; l’abonnement synchronisé n’est pas encore disponible.")).toBeVisible();
+    const download = await page.request.get(await exportLink.getAttribute("href")!);
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toBe("text/calendar; charset=utf-8");
+    expect(download.headers()["cache-control"]).toBe("private, no-store");
+    expect(download.headers()["content-disposition"]).toMatch(/^attachment; filename="e2e-calendrier-portee-active-journal\.ics"$/);
+    const ical = await download.text();
+    expect(ical).toContain(`${namePrefix} jalon`); expect(ical).toContain(`${namePrefix} occurrence`);
+    expect(ical).toContain(`${namePrefix} fenêtre vétérinaire`); expect(ical.match(/BEGIN:VEVENT/g)).toHaveLength(5);
+    expect(ical).not.toContain(`${namePrefix} terminée`); expect(ical).not.toContain(ids.litter);
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible();
     await expect(page.getByText("Lun")).toBeVisible(); await expect(page.getByText("Dim")).toBeVisible();
     await expect(page.getByText(`${namePrefix} jalon`)).toBeVisible();
@@ -126,6 +139,7 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     await expect(page.getByText(`${namePrefix} terminée`)).toHaveCount(0);
     await page.getByLabel("Catégorie").selectOption("other"); await page.getByRole("button", { name: "Appliquer" }).click();
     await expect(page.getByText(`${namePrefix} autre catégorie`)).toBeVisible(); await expect(page.getByText(`${namePrefix} jalon`)).toHaveCount(0);
+    await expect(exportLink).toHaveAttribute("href", new RegExp(`litter=${ids.litter}&kind=all&category=other`));
     await page.getByLabel("Type d’élément").selectOption("recurring_task"); await page.getByRole("button", { name: "Appliquer" }).click();
     await expect(page.getByText("Aucun élément ne correspond aux filtres sélectionnés.")).toBeVisible();
     await page.getByRole("link", { name: "Réinitialiser" }).click(); await expect(page.getByText(`${namePrefix} occurrence`)).toBeVisible();
