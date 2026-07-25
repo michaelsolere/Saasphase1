@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:e2e": "node scripts/e2e/run.mjs",
+    "test:e2e:pure": "node scripts/e2e/run-pure.mjs",
     "test:e2e:reuse": "node scripts/e2e/run.mjs --reuse",
     "test:e2e:stop": "node scripts/e2e/run.mjs --stop",
     "demo:e2e:start": "node scripts/e2e/demo.mjs start",

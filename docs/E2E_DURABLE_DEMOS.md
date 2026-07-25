@@ -44,6 +44,30 @@ les tables concernées sont recomptées avec `count(*)`, sans filtre
 `deleted_at`. Un reliquat, y compris sous le préfixe réservé du scénario, fait
 échouer la commande. Aucun enregistrement seulement soft-delete n’est accepté.
 
+## Lancement des tests E2E
+
+Les specs intégrées utilisent obligatoirement le runner géré, qui vérifie
+Docker avant toute inspection de conteneur, suppression de volume ou préparation
+du workdir :
+
+```bash
+pnpm test:e2e -- tests/e2e/breeding-calendar.spec.ts
+```
+
+N’utilisez pas `pnpm exec playwright test` pour une spec intégrée : il est
+refusé avant le démarrage de Next et de Supabase et indique la commande gérée
+équivalente. Si Docker Desktop est arrêté, `pnpm test:e2e`, y compris
+`pnpm test:e2e:stop`, refuse proprement l’opération sans supprimer de volume ni
+workdir. Démarrez Docker Desktop, attendez que `docker info` réussisse, puis
+relancez la commande.
+
+Les specs sans dépendance Supabase sont explicitement listées dans
+`scripts/e2e/test-suite.mjs`. Elles se lancent sans Docker :
+
+```bash
+pnpm test:e2e:pure -- tests/e2e/breeding-calendar-core.spec.ts
+```
+
 ## Protection des démonstrations actives
 
 Un manifeste au statut `active` bloque explicitement :

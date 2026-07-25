@@ -71,6 +71,14 @@ export function restoreFile(path, originalContents) {
   }
 }
 
+export async function withRestoredFile(path, originalContents, operation) {
+  try {
+    return await operation();
+  } finally {
+    restoreFile(path, originalContents);
+  }
+}
+
 export function startManagedProcess(command, args, options = {}) {
   const child = spawn(command, args, {
     cwd: options.cwd,

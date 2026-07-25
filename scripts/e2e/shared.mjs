@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const workdir = resolve(repoRoot, ".supabase-e2e");
+export const nextBuildDir = ".supabase-e2e/next";
 export const demoManifestDir = resolve(workdir, "demos");
 export const sessionMarkerPath = resolve(workdir, ".reuse-session");
 export const projectId = "saasphase1-e2e";
@@ -40,7 +41,7 @@ export const e2eEnv = {
   NEXT_PUBLIC_SUPABASE_ORGANIZATION_SLUG: "elevage-e2e",
   E2E_OWNER_EMAIL: "e2e-owner@saasphase1.invalid",
   E2E_OWNER_PASSWORD: "LocalE2EOwner-2026!",
-  NEXT_DEV_DIR: ".next-e2e",
+  NEXT_DEV_DIR: nextBuildDir,
   PORT: String(appPort),
   HOSTNAME: "127.0.0.1",
 };
@@ -62,6 +63,38 @@ export function run(command, args, options = {}) {
   }
 
   return result.stdout ?? "";
+}
+
+function dockerUnavailable(error) {
+  if (error?.code === "ENOENT") {
+    return true;
+  }
+
+  const output = `${error?.stdout ?? ""}\n${error?.stderr ?? ""}\n${error?.message ?? ""}`;
+  return /cannot connect to the docker daemon|is the docker daemon running|docker desktop.*not running|failed to connect to docker/i.test(
+    output,
+  );
+}
+
+export function assertDockerAvailable({ dockerInfo = defaultDockerInfo } = {}) {
+  try {
+    dockerInfo();
+  } catch (error) {
+    if (!dockerUnavailable(error)) {
+      throw error;
+    }
+
+    throw new Error(
+      "Docker is not available.\n" +
+        "Start Docker Desktop, wait until docker info succeeds, then rerun:\n" +
+        "pnpm test:e2e -- <spec>",
+      { cause: error },
+    );
+  }
+}
+
+function defaultDockerInfo() {
+  execFileSync("docker", ["info"], { encoding: "utf8", stdio: "pipe" });
 }
 
 export async function isPortOpen(port) {

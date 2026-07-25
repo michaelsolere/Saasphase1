@@ -10,6 +10,7 @@ import {
   restoreFile,
   startManagedProcess,
   stopManagedProcess,
+  withRestoredFile,
 } from "../scripts/e2e/runner-lifecycle.mjs";
 import { isPortOpen } from "../scripts/e2e/shared.mjs";
 
@@ -100,6 +101,29 @@ test("restores a modified tsconfig file", () => {
     restoreFile(path, "original\n");
     writeFileSync(path, "modified\n");
     restoreFile(path, "original\n");
+    assert.equal(readFileSync(path, "utf8"), "original\n");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("preserves tsconfig after successful and failing runner operations", async () => {
+  const directory = tempDirectory();
+  const path = resolve(directory, "tsconfig.json");
+  try {
+    writeFileSync(path, "original\n");
+    await withRestoredFile(path, "original\n", async () => {
+      writeFileSync(path, "success mutation\n");
+    });
+    assert.equal(readFileSync(path, "utf8"), "original\n");
+
+    await assert.rejects(
+      withRestoredFile(path, "original\n", async () => {
+        writeFileSync(path, "failure mutation\n");
+        throw new Error("simulated runner failure");
+      }),
+      /simulated runner failure/,
+    );
     assert.equal(readFileSync(path, "utf8"), "original\n");
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -4,15 +4,16 @@ import { resolve } from "node:path";
 import {
   acquireRunnerLock,
   resolveTerminalResult,
-  restoreFile,
   startManagedProcess,
   stopManagedProcess,
+  withRestoredFile,
 } from "./runner-lifecycle.mjs";
 
 import {
   apiPort,
   appPort,
   assertContainers,
+  assertDockerAvailable,
   assertNoActiveDemoManifests,
   assertPortFree,
   assertSafeE2eConfig,
@@ -32,6 +33,7 @@ import {
   stopE2eStack,
   workdir,
 } from "./shared.mjs";
+import { createManagedPlaywrightEnvironment } from "./test-suite.mjs";
 
 const tsconfigPath = resolve(repoRoot, "tsconfig.json");
 const originalTsconfig = readFileSync(tsconfigPath, "utf8");
@@ -46,10 +48,6 @@ async function assertE2ePortsFree() {
   for (const port of e2ePorts) {
     await assertPortFree(port);
   }
-}
-
-function restoreTsconfig() {
-  restoreFile(tsconfigPath, originalTsconfig);
 }
 
 function clearSessionMarker() {
@@ -94,7 +92,7 @@ function removeWorkdir() {
 async function runPlaywright(supabaseEnv) {
   const managedProcess = startManagedProcess("node_modules/.bin/playwright", ["test", ...playwrightArgs], {
     cwd: repoRoot,
-    env: { ...e2eEnv, ...supabaseEnv },
+    env: createManagedPlaywrightEnvironment({ ...e2eEnv, ...supabaseEnv }),
   });
   activePlaywright = managedProcess;
   try {
@@ -162,7 +160,6 @@ async function runEphemeral() {
     removeE2eVolumes();
     clearSessionMarker();
     removeWorkdir();
-    restoreTsconfig();
   }
 }
 
@@ -172,7 +169,6 @@ async function runReuse() {
     const supabaseEnv = readStatusEnv();
     return await runPlaywright(supabaseEnv);
   } finally {
-    restoreTsconfig();
   }
 }
 
@@ -215,19 +211,21 @@ function reportTerminalResult(outcome) {
 
 async function main() {
   assertSafeE2eConfig();
+  assertDockerAvailable();
   assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
   releaseRunnerLock = acquireRunnerLock(runnerLockPath);
 
   try {
-    let outcome;
-    if (mode === "stop") {
-      runStop();
-      outcome = { code: 0 };
-    } else if (mode === "reuse") {
-      outcome = await runReuse();
-    } else {
-      outcome = await runEphemeral();
-    }
+    const outcome = await withRestoredFile(tsconfigPath, originalTsconfig, async () => {
+      if (mode === "stop") {
+        runStop();
+        return { code: 0 };
+      }
+      if (mode === "reuse") {
+        return runReuse();
+      }
+      return runEphemeral();
+    });
 
     reportTerminalResult(outcome);
   } catch (error) {
@@ -236,7 +234,6 @@ async function main() {
     }
     reportTerminalResult();
   } finally {
-    restoreTsconfig();
     releaseRunnerLock?.();
   }
 }
