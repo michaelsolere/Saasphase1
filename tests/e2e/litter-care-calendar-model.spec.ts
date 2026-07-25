@@ -1,8 +1,12 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  getLitterCareCalendarDate,
   getLitterCareCalendarMonth,
+  getLitterCareCalendarWeekStart,
   projectLitterCareCalendar,
+  projectLitterCareCalendarRange,
+  projectLitterCareCalendarWeek,
 } from "../../src/features/litter-journal/litter-care-calendar";
 import type { LitterCareTaskSummary } from "../../src/features/litter-journal/litter-care-tasks";
 
@@ -32,6 +36,18 @@ test("construit toujours une grille lundi-dimanche de six semaines", () => {
   expect(june.days[41]?.date).toBe("2024-07-07");
   expect(calendar([], "2024-02").days.filter((day) => day.isCurrentMonth)).toHaveLength(29);
   expect(getLitterCareCalendarMonth("2024-13", "2024-02-10")).toBe("2024-02");
+});
+
+test("calcule une semaine civile lundi-dimanche avec un repli sûr", () => {
+  expect(getLitterCareCalendarWeekStart("2024-01-01", "2024-07-25")).toBe("2024-01-01");
+  expect(getLitterCareCalendarWeekStart("2024-01-07", "2024-07-25")).toBe("2024-01-01");
+  expect(getLitterCareCalendarWeekStart("2024-12-31", "2024-07-25")).toBe("2024-12-30");
+  expect(getLitterCareCalendarWeekStart("2025-01-01", "2024-07-25")).toBe("2024-12-30");
+  expect(getLitterCareCalendarDate("2024-02-30", "2024-07-25")).toBe("2024-07-25");
+  const week = projectLitterCareCalendarWeek({ tasks: [], requestedDate: "2024-12-31", todayDate: "2024-12-31", todayLocalTime: "12:00" });
+  expect(week.startsOn).toBe("2024-12-30");
+  expect(week.endsOn).toBe("2025-01-05");
+  expect(week.days).toHaveLength(7);
 });
 
 test("projette points, occurrence matérialisée, filtres et états sans mutation", () => {
@@ -70,4 +86,16 @@ test("projette les fenêtres aux bornes originales, y compris à travers le mois
   expect(item("2024-01-01", "before")?.retainedStartsOn).toBe("2023-12-30");
   expect(item("2024-01-31", "after")?.operationalState).toBe("open");
   expect(item("2024-02-03", "after")?.retainedEndsOn).toBe("2024-02-03");
+});
+
+test("utilise la même projection de plage pour le mois et la semaine", () => {
+  const inputs = [task({ id: "crossing", itemKind: "window", plannedFor: null, retainedStartsOn: "2024-01-05", retainedStartsLocalTime: "08:00", retainedEndsOn: "2024-01-15", retainedEndsLocalTime: "18:00" }), task({ id: "timed", plannedFor: "2024-01-08", scheduledLocalTime: "09:30" })];
+  const before = JSON.stringify(inputs);
+  const week = projectLitterCareCalendarWeek({ tasks: inputs, requestedDate: "2024-01-08", todayDate: "2024-01-08", todayLocalTime: "12:00" });
+  const range = projectLitterCareCalendarRange({ tasks: inputs, startsOn: "2024-01-08", endsOn: "2024-01-14", todayDate: "2024-01-08", todayLocalTime: "12:00" });
+  expect(week.days).toEqual(range.days);
+  expect(week.days[0]?.items.find((item) => item.task.id === "crossing")?.retainedStartsOn).toBe("2024-01-05");
+  expect(week.days[0]?.items.find((item) => item.task.id === "crossing")?.time).toBeNull();
+  expect(week.days[0]?.items.find((item) => item.task.id === "timed")?.time).toBe("09:30");
+  expect(JSON.stringify(inputs)).toBe(before);
 });
