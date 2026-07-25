@@ -36,6 +36,10 @@ export function getAdopterFixtureReservation(registry: Registry, reservationId: 
   return state(registry).reservations.get(reservationId);
 }
 
+export function getAdopterFixtureLitter(registry: Registry, litterId: string) {
+  return state(registry).litters.get(litterId);
+}
+
 function validateAmount(amountCents: number) {
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     throw new Error("E2E payment amountCents must be a positive integer");
