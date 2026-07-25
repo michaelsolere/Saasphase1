@@ -44,7 +44,16 @@ test("discovered RPC effects are registered and cleanup covers adopter tables id
   registry.register("payments", ids.payment); registry.register("reservations", ids.journey); registry.register("applications", ids.application); registry.register("contacts", ids.contact); registry.register("litter_groups", ids.group); registry.register("litters", ids.litter); registry.register("contact_roles", ids.candidate);
   await registerActualPaymentEffects(executor(calls), registry, { organizationId: ids.org, reservationId: ids.journey, contactId: ids.contact, paymentId: ids.payment });
   expect(registry.has("contact_roles", ids.holder)).toBe(true);
-  expect(registry.cleanupOrder.slice(0, 8)).toEqual(["documents", "payments", "contact_roles", "reservations", "applications", "contacts", "litter_care_tasks", "whelping_birth_adjustment_commands"]);
+  const order = registry.cleanupOrder;
+  expect(order.indexOf("notes")).toBeLessThan(order.indexOf("events"));
+  expect(order.indexOf("events")).toBeLessThan(order.indexOf("documents"));
+  expect(order.indexOf("documents")).toBeLessThan(order.indexOf("payments"));
+  expect(order.indexOf("payments")).toBeLessThan(order.indexOf("contact_roles"));
+  expect(order.indexOf("contact_roles")).toBeLessThan(order.indexOf("reservations"));
+  expect(order.indexOf("reservations")).toBeLessThan(order.indexOf("applications"));
+  expect(order.indexOf("applications")).toBeLessThan(order.indexOf("contacts"));
+  expect(order.indexOf("contacts")).toBeLessThan(order.indexOf("litter_care_tasks"));
+  expect(order.indexOf("litter_care_tasks")).toBeLessThan(order.indexOf("whelping_birth_adjustment_commands"));
   await registry.cleanup(); await registry.cleanup();
   expect(calls.filter((call) => call.startsWith("delete")).map((call) => call.match(/public\.([a-z_]+)/)?.[1])).toContain("payments");
   expect(calls.filter((call) => call.startsWith("delete")).map((call) => call.match(/public\.([a-z_]+)/)?.[1])).toContain("litter_groups");

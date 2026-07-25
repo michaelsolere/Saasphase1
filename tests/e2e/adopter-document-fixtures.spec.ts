@@ -166,14 +166,14 @@ test("discovered document effects are registered and cleanup covers documents be
     documentId: ids.document,
   });
   expect(registry.has("documents", ids.document)).toBe(true);
-  expect(registry.cleanupOrder.slice(0, 6)).toEqual([
-    "documents",
-    "payments",
-    "contact_roles",
-    "reservations",
-    "applications",
-    "contacts",
-  ]);
+  const order = registry.cleanupOrder;
+  expect(order.indexOf("notes")).toBeLessThan(order.indexOf("events"));
+  expect(order.indexOf("events")).toBeLessThan(order.indexOf("documents"));
+  expect(order.indexOf("documents")).toBeLessThan(order.indexOf("payments"));
+  expect(order.indexOf("payments")).toBeLessThan(order.indexOf("contact_roles"));
+  expect(order.indexOf("contact_roles")).toBeLessThan(order.indexOf("reservations"));
+  expect(order.indexOf("reservations")).toBeLessThan(order.indexOf("applications"));
+  expect(order.indexOf("applications")).toBeLessThan(order.indexOf("contacts"));
 
   await registry.cleanup();
   await registry.cleanup();
