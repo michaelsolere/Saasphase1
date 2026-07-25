@@ -5,6 +5,7 @@ import { repoRoot } from "./shared.mjs";
 // This is deliberately an allow-list, not a filename convention. Add a spec here
 // only after confirming it has no dependency on the managed E2E environment.
 export const pureE2eSpecPaths = Object.freeze([
+  "tests/e2e/adopter-document-fixtures.spec.ts",
   "tests/e2e/adopter-payment-fixtures.spec.ts",
   "tests/e2e/animal-weight-relative-series.spec.ts",
   "tests/e2e/breeding-calendar-core.spec.ts",

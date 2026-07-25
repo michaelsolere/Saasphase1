@@ -28,6 +28,14 @@ function state(registry: Registry) {
   return current;
 }
 
+export function getAdopterFixtureContact(registry: Registry, contactId: string) {
+  return state(registry).contacts.get(contactId);
+}
+
+export function getAdopterFixtureReservation(registry: Registry, reservationId: string) {
+  return state(registry).reservations.get(reservationId);
+}
+
 function validateAmount(amountCents: number) {
   if (!Number.isInteger(amountCents) || amountCents <= 0) {
     throw new Error("E2E payment amountCents must be a positive integer");
