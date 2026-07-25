@@ -358,12 +358,22 @@ export function LitterJournalDashboard({
               {getLitterDisplayName(litter.name, litter.id)}
             </h2>
             {publicMobileLitterIndex >= 0 ? (
-              <Link
-                href={`/whelping/selection?litter=${publicMobileLitterIndex}`}
-                className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline"
-              >
-                Ouvrir le mode mobile de mise-bas
-              </Link>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+                <Link
+                  href={`/whelping/selection?litter=${publicMobileLitterIndex}`}
+                  className="inline-flex text-sm font-semibold text-accent hover:underline"
+                >
+                  Ouvrir le mode mobile de mise-bas
+                </Link>
+                {litter.id ? (
+                  <Link
+                    href={`/litters/journal/calendar?litter=${encodeURIComponent(litter.id)}`}
+                    className="inline-flex text-sm font-semibold text-accent hover:underline"
+                  >
+                    Ouvrir le calendrier
+                  </Link>
+                ) : null}
+              </div>
             ) : null}
           </div>
           {litter.id ? (

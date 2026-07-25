@@ -9,9 +9,13 @@ import type { LitterJournalListItem } from "./types";
 export function LitterJournalSelector({
   litters,
   selectedLitterId,
+  basePath = "/litters/journal",
+  preservedSearchParams = {},
 }: {
   litters: LitterJournalListItem[];
   selectedLitterId: string;
+  basePath?: string;
+  preservedSearchParams?: Record<string, string | undefined>;
 }) {
   const router = useRouter();
 
@@ -22,7 +26,12 @@ export function LitterJournalSelector({
         aria-label="Portée affichée"
         value={selectedLitterId}
         onChange={(event) => {
-          router.push(`/litters/journal?litter=${encodeURIComponent(event.target.value)}`);
+          const params = new URLSearchParams();
+          for (const [key, value] of Object.entries(preservedSearchParams)) {
+            if (value) params.set(key, value);
+          }
+          params.set("litter", event.target.value);
+          router.push(`${basePath}?${params.toString()}`);
         }}
         className="min-w-0 max-w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground sm:w-72"
       >
