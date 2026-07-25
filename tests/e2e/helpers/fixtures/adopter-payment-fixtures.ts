@@ -83,7 +83,7 @@ export async function createTestApplication(execute: SqlExecutor, registry: Regi
   if (JSON.stringify(input) !== JSON.stringify(snapshot)) throw new Error("E2E application fixture mutated its input"); return row;
 }
 
-export async function createTestAdopterJourney(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; applicationId: string; ownerId: string; litterGroupId?: string | null; litterId?: string | null; status?: "pre_reservation_requested" | "active" }) {
+export async function createTestAdopterJourney(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; applicationId: string; ownerId: string; litterGroupId?: string | null; litterId?: string | null; status?: "draft" | "pre_reservation_requested" | "active" }) {
   const snapshot = structuredClone(input); const contact = state(registry).contacts.get(input.contactId); const application = state(registry).applications.get(input.applicationId);
   if (!contact || contact.organizationId !== input.organizationId || !application || application.organizationId !== input.organizationId || application.id !== input.applicationId) throw new Error("E2E adopter journey contact or application belongs to another organization");
   if (application.litterId !== (input.litterId ?? null) || application.litterGroupId !== (input.litterGroupId ?? null)) throw new Error("E2E adopter journey litter or group is incoherent");
