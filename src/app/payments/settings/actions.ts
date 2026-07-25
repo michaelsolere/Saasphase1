@@ -3,11 +3,22 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  parseNonNegativeInteger,
+  parseOptionalEuroCents,
+  parseRequiredPositiveEuroCents,
+} from "@/features/payments/payment-settings-parse";
 import { createClient } from "@/lib/supabase/server";
 
 const paymentSettingsPath = "/payments/settings";
 
-type PaymentSettingsStatus = "success" | "invalid" | "error";
+export type PaymentSettingsStatus =
+  | "success"
+  | "invalid_pre_reservation"
+  | "invalid_complement"
+  | "invalid_delay"
+  | "invalid"
+  | "error";
 
 function statusUrl(status: PaymentSettingsStatus) {
   return `${paymentSettingsPath}?settings_status=${status}`;
@@ -26,86 +37,48 @@ function normalizeOptionalText(value: FormDataEntryValue | null, maxLength = 255
   return trimmedValue.slice(0, maxLength);
 }
 
-function parseEuroAmountCents(
-  value: FormDataEntryValue | null,
-  { allowEmpty = false }: { allowEmpty?: boolean } = {},
-) {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalizedValue = value.trim().replace(",", ".");
-  if (!normalizedValue) {
-    return allowEmpty ? null : undefined;
-  }
-
-  if (!/^\d+(\.\d{1,2})?$/.test(normalizedValue)) {
-    return undefined;
-  }
-
-  const amount = Number(normalizedValue);
-  if (!Number.isFinite(amount) || amount < 0) {
-    return undefined;
-  }
-
-  return Math.round(amount * 100);
-}
-
-function parseNonNegativeInteger(value: FormDataEntryValue | null) {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-
-  const normalizedValue = value.trim();
-  if (!/^\d+$/.test(normalizedValue)) {
-    return undefined;
-  }
-
-  const integerValue = Number(normalizedValue);
-  return Number.isSafeInteger(integerValue) && integerValue >= 0
-    ? integerValue
-    : undefined;
-}
-
 export async function updatePaymentSettings(formData: FormData) {
   const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
   if (!organizationId) {
     redirect(statusUrl("error"));
   }
 
-  const defaultPreReservationDepositCents = parseEuroAmountCents(
+  const defaultPreReservationDepositCents = parseRequiredPositiveEuroCents(
     formData.get("default_pre_reservation_deposit_euros"),
   );
-  const defaultArrhesSecondPaymentCents = parseEuroAmountCents(
+  if (!defaultPreReservationDepositCents.ok) {
+    redirect(statusUrl("invalid_pre_reservation"));
+  }
+
+  const defaultArrhesSecondPaymentCents = parseRequiredPositiveEuroCents(
     formData.get("default_arrhes_second_payment_euros"),
   );
-  const defaultMalePuppyPriceCents = parseEuroAmountCents(
+  if (!defaultArrhesSecondPaymentCents.ok) {
+    redirect(statusUrl("invalid_complement"));
+  }
+
+  const defaultMalePuppyPriceCents = parseOptionalEuroCents(
     formData.get("default_male_puppy_price_euros"),
-    { allowEmpty: true },
   );
-  const defaultFemalePuppyPriceCents = parseEuroAmountCents(
+  const defaultFemalePuppyPriceCents = parseOptionalEuroCents(
     formData.get("default_female_puppy_price_euros"),
-    { allowEmpty: true },
   );
-  const defaultPuppyPriceCents = parseEuroAmountCents(
+  const defaultPuppyPriceCents = parseOptionalEuroCents(
     formData.get("default_puppy_price_euros"),
-    { allowEmpty: true },
   );
+  if (
+    !defaultMalePuppyPriceCents.ok ||
+    !defaultFemalePuppyPriceCents.ok ||
+    !defaultPuppyPriceCents.ok
+  ) {
+    redirect(statusUrl("invalid"));
+  }
+
   const preReservationResponseDelayDays = parseNonNegativeInteger(
     formData.get("pre_reservation_response_delay_days"),
   );
-
-  if (
-    defaultPreReservationDepositCents === undefined ||
-    defaultPreReservationDepositCents === null ||
-    defaultArrhesSecondPaymentCents === undefined ||
-    defaultArrhesSecondPaymentCents === null ||
-    defaultMalePuppyPriceCents === undefined ||
-    defaultFemalePuppyPriceCents === undefined ||
-    defaultPuppyPriceCents === undefined ||
-    preReservationResponseDelayDays === undefined
-  ) {
-    redirect(statusUrl("invalid"));
+  if (!preReservationResponseDelayDays.ok) {
+    redirect(statusUrl("invalid_delay"));
   }
 
   const supabase = await createClient();
@@ -134,23 +107,32 @@ export async function updatePaymentSettings(formData: FormData) {
     redirect(statusUrl("error"));
   }
 
-  const { error } = await supabase
+  const { data: updatedSettings, error } = await supabase
     .from("organization_settings")
     .update({
-      default_pre_reservation_deposit_cents: defaultPreReservationDepositCents,
-      default_arrhes_second_payment_cents: defaultArrhesSecondPaymentCents,
-      default_male_puppy_price_cents: defaultMalePuppyPriceCents,
-      default_female_puppy_price_cents: defaultFemalePuppyPriceCents,
-      default_puppy_price_cents: defaultPuppyPriceCents,
-      pre_reservation_response_delay_days: preReservationResponseDelayDays,
+      default_pre_reservation_deposit_cents:
+        defaultPreReservationDepositCents.value,
+      default_arrhes_second_payment_cents: defaultArrhesSecondPaymentCents.value,
+      default_male_puppy_price_cents: defaultMalePuppyPriceCents.value,
+      default_female_puppy_price_cents: defaultFemalePuppyPriceCents.value,
+      default_puppy_price_cents: defaultPuppyPriceCents.value,
+      pre_reservation_response_delay_days: preReservationResponseDelayDays.value,
+      updated_by: user.id,
+      updated_at: new Date().toISOString(),
     })
     .eq("organization_id", organizationId)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .select(
+      "organization_id, default_pre_reservation_deposit_cents, default_arrhes_second_payment_cents",
+    )
+    .maybeSingle();
 
-  if (error) {
+  if (error || !updatedSettings) {
     redirect(statusUrl("error"));
   }
 
   revalidatePath(paymentSettingsPath);
+  revalidatePath("/payments");
+  revalidatePath("/reservations");
   redirect(statusUrl("success"));
 }

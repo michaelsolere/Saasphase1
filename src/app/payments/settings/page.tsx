@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { DepositSettingsFields } from "@/features/payments/deposit-settings-fields";
 import { resolveDepositSettings } from "@/features/payments/deposit-thresholds";
+import {
+  formatEuroInputValue,
+} from "@/features/payments/payment-settings-parse";
 import { formatPrice } from "@/features/reservations/formatters";
 import { createClient } from "@/lib/supabase/server";
 import type { Json } from "@/types/database.types";
 
-import { updatePaymentSettings } from "./actions";
+import {
+  updatePaymentSettings,
+  type PaymentSettingsStatus,
+} from "./actions";
 
 export const dynamic = "force-dynamic";
-
-type StatusValue = "success" | "invalid" | "error" | undefined;
 
 type PaymentSettings = {
   default_pre_reservation_deposit_cents: number;
@@ -55,15 +60,7 @@ function getSettingsJsonCurrency(settingsJson: Json) {
   return null;
 }
 
-function formatEurosInput(amountCents: number | null) {
-  if (amountCents === null) {
-    return "";
-  }
-
-  return (amountCents / 100).toFixed(2);
-}
-
-function StatusMessage({ value }: { value: StatusValue }) {
+function StatusMessage({ value }: { value: PaymentSettingsStatus | undefined }) {
   if (!value) {
     return null;
   }
@@ -72,9 +69,15 @@ function StatusMessage({ value }: { value: StatusValue }) {
   const message =
     value === "success"
       ? "Paramètres de paiement enregistrés."
-      : value === "invalid"
-        ? "Vérifiez les montants et le délai : valeurs positives uniquement, sans format invalide."
-        : "Impossible d’enregistrer les paramètres. Aucune donnée n’a été modifiée.";
+      : value === "invalid_pre_reservation"
+        ? "Montant de pré-réservation invalide. Saisissez un montant strictement positif, avec au plus deux décimales."
+        : value === "invalid_complement"
+          ? "Complément d’arrhes invalide. Saisissez un montant strictement positif, avec au plus deux décimales."
+          : value === "invalid_delay"
+            ? "Délai de réponse invalide. Saisissez un nombre entier supérieur ou égal à zéro."
+            : value === "invalid"
+              ? "Vérifiez les montants saisis : format invalide, valeur négative ou trop élevée."
+              : "Impossible d’enregistrer les paramètres. Aucune donnée n’a été modifiée.";
 
   return (
     <section
@@ -96,8 +99,7 @@ function Field({
   name,
   defaultValue,
   disabled,
-  min = "0",
-  step,
+  inputMode,
   suffix,
 }: {
   id: string;
@@ -105,8 +107,7 @@ function Field({
   name: string;
   defaultValue: string | number;
   disabled: boolean;
-  min?: string;
-  step?: string;
+  inputMode?: "decimal" | "numeric";
   suffix?: string;
 }) {
   return (
@@ -121,9 +122,9 @@ function Field({
         <input
           id={id}
           name={name}
-          type="number"
-          min={min}
-          step={step}
+          type="text"
+          inputMode={inputMode}
+          autoComplete="off"
           defaultValue={defaultValue}
           disabled={disabled}
           className="min-w-0 flex-1 rounded-xl bg-transparent px-4 py-3 text-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
@@ -186,7 +187,7 @@ function MissingSettingsMessage() {
 export default async function PaymentSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ settings_status?: StatusValue }>;
+  searchParams: Promise<{ settings_status?: PaymentSettingsStatus }>;
 }) {
   const query = await searchParams;
   const supabase = await createClient();
@@ -256,7 +257,8 @@ export default async function PaymentSettingsPage({
         <p className="mt-3 max-w-3xl leading-7 text-muted">
           Ces paramètres définissent les montants et délais par défaut des
           parcours adoptants déjà branchés sur les paiements de pré-réservation
-          et les compléments d’arrhes.
+          et les compléments d’arrhes. Les paiements déjà créés conservent leur
+          montant d’origine.
         </p>
       </header>
 
@@ -268,8 +270,9 @@ export default async function PaymentSettingsPage({
             <StatusMessage value={query.settings_status} />
 
             <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-950">
-              Les parcours non encore branchés conservent leurs règles
-              existantes avec fallback applicatif.
+              Les nouveaux montants s’appliquent aux nouvelles demandes de
+              paiement. Les montants des paiements déjà demandés, payés,
+              annulés ou remboursés ne sont pas modifiés.
             </div>
 
             <form
@@ -282,76 +285,77 @@ export default async function PaymentSettingsPage({
                 value={organizationId ?? ""}
               />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  id="default_pre_reservation_deposit_euros"
-                  label="Montant pré-réservation"
-                  name="default_pre_reservation_deposit_euros"
-                  defaultValue={formatEurosInput(
-                    settings.default_pre_reservation_deposit_cents,
-                  )}
-                  disabled={!canEdit}
-                  step="0.01"
-                  suffix={currency}
-                />
-                <Field
-                  id="default_arrhes_second_payment_euros"
-                  label="Complément d’arrhes"
-                  name="default_arrhes_second_payment_euros"
-                  defaultValue={formatEurosInput(
-                    settings.default_arrhes_second_payment_cents,
-                  )}
-                  disabled={!canEdit}
-                  step="0.01"
-                  suffix={currency}
-                />
-                <Field
-                  id="default_male_puppy_price_euros"
-                  label="Prix chiot mâle par défaut"
-                  name="default_male_puppy_price_euros"
-                  defaultValue={formatEurosInput(
-                    settings.default_male_puppy_price_cents,
-                  )}
-                  disabled={!canEdit}
-                  step="0.01"
-                  suffix={currency}
-                />
-                <Field
-                  id="default_female_puppy_price_euros"
-                  label="Prix chiot femelle par défaut"
-                  name="default_female_puppy_price_euros"
-                  defaultValue={formatEurosInput(
-                    settings.default_female_puppy_price_cents,
-                  )}
-                  disabled={!canEdit}
-                  step="0.01"
-                  suffix={currency}
-                />
-                <Field
-                  id="default_puppy_price_euros"
-                  label="Prix générique fallback"
-                  name="default_puppy_price_euros"
-                  defaultValue={formatEurosInput(
-                    settings.default_puppy_price_cents,
-                  )}
-                  disabled={!canEdit}
-                  step="0.01"
-                  suffix={currency}
-                />
-                <Field
-                  id="pre_reservation_response_delay_days"
-                  label="Délai de réponse pré-réservation"
-                  name="pre_reservation_response_delay_days"
-                  defaultValue={settings.pre_reservation_response_delay_days}
-                  disabled={!canEdit}
-                  step="1"
-                  suffix="jours"
-                />
+              <DepositSettingsFields
+                defaultPreReservationEuros={formatEuroInputValue(
+                  settings.default_pre_reservation_deposit_cents,
+                )}
+                defaultComplementEuros={formatEuroInputValue(
+                  settings.default_arrhes_second_payment_cents,
+                )}
+                currency={currency}
+                disabled={!canEdit}
+              />
+
+              <div className="mt-8 border-t pt-6">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Prix des chiots et délai
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted">
+                  Les prix optionnels peuvent rester vides. Le délai de réponse
+                  accepte zéro jour.
+                </p>
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <Field
+                    id="default_male_puppy_price_euros"
+                    label="Prix chiot mâle par défaut"
+                    name="default_male_puppy_price_euros"
+                    defaultValue={formatEuroInputValue(
+                      settings.default_male_puppy_price_cents,
+                    )}
+                    disabled={!canEdit}
+                    inputMode="decimal"
+                    suffix={currency}
+                  />
+                  <Field
+                    id="default_female_puppy_price_euros"
+                    label="Prix chiot femelle par défaut"
+                    name="default_female_puppy_price_euros"
+                    defaultValue={formatEuroInputValue(
+                      settings.default_female_puppy_price_cents,
+                    )}
+                    disabled={!canEdit}
+                    inputMode="decimal"
+                    suffix={currency}
+                  />
+                  <Field
+                    id="default_puppy_price_euros"
+                    label="Prix générique fallback"
+                    name="default_puppy_price_euros"
+                    defaultValue={formatEuroInputValue(
+                      settings.default_puppy_price_cents,
+                    )}
+                    disabled={!canEdit}
+                    inputMode="decimal"
+                    suffix={currency}
+                  />
+                  <Field
+                    id="pre_reservation_response_delay_days"
+                    label="Délai de réponse pré-réservation"
+                    name="pre_reservation_response_delay_days"
+                    defaultValue={String(
+                      settings.pre_reservation_response_delay_days,
+                    )}
+                    disabled={!canEdit}
+                    inputMode="numeric"
+                    suffix="jours"
+                  />
+                </div>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t pt-5">
                 <p className="text-sm text-muted">
-                  Devise : <span className="font-semibold text-foreground">{currency}</span>{" "}
+                  Devise :{" "}
+                  <span className="font-semibold text-foreground">{currency}</span>{" "}
                   en lecture seule.
                 </p>
                 <button
@@ -366,7 +370,7 @@ export default async function PaymentSettingsPage({
               {!canEdit ? (
                 <p className="mt-4 text-sm text-muted">
                   Seuls les propriétaires et administrateurs peuvent modifier ces
-                  paramètres.
+                  paramètres. Les champs sont en lecture seule.
                 </p>
               ) : null}
             </form>
@@ -375,23 +379,23 @@ export default async function PaymentSettingsPage({
               <SettingCard
                 label="Pré-réservation"
                 value={formatPrice(
-                  settings.default_pre_reservation_deposit_cents,
+                  resolvedDepositSettings.preReservationDepositCents,
                   currency,
                 )}
                 detail="Montant par défaut du premier versement demandé."
               />
               <SettingCard
-                label="Complément d’arrhes"
+                label="Complément à la réservation"
                 value={formatPrice(
-                  settings.default_arrhes_second_payment_cents,
+                  resolvedDepositSettings.arrhesSecondPaymentCents,
                   currency,
                 )}
                 detail="Montant par défaut du complément demandé ensuite."
               />
               <SettingCard
-                label="Arrhes totales calculées"
+                label="Arrhes complètes"
                 value={formatPrice(totalDepositCents, currency)}
-                detail="Somme de la pré-réservation et du complément d’arrhes."
+                detail="Somme de la pré-réservation et du complément, alignée sur resolveDepositSettings."
               />
               <SettingCard
                 label="Prix chiot mâle"
