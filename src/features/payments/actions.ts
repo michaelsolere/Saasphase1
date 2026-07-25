@@ -621,6 +621,13 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
   redirect(reservationPaymentMarkUrl(reservationId, "success"));
 }
 
+function refundRedirectUrl(
+  reservationId: string,
+  outcome: "success" | "error" | "exceeds_refundable",
+) {
+  return `/reservations/${reservationId}?payment_refund_status=${outcome}#payments`;
+}
+
 export async function createReservationRefund(formData: FormData) {
   const reservationId = formData.get("reservation_id");
 
@@ -638,7 +645,7 @@ export async function createReservationRefund(formData: FormData) {
     redirect("/login");
   }
 
-  // 2. Relecture serveur de la réservation
+  // 2. Relecture serveur de la réservation (contexte UI / revalidation)
   const { data: reservation, error: readError } = await supabase
     .from("reservations")
     .select("id, organization_id, contact_id, deleted_at")
@@ -647,23 +654,23 @@ export async function createReservationRefund(formData: FormData) {
     .maybeSingle();
 
   if (readError || !reservation) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   // 3. Récupération et validation du montant
   const rawAmount = formData.get("amount");
   if (typeof rawAmount !== "string" || !rawAmount) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const normalizedAmount = rawAmount.trim().replace(",", ".");
   if (!/^\d+(?:\.\d{1,2})?$/.test(normalizedAmount)) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const amountNum = Number(normalizedAmount);
   if (!Number.isFinite(amountNum) || amountNum <= 0 || amountNum > 1000000) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const amountCents = Math.round(amountNum * 100);
@@ -675,18 +682,18 @@ export async function createReservationRefund(formData: FormData) {
     typeof paymentMethod !== "string" ||
     !allowedMethods.includes(paymentMethod)
   ) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   // 5. Validation de la date de remboursement
   const paymentDate = formData.get("payment_date");
   if (typeof paymentDate !== "string" || !paymentDate) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(paymentDate.trim());
   if (!dateMatch) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const year = Number(dateMatch[1]);
@@ -699,7 +706,7 @@ export async function createReservationRefund(formData: FormData) {
     dateVal.getUTCMonth() !== month - 1 ||
     dateVal.getUTCDate() !== day
   ) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   const paidAt = dateVal.toISOString();
@@ -710,34 +717,37 @@ export async function createReservationRefund(formData: FormData) {
   if (typeof rawNotes === "string") {
     const trimmedNotes = rawNotes.trim();
     if (trimmedNotes.length > 2000) {
-      redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+      redirect(refundRedirectUrl(reservationId, "error"));
     }
     notes = trimmedNotes || null;
   }
 
-  // 7. Insertion du remboursement
-  const { error: insertError } = await supabase
-    .from("payments")
-    .insert({
-      organization_id: reservation.organization_id,
-      contact_id: reservation.contact_id,
-      reservation_id: reservation.id,
-      amount_cents: amountCents,
-      currency: "EUR",
-      payment_type: "refund",
-      status: "paid",
-      payment_method: paymentMethod,
-      paid_at: paidAt,
-      requested_at: null,
-      due_date: null,
-      refunded_at: null,
-      notes: notes,
-      created_by: user.id,
-      updated_by: user.id,
-    });
+  // 7. Création transactionnelle via RPC (garde anti-sur-remboursement)
+  const { data, error: rpcError } = await supabase.rpc(
+    "create_reservation_refund",
+    {
+      p_reservation_id: reservation.id,
+      p_amount_cents: amountCents,
+      p_payment_method: paymentMethod,
+      p_paid_at: paidAt,
+      p_notes: notes,
+    },
+  );
 
-  if (insertError) {
-    redirect(`/reservations/${reservationId}?payment_refund_status=error#payments`);
+  if (rpcError) {
+    console.error("create_reservation_refund RPC failed:", rpcError);
+    redirect(refundRedirectUrl(reservationId, "error"));
+  }
+
+  const result = data?.[0] ?? null;
+  const outcome = result?.outcome ?? "error";
+
+  if (outcome === "exceeds_refundable") {
+    redirect(refundRedirectUrl(reservationId, "exceeds_refundable"));
+  }
+
+  if (outcome !== "created" || !result?.payment_id) {
+    redirect(refundRedirectUrl(reservationId, "error"));
   }
 
   revalidatePath(`/reservations/${reservationId}`);
@@ -745,5 +755,5 @@ export async function createReservationRefund(formData: FormData) {
   revalidatePath("/payments");
   revalidatePath(`/contacts/${reservation.contact_id}`);
 
-  redirect(`/reservations/${reservationId}?payment_refund_status=success#payments`);
+  redirect(refundRedirectUrl(reservationId, "success"));
 }
