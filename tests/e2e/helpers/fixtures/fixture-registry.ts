@@ -1,4 +1,9 @@
 export const fixtureTables = [
+  "payments",
+  "contact_roles",
+  "reservations",
+  "applications",
+  "contacts",
   "litter_care_tasks",
   "whelping_birth_adjustment_commands",
   "whelping_commands",
@@ -10,6 +15,7 @@ export const fixtureTables = [
   "whelping_events",
   "whelping_sessions",
   "litters",
+  "litter_groups",
   "animals",
   "memberships",
   "organizations",
@@ -18,6 +24,11 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "payments",
+  "contact_roles",
+  "reservations",
+  "applications",
+  "contacts",
   "litter_care_tasks",
   "whelping_birth_adjustment_commands",
   "whelping_commands",
@@ -29,6 +40,7 @@ const cleanupOrder: FixtureTable[] = [
   "whelping_events",
   "whelping_sessions",
   "litters",
+  "litter_groups",
   "animals",
   "memberships",
   "organizations",
