@@ -1,4 +1,4 @@
-import { COMPLETE_DEPOSIT_AMOUNT_CENTS } from "@/features/payments/deposit-thresholds";
+import { resolveDepositSettings } from "@/features/payments/deposit-thresholds";
 import { isFinalReservationStatus } from "@/features/reservations/statuses";
 
 type AttentionReservation = {
@@ -9,7 +9,7 @@ type AttentionReservation = {
 export function reservationNeedsAttention(
   reservation: AttentionReservation,
   paidArrhesCents: number,
-  completeDepositCents = COMPLETE_DEPOSIT_AMOUNT_CENTS,
+  completeDepositCents = resolveDepositSettings(null).completeDepositCents,
 ) {
   const isPreReservationPaid = reservation.status === "pre_reservation_paid";
   const isArrhesCompleteWithoutAnimal =

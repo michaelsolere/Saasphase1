@@ -23,6 +23,7 @@ import {
 } from "@/features/payments/deposit-thresholds";
 import { evaluatePreReservationBalanceRequest } from "@/features/payments/pre-reservation-deposit";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
+import { formatPrice } from "@/features/reservations/formatters";
 import { sendPreReservationEmailForApplication, sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -1484,7 +1485,7 @@ async function createPreReservationBalanceRequestForReservation({
     payment_method: "bank_transfer",
     requested_at: new Date().toISOString(),
     due_date: dueDateStr,
-    notes: `Demande 2/2 — complément d’arrhes. Total attendu des arrhes complètes : ${Math.round(depositSettings.completeDepositCents / 100)} €.`,
+    notes: `Demande 2/2 — complément d’arrhes. Total attendu des arrhes complètes : ${formatPrice(depositSettings.completeDepositCents, "EUR")}.`,
     created_by: userId,
     updated_by: userId,
   });

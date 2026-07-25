@@ -41,18 +41,13 @@ export function resolveDepositSettings(
   const arrhesSecondPaymentCents =
     resolvePositiveInteger(settings?.default_arrhes_second_payment_cents) ??
     PRE_RESERVATION_PAYMENT_AMOUNT_CENTS;
-  const completeDepositCents =
-    settings &&
-    resolvePositiveInteger(settings.default_pre_reservation_deposit_cents) !==
-      null &&
-    resolvePositiveInteger(settings.default_arrhes_second_payment_cents) !== null
-      ? preReservationDepositCents + arrhesSecondPaymentCents
-      : COMPLETE_DEPOSIT_AMOUNT_CENTS;
 
   return {
     preReservationDepositCents,
     arrhesSecondPaymentCents,
-    completeDepositCents,
+    // Always the sum of the independently resolved components (no global 50000 shortcut).
+    completeDepositCents:
+      preReservationDepositCents + arrhesSecondPaymentCents,
     preReservationResponseDelayDays:
       resolveNonNegativeInteger(settings?.pre_reservation_response_delay_days) ??
       PRE_RESERVATION_RESPONSE_DELAY_DAYS,

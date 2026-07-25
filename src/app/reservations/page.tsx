@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import {
   readCompleteDepositCentsByOrganizationId,
+  resolveDepositSettings,
 } from "@/features/payments/deposit-thresholds";
 import { reservationNeedsAttention } from "@/features/reservations/attention";
 import { ReservationList } from "@/features/reservations/reservation-list";
@@ -125,7 +126,7 @@ export default async function ReservationsPage({
           .from("payments")
           .select("reservation_id, amount_cents")
           .in("reservation_id", reservationIds)
-          .eq("payment_type", "arrhes")
+          .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
           .eq("status", "paid")
           .is("deleted_at", null);
 
@@ -149,8 +150,9 @@ export default async function ReservationsPage({
         ? paidArrhesCentsByReservationId.get(reservation.id) ?? 0
         : 0;
       const completeDepositCents = reservation.organization_id
-        ? completeDepositCentsByOrganizationId.get(reservation.organization_id)
-        : undefined;
+        ? completeDepositCentsByOrganizationId.get(reservation.organization_id) ??
+          resolveDepositSettings(null).completeDepositCents
+        : resolveDepositSettings(null).completeDepositCents;
 
       return reservationNeedsAttention(
         reservation,

@@ -2126,6 +2126,7 @@ export default async function ReservationDetailPage({
   });
   const {
     eligibleReceivedCents,
+    remainingToRequestCents,
     hasSecondPayment,
     hasSecondPaid,
     hasFirstPaid,
@@ -2341,6 +2342,12 @@ export default async function ReservationDetailPage({
   );
   const completeDepositAmountLabel = formatDepositSettingAmount(
     depositSettings.completeDepositCents,
+    currency,
+  );
+  const complementRequestAmountLabel = formatDepositSettingAmount(
+    remainingToRequestCents > 0
+      ? remainingToRequestCents
+      : depositSettings.arrhesSecondPaymentCents,
     currency,
   );
   const reservationIsFinal = isFinalReservationStatus(reservation?.status);
@@ -2795,7 +2802,7 @@ export default async function ReservationDetailPage({
         ) : (
           <>
             <ReservationStatusMessages
-              balanceAmountLabel={arrhesSecondPaymentAmountLabel}
+              balanceAmountLabel={complementRequestAmountLabel}
               query={query}
             />
 
@@ -3366,11 +3373,11 @@ export default async function ReservationDetailPage({
                           {canRequestPreReservationBalance ? (
                             <div className="mt-4">
                               <p className="max-w-2xl text-xs leading-5 text-muted">
-                                Cette action crée le complément 2/2 — {arrhesSecondPaymentAmountLabel} pour atteindre {completeDepositAmountLabel} d’arrhes complètes.
+                                Cette action crée le complément 2/2 — {complementRequestAmountLabel} pour atteindre {completeDepositAmountLabel} d’arrhes complètes.
                               </p>
                               <PreReservationBalanceConfirmDialog
                                 reservationId={id}
-                                amountLabel={arrhesSecondPaymentAmountLabel}
+                                amountLabel={complementRequestAmountLabel}
                                 buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                               />
                             </div>
