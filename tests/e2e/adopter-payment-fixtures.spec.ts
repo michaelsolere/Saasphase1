@@ -5,9 +5,11 @@ import {
   createTestContact,
   createTestContactRole,
   createTestExpectedPayment,
+  createTestPaidPreReservationScenario,
   createTestPreReservationScenario,
   createTestReceivedPayment,
   createTestAdopterJourney,
+  registerActualDepositEffects,
   registerActualPaymentEffects,
 } from "./helpers/fixtures/adopter-payment-fixtures";
 import { createE2eFixtureRegistry } from "./helpers/fixtures/fixture-registry";
@@ -70,4 +72,54 @@ test("pre-reservation scenario does not mutate provided inputs", async () => {
   const input = { organizationId: ids.org, ownerId: ids.owner, amountCents: 25_000, displayName: "E2E stable" }; const snapshot = JSON.stringify(input);
   await createTestPreReservationScenario(executor(calls), registry, input);
   expect(JSON.stringify(input)).toBe(snapshot);
+});
+
+test("paid pre-reservation scenario seeds arrhes and discovers deposit effects", async () => {
+  const calls: string[] = [];
+  const registry = createE2eFixtureRegistry(executor(calls), "paid-pre-reservation");
+  const input = {
+    organizationId: ids.org,
+    ownerId: ids.owner,
+    amountCents: 25_000,
+    displayName: "E2E paid stable",
+  };
+  const snapshot = JSON.stringify(input);
+  const scenario = await createTestPaidPreReservationScenario(executor(calls), registry, input);
+  expect(JSON.stringify(input)).toBe(snapshot);
+  expect(scenario.amountCents).toBe(25_000);
+  expect(registry.has("payments", scenario.payment.id)).toBe(true);
+  expect(registry.has("contact_roles", scenario.holderRoleId)).toBe(true);
+  expect(calls.join("\n")).toContain("'pre_reservation_paid'");
+  expect(calls.join("\n")).toContain("'arrhes'");
+
+  const depositCalls: string[] = [];
+  const depositRegistry = createE2eFixtureRegistry(async (statement) => {
+    depositCalls.push(statement);
+    if (statement.includes("json_build_object")) {
+      return JSON.stringify([
+        { payment_id: ids.payment, role_id: ids.holder, document_id: null },
+        { payment_id: ids.received, role_id: ids.holder, document_id: null },
+      ]);
+    }
+    return "0";
+  }, "deposit-effects");
+  depositRegistry.register("reservations", ids.journey);
+  depositRegistry.register("contacts", ids.contact);
+  await registerActualDepositEffects(async (statement) => {
+    depositCalls.push(statement);
+    if (statement.includes("json_build_object")) {
+      return JSON.stringify([
+        { payment_id: ids.payment, role_id: ids.holder, document_id: null },
+        { payment_id: ids.received, role_id: ids.holder, document_id: null },
+      ]);
+    }
+    return "0";
+  }, depositRegistry, {
+    organizationId: ids.org,
+    reservationId: ids.journey,
+    contactId: ids.contact,
+  });
+  expect(depositRegistry.has("payments", ids.payment)).toBe(true);
+  expect(depositRegistry.has("payments", ids.received)).toBe(true);
+  expect(depositRegistry.has("contact_roles", ids.holder)).toBe(true);
 });

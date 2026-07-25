@@ -83,7 +83,7 @@ export async function createTestApplication(execute: SqlExecutor, registry: Regi
   if (JSON.stringify(input) !== JSON.stringify(snapshot)) throw new Error("E2E application fixture mutated its input"); return row;
 }
 
-export async function createTestAdopterJourney(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; applicationId: string; ownerId: string; litterGroupId?: string | null; litterId?: string | null; status?: "draft" | "pre_reservation_requested" | "active" }) {
+export async function createTestAdopterJourney(execute: SqlExecutor, registry: Registry, input: { id?: string; organizationId: string; contactId: string; applicationId: string; ownerId: string; litterGroupId?: string | null; litterId?: string | null; status?: "draft" | "pre_reservation_requested" | "pre_reservation_paid" | "active" }) {
   const snapshot = structuredClone(input); const contact = state(registry).contacts.get(input.contactId); const application = state(registry).applications.get(input.applicationId);
   if (!contact || contact.organizationId !== input.organizationId || !application || application.organizationId !== input.organizationId || application.id !== input.applicationId) throw new Error("E2E adopter journey contact or application belongs to another organization");
   if (application.litterId !== (input.litterId ?? null) || application.litterGroupId !== (input.litterGroupId ?? null)) throw new Error("E2E adopter journey litter or group is incoherent");
@@ -120,7 +120,115 @@ export async function registerActualPaymentEffects(execute: SqlExecutor, registr
   return rows;
 }
 
-export async function createTestPreReservationScenario(execute: SqlExecutor, registry: Registry, input: { organizationId: string; ownerId: string; amountCents?: number; displayName?: string }) {
-  const snapshot = structuredClone(input); const groupId = await createTestLitterGroup(execute, registry, input); const litterId = await createTestAdopterLitter(execute, registry, { ...input, litterGroupId: groupId }); const contact = await createTestContact(execute, registry, { ...input, displayName: input.displayName }); const application = await createTestApplication(execute, registry, { ...input, contactId: contact.id, litterGroupId: groupId, litterId }); const journey = await createTestAdopterJourney(execute, registry, { ...input, contactId: contact.id, applicationId: application.id, litterGroupId: groupId, litterId }); const candidateRoleId = await createTestContactRole(execute, registry, { ...input, contactId: contact.id, role: "candidate" }); const payment = await createTestExpectedPayment(execute, registry, { ...input, contactId: contact.id, reservationId: journey.id, amountCents: input.amountCents ?? 25_000 });
+export async function createTestPreReservationScenario(execute: SqlExecutor, registry: Registry, input: { organizationId: string; ownerId: string; amountCents?: number; displayName?: string; paymentType?: "arrhes" | "pre_reservation_deposit_refundable" }) {
+  const snapshot = structuredClone(input); const groupId = await createTestLitterGroup(execute, registry, input); const litterId = await createTestAdopterLitter(execute, registry, { ...input, litterGroupId: groupId }); const contact = await createTestContact(execute, registry, { ...input, displayName: input.displayName }); const application = await createTestApplication(execute, registry, { ...input, contactId: contact.id, litterGroupId: groupId, litterId }); const journey = await createTestAdopterJourney(execute, registry, { ...input, contactId: contact.id, applicationId: application.id, litterGroupId: groupId, litterId }); const candidateRoleId = await createTestContactRole(execute, registry, { ...input, contactId: contact.id, role: "candidate" }); const payment = await createTestExpectedPayment(execute, registry, { ...input, contactId: contact.id, reservationId: journey.id, amountCents: input.amountCents ?? 25_000, paymentType: input.paymentType });
   if (JSON.stringify(input) !== JSON.stringify(snapshot)) throw new Error("E2E pre-reservation scenario mutated its input"); return { groupId, litterId, contact, application, journey, candidateRoleId, payment };
+}
+
+/**
+ * Paid first deposit already applied: journey is pre_reservation_paid with an
+ * active pre_reservation_holder. Uses payment_type=arrhes so the complement 2/2
+ * UI gate (paidArrhesTotalCents) matches the live reservation page.
+ */
+export async function createTestPaidPreReservationScenario(
+  execute: SqlExecutor,
+  registry: Registry,
+  input: {
+    organizationId: string;
+    ownerId: string;
+    amountCents?: number;
+    displayName?: string;
+  },
+) {
+  const snapshot = structuredClone(input);
+  const amountCents = input.amountCents ?? 25_000;
+  const contact = await createTestContact(execute, registry, {
+    organizationId: input.organizationId,
+    ownerId: input.ownerId,
+    displayName: input.displayName,
+  });
+  const application = await createTestApplication(execute, registry, {
+    organizationId: input.organizationId,
+    contactId: contact.id,
+    ownerId: input.ownerId,
+  });
+  const journey = await createTestAdopterJourney(execute, registry, {
+    organizationId: input.organizationId,
+    contactId: contact.id,
+    applicationId: application.id,
+    ownerId: input.ownerId,
+    status: "pre_reservation_paid",
+  });
+  const holderRoleId = await createTestContactRole(execute, registry, {
+    organizationId: input.organizationId,
+    contactId: contact.id,
+    ownerId: input.ownerId,
+    role: "pre_reservation_holder",
+  });
+  const payment = await createTestReceivedPayment(execute, registry, {
+    organizationId: input.organizationId,
+    contactId: contact.id,
+    reservationId: journey.id,
+    ownerId: input.ownerId,
+    amountCents,
+    paymentType: "arrhes",
+  });
+  if (JSON.stringify(input) !== JSON.stringify(snapshot)) {
+    throw new Error("E2E paid pre-reservation scenario mutated its input");
+  }
+  return { contact, application, journey, holderRoleId, payment, amountCents };
+}
+
+/**
+ * Discovers payments and roles after complement request / complete-deposit marking.
+ * Registers any new payment or contact_role rows tied to the journey.
+ */
+export async function registerActualDepositEffects(
+  execute: SqlExecutor,
+  registry: Registry,
+  input: {
+    organizationId: string;
+    reservationId: string;
+    contactId: string;
+  },
+) {
+  const rows = JSON.parse(
+    await execute(
+      `select coalesce(json_agg(json_build_object(
+          'payment_id', p.id,
+          'role_id', cr.id,
+          'document_id', d.id
+        ) order by p.created_at nulls last, cr.created_at nulls last), '[]'::json)::text
+       from public.reservations r
+       left join public.payments p
+         on p.organization_id = r.organization_id
+        and p.reservation_id = r.id
+       left join public.contact_roles cr
+         on cr.organization_id = r.organization_id
+        and cr.contact_id = r.contact_id
+       left join public.documents d
+         on d.organization_id = r.organization_id
+        and d.reservation_id = r.id
+       where r.organization_id = ${q(input.organizationId)}::uuid
+         and r.id = ${q(input.reservationId)}::uuid
+         and r.contact_id = ${q(input.contactId)}::uuid`,
+    ),
+  ) as {
+    payment_id: string | null;
+    role_id: string | null;
+    document_id: string | null;
+  }[];
+
+  for (const row of rows) {
+    if (row.payment_id && !registry.has("payments", row.payment_id)) {
+      registry.register("payments", row.payment_id);
+    }
+    if (row.role_id && !registry.has("contact_roles", row.role_id)) {
+      registry.register("contact_roles", row.role_id);
+    }
+    if (row.document_id && !registry.has("documents", row.document_id)) {
+      registry.register("documents", row.document_id);
+    }
+  }
+  return rows;
 }
