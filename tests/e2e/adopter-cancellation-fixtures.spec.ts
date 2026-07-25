@@ -3,6 +3,8 @@ import { expect, test } from "@playwright/test";
 import {
   createTestAdopterCancellationReadyScenario,
   registerActualCancellationEffects,
+  registerActualExpirationEffects,
+  registerActualWithdrawalEffects,
 } from "./helpers/fixtures/adopter-cancellation-fixtures";
 import {
   createTestAdopterJourney,
@@ -149,4 +151,61 @@ test("active journey fixture remains the cancel precondition without payments", 
   });
   expect(journey.id).toBeTruthy();
   expect(calls.join("\n")).toContain("'active'");
+});
+
+test("expiration and withdrawal effect discovery reuse active journey IDs", async () => {
+  const makeExecutor = (status: string, calls: string[]) => async (statement: string) => {
+    calls.push(statement);
+    if (statement.includes("json_build_object")) {
+      return JSON.stringify([
+        {
+          reservation_id: ids.journey,
+          status,
+          animal_id: null,
+          role_id: ids.discoveredRole,
+          payment_id: null,
+          document_id: null,
+        },
+      ]);
+    }
+    return "0";
+  };
+
+  const expiredCalls: string[] = [];
+  const expiredRegistry = createE2eFixtureRegistry(
+    makeExecutor("expired", expiredCalls),
+    "expiration-effects",
+  );
+  expiredRegistry.register("reservations", ids.journey);
+  expiredRegistry.register("contacts", ids.contact);
+  await registerActualExpirationEffects(
+    makeExecutor("expired", expiredCalls),
+    expiredRegistry,
+    {
+      organizationId: ids.org,
+      reservationId: ids.journey,
+      contactId: ids.contact,
+    },
+  );
+  expect(expiredRegistry.has("contact_roles", ids.discoveredRole)).toBe(true);
+  expect(expiredCalls.join("\n")).toContain("'expired'");
+
+  const withdrawnCalls: string[] = [];
+  const withdrawnRegistry = createE2eFixtureRegistry(
+    makeExecutor("withdrawn", withdrawnCalls),
+    "withdrawal-effects",
+  );
+  withdrawnRegistry.register("reservations", ids.journey);
+  withdrawnRegistry.register("contacts", ids.contact);
+  await registerActualWithdrawalEffects(
+    makeExecutor("withdrawn", withdrawnCalls),
+    withdrawnRegistry,
+    {
+      organizationId: ids.org,
+      reservationId: ids.journey,
+      contactId: ids.contact,
+    },
+  );
+  expect(withdrawnRegistry.has("contact_roles", ids.discoveredRole)).toBe(true);
+  expect(withdrawnCalls.join("\n")).toContain("'withdrawn'");
 });
