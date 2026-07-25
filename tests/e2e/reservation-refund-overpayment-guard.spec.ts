@@ -1,12 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { createTestOrganization } from "./helpers/fixtures/breeding-fixtures";
-import {
-  createTestAdopterJourney,
-  createTestApplication,
-  createTestContact,
-  createTestReceivedPayment,
-} from "./helpers/fixtures/adopter-payment-fixtures";
+import { createTestAdopterRefundReadyScenario } from "./helpers/fixtures/adopter-refund-fixtures";
 import { withE2eFixtures } from "./helpers/fixtures/fixture-registry";
 import {
   createAuthenticatedSupabaseClient,
@@ -17,43 +12,6 @@ import {
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const sql = (statement: string) => runE2eSqlSync(statement);
-
-async function createRefundReadyScenario(
-  fixtures: Parameters<Parameters<typeof withE2eFixtures>[1]>[0],
-  input: {
-    organizationId: string;
-    ownerId: string;
-    amountCents?: number;
-    displayName?: string;
-  },
-) {
-  const amountCents = input.amountCents ?? 25_000;
-  const contact = await createTestContact(sql, fixtures, {
-    organizationId: input.organizationId,
-    ownerId: input.ownerId,
-    displayName: input.displayName,
-  });
-  const application = await createTestApplication(sql, fixtures, {
-    organizationId: input.organizationId,
-    contactId: contact.id,
-    ownerId: input.ownerId,
-  });
-  const journey = await createTestAdopterJourney(sql, fixtures, {
-    organizationId: input.organizationId,
-    contactId: contact.id,
-    applicationId: application.id,
-    ownerId: input.ownerId,
-    status: "active",
-  });
-  const payment = await createTestReceivedPayment(sql, fixtures, {
-    organizationId: input.organizationId,
-    contactId: contact.id,
-    reservationId: journey.id,
-    ownerId: input.ownerId,
-    amountCents,
-  });
-  return { contact, application, journey, payment, amountCents };
-}
 
 async function createRefund(args: {
   reservationId: string;
@@ -103,25 +61,25 @@ test("create_reservation_refund enforces refundable balance including concurrenc
     const suffix = fixtures.namespace.slice(-8);
     const supabase = await createAuthenticatedSupabaseClient();
 
-    const full = await createRefundReadyScenario(fixtures, {
+    const full = await createTestAdopterRefundReadyScenario(sql, fixtures, {
       organizationId,
       ownerId,
       amountCents: 25_000,
       displayName: `E2E refund total ${suffix}`,
     });
-    const partial = await createRefundReadyScenario(fixtures, {
+    const partial = await createTestAdopterRefundReadyScenario(sql, fixtures, {
       organizationId,
       ownerId,
       amountCents: 25_000,
       displayName: `E2E refund partiel ${suffix}`,
     });
-    const sequential = await createRefundReadyScenario(fixtures, {
+    const sequential = await createTestAdopterRefundReadyScenario(sql, fixtures, {
       organizationId,
       ownerId,
       amountCents: 25_000,
       displayName: `E2E refund successif ${suffix}`,
     });
-    const concurrent = await createRefundReadyScenario(fixtures, {
+    const concurrent = await createTestAdopterRefundReadyScenario(sql, fixtures, {
       organizationId,
       ownerId,
       amountCents: 25_000,
@@ -130,7 +88,7 @@ test("create_reservation_refund enforces refundable balance including concurrenc
     const foreignOrganizationId = await createTestOrganization(sql, fixtures, {
       name: `E2E org refund étrangère ${suffix}`,
     });
-    const foreign = await createRefundReadyScenario(fixtures, {
+    const foreign = await createTestAdopterRefundReadyScenario(sql, fixtures, {
       organizationId: foreignOrganizationId,
       ownerId,
       amountCents: 25_000,
