@@ -14,6 +14,7 @@ const ids = { mother: `${prefix}01`, litter: `${prefix}10`, milestone: `${prefix
 const foreignPrefix = "9f260004-0000-4000-8000-0000000000";
 const foreignName = "E2E export étranger";
 const foreign = { organization: `${foreignPrefix}01`, mother: `${foreignPrefix}02`, litter: `${foreignPrefix}03`, task: `${foreignPrefix}04` };
+const missingLitterId = "9f260005-0000-4000-8000-000000000001";
 const todayDate = formatLitterJournalBusinessDate(new Date());
 const currentMonth = todayDate.slice(0, 7);
 
@@ -102,9 +103,12 @@ test("neutralise l’export d’une portée inter-organisation et nettoie ses fi
       insert into public.litters (id,organization_id,name,species,breed,mother_id,status,created_by,updated_by) values (${q(foreign.litter)}::uuid,${q(foreign.organization)}::uuid,${q(`${foreignName} portée`)},'dog','Golden Retriever',${q(foreign.mother)}::uuid,'birth_expected',${q(ownerId)}::uuid,${q(ownerId)}::uuid);
       insert into public.litter_care_tasks (id,organization_id,litter_id,source,occurrence_no,item_kind,category,target_scope,title,planned_for,priority,schedule_source,is_schedule_locked,status,creation_command_id,created_by,updated_by) values (${q(foreign.task)}::uuid,${q(foreign.organization)}::uuid,${q(foreign.litter)}::uuid,'manual',1,'task','veterinary','litter',${q(`${foreignName} tâche secrète`)},${q(dateInMonth(currentMonth, 8))},'normal','suggested',false,'planned',${q(`${foreignPrefix}05`)}::uuid,${q(ownerId)}::uuid,${q(ownerId)}::uuid);`);
     await login(page);
-    const response = await page.request.get(`/litters/journal/calendar/export?litter=${foreign.litter}&kind=all&category=all`);
-    const body = await response.text();
-    expect(response.status()).toBe(404); expect(response.headers()["content-type"]).not.toContain("text/calendar"); expect(body).not.toContain("BEGIN:VCALENDAR"); expect(body).not.toContain(`${foreignName} portée`); expect(body).not.toContain(`${foreignName} tâche secrète`);
+    const foreignResponse = await page.request.get(`/litters/journal/calendar/export?litter=${foreign.litter}&kind=all&category=all`);
+    const missingResponse = await page.request.get(`/litters/journal/calendar/export?litter=${missingLitterId}&kind=all&category=all`);
+    const foreignBody = await foreignResponse.text(); const missingBody = await missingResponse.text();
+    expect(foreignResponse.status()).toBe(404); expect(missingResponse.status()).toBe(404);
+    expect(foreignResponse.headers()["content-type"]).toBe(missingResponse.headers()["content-type"]); expect(foreignResponse.headers()["cache-control"]).toBe(missingResponse.headers()["cache-control"]); expect(foreignBody).toBe(missingBody);
+    expect(foreignResponse.headers()["content-type"]).not.toContain("text/calendar"); expect(foreignBody).not.toContain("BEGIN:VCALENDAR"); expect(foreignBody).not.toContain(`${foreignName} portée`); expect(foreignBody).not.toContain(`${foreignName} tâche secrète`);
     expect(JSON.parse(sql(`select json_build_object('litter',(select count(*) from public.litters where id=${q(foreign.litter)}::uuid),'task',(select count(*) from public.litter_care_tasks where id=${q(foreign.task)}::uuid))::text;`))).toEqual({ litter: 1, task: 1 });
   } finally { cleanup(); expectClean(); }
 });
