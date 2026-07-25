@@ -14,6 +14,7 @@ import {
   listLitterCareTaskTemplatesForOrganizationCore,
   listLitterCareTaskTemplatesCore,
   listLitterCareTasksForLitterCore,
+  listOrganizationLitterCareTasksCore,
   planLitterCareTaskGenerationCore,
   reapplyLitterCareTaskScheduleSuggestionCore,
   replaceLockedLitterCareTaskPointScheduleCore,
@@ -67,6 +68,7 @@ export type {
   ListLitterCareTaskTemplatesResult,
   ListLitterCareTasksForLitterInput,
   ListLitterCareTasksForLitterResult,
+  ListOrganizationLitterCareTasksResult,
   PlanLitterCareTaskGenerationInput,
   PlanLitterCareTaskGenerationResult,
   ReapplyLitterCareTaskScheduleSuggestionInput,
@@ -167,6 +169,10 @@ export async function listLitterCareTasksForLitter(
   suppliedClient?: Supabase,
 ) {
   return listLitterCareTasksForLitterCore(input, await serverClient(suppliedClient));
+}
+
+export async function listOrganizationLitterCareTasks(suppliedClient?: Supabase) {
+  return listOrganizationLitterCareTasksCore(await serverClient(suppliedClient));
 }
 
 export async function planLitterCareTaskGeneration(
