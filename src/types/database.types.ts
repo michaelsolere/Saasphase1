@@ -6097,6 +6097,27 @@ export type Database = {
           version_id: string
         }[]
       }
+      create_reservation_refund: {
+        Args: {
+          p_amount_cents: number
+          p_notes?: string | null
+          p_paid_at: string
+          p_payment_method: string
+          p_reservation_id: string
+        }
+        Returns: {
+          amount_cents: number
+          contact_id: string
+          message: string
+          outcome: string
+          paid_cents: number
+          payment_id: string
+          reason: string
+          refundable_cents: number
+          refunded_cents: number
+          reservation_id: string
+        }[]
+      }
       discard_document_template_draft: {
         Args: {
           p_expected_updated_at: string

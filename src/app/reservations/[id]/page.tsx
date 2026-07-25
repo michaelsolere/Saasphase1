@@ -949,6 +949,13 @@ function ReservationStatusMessages({
         "Remboursement enregistré. Le solde du dossier a été mis à jour.",
     },
     {
+      when: query.payment_refund_status === "exceeds_refundable",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le montant du remboursement dépasse le solde encore remboursable sur ce dossier. Aucune autre donnée n’a été modifiée.",
+    },
+    {
       when: query.payment_refund_status === "error",
       role: "alert",
       className: errorStatusMessageClassName,
