@@ -325,7 +325,7 @@ export type LitterCareTaskTemplateMutationResult =
   | ErrorResult;
 
 export type ListLitterCareTasksForLitterResult =
-  | { outcome: "success"; role: OrganizationRole; tasks: LitterCareTaskSummary[] }
+  | { outcome: "success"; role: OrganizationRole; litterName: string | null; tasks: LitterCareTaskSummary[] }
   | ErrorResult;
 
 export type PlanLitterCareTaskGenerationResult =
@@ -660,7 +660,7 @@ async function authorizeLitterRead(supabase: Supabase, rawLitterId: unknown) {
   const litter = await supabase
     .from("litters")
     .select(
-      "id, organization_id, species, breed, status, mating_date, estimated_ovulation_date, expected_birth_date, actual_birth_date",
+      "id, name, organization_id, species, breed, status, mating_date, estimated_ovulation_date, expected_birth_date, actual_birth_date",
     )
     .eq("id", litterId)
     .is("deleted_at", null)
@@ -1696,7 +1696,7 @@ export async function listLitterCareTasksForLitterCore(
     );
   });
 
-  return { outcome: "success", role: authorization.role, tasks: mapped };
+  return { outcome: "success", role: authorization.role, litterName: authorization.litter.name, tasks: mapped };
 }
 
 export async function createLitterCareTaskCore(

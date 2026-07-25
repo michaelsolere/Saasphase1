@@ -11,6 +11,10 @@ const ownerMembershipId = "30000000-0000-4000-8000-000000000001";
 const prefix = "9f260003-0000-4000-8000-0000000000";
 const namePrefix = "E2E calendrier portée";
 const ids = { mother: `${prefix}01`, litter: `${prefix}10`, milestone: `${prefix}20`, timed: `${prefix}21`, recurring: `${prefix}22`, window: `${prefix}23`, done: `${prefix}24`, other: `${prefix}25` };
+const foreignPrefix = "9f260004-0000-4000-8000-0000000000";
+const foreignName = "E2E export étranger";
+const foreign = { organization: `${foreignPrefix}01`, mother: `${foreignPrefix}02`, litter: `${foreignPrefix}03`, task: `${foreignPrefix}04` };
+const missingLitterId = "9f260005-0000-4000-8000-000000000001";
 const todayDate = formatLitterJournalBusinessDate(new Date());
 const currentMonth = todayDate.slice(0, 7);
 
@@ -43,6 +47,11 @@ function cleanup() {
     set session_replication_role = replica;
     update public.memberships set role = 'owner' where id = ${q(ownerMembershipId)}::uuid and organization_id = ${q(organizationId)}::uuid and profile_id = ${q(ownerId)}::uuid;
     set session_replication_role = origin;
+    delete from public.litter_care_tasks where id::text like '9f260004-%' or litter_id::text like '9f260004-%' or title like ${q(`${foreignName}%`)};
+    delete from public.litters where id::text like '9f260004-%' or name like ${q(`${foreignName}%`)};
+    delete from public.animals where id::text like '9f260004-%';
+    delete from public.memberships where organization_id::text like '9f260004-%';
+    delete from public.organizations where id::text like '9f260004-%' or name like ${q(`${foreignName}%`)};
     delete from public.litter_care_tasks where id::text like '9f260003-%' or litter_id::text like '9f260003-%' or creation_command_id::text like '9f260003-%' or title like ${q(`${namePrefix}%`)};
     delete from public.litters where id::text like '9f260003-%' or name like ${q(`${namePrefix}%`)};
     delete from public.animals where id::text like '9f260003-%';
@@ -53,6 +62,11 @@ function remaining() {
     'tasks', (select count(*) from public.litter_care_tasks where id::text like '9f260003-%' or litter_id::text like '9f260003-%' or creation_command_id::text like '9f260003-%' or title like ${q(`${namePrefix}%`)}),
     'litters', (select count(*) from public.litters where id::text like '9f260003-%' or name like ${q(`${namePrefix}%`)}),
     'animals', (select count(*) from public.animals where id::text like '9f260003-%'),
+    'foreign_tasks', (select count(*) from public.litter_care_tasks where id::text like '9f260004-%' or litter_id::text like '9f260004-%' or title like ${q(`${foreignName}%`)}),
+    'foreign_litters', (select count(*) from public.litters where id::text like '9f260004-%' or name like ${q(`${foreignName}%`)}),
+    'foreign_animals', (select count(*) from public.animals where id::text like '9f260004-%'),
+    'foreign_memberships', (select count(*) from public.memberships where organization_id::text like '9f260004-%'),
+    'foreign_organizations', (select count(*) from public.organizations where id::text like '9f260004-%' or name like ${q(`${foreignName}%`)}),
     'membership_role_changes', (select count(*) from public.memberships where id = ${q(ownerMembershipId)}::uuid and role <> 'owner')
   )::text;`)) as Record<string, number>;
 }
@@ -81,6 +95,24 @@ async function login(page: Page) {
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
 
+test("neutralise l’export d’une portée inter-organisation et nettoie ses fixtures", async ({ page }) => {
+  cleanup(); expectClean();
+  try {
+    sql(`insert into public.organizations (id,name,slug) values (${q(foreign.organization)}::uuid,${q(`${foreignName} organisation`)},${q("e2e-export-foreign")});
+      insert into public.animals (id,organization_id,call_name,species,breed,sex,status,ownership_status,created_by,updated_by) values (${q(foreign.mother)}::uuid,${q(foreign.organization)}::uuid,${q(`${foreignName} mère`)},'dog','Golden Retriever','female','breeding','owned',${q(ownerId)}::uuid,${q(ownerId)}::uuid);
+      insert into public.litters (id,organization_id,name,species,breed,mother_id,status,created_by,updated_by) values (${q(foreign.litter)}::uuid,${q(foreign.organization)}::uuid,${q(`${foreignName} portée`)},'dog','Golden Retriever',${q(foreign.mother)}::uuid,'birth_expected',${q(ownerId)}::uuid,${q(ownerId)}::uuid);
+      insert into public.litter_care_tasks (id,organization_id,litter_id,source,occurrence_no,item_kind,category,target_scope,title,planned_for,priority,schedule_source,is_schedule_locked,status,creation_command_id,created_by,updated_by) values (${q(foreign.task)}::uuid,${q(foreign.organization)}::uuid,${q(foreign.litter)}::uuid,'manual',1,'task','veterinary','litter',${q(`${foreignName} tâche secrète`)},${q(dateInMonth(currentMonth, 8))},'normal','suggested',false,'planned',${q(`${foreignPrefix}05`)}::uuid,${q(ownerId)}::uuid,${q(ownerId)}::uuid);`);
+    await login(page);
+    const foreignResponse = await page.request.get(`/litters/journal/calendar/export?litter=${foreign.litter}&kind=all&category=all`);
+    const missingResponse = await page.request.get(`/litters/journal/calendar/export?litter=${missingLitterId}&kind=all&category=all`);
+    const foreignBody = await foreignResponse.text(); const missingBody = await missingResponse.text();
+    expect(foreignResponse.status()).toBe(404); expect(missingResponse.status()).toBe(404);
+    expect(foreignResponse.headers()["content-type"]).toBe(missingResponse.headers()["content-type"]); expect(foreignResponse.headers()["cache-control"]).toBe(missingResponse.headers()["cache-control"]); expect(foreignBody).toBe(missingBody);
+    expect(foreignResponse.headers()["content-type"]).not.toContain("text/calendar"); expect(foreignBody).not.toContain("BEGIN:VCALENDAR"); expect(foreignBody).not.toContain(`${foreignName} portée`); expect(foreignBody).not.toContain(`${foreignName} tâche secrète`);
+    expect(JSON.parse(sql(`select json_build_object('litter',(select count(*) from public.litters where id=${q(foreign.litter)}::uuid),'task',(select count(*) from public.litter_care_tasks where id=${q(foreign.task)}::uuid))::text;`))).toEqual({ litter: 1, task: 1 });
+  } finally { cleanup(); expectClean(); }
+});
+
 test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", async ({ page }) => {
   cleanup(); expectClean();
   try {
@@ -104,6 +136,20 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
       url.pathname === "/litters/journal/calendar" && url.searchParams.get("litter") === ids.litter,
     );
     await expect(page.getByRole("heading", { name: `${namePrefix} active` })).toBeVisible();
+    const exportLink = page.getByRole("link", { name: "Télécharger le fichier iCalendar" });
+    await expect(exportLink).toBeVisible();
+    await expect(exportLink).toHaveAttribute("href", new RegExp(`^/litters/journal/calendar/export\\?litter=${ids.litter}&kind=all&category=all$`));
+    await expect(page.getByText("Fichier à importer manuellement dans un agenda externe ; l’abonnement synchronisé n’est pas encore disponible.")).toBeVisible();
+    const download = await page.request.get(await exportLink.getAttribute("href")!);
+    expect(download.status()).toBe(200);
+    expect(download.headers()["content-type"]).toBe("text/calendar; charset=utf-8");
+    expect(download.headers()["cache-control"]).toBe("private, no-store");
+    expect(download.headers()["content-disposition"]).toMatch(/^attachment; filename="e2e-calendrier-portee-active-journal\.ics"$/);
+    const ical = await download.text();
+    const unfoldedIcal = ical.replace(/\r\n[ \t]/g, "");
+    expect(unfoldedIcal).toContain(`${namePrefix} jalon`); expect(unfoldedIcal).toContain(`${namePrefix} occurrence`);
+    expect(unfoldedIcal).toContain(`${namePrefix} fenêtre vétérinaire`); expect(ical.match(/BEGIN:VEVENT/g)).toHaveLength(5);
+    expect(unfoldedIcal).not.toContain(`${namePrefix} terminée`); expect(unfoldedIcal).not.toContain(ids.litter);
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible();
     await expect(page.getByText("Lun")).toBeVisible(); await expect(page.getByText("Dim")).toBeVisible();
     await expect(page.getByText(`${namePrefix} jalon`)).toBeVisible();
@@ -126,9 +172,10 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     await expect(page.getByText(`${namePrefix} terminée`)).toHaveCount(0);
     await page.getByLabel("Catégorie").selectOption("other"); await page.getByRole("button", { name: "Appliquer" }).click();
     await expect(page.getByText(`${namePrefix} autre catégorie`)).toBeVisible(); await expect(page.getByText(`${namePrefix} jalon`)).toHaveCount(0);
+    await expect(exportLink).toHaveAttribute("href", new RegExp(`litter=${ids.litter}&kind=all&category=other`));
     await page.getByLabel("Type d’élément").selectOption("recurring_task"); await page.getByRole("button", { name: "Appliquer" }).click();
     await expect(page.getByText("Aucun élément ne correspond aux filtres sélectionnés.")).toBeVisible();
-    await page.getByRole("link", { name: "Réinitialiser" }).click(); await expect(page.getByText(`${namePrefix} occurrence`)).toBeVisible();
+    await page.getByRole("link", { name: "Réinitialiser" }).click(); await page.waitForURL((url) => url.pathname === "/litters/journal/calendar" && url.searchParams.get("litter") === ids.litter && !url.searchParams.has("kind") && !url.searchParams.has("category")); await expect(page.getByText(`${namePrefix} occurrence`)).toBeVisible();
     const nextMonth = adjacentMonth(currentMonth, 1);
     await page.getByRole("link", { name: "Mois suivant" }).click(); await page.waitForURL((url) => url.searchParams.get("month") === nextMonth); await expect(page.getByText(formatMonthLabel(nextMonth))).toBeVisible(); await page.getByRole("link", { name: "Mois précédent" }).click();
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible(); await page.getByRole("link", { name: "Aujourd’hui" }).click();
