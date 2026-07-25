@@ -6,6 +6,7 @@ import { LITTER_CARE_TASK_CATEGORIES, type LitterCareTaskSummary } from "./litte
 import {
   projectLitterCareCalendar,
   projectLitterCareCalendarWeek,
+  sortLitterCareAgendaItems,
   type LitterCareCalendar,
   type LitterCareCalendarCategoryFilter,
   type LitterCareCalendarItem,
@@ -68,7 +69,7 @@ function WeekView({ calendar, litterId }: { calendar: LitterCareCalendar; litter
 
 function AgendaView({ calendar, litterId }: { calendar: LitterCareCalendar; litterId: string }) {
   const seen = new Set<string>();
-  const days = calendar.days.map((day) => ({ ...day, items: day.items.filter((item) => { if (seen.has(item.task.id)) return false; seen.add(item.task.id); return true; }) })).filter((day) => day.items.length > 0);
+  const days = calendar.days.map((day) => ({ ...day, items: sortLitterCareAgendaItems(day.items.filter((item) => { if (seen.has(item.task.id)) return false; seen.add(item.task.id); return true; })) })).filter((day) => day.items.length > 0);
   return <section aria-label={`Agenda du ${calendar.startsOn} au ${calendar.endsOn}`} className="space-y-4 rounded-2xl border bg-surface p-4 sm:p-6">{days.map((day) => <article key={day.date} data-agenda-date={day.date}><h3 className="mb-2 text-sm font-semibold capitalize">{day.isToday ? `Aujourd’hui · ${dayLabel(day.date)}` : dayLabel(day.date)}</h3><div className="space-y-2">{day.items.map((item) => <CalendarCard key={item.task.id} item={item} litterId={litterId} agenda />)}</div></article>)}</section>;
 }
 

@@ -82,6 +82,25 @@ function compareItems(left: LitterCareCalendarItem, right: LitterCareCalendarIte
   return left.task.title.localeCompare(right.task.title, "fr");
 }
 
+function agendaTime(item: LitterCareCalendarItem) {
+  return item.kind === "window" ? item.task.retainedStartsLocalTime : item.time;
+}
+
+/** Agenda places timed items first by time; untimed items follow by priority and title. */
+export function sortLitterCareAgendaItems(items: readonly LitterCareCalendarItem[]) {
+  return [...items].sort((left, right) => {
+    const leftTime = agendaTime(left);
+    const rightTime = agendaTime(right);
+    if (leftTime && rightTime && leftTime !== rightTime) return leftTime.localeCompare(rightTime);
+    if (Boolean(leftTime) !== Boolean(rightTime)) return leftTime ? -1 : 1;
+    const priority = priorityOrder[left.task.priority] - priorityOrder[right.task.priority];
+    if (priority) return priority;
+    const title = left.task.title.localeCompare(right.task.title, "fr");
+    if (title) return title;
+    return left.task.id.localeCompare(right.task.id);
+  });
+}
+
 function pointState(date: string, todayDate: string): LitterCareCalendarOperationalState {
   if (date < todayDate) return "overdue";
   if (date === todayDate) return "today";

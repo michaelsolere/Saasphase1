@@ -7,6 +7,7 @@ import {
   projectLitterCareCalendar,
   projectLitterCareCalendarRange,
   projectLitterCareCalendarWeek,
+  sortLitterCareAgendaItems,
 } from "../../src/features/litter-journal/litter-care-calendar";
 import type { LitterCareTaskSummary } from "../../src/features/litter-journal/litter-care-tasks";
 
@@ -98,4 +99,19 @@ test("utilise la même projection de plage pour le mois et la semaine", () => {
   expect(week.days[0]?.items.find((item) => item.task.id === "crossing")?.time).toBeNull();
   expect(week.days[0]?.items.find((item) => item.task.id === "timed")?.time).toBe("09:30");
   expect(JSON.stringify(inputs)).toBe(before);
+});
+
+test("trie l’agenda par heure sans modifier le tri commun de la projection", () => {
+  const inputs = [
+    task({ id: "late-critical", title: "Prioritaire tardive", plannedFor: "2024-01-15", scheduledLocalTime: "16:00", priority: "organization_critical" }),
+    task({ id: "early-normal", title: "Matinale normale", plannedFor: "2024-01-15", scheduledLocalTime: "08:00", priority: "normal" }),
+    task({ id: "untimed-important", title: "Sans heure importante", plannedFor: "2024-01-15", scheduledLocalTime: null, priority: "important" }),
+    task({ id: "untimed-normal", title: "Sans heure normale", plannedFor: "2024-01-15", scheduledLocalTime: null, priority: "normal" }),
+  ];
+  const week = projectLitterCareCalendarWeek({ tasks: inputs, requestedDate: "2024-01-15", todayDate: "2024-01-15", todayLocalTime: "12:00" });
+  const day = week.days.find((value) => value.date === "2024-01-15")!;
+  const sourceOrder = day.items.map((item) => item.task.id);
+  expect(sourceOrder).toEqual(["late-critical", "untimed-important", "early-normal", "untimed-normal"]);
+  expect(sortLitterCareAgendaItems(day.items).map((item) => item.task.id)).toEqual(["early-normal", "late-critical", "untimed-important", "untimed-normal"]);
+  expect(day.items.map((item) => item.task.id)).toEqual(sourceOrder);
 });

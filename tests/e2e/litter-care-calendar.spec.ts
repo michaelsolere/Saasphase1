@@ -29,10 +29,12 @@ function weekStart(date: string) {
   const value = new Date(Date.UTC(year, month - 1, day));
   return new Date(value.getTime() - ((value.getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
 }
-function nextWeek(date: string, difference: number) {
+function addDays(date: string, difference: number) {
   const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day + difference * 7)).toISOString().slice(0, 10);
+  return new Date(Date.UTC(year, month - 1, day + difference)).toISOString().slice(0, 10);
 }
+function nextWeek(date: string, difference: number) { return addDays(date, difference * 7); }
+function weekEnd(date: string) { return addDays(date, 6); }
 
 function q(value: string) { return `'${value.replaceAll("'", "''")}'`; }
 function sql(statement: string) { return runE2eSqlSync(statement); }
@@ -134,7 +136,7 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     const weekDate = dateInMonth(currentMonth, 13);
     const weekStartDate = weekStart(weekDate);
     await page.goto(`${calendarUrl}&view=week&date=${weekDate}&kind=window&category=veterinary`);
-    const weekSection = page.getByRole("region", { name: `Semaine du ${weekStartDate} au ${nextWeek(weekStartDate, 1)}` });
+    const weekSection = page.getByRole("region", { name: `Semaine du ${weekStartDate} au ${weekEnd(weekStartDate)}` });
     await expect(weekSection).toBeVisible();
     await expect(page.getByRole("link", { name: "Mois" })).toHaveAttribute("href", new RegExp(`litter=${ids.litter}.*kind=window.*category=veterinary`));
     await expect(weekSection.getByText(`${namePrefix} fenêtre vétérinaire`, { exact: true })).toHaveCount(2);
@@ -145,7 +147,7 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     await page.waitForURL((url) => url.searchParams.get("date") === weekStartDate);
     await page.getByRole("link", { name: "Agenda" }).click();
     await page.waitForURL((url) => url.searchParams.get("view") === "agenda" && url.searchParams.get("date") === weekStartDate);
-    const agendaSection = page.getByRole("region", { name: `Agenda du ${weekStartDate} au ${nextWeek(weekStartDate, 1)}` });
+    const agendaSection = page.getByRole("region", { name: `Agenda du ${weekStartDate} au ${weekEnd(weekStartDate)}` });
     await expect(agendaSection).toBeVisible();
     await expect(agendaSection.getByText(`${namePrefix} fenêtre vétérinaire`, { exact: true })).toHaveCount(1);
     await expect(agendaSection.getByText(`Du ${dateInMonth(currentMonth, 13)} à 08:00 au ${dateInMonth(currentMonth, 15)} à 18:00`, { exact: true })).toBeVisible();
