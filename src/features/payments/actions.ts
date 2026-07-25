@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { maybePromoteReservationHolderAfterCompleteDeposit } from "@/features/payments/reservation-holder-promotion";
 import { createClient } from "@/lib/supabase/server";
 
 function paymentRedirectUrl(
@@ -184,6 +185,25 @@ export async function markPreReservationPaymentAsPaidFromApplication(
     paymentId,
   });
 
+  if (result?.ok && result.reservationId) {
+    const { data: payment } = await supabase
+      .from("payments")
+      .select("organization_id, payment_type")
+      .eq("id", paymentId)
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (payment) {
+      await maybePromoteReservationHolderAfterCompleteDeposit({
+        supabase,
+        organizationId: payment.organization_id,
+        reservationId: result.reservationId,
+        userId: user.id,
+        paymentType: payment.payment_type,
+      });
+    }
+  }
+
   await revalidatePaymentTransitionPaths({
     supabase,
     paymentId,
@@ -363,6 +383,22 @@ export async function createReservationPayment(formData: FormData) {
     if (!transitionResult?.ok) {
       redirect(paymentRedirectUrl(reservationId, "error"));
     }
+
+    await maybePromoteReservationHolderAfterCompleteDeposit({
+      supabase,
+      organizationId: reservation.organization_id,
+      reservationId: reservation.id,
+      userId: user.id,
+      paymentType,
+    });
+  } else if (status === "paid" && isPreReservationPaymentType(paymentType)) {
+    await maybePromoteReservationHolderAfterCompleteDeposit({
+      supabase,
+      organizationId: reservation.organization_id,
+      reservationId: reservation.id,
+      userId: user.id,
+      paymentType,
+    });
   }
 
   revalidatePath(`/reservations/${reservationId}`);
@@ -470,6 +506,16 @@ export async function markPaymentAsPaid(formData: FormData) {
       paymentMethod,
     });
 
+    if (transitionResult?.ok && transitionResult.reservationId) {
+      await maybePromoteReservationHolderAfterCompleteDeposit({
+        supabase,
+        organizationId: payment.organization_id,
+        reservationId: transitionResult.reservationId,
+        userId: user.id,
+        paymentType: payment.payment_type,
+      });
+    }
+
     await revalidatePaymentTransitionPaths({
       supabase,
       paymentId,
@@ -498,6 +544,16 @@ export async function markPaymentAsPaid(formData: FormData) {
 
   if (updateError) {
     redirect(`/payments/${paymentId}?payment_mark_status=error`);
+  }
+
+  if (payment.reservation_id) {
+    await maybePromoteReservationHolderAfterCompleteDeposit({
+      supabase,
+      organizationId: payment.organization_id,
+      reservationId: payment.reservation_id,
+      userId: user.id,
+      paymentType: payment.payment_type,
+    });
   }
 
   // 8. Revalidation des chemins
@@ -581,6 +637,16 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
       paymentId,
     });
 
+    if (transitionResult?.ok) {
+      await maybePromoteReservationHolderAfterCompleteDeposit({
+        supabase,
+        organizationId: reservation.organization_id,
+        reservationId: transitionResult.reservationId ?? reservationId,
+        userId: user.id,
+        paymentType: payment.payment_type,
+      });
+    }
+
     await revalidatePaymentTransitionPaths({
       supabase,
       paymentId,
@@ -612,6 +678,14 @@ export async function markReservationPaymentAsPaid(formData: FormData) {
   if (updateError || !updatedPayment) {
     redirect(reservationPaymentMarkUrl(reservationId, "error"));
   }
+
+  await maybePromoteReservationHolderAfterCompleteDeposit({
+    supabase,
+    organizationId: reservation.organization_id,
+    reservationId: reservation.id,
+    userId: user.id,
+    paymentType: payment.payment_type,
+  });
 
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/reservations");

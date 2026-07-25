@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import { createTestOrganization } from "./helpers/fixtures/breeding-fixtures";
 import {
+  createTestContactRole,
   createTestPaidPreReservationScenario,
   createTestPreReservationScenario,
   createTestReceivedPayment,
@@ -203,12 +204,42 @@ test("modern refundable deposit enables complement then reaches complete 500 eur
         .order("created_at"),
       "roles after complete deposit",
     );
-    // Real implementation: complete deposit does not promote reservation_holder.
     expect(rolesAfter.filter((role) => role.is_active).map((role) => role.role)).toEqual([
-      "pre_reservation_holder",
+      "reservation_holder",
     ]);
-    expect(rolesAfter.filter((role) => role.role === "reservation_holder")).toHaveLength(0);
-    expect(rolesAfter).toHaveLength(1);
+    const preReservationRole = rolesAfter.find(
+      (role) => role.role === "pre_reservation_holder",
+    );
+    expect(preReservationRole).toMatchObject({
+      id: scenario.holderRoleId,
+      is_active: false,
+    });
+    expect(preReservationRole?.ended_at).not.toBeNull();
+    expect(
+      rolesAfter.filter(
+        (role) => role.role === "reservation_holder" && role.is_active,
+      ),
+    ).toHaveLength(1);
+    expect(rolesAfter).toHaveLength(2);
+
+    // Idempotent re-mark attempt on already paid complement must not duplicate roles.
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await expect(page.getByRole("button", { name: "Marquer payé" })).toHaveCount(0);
+    const rolesAfterReload = expectSupabaseData(
+      await supabase
+        .from("contact_roles")
+        .select("id, role, is_active")
+        .eq("contact_id", scenario.contact.id)
+        .is("deleted_at", null)
+        .order("created_at"),
+      "roles after reload",
+    );
+    expect(
+      rolesAfterReload.filter((role) => role.is_active).map((role) => role.role),
+    ).toEqual(["reservation_holder"]);
+    expect(
+      rolesAfterReload.filter((role) => role.role === "reservation_holder"),
+    ).toHaveLength(1);
 
     const journeyAfter = expectSupabaseData(
       await supabase
@@ -327,6 +358,108 @@ test("historical arrhes first deposit still enables complement request", async (
       status: "requested",
       amount_cents: 25_000,
     });
+
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await openDialog(
+      page.getByRole("button", { name: "Marquer payé" }).first(),
+      page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
+    );
+    await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
+
+    const rolesAfter = expectSupabaseData(
+      await supabase
+        .from("contact_roles")
+        .select("id, role, is_active, ended_at")
+        .eq("contact_id", scenario.contact.id)
+        .is("deleted_at", null)
+        .order("created_at"),
+      "roles after historical arrhes complete",
+    );
+    expect(rolesAfter.filter((role) => role.is_active).map((role) => role.role)).toEqual([
+      "reservation_holder",
+    ]);
+    expect(
+      rolesAfter.find((role) => role.role === "pre_reservation_holder"),
+    ).toMatchObject({
+      id: scenario.holderRoleId,
+      is_active: false,
+    });
+
+    await registerActualDepositEffects(sql, fixtures, {
+      organizationId,
+      reservationId: scenario.journey.id,
+      contactId: scenario.contact.id,
+    });
+  });
+});
+
+test("existing active reservation_holder stays idempotent after complement paid", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await withE2eFixtures(sql, async (fixtures) => {
+    const supabase = await createAuthenticatedSupabaseClient();
+    const suffix = fixtures.namespace.slice(-8);
+    const scenario = await createTestPaidPreReservationScenario(sql, fixtures, {
+      organizationId,
+      ownerId,
+      displayName: `E2E holder déjà actif ${suffix}`,
+    });
+    const existingHolderRoleId = await createTestContactRole(sql, fixtures, {
+      organizationId,
+      contactId: scenario.contact.id,
+      ownerId,
+      role: "reservation_holder",
+      isActive: true,
+    });
+    // Journey roles may both be active until promotion deactivates the older one.
+    await sql(
+      `update public.contact_roles
+       set is_active = true,
+           ended_at = null,
+           updated_by = '${ownerId}'::uuid
+       where id = '${scenario.holderRoleId}'::uuid
+         and organization_id = '${organizationId}'::uuid`,
+    );
+
+    await login(page);
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await openDialog(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+      page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+    );
+    await page.getByRole("button", { name: "Confirmer la demande" }).click();
+    await expect(page).toHaveURL(/balance_request_status=success/);
+
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await openDialog(
+      page.getByRole("button", { name: "Marquer payé" }).first(),
+      page.getByRole("heading", { name: "Confirmer le paiement reçu" }),
+    );
+    await page.getByRole("button", { name: "Confirmer le paiement" }).click();
+    await expect(page).toHaveURL(/payment_mark_status=success/);
+
+    const rolesAfter = expectSupabaseData(
+      await supabase
+        .from("contact_roles")
+        .select("id, role, is_active")
+        .eq("contact_id", scenario.contact.id)
+        .is("deleted_at", null)
+        .order("created_at"),
+      "roles with preexisting reservation_holder",
+    );
+    expect(
+      rolesAfter.filter((role) => role.role === "reservation_holder" && role.is_active),
+    ).toHaveLength(1);
+    expect(
+      rolesAfter.find((role) => role.id === existingHolderRoleId),
+    ).toMatchObject({ role: "reservation_holder", is_active: true });
+    expect(
+      rolesAfter.find((role) => role.id === scenario.holderRoleId),
+    ).toMatchObject({ role: "pre_reservation_holder", is_active: false });
 
     await registerActualDepositEffects(sql, fixtures, {
       organizationId,
@@ -449,6 +582,19 @@ test("does not treat a paid non-arrhes 500 euro payment as complete deposit", as
       amount_cents: 50_000,
       payment_type: "balance",
     });
+
+    const rolesAfter = expectSupabaseData(
+      await supabase
+        .from("contact_roles")
+        .select("id, role, is_active")
+        .eq("contact_id", scenario.contact.id)
+        .is("deleted_at", null),
+      "roles after non-admissible payment",
+    );
+    expect(rolesAfter.filter((role) => role.role === "reservation_holder")).toHaveLength(0);
+    expect(rolesAfter.filter((role) => role.is_active).map((role) => role.role)).toEqual([
+      "candidate",
+    ]);
 
     await registerActualDepositEffects(sql, fixtures, {
       organizationId,
