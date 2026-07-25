@@ -1,0 +1,39 @@
+export const fixtureTables = ["litter_care_tasks", "litters", "animals", "organizations"] as const;
+export type FixtureTable = (typeof fixtureTables)[number];
+export type SqlExecutor = (sql: string) => string | Promise<string>;
+
+const cleanupOrder: FixtureTable[] = ["litter_care_tasks", "litters", "animals", "organizations"];
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function idsSql(ids: string[]) { return ids.map((id) => `'${id}'::uuid`).join(", "); }
+
+export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-${crypto.randomUUID()}`) {
+  const ids = new Map<FixtureTable, Set<string>>(fixtureTables.map((table) => [table, new Set()]));
+  const register = (table: FixtureTable, id: string) => {
+    if (!fixtureTables.includes(table)) throw new Error(`Unsupported E2E fixture table: ${table}`);
+    if (!uuid.test(id)) throw new Error(`Invalid E2E fixture UUID for ${table}: ${id}`);
+    const tableIds = ids.get(table)!;
+    if (tableIds.has(id)) throw new Error(`Duplicate E2E fixture ${table}:${id}`);
+    tableIds.add(id);
+    return id;
+  };
+  const counts = async () => Object.fromEntries(await Promise.all(fixtureTables.map(async (table) => {
+    const tableIds = [...ids.get(table)!];
+    if (tableIds.length === 0) return [table, 0];
+    return [table, Number(await execute(`select count(*)::text from public.${table} where id in (${idsSql(tableIds)})`))];
+  }))) as Record<FixtureTable, number>;
+  const cleanup = async () => { for (const table of cleanupOrder) { const tableIds = [...ids.get(table)!]; if (tableIds.length) await execute(`delete from public.${table} where id in (${idsSql(tableIds)})`); } };
+  const assertEmpty = async () => { const remaining = await counts(); const dirty = Object.entries(remaining).filter(([, count]) => count !== 0); if (dirty.length) throw new Error(`E2E fixture cleanup left rows: ${dirty.map(([table, count]) => `${table}=${count}`).join(", ")}`); return remaining; };
+  return { namespace, register, cleanup, assertEmpty, counts, cleanupOrder: [...cleanupOrder] };
+}
+
+export async function withE2eFixtures<T>(execute: SqlExecutor, scenario: (fixtures: ReturnType<typeof createE2eFixtureRegistry>) => Promise<T>, namespace?: string) {
+  const fixtures = createE2eFixtureRegistry(execute, namespace);
+  let scenarioError: unknown;
+  try { return await scenario(fixtures); } catch (error) { scenarioError = error; throw error; } finally {
+    try { await fixtures.cleanup(); await fixtures.assertEmpty(); } catch (cleanupError) {
+      if (scenarioError instanceof Error) { (scenarioError as Error & { cleanupError?: unknown }).cleanupError = cleanupError; }
+      else throw cleanupError;
+    }
+  }
+}

@@ -68,6 +68,11 @@ Les specs sans dépendance Supabase sont explicitement listées dans
 pnpm test:e2e:pure -- tests/e2e/breeding-calendar-core.spec.ts
 ```
 
+Les nouvelles specs intégrées qui créent des données doivent utiliser le
+registre `tests/e2e/helpers/fixtures/` et ses constructeurs. Les `INSERT` SQL
+monolithiques locaux sont interdits : étendez d’abord un constructeur existant.
+La migration des anciennes specs est progressive.
+
 ## Protection des démonstrations actives
 
 Un manifeste au statut `active` bloque explicitement :

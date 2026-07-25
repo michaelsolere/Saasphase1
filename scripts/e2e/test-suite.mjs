@@ -10,6 +10,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/document-generation-snapshot-schemas.spec.ts",
   "tests/e2e/document-pdf-renderer.spec.ts",
   "tests/e2e/document-template-pdf-preview.spec.ts",
+  "tests/e2e/fixture-registry.spec.ts",
   "tests/e2e/litter-age-comparison-chart-model.spec.ts",
   "tests/e2e/litter-age-comparison-model.spec.ts",
   "tests/e2e/litter-care-calendar-model.spec.ts",
