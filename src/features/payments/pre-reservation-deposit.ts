@@ -246,3 +246,63 @@ export function evaluatePreReservationBalanceRequest({
     progress,
   };
 }
+
+export type ReservationHolderPromotionOutcome =
+  | "promote"
+  | "below_threshold"
+  | "ineligible";
+
+/**
+ * Pure gate for promoting to reservation_holder once admissible paid deposits
+ * reach completeDepositCents. Does not mutate roles.
+ */
+export function evaluateReservationHolderPromotion({
+  payments,
+  depositSettings,
+  reservationStatus,
+  contactId,
+  isFinalStatus,
+}: {
+  payments: DepositPaymentLike[];
+  depositSettings: Pick<
+    ResolvedDepositSettings,
+    | "preReservationDepositCents"
+    | "arrhesSecondPaymentCents"
+    | "completeDepositCents"
+  >;
+  reservationStatus: string | null | undefined;
+  contactId: string | null | undefined;
+  isFinalStatus: boolean;
+}): {
+  outcome: ReservationHolderPromotionOutcome;
+  eligibleReceivedCents: number;
+  progress: PreReservationDepositProgress;
+} {
+  const progress = computePreReservationDepositProgress({
+    payments,
+    depositSettings,
+    reservationStatus,
+  });
+
+  if (!contactId || isFinalStatus) {
+    return {
+      outcome: "ineligible",
+      eligibleReceivedCents: progress.eligibleReceivedCents,
+      progress,
+    };
+  }
+
+  if (progress.eligibleReceivedCents < depositSettings.completeDepositCents) {
+    return {
+      outcome: "below_threshold",
+      eligibleReceivedCents: progress.eligibleReceivedCents,
+      progress,
+    };
+  }
+
+  return {
+    outcome: "promote",
+    eligibleReceivedCents: progress.eligibleReceivedCents,
+    progress,
+  };
+}

@@ -8,7 +8,9 @@ import {
 import {
   computePreReservationDepositProgress,
   evaluatePreReservationBalanceRequest,
+  evaluateReservationHolderPromotion,
 } from "../../src/features/payments/pre-reservation-deposit";
+import { prepareContactJourneyRolePromotion } from "../../src/features/contacts/roles";
 
 const depositSettings = resolveDepositSettings(null);
 
@@ -229,4 +231,204 @@ test("server evaluation refuses final, foreign-empty contact, and unpaid first d
       isFinalStatus: false,
     }).outcome,
   ).toBe("pre_reservation_unpaid");
+});
+
+test("first modern 250 euro paid stays below reservation_holder promotion", () => {
+  const evaluation = evaluateReservationHolderPromotion({
+    payments: [
+      {
+        payment_type: "pre_reservation_deposit_refundable",
+        status: "paid",
+        amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+      },
+    ],
+    depositSettings,
+    reservationStatus: "pre_reservation_paid",
+    contactId: "contact",
+    isFinalStatus: false,
+  });
+
+  expect(evaluation.outcome).toBe("below_threshold");
+  expect(evaluation.eligibleReceivedCents).toBe(PRE_RESERVATION_PAYMENT_AMOUNT_CENTS);
+  expect(evaluation.progress.hasCompleteDeposit).toBe(false);
+});
+
+test("modern complement paid promotes at completeDepositCents", () => {
+  const evaluation = evaluateReservationHolderPromotion({
+    payments: [
+      {
+        payment_type: "pre_reservation_deposit_refundable",
+        status: "paid",
+        amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+      },
+      {
+        payment_type: "arrhes",
+        status: "paid",
+        amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+      },
+    ],
+    depositSettings,
+    reservationStatus: "pre_reservation_paid",
+    contactId: "contact",
+    isFinalStatus: false,
+  });
+
+  expect(evaluation.outcome).toBe("promote");
+  expect(evaluation.eligibleReceivedCents).toBe(COMPLETE_DEPOSIT_AMOUNT_CENTS);
+});
+
+test("historical arrhes-only complete deposit still promotes", () => {
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: [
+        {
+          payment_type: "arrhes",
+          status: "paid",
+          amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+        },
+        {
+          payment_type: "arrhes",
+          status: "paid",
+          amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+        },
+      ],
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("promote");
+
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: [
+        {
+          payment_type: "arrhes",
+          status: "paid",
+          amount_cents: COMPLETE_DEPOSIT_AMOUNT_CENTS,
+        },
+      ],
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("promote");
+});
+
+test("requested complement does not promote", () => {
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: [
+        {
+          payment_type: "pre_reservation_deposit_refundable",
+          status: "paid",
+          amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+        },
+        {
+          payment_type: "arrhes",
+          status: "requested",
+          amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+        },
+      ],
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("below_threshold");
+});
+
+test("non-admissible payment type does not count toward promotion", () => {
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: [
+        {
+          payment_type: "balance",
+          status: "paid",
+          amount_cents: COMPLETE_DEPOSIT_AMOUNT_CENTS,
+        },
+      ],
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("below_threshold");
+});
+
+test("promotion evaluation is idempotent once threshold is reached", () => {
+  const payments = [
+    {
+      payment_type: "pre_reservation_deposit_refundable",
+      status: "paid",
+      amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+    },
+    {
+      payment_type: "arrhes",
+      status: "paid",
+      amount_cents: PRE_RESERVATION_PAYMENT_AMOUNT_CENTS,
+    },
+  ];
+
+  expect(
+    evaluateReservationHolderPromotion({
+      payments,
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("promote");
+  expect(
+    evaluateReservationHolderPromotion({
+      payments,
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: "contact",
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("promote");
+});
+
+test("missing contact or final status refuses reservation_holder promotion", () => {
+  const completePayments = [
+    {
+      payment_type: "arrhes",
+      status: "paid",
+      amount_cents: COMPLETE_DEPOSIT_AMOUNT_CENTS,
+    },
+  ];
+
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: completePayments,
+      depositSettings,
+      reservationStatus: "pre_reservation_paid",
+      contactId: null,
+      isFinalStatus: false,
+    }).outcome,
+  ).toBe("ineligible");
+
+  expect(
+    evaluateReservationHolderPromotion({
+      payments: completePayments,
+      depositSettings,
+      reservationStatus: "cancelled",
+      contactId: "contact",
+      isFinalStatus: true,
+    }).outcome,
+  ).toBe("ineligible");
+});
+
+test("prepareContactJourneyRolePromotion deactivates pre_reservation_holder only among journey roles", () => {
+  expect(prepareContactJourneyRolePromotion("reservation_holder")).toEqual({
+    roleToActivate: "reservation_holder",
+    rolesToDeactivate: [
+      "candidate",
+      "pre_reservation_holder",
+      "adopter",
+      "former_adopter",
+    ],
+  });
 });
