@@ -114,9 +114,10 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     expect(download.headers()["cache-control"]).toBe("private, no-store");
     expect(download.headers()["content-disposition"]).toMatch(/^attachment; filename="e2e-calendrier-portee-active-journal\.ics"$/);
     const ical = await download.text();
-    expect(ical).toContain(`${namePrefix} jalon`); expect(ical).toContain(`${namePrefix} occurrence`);
-    expect(ical).toContain(`${namePrefix} fenêtre vétérinaire`); expect(ical.match(/BEGIN:VEVENT/g)).toHaveLength(5);
-    expect(ical).not.toContain(`${namePrefix} terminée`); expect(ical).not.toContain(ids.litter);
+    const unfoldedIcal = ical.replace(/\r\n[ \t]/g, "");
+    expect(unfoldedIcal).toContain(`${namePrefix} jalon`); expect(unfoldedIcal).toContain(`${namePrefix} occurrence`);
+    expect(unfoldedIcal).toContain(`${namePrefix} fenêtre vétérinaire`); expect(ical.match(/BEGIN:VEVENT/g)).toHaveLength(5);
+    expect(unfoldedIcal).not.toContain(`${namePrefix} terminée`); expect(unfoldedIcal).not.toContain(ids.litter);
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible();
     await expect(page.getByText("Lun")).toBeVisible(); await expect(page.getByText("Dim")).toBeVisible();
     await expect(page.getByText(`${namePrefix} jalon`)).toBeVisible();
@@ -142,7 +143,7 @@ test("affiche le calendrier mensuel en lecture seule et nettoie ses fixtures", a
     await expect(exportLink).toHaveAttribute("href", new RegExp(`litter=${ids.litter}&kind=all&category=other`));
     await page.getByLabel("Type d’élément").selectOption("recurring_task"); await page.getByRole("button", { name: "Appliquer" }).click();
     await expect(page.getByText("Aucun élément ne correspond aux filtres sélectionnés.")).toBeVisible();
-    await page.getByRole("link", { name: "Réinitialiser" }).click(); await expect(page.getByText(`${namePrefix} occurrence`)).toBeVisible();
+    await page.getByRole("link", { name: "Réinitialiser" }).click(); await page.waitForURL((url) => url.pathname === "/litters/journal/calendar" && url.searchParams.get("litter") === ids.litter && !url.searchParams.has("kind") && !url.searchParams.has("category")); await expect(page.getByText(`${namePrefix} occurrence`)).toBeVisible();
     const nextMonth = adjacentMonth(currentMonth, 1);
     await page.getByRole("link", { name: "Mois suivant" }).click(); await page.waitForURL((url) => url.searchParams.get("month") === nextMonth); await expect(page.getByText(formatMonthLabel(nextMonth))).toBeVisible(); await page.getByRole("link", { name: "Mois précédent" }).click();
     await expect(page.getByText(formatMonthLabel(currentMonth))).toBeVisible(); await page.getByRole("link", { name: "Aujourd’hui" }).click();

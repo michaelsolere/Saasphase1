@@ -70,8 +70,7 @@ export function buildLitterCareICalendar(input: IcalendarInput) {
     const event: string[] = ["BEGIN:VEVENT", property("UID", uid(task)), property("DTSTAMP", formatUtc(input.generatedAt)), property("SUMMARY", escapeText(`${input.litterName} — ${task.title}`)), property("CATEGORIES", escapeText(task.category)), property("X-SAAS-ELEVAGE-KIND", task.itemKind), property("SEQUENCE", String(task.revisionNo))];
     if (task.itemKind === "window") {
       if (!validDate(task.retainedStartsOn) || !validDate(task.retainedEndsOn)) continue;
-      const completeTimes = validTime(task.retainedStartsLocalTime) && validTime(task.retainedEndsLocalTime);
-      if (completeTimes) { event.push(property("DTSTART", dateTime(task.retainedStartsOn, task.retainedStartsLocalTime, task.scheduleTimezoneName)), property("DTEND", dateTime(task.retainedEndsOn, task.retainedEndsLocalTime, task.scheduleTimezoneName))); }
+      if (validTime(task.retainedStartsLocalTime) && validTime(task.retainedEndsLocalTime)) { event.push(property("DTSTART", dateTime(task.retainedStartsOn, task.retainedStartsLocalTime, task.scheduleTimezoneName)), property("DTEND", dateTime(task.retainedEndsOn, task.retainedEndsLocalTime, task.scheduleTimezoneName))); }
       else { event.push(property("DTSTART;VALUE=DATE", ymd(task.retainedStartsOn)), property("DTEND;VALUE=DATE", addDay(task.retainedEndsOn))); const oneTime = validTime(task.retainedStartsLocalTime) ? `Heure de début retenue : ${task.retainedStartsLocalTime.slice(0, 5)}.` : validTime(task.retainedEndsLocalTime) ? `Heure de fin retenue : ${task.retainedEndsLocalTime.slice(0, 5)}.` : null; if (oneTime) event.push(property("DESCRIPTION", escapeText(oneTime))); }
     } else {
       if (!validDate(task.plannedFor)) continue;
@@ -82,4 +81,4 @@ export function buildLitterCareICalendar(input: IcalendarInput) {
   lines.push("END:VCALENDAR"); return `${lines.join(CRLF)}${CRLF}`;
 }
 
-export function isLitterCareCalendarExportUuid(value: string | null) { return Boolean(value && UUID.test(value)); }
+export function isLitterCareCalendarExportUuid(value: string | null): value is string { return Boolean(value && UUID.test(value)); }
