@@ -4,6 +4,7 @@ import { createTestOrganization } from "./helpers/fixtures/breeding-fixtures";
 import {
   createTestPaidPreReservationScenario,
   createTestPreReservationScenario,
+  createTestReceivedPayment,
   registerActualDepositEffects,
 } from "./helpers/fixtures/adopter-payment-fixtures";
 import { withE2eFixtures } from "./helpers/fixtures/fixture-registry";
@@ -28,7 +29,7 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/connexion=success/);
 }
 
-test("requests the 250 euro complement then reaches complete deposit of 500 euro", async ({
+test("modern refundable deposit enables complement then reaches complete 500 euro", async ({
   page,
 }) => {
   test.setTimeout(120_000);
@@ -42,28 +43,15 @@ test("requests the 250 euro complement then reaches complete deposit of 500 euro
       amountCents: 25_000,
       displayName: `E2E arrhes complètes ${suffix}`,
     });
+    expect(scenario.paymentType).toBe("pre_reservation_deposit_refundable");
 
-    const unpaidFirst = await createTestPaidPreReservationScenario(sql, fixtures, {
+    const unpaidFirst = await createTestPreReservationScenario(sql, fixtures, {
       organizationId,
       ownerId,
+      amountCents: 25_000,
       displayName: `E2E complément bloqué ${suffix}`,
+      paymentType: "pre_reservation_deposit_refundable",
     });
-    // First deposit still requested: complement action must stay hidden.
-    await sql(
-      `update public.payments
-       set status = 'requested',
-           paid_at = null,
-           updated_by = '${ownerId}'::uuid
-       where id = '${unpaidFirst.payment.id}'::uuid
-         and organization_id = '${organizationId}'::uuid`,
-    );
-    await sql(
-      `update public.reservations
-       set status = 'pre_reservation_paid',
-           updated_by = '${ownerId}'::uuid
-       where id = '${unpaidFirst.journey.id}'::uuid
-         and organization_id = '${organizationId}'::uuid`,
-    );
 
     const alreadyComplete = await createTestPaidPreReservationScenario(sql, fixtures, {
       organizationId,
@@ -152,7 +140,7 @@ test("requests the 250 euro complement then reaches complete deposit of 500 euro
       id: scenario.payment.id,
       amount_cents: 25_000,
       status: "paid",
-      payment_type: "arrhes",
+      payment_type: "pre_reservation_deposit_refundable",
     });
     const complement = afterRequest.find(
       (payment) => payment.id !== scenario.payment.id && payment.status === "requested",
@@ -201,6 +189,10 @@ test("requests the 250 euro complement then reaches complete deposit of 500 euro
     expect(afterPaid).toHaveLength(2);
     expect(afterPaid.every((payment) => payment.status === "paid")).toBe(true);
     expect(afterPaid.reduce((total, payment) => total + payment.amount_cents, 0)).toBe(50_000);
+    expect(afterPaid.map((payment) => payment.payment_type).sort()).toEqual([
+      "arrhes",
+      "pre_reservation_deposit_refundable",
+    ]);
 
     const rolesAfter = expectSupabaseData(
       await supabase
@@ -281,6 +273,130 @@ test("requests the 250 euro complement then reaches complete deposit of 500 euro
         "payments persisted after reload",
       ),
     ).toHaveLength(2);
+  });
+});
+
+test("historical arrhes first deposit still enables complement request", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withE2eFixtures(sql, async (fixtures) => {
+    const suffix = fixtures.namespace.slice(-8);
+    const scenario = await createTestPaidPreReservationScenario(sql, fixtures, {
+      organizationId,
+      ownerId,
+      amountCents: 25_000,
+      displayName: `E2E historique arrhes ${suffix}`,
+      paymentType: "arrhes",
+    });
+
+    await login(page);
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await expect(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+    ).toBeVisible();
+
+    await openDialog(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+      page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+    );
+    await page.getByRole("button", { name: "Confirmer la demande" }).click();
+    await expect(page).toHaveURL(/balance_request_status=success/);
+
+    const supabase = await createAuthenticatedSupabaseClient();
+    const payments = expectSupabaseData(
+      await supabase
+        .from("payments")
+        .select("id, amount_cents, status, payment_type")
+        .eq("reservation_id", scenario.journey.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true }),
+      "historical arrhes complement",
+    );
+    expect(payments).toHaveLength(2);
+    expect(payments[0]).toMatchObject({
+      id: scenario.payment.id,
+      payment_type: "arrhes",
+      status: "paid",
+      amount_cents: 25_000,
+    });
+    expect(payments[1]).toMatchObject({
+      payment_type: "arrhes",
+      status: "requested",
+      amount_cents: 25_000,
+    });
+
+    await registerActualDepositEffects(sql, fixtures, {
+      organizationId,
+      reservationId: scenario.journey.id,
+      contactId: scenario.contact.id,
+    });
+  });
+});
+
+test("cancelled complement allows a new active complement request", async ({ page }) => {
+  test.setTimeout(90_000);
+  await withE2eFixtures(sql, async (fixtures) => {
+    const supabase = await createAuthenticatedSupabaseClient();
+    const suffix = fixtures.namespace.slice(-8);
+    const scenario = await createTestPaidPreReservationScenario(sql, fixtures, {
+      organizationId,
+      ownerId,
+      displayName: `E2E complément annulé ${suffix}`,
+    });
+    const cancelledComplement = await createTestReceivedPayment(sql, fixtures, {
+      organizationId,
+      contactId: scenario.contact.id,
+      reservationId: scenario.journey.id,
+      ownerId,
+      amountCents: 25_000,
+      paymentType: "arrhes",
+    });
+    await sql(
+      `update public.payments
+       set status = 'cancelled',
+           paid_at = null,
+           updated_by = '${ownerId}'::uuid
+       where id = '${cancelledComplement.id}'::uuid
+         and organization_id = '${organizationId}'::uuid`,
+    );
+
+    await login(page);
+    await page.goto(`/reservations/${scenario.journey.id}`);
+    await openDialog(
+      page
+        .locator("#reservation-details")
+        .getByRole("button", { name: "Demander le complément 2/2 — 250 €" }),
+      page.getByRole("heading", { name: "Créer le complément 2/2 — 250 € ?" }),
+    );
+    await page.getByRole("button", { name: "Confirmer la demande" }).click();
+    await expect(page).toHaveURL(/balance_request_status=success/);
+
+    const payments = expectSupabaseData(
+      await supabase
+        .from("payments")
+        .select("id, amount_cents, status, payment_type")
+        .eq("reservation_id", scenario.journey.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true }),
+      "payments after cancelled complement re-request",
+    );
+    expect(payments).toHaveLength(3);
+    expect(payments.filter((payment) => payment.status === "cancelled")).toHaveLength(1);
+    expect(
+      payments.filter(
+        (payment) =>
+          payment.payment_type === "arrhes" && payment.status === "requested",
+      ),
+    ).toHaveLength(1);
+
+    await registerActualDepositEffects(sql, fixtures, {
+      organizationId,
+      reservationId: scenario.journey.id,
+      contactId: scenario.contact.id,
+    });
   });
 });
 
