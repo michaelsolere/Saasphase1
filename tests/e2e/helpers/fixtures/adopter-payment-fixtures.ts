@@ -127,8 +127,8 @@ export async function createTestPreReservationScenario(execute: SqlExecutor, reg
 
 /**
  * Paid first deposit already applied: journey is pre_reservation_paid with an
- * active pre_reservation_holder. Uses payment_type=arrhes so the complement 2/2
- * UI gate (paidArrhesTotalCents) matches the live reservation page.
+ * active pre_reservation_holder. Defaults to the modern refundable deposit type;
+ * pass paymentType: "arrhes" for historical non-regression.
  */
 export async function createTestPaidPreReservationScenario(
   execute: SqlExecutor,
@@ -138,10 +138,12 @@ export async function createTestPaidPreReservationScenario(
     ownerId: string;
     amountCents?: number;
     displayName?: string;
+    paymentType?: "arrhes" | "pre_reservation_deposit_refundable";
   },
 ) {
   const snapshot = structuredClone(input);
   const amountCents = input.amountCents ?? 25_000;
+  const paymentType = input.paymentType ?? "pre_reservation_deposit_refundable";
   const contact = await createTestContact(execute, registry, {
     organizationId: input.organizationId,
     ownerId: input.ownerId,
@@ -171,12 +173,12 @@ export async function createTestPaidPreReservationScenario(
     reservationId: journey.id,
     ownerId: input.ownerId,
     amountCents,
-    paymentType: "arrhes",
+    paymentType,
   });
   if (JSON.stringify(input) !== JSON.stringify(snapshot)) {
     throw new Error("E2E paid pre-reservation scenario mutated its input");
   }
-  return { contact, application, journey, holderRoleId, payment, amountCents };
+  return { contact, application, journey, holderRoleId, payment, amountCents, paymentType };
 }
 
 /**

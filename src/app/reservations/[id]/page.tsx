@@ -27,6 +27,7 @@ import {
   readDepositSettingsForOrganization,
   resolveDepositSettings,
 } from "@/features/payments/deposit-thresholds";
+import { computePreReservationDepositProgress } from "@/features/payments/pre-reservation-deposit";
 import {
   updateReservationInternalComment,
   updateReservationPrice,
@@ -2118,6 +2119,19 @@ export default async function ReservationDetailPage({
 
   const reservationPayments = rawPayments as RelatedPayment[] | null;
 
+  const depositProgress = computePreReservationDepositProgress({
+    payments: reservationPayments ?? [],
+    depositSettings,
+    reservationStatus: reservation?.status,
+  });
+  const {
+    eligibleReceivedCents,
+    hasSecondPayment,
+    hasSecondPaid,
+    hasFirstPaid,
+    hasCompleteDeposit,
+    canRequestPreReservationBalance,
+  } = depositProgress;
   const preReservationDepositPayments = reservationPayments?.filter(
     (p) =>
       p.amount_cents === depositSettings.preReservationDepositCents &&
@@ -2127,36 +2141,6 @@ export default async function ReservationDetailPage({
   const arrhesPayments = reservationPayments?.filter(
     (p) => p.payment_type === "arrhes"
   ) || [];
-  const activeArrhesPayments = arrhesPayments.filter(
-    (p) => p.status === "requested" || p.status === "paid",
-  );
-  const hasSeparatePreReservationDeposit = preReservationDepositPayments.some(
-    (p) => p.payment_type === "pre_reservation_deposit_refundable",
-  );
-  const paidArrhesPaymentCount = activeArrhesPayments.filter(
-    (p) => p.status === "paid",
-  ).length;
-  const paidArrhesTotalCents = activeArrhesPayments
-    .filter((p) => p.status === "paid")
-    .reduce((total, payment) => total + payment.amount_cents, 0);
-  const hasSecondPayment = hasSeparatePreReservationDeposit
-    ? activeArrhesPayments.length >= 1
-    : activeArrhesPayments.some(
-        (payment) =>
-          payment.status === "requested" &&
-          payment.amount_cents === depositSettings.arrhesSecondPaymentCents,
-      ) || paidArrhesTotalCents >= depositSettings.completeDepositCents;
-  const hasSecondPaid = hasSeparatePreReservationDeposit
-    ? paidArrhesPaymentCount >= 1
-    : paidArrhesTotalCents >= depositSettings.completeDepositCents;
-  const hasFirstPaid =
-    preReservationDepositPayments.some((p) => p.status === "paid") ||
-    reservation?.status === "pre_reservation_paid";
-  const canRequestPreReservationBalance =
-    reservation?.status === "pre_reservation_paid" &&
-    activeArrhesPayments.every((payment) => payment.status === "paid") &&
-    paidArrhesTotalCents >= depositSettings.preReservationDepositCents &&
-    paidArrhesTotalCents < depositSettings.completeDepositCents;
   const hasRequestedFirstDeposit =
     reservation?.status === "pre_reservation_requested" ||
     preReservationDepositPayments.some(
@@ -2363,8 +2347,6 @@ export default async function ReservationDetailPage({
   const netPaidCents = paidCents - refundedCents;
   const remainingBalanceCents =
     priceCents === null ? null : priceCents - netPaidCents;
-  const hasCompleteDeposit =
-    paidArrhesTotalCents >= depositSettings.completeDepositCents;
   const isPaidInFull =
     priceCents !== null && netPaidCents >= priceCents;
 
@@ -2597,7 +2579,7 @@ export default async function ReservationDetailPage({
   if (paymentsError) {
     financialSummaryDetail = "Paiements partiellement indisponibles.";
   } else if (hasCompleteDeposit) {
-    financialSummaryDetail = `${formatPrice(paidArrhesTotalCents, currency)} versés.`;
+    financialSummaryDetail = `${formatPrice(eligibleReceivedCents, currency)} versés.`;
   } else if (hasFirstPaid) {
     const paidPreReservationAmountCents =
       paidPreReservationDepositCents > 0
@@ -3217,7 +3199,7 @@ export default async function ReservationDetailPage({
                             Dossier en pré-réservation réglée — arrhes complètes
                           </h3>
                           <p className="mt-2 text-sm leading-6 text-emerald-950">
-                            Arrhes complètes : {formatPrice(paidArrhesTotalCents, currency)} / {completeDepositAmountLabel} payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
+                            Arrhes complètes : {formatPrice(eligibleReceivedCents, currency)} / {completeDepositAmountLabel} payés. Le dossier est financièrement validé, mais l’attribution de l’animal, les documents et l’adoption restent à traiter séparément.
                           </p>
                         </>
                       ) : (

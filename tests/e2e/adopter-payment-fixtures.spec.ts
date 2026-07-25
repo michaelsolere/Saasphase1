@@ -74,7 +74,7 @@ test("pre-reservation scenario does not mutate provided inputs", async () => {
   expect(JSON.stringify(input)).toBe(snapshot);
 });
 
-test("paid pre-reservation scenario seeds arrhes and discovers deposit effects", async () => {
+test("paid pre-reservation scenario seeds modern refundable deposit and discovers deposit effects", async () => {
   const calls: string[] = [];
   const registry = createE2eFixtureRegistry(executor(calls), "paid-pre-reservation");
   const input = {
@@ -87,10 +87,11 @@ test("paid pre-reservation scenario seeds arrhes and discovers deposit effects",
   const scenario = await createTestPaidPreReservationScenario(executor(calls), registry, input);
   expect(JSON.stringify(input)).toBe(snapshot);
   expect(scenario.amountCents).toBe(25_000);
+  expect(scenario.paymentType).toBe("pre_reservation_deposit_refundable");
   expect(registry.has("payments", scenario.payment.id)).toBe(true);
   expect(registry.has("contact_roles", scenario.holderRoleId)).toBe(true);
   expect(calls.join("\n")).toContain("'pre_reservation_paid'");
-  expect(calls.join("\n")).toContain("'arrhes'");
+  expect(calls.join("\n")).toContain("'pre_reservation_deposit_refundable'");
 
   const depositCalls: string[] = [];
   const depositRegistry = createE2eFixtureRegistry(async (statement) => {

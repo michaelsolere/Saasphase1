@@ -21,6 +21,7 @@ import {
   addDaysAsIsoDate,
   readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
+import { evaluatePreReservationBalanceRequest } from "@/features/payments/pre-reservation-deposit";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
 import { sendPreReservationEmailForApplication, sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
 import { createClient } from "@/lib/supabase/server";
@@ -1434,14 +1435,6 @@ async function createPreReservationBalanceRequestForReservation({
   userId: string;
   reservation: PreReservationBalanceCampaignReservation;
 }): Promise<PreReservationBalanceCreationResult> {
-  if (!reservation.contact_id || isFinalReservationStatus(reservation.status)) {
-    return { outcome: "ineligible" };
-  }
-
-  if (reservation.status !== "pre_reservation_paid") {
-    return { outcome: "pre_reservation_unpaid" };
-  }
-
   const depositSettings = await readDepositSettingsForOrganization({
     supabase,
     organizationId: reservation.organization_id,
@@ -1459,37 +1452,21 @@ async function createPreReservationBalanceRequestForReservation({
     return { outcome: "error" };
   }
 
-  const paidArrhesTotalCents = payments
-    .filter((payment) => payment.status === "paid")
-    .reduce((total, payment) => total + payment.amount_cents, 0);
+  const evaluation = evaluatePreReservationBalanceRequest({
+    reservationStatus: reservation.status,
+    contactId: reservation.contact_id,
+    payments,
+    depositSettings,
+    isFinalStatus: isFinalReservationStatus(reservation.status),
+  });
 
-  if (paidArrhesTotalCents >= depositSettings.completeDepositCents) {
-    return { outcome: "complete" };
+  if (evaluation.outcome !== "eligible") {
+    return { outcome: evaluation.outcome };
   }
 
-  if (
-    payments.some(
-      (payment) =>
-        payment.payment_type === "arrhes" &&
-        (payment.status === "requested" ||
-          payment.status === "pending" ||
-          payment.status === "partially_paid"),
-    )
-  ) {
-    return { outcome: "active_request" };
-  }
-
-  if (
-    paidArrhesTotalCents < depositSettings.preReservationDepositCents
-  ) {
-    return { outcome: "pre_reservation_unpaid" };
-  }
-
-  const balanceAmountCents =
-    depositSettings.completeDepositCents - paidArrhesTotalCents;
-
-  if (balanceAmountCents <= 0) {
-    return { outcome: "complete" };
+  const contactId = reservation.contact_id;
+  if (!contactId) {
+    return { outcome: "ineligible" };
   }
 
   const dueDateStr = addDaysAsIsoDate(
@@ -1498,9 +1475,9 @@ async function createPreReservationBalanceRequestForReservation({
 
   const { error: insertError } = await supabase.from("payments").insert({
     organization_id: reservation.organization_id,
-    contact_id: reservation.contact_id,
+    contact_id: contactId,
     reservation_id: reservation.id,
-    amount_cents: balanceAmountCents,
+    amount_cents: evaluation.balanceAmountCents,
     currency: "EUR",
     payment_type: "arrhes",
     status: "requested",
