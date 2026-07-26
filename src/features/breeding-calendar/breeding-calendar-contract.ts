@@ -1,13 +1,22 @@
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks-core";
 
-export const BREEDING_CALENDAR_SOURCE_TYPES = ["litter_care", "adopter_appointment"] as const;
+export const BREEDING_CALENDAR_SOURCE_TYPES = [
+  "litter_care",
+  "reproductive_cycle",
+  "adopter_appointment",
+] as const;
 export type BreedingCalendarSourceType = (typeof BREEDING_CALENDAR_SOURCE_TYPES)[number];
 
-export const BREEDING_CALENDAR_SOURCE_FILTERS = ["all", "litter_care", "adopter_appointment"] as const;
+export const BREEDING_CALENDAR_SOURCE_FILTERS = [
+  "all",
+  "litter_care",
+  "reproductive_cycle",
+  "adopter_appointment",
+] as const;
 export type BreedingCalendarSourceFilter = (typeof BREEDING_CALENDAR_SOURCE_FILTERS)[number];
 
 export type BreedingCalendarEventCommon = {
-  identitySource: "litter-care" | "adopter-appointment";
+  identitySource: "litter-care" | "reproductive-cycle" | "adopter-appointment";
   sourceType: BreedingCalendarSourceType;
   sourceRecordId: string;
   title: string;
@@ -32,6 +41,13 @@ export type LitterCareBreedingCalendarEvent = BreedingCalendarEventCommon & {
   itemKind: LitterCareTaskSummary["itemKind"];
 };
 
+export type ReproductiveCycleBreedingCalendarEvent = BreedingCalendarEventCommon & {
+  identitySource: "reproductive-cycle";
+  sourceType: "reproductive_cycle";
+  motherId: string;
+  cycleStatus: "planned" | "in_progress";
+};
+
 export type AdopterAppointmentBreedingCalendarEvent = BreedingCalendarEventCommon & {
   identitySource: "adopter-appointment";
   sourceType: "adopter_appointment";
@@ -43,6 +59,7 @@ export type AdopterAppointmentBreedingCalendarEvent = BreedingCalendarEventCommo
 
 export type BreedingCalendarEvent =
   | LitterCareBreedingCalendarEvent
+  | ReproductiveCycleBreedingCalendarEvent
   | AdopterAppointmentBreedingCalendarEvent;
 
 export type OrganizationBreedingCalendar = {
@@ -87,6 +104,12 @@ export function isLitterCareBreedingCalendarEvent(
   event: BreedingCalendarEvent,
 ): event is LitterCareBreedingCalendarEvent {
   return event.sourceType === "litter_care";
+}
+
+export function isReproductiveCycleBreedingCalendarEvent(
+  event: BreedingCalendarEvent,
+): event is ReproductiveCycleBreedingCalendarEvent {
+  return event.sourceType === "reproductive_cycle";
 }
 
 export function isAdopterAppointmentBreedingCalendarEvent(

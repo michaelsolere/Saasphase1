@@ -3,8 +3,17 @@ import Link from "next/link";
 import {
   adopterAppointmentStatusLabels,
 } from "@/features/breeding-calendar/adopter-appointment-calendar";
-import type { AdopterAppointmentBreedingCalendarEvent } from "@/features/breeding-calendar/breeding-calendar-contract";
-import { filterAdopterAppointmentsForToday } from "@/features/breeding-calendar/breeding-calendar-projection";
+import type {
+  AdopterAppointmentBreedingCalendarEvent,
+  ReproductiveCycleBreedingCalendarEvent,
+} from "@/features/breeding-calendar/breeding-calendar-contract";
+import {
+  filterAdopterAppointmentsForToday,
+  filterReproductiveCyclesForToday,
+} from "@/features/breeding-calendar/breeding-calendar-projection";
+import {
+  reproductiveCycleCalendarStatusLabels,
+} from "@/features/breeding-calendar/reproductive-cycle-calendar";
 import { getLitterDisplayName } from "@/features/litters/formatters";
 import { litterCareTaskCategoryLabels } from "@/features/litter-journal/litter-care-task-labels";
 import {
@@ -268,12 +277,98 @@ function TodayAppointmentsSection({
   );
 }
 
+function TodayCycle({ cycle }: { cycle: ReproductiveCycleBreedingCalendarEvent }) {
+  return (
+    <li
+      className="min-w-0 rounded-xl border border-rose-500/40 bg-rose-50/50 px-4 py-3"
+      data-calendar-source="reproductive_cycle"
+    >
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Reproduction · {reproductiveCycleCalendarStatusLabels[cycle.cycleStatus]}
+          </p>
+          <h4 className="mt-1 break-words font-semibold">{cycle.title}</h4>
+          <p className="mt-1 break-words text-sm font-medium text-foreground">
+            {cycle.contextLabel}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
+            <span>{formatCivilDate(cycle.startsOn)}</span>
+            <span className="font-medium text-foreground">
+              {reproductiveCycleCalendarStatusLabels[cycle.cycleStatus]}
+            </span>
+          </div>
+        </div>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-3">
+          <Link
+            href={cycle.href}
+            className="text-sm font-semibold text-accent hover:underline"
+          >
+            Ouvrir la reproduction
+          </Link>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function TodayReproductionSection({
+  cycles,
+  todayDate,
+}: {
+  cycles: readonly ReproductiveCycleBreedingCalendarEvent[];
+  todayDate: string;
+}) {
+  const { plannedToday, inProgress } = filterReproductiveCyclesForToday(cycles, todayDate);
+  if (plannedToday.length === 0 && inProgress.length === 0) return null;
+
+  return (
+    <section
+      aria-label="Reproduction du cheptel"
+      className="min-w-0 overflow-x-hidden rounded-2xl border bg-surface p-5 sm:p-6"
+    >
+      <h2 className="text-lg font-semibold">Reproduction du cheptel</h2>
+      <p className="mt-1 text-sm text-muted">
+        Lecture seule — la modification se fait dans la page Reproduction.
+      </p>
+      <div className="mt-5 space-y-6">
+        {plannedToday.length > 0 ? (
+          <div>
+            <h3 className="text-sm font-semibold">
+              Chaleurs prévues aujourd’hui{" "}
+              <span className="text-muted">({plannedToday.length})</span>
+            </h3>
+            <ul className="mt-3 space-y-2">
+              {plannedToday.map((cycle) => (
+                <TodayCycle key={cycle.sourceRecordId} cycle={cycle} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        {inProgress.length > 0 ? (
+          <div>
+            <h3 className="text-sm font-semibold">
+              Chaleurs en cours <span className="text-muted">({inProgress.length})</span>
+            </h3>
+            <ul className="mt-3 space-y-2">
+              {inProgress.map((cycle) => (
+                <TodayCycle key={cycle.sourceRecordId} cycle={cycle} />
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 export function BreedingTodayPanel({
   tasks,
   litterNames,
   todayDate,
   todayLocalTime,
   appointments = [],
+  reproductiveCycles = [],
   quickActions = [],
   scheduleActions = [],
   unavailable = false,
@@ -283,6 +378,7 @@ export function BreedingTodayPanel({
   todayDate: string;
   todayLocalTime: string;
   appointments?: readonly AdopterAppointmentBreedingCalendarEvent[];
+  reproductiveCycles?: readonly ReproductiveCycleBreedingCalendarEvent[];
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActions[];
   unavailable?: boolean;
@@ -362,6 +458,7 @@ export function BreedingTodayPanel({
           </div>
         )}
       </section>
+      <TodayReproductionSection cycles={reproductiveCycles} todayDate={todayDate} />
       <TodayAppointmentsSection appointments={todayAppointments} />
     </div>
   );

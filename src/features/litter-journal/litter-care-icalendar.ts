@@ -68,6 +68,9 @@ function breedingCalendarUid(event: BreedingCalendarEvent) {
   if (event.sourceType === "adopter_appointment") {
     return `${createHash("sha256").update(`adopter-appointment:${event.sourceRecordId}`).digest("hex")}@saas-elevage`;
   }
+  if (event.sourceType === "reproductive_cycle") {
+    return `${createHash("sha256").update(`reproductive-cycle:${event.sourceRecordId}`).digest("hex")}@saas-elevage`;
+  }
   return `${createHash("sha256").update(`litter-care:${event.litterId}:${event.sourceRecordId}`).digest("hex")}@saas-elevage`;
 }
 

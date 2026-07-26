@@ -7,6 +7,7 @@ import {
   BREEDING_CALENDAR_SOURCE_FILTERS,
   isAdopterAppointmentBreedingCalendarEvent,
   isLitterCareBreedingCalendarEvent,
+  isReproductiveCycleBreedingCalendarEvent,
   type BreedingCalendarEvent,
   type BreedingCalendarSourceFilter,
 } from "@/features/breeding-calendar/breeding-calendar-contract";
@@ -17,6 +18,9 @@ import {
   type BreedingCalendarProjectedItem,
   type BreedingCalendarProjection,
 } from "@/features/breeding-calendar/breeding-calendar-projection";
+import {
+  reproductiveCycleCalendarStatusLabels,
+} from "@/features/breeding-calendar/reproductive-cycle-calendar";
 import {
   getLitterCareCalendarDate,
   getLitterCareCalendarMonth,
@@ -37,6 +41,7 @@ const kindLabels = {
 const sourceFilterLabels: Record<BreedingCalendarSourceFilter, string> = {
   all: "Tous les plannings",
   litter_care: "Portées",
+  reproductive_cycle: "Cheptel — reproduction",
   adopter_appointment: "Rendez-vous adoptants",
 };
 
@@ -87,6 +92,7 @@ function BreedingCalendarEventCard({
 }) {
   const { event } = item;
   const isAppointment = isAdopterAppointmentBreedingCalendarEvent(event);
+  const isCycle = isReproductiveCycleBreedingCalendarEvent(event);
   const windowSegment =
     item.windowPosition === "start"
       ? "Début"
@@ -130,23 +136,32 @@ function BreedingCalendarEventCard({
   const appointmentStatus = isAppointment
     ? adopterAppointmentStatusLabels[event.appointmentStatus]
     : null;
+  const cycleStatus = isCycle
+    ? reproductiveCycleCalendarStatusLabels[event.cycleStatus]
+    : null;
   const meta = isAppointment
     ? `Rendez-vous · ${appointmentStatus}`
-    : `${kindLabels[event.itemKind]} · ${litterCareTaskCategoryLabels[event.category as keyof typeof litterCareTaskCategoryLabels] ?? event.category}`;
+    : isCycle
+      ? `Reproduction · ${cycleStatus}`
+      : `${kindLabels[event.itemKind]} · ${litterCareTaskCategoryLabels[event.category as keyof typeof litterCareTaskCategoryLabels] ?? event.category}`;
+  const cardClass = isAppointment
+    ? "border-sky-500/50 bg-sky-50/60"
+    : isCycle
+      ? "border-rose-500/45 bg-rose-50/55"
+      : "border-accent/40 bg-surface";
+  const srLabel = isAppointment
+    ? "Ouvrir le parcours adoptant : "
+    : isCycle
+      ? "Ouvrir la reproduction de la femelle : "
+      : "Ouvrir le suivi dans le Journal : ";
 
   return (
     <Link
       href={event.href}
       data-calendar-source={event.sourceType}
-      className={`block rounded border px-2 py-1.5 text-xs text-foreground hover:bg-accent/10 ${
-        isAppointment
-          ? "border-sky-500/50 bg-sky-50/60"
-          : "border-accent/40 bg-surface"
-      } ${border}`}
+      className={`block rounded border px-2 py-1.5 text-xs text-foreground hover:bg-accent/10 ${cardClass} ${border}`}
     >
-      <span className="sr-only">
-        {isAppointment ? "Ouvrir le parcours adoptant : " : "Ouvrir le suivi dans le Journal : "}
-      </span>
+      <span className="sr-only">{srLabel}</span>
       {showTitle ? (
         <span className="block break-words font-semibold">
           {event.contextLabel ? `${event.contextLabel} — ` : ""}
@@ -163,7 +178,15 @@ function BreedingCalendarEventCard({
       {!fullWindow && item.time ? (
         <span className="block text-muted">{item.time.slice(0, 5)}</span>
       ) : null}
-      {state && !isAppointment ? <span className="block font-medium">{state}</span> : null}
+      {agenda && isCycle ? (
+        <span className="block text-muted">{item.date}</span>
+      ) : null}
+      {state && !isAppointment && !isCycle ? (
+        <span className="block font-medium">{state}</span>
+      ) : null}
+      {cycleStatus && agenda ? (
+        <span className="block font-medium">{cycleStatus}</span>
+      ) : null}
       {appointmentStatus && agenda ? (
         <span className="block font-medium">{appointmentStatus}</span>
       ) : null}
@@ -323,7 +346,7 @@ export function BreedingCalendarPanel({
   });
   const calendar = view === "month" ? monthCalendar : weekCalendar;
   const dateForView = view === "month" ? `${monthCalendar.month}-01` : weekCalendar.startsOn;
-  const showLitterFilters = source !== "adopter_appointment";
+  const showLitterFilters = source === "all" || source === "litter_care";
   const preserved = {
     source: source === "all" ? undefined : source,
     kind: showLitterFilters && kind !== "all" ? kind : undefined,
@@ -337,9 +360,8 @@ export function BreedingCalendarPanel({
           Calendrier de l’élevage
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-muted">
-          Ce calendrier rassemble le planning des portées et les rendez-vous
-          adoptants programmés. Les futurs plannings du cheptel et de la
-          reproduction y seront ajoutés lorsqu’ils seront disponibles.
+          Ce calendrier rassemble le planning des portées, les chaleurs du
+          cheptel et les rendez-vous adoptants programmés.
         </p>
         <nav aria-label="Choix de la vue" className="mt-5 flex flex-wrap gap-3">
           <Link
