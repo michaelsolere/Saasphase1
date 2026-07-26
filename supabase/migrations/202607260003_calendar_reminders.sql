@@ -193,6 +193,79 @@ using (public.is_member_of(organization_id));
 -- No insert/update/delete policies: writes go through SECURITY DEFINER RPCs only.
 -- Commands table is RPC-internal only (no SELECT grant to authenticated).
 
+-- Canonical local civil wall-time → timestamptz (IANA).
+-- Ambiguous DST fall-back: latest matching UTC instant.
+-- Spring gap / unknown zone: null.
+create or replace function public.calendar_reminder_canonical_trigger_at(
+  p_local timestamp without time zone,
+  p_timezone_name text
+)
+returns timestamptz
+language plpgsql
+stable
+set search_path = ''
+as $$
+declare
+  v_timezone text := nullif(btrim(p_timezone_name), '');
+  v_local_text text;
+  v_baseline timestamptz;
+  v_candidate timestamptz;
+  v_latest timestamptz := null;
+  v_minute integer;
+begin
+  if p_local is null or v_timezone is null then
+    return null;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_timezone_names timezone
+    where timezone.name = v_timezone
+  ) then
+    return null;
+  end if;
+
+  v_local_text := pg_catalog.to_char(p_local, 'YYYY-MM-DD HH24:MI:SS');
+  -- Treat the civil digits as if they were UTC, then scan nearby offsets.
+  v_baseline := p_local at time zone 'UTC';
+
+  for v_minute in -840..840 loop
+    v_candidate := v_baseline + pg_catalog.make_interval(mins => v_minute);
+    if pg_catalog.to_char(
+      v_candidate at time zone v_timezone,
+      'YYYY-MM-DD HH24:MI:SS'
+    ) = v_local_text then
+      if v_latest is null or v_candidate > v_latest then
+        v_latest := v_candidate;
+      end if;
+    end if;
+  end loop;
+
+  return v_latest;
+end;
+$$;
+
+revoke all on function public.calendar_reminder_canonical_trigger_at(
+  timestamp without time zone,
+  text
+) from public;
+revoke all on function public.calendar_reminder_canonical_trigger_at(
+  timestamp without time zone,
+  text
+) from anon;
+revoke all on function public.calendar_reminder_canonical_trigger_at(
+  timestamp without time zone,
+  text
+) from authenticated;
+
+comment on function public.calendar_reminder_canonical_trigger_at(
+  timestamp without time zone,
+  text
+) is
+  'Maps a civil local timestamp in an IANA zone to the canonical UTC instant '
+  '(latest match on DST fall-back overlap; null on spring gap). '
+  'Internal helper for calendar reminder RPCs.';
+
 create or replace function public.create_calendar_reminder(
   p_source_type text,
   p_source_record_id uuid,
@@ -944,6 +1017,7 @@ declare
   v_event public.events%rowtype;
   v_source_date date;
   v_expected_local timestamp without time zone;
+  v_canonical_trigger_at timestamptz;
 begin
   outcome := 'error';
   reason := null;
@@ -1238,8 +1312,17 @@ begin
   v_expected_local :=
     ((v_source_date - v_reminder.days_before)::timestamp + v_reminder.local_time);
 
-  if (p_expected_trigger_at at time zone v_reminder.timezone_name)
-    is distinct from v_expected_local
+  v_canonical_trigger_at := public.calendar_reminder_canonical_trigger_at(
+    v_expected_local,
+    v_reminder.timezone_name
+  );
+
+  -- Reject spring-gap / non-existent local times and non-canonical UTC picks
+  -- for an ambiguous fall-back wall time (civil equality alone is insufficient).
+  if v_canonical_trigger_at is null
+    or (v_canonical_trigger_at at time zone v_reminder.timezone_name)
+      is distinct from v_expected_local
+    or p_expected_trigger_at is distinct from v_canonical_trigger_at
   then
     reason := 'stale_trigger';
     insert into public.calendar_reminder_commands (

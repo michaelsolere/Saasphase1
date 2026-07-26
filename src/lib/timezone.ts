@@ -49,8 +49,15 @@ function localParts(instantMs: number, timezone: string): string {
 
 /**
  * Convert a civil local date+time in an IANA zone to a UTC ISO instant.
- * Returns null when the local wall time does not exist (e.g. DST spring gap)
- * or inputs are invalid. Does not depend on the Node process timezone.
+ *
+ * Ambiguous local times (DST fall-back overlap): scans every UTC minute that
+ * formats back to the requested civil wall time, then returns the latest
+ * matching instant. This matches the usual PostgreSQL AT TIME ZONE reading of
+ * an ambiguous local timestamp (standard / winter offset).
+ *
+ * Non-existent local times (DST spring gap): returns null.
+ * Invalid inputs: returns null.
+ * Does not depend on the Node process timezone (explicit IANA zone only).
  */
 export function localCivilDateTimeToUtcIso(
   date: string,
@@ -63,13 +70,16 @@ export function localCivilDateTimeToUtcIso(
   const local = `${date}T${normalizeLocalTime(time)}`;
   const expected = Date.parse(`${local}Z`);
   if (!Number.isFinite(expected)) return null;
+  let latestMatch: number | null = null;
   for (let minute = -840; minute <= 840; minute += 1) {
     const candidate = expected + minute * 60_000;
     if (localParts(candidate, timezone) === local) {
-      return new Date(candidate).toISOString();
+      if (latestMatch === null || candidate > latestMatch) {
+        latestMatch = candidate;
+      }
     }
   }
-  return null;
+  return latestMatch === null ? null : new Date(latestMatch).toISOString();
 }
 
 /** Format a UTC Date as YYYYMMDDTHHMMSSZ for ICS. */

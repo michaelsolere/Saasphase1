@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 
 import { localCivilDateTimeToUtcIso } from "../../src/lib/timezone";
+import { projectCalendarReminder } from "../../src/features/breeding-calendar/calendar-reminder-projection";
 import type { Database } from "../../src/types/database.types";
 import {
   createAnonymousSupabaseClient,
@@ -67,6 +68,8 @@ const ids = {
   reservation: `${prefix}121`,
   plannedEvent: `${prefix}122`,
   doneEvent: `${prefix}123`,
+  dstAmbiguousTask: `${prefix}130`,
+  dstGapTask: `${prefix}131`,
   foreignMother: `${prefix}200`,
   foreignLitter: `${prefix}201`,
   foreignTask: `${prefix}202`,
@@ -329,6 +332,20 @@ function createSourceFixtures() {
         'E2E rappel tâche étrangère', '2026-09-10'::date, ${q(TZ)},
         'normal', 'suggested', false, 'planned',
         ${q(`${prefix}302`)}::uuid, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.dstAmbiguousTask)}::uuid, ${q(organizationId)}::uuid,
+        ${q(ids.litter)}::uuid, 'manual', 1, 'task', 'veterinary', 'litter',
+        'E2E rappel DST ambigu', '2026-10-25'::date, ${q(TZ)},
+        'normal', 'suggested', false, 'planned',
+        ${q(`${prefix}304`)}::uuid, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.dstGapTask)}::uuid, ${q(organizationId)}::uuid,
+        ${q(ids.litter)}::uuid, 'manual', 1, 'task', 'veterinary', 'litter',
+        'E2E rappel DST trou', '2026-03-29'::date, ${q(TZ)},
+        'normal', 'suggested', false, 'planned',
+        ${q(`${prefix}305`)}::uuid, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
       );
 
     update public.litter_care_tasks
@@ -1184,6 +1201,205 @@ test("RPC calendar reminders: IANA, stale_trigger, sauvegarde sans changement", 
 
   // Spec #16: reminder RPCs must not silently corrupt unrelated business sources.
   // Intentional SQL moves/soft-deletes above are excluded from this snapshot.
+  const after = sourceSnapshot();
+  expect(after.doneTask).toEqual(beforeSources.doneTask);
+  expect(after.matedCycle).toEqual(beforeSources.matedCycle);
+  expect(after.doneEvent).toEqual(beforeSources.doneEvent);
+  expect(after.foreignTask).toEqual(beforeSources.foreignTask);
+});
+
+test("RPC calendar reminders: heure ambiguë DST et trou de printemps", async () => {
+  const owner = await createAuthenticatedSupabaseClient();
+  const beforeSources = sourceSnapshot();
+
+  const canonical = localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ);
+  const earlierOccurrence = "2026-10-25T00:30:00.000Z";
+  expect(canonical).toBe("2026-10-25T01:30:00.000Z");
+  expect(earlierOccurrence).not.toBe(canonical);
+
+  const sqlCanonical = sql(`
+    select public.calendar_reminder_canonical_trigger_at(
+      '2026-10-25 02:30:00'::timestamp,
+      ${q(TZ)}
+    )::text;
+  `).trim();
+  expect(new Date(sqlCanonical).toISOString()).toBe(canonical);
+
+  const created = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "litter_care_task",
+    p_source_record_id: ids.dstAmbiguousTask,
+    p_days_before: 0,
+    p_local_time: "02:30",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("700"),
+  });
+  expect(created.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 1,
+  });
+  const reminderId = created.data![0].reminder_id!;
+
+  const refuseEarlier = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: earlierOccurrence,
+    p_client_command_id: cmd("701"),
+  });
+  expect(refuseEarlier.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "stale_trigger",
+  });
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'revision_no', revision_no,
+          'ack_trigger', acknowledged_trigger_at is not null,
+          'ack_at', acknowledged_at is not null,
+          'ack_by', acknowledged_by is not null
+        )::text
+        from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+      `),
+    ),
+  ).toEqual({
+    revision_no: 1,
+    ack_trigger: false,
+    ack_at: false,
+    ack_by: false,
+  });
+
+  const ackCanonical = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: canonical!,
+    p_client_command_id: cmd("702"),
+  });
+  expect(ackCanonical.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 2,
+    replayed: false,
+  });
+  expect(ackCanonical.data?.[0].acknowledged_trigger_at).toBeTruthy();
+  expect(new Date(ackCanonical.data![0].acknowledged_trigger_at!).toISOString()).toBe(
+    canonical,
+  );
+
+  const ackRow = JSON.parse(
+    sql(`
+      select json_build_object(
+        'revision_no', revision_no,
+        'ack_trigger', acknowledged_trigger_at,
+        'ack_at', acknowledged_at,
+        'days_before', days_before,
+        'local_time', local_time::text,
+        'timezone_name', timezone_name
+      )::text
+      from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+    `),
+  );
+
+  const projection = projectCalendarReminder({
+    reminder: {
+      id: reminderId,
+      organizationId,
+      sourceType: "litter_care_task",
+      sourceRecordId: ids.dstAmbiguousTask,
+      daysBefore: ackRow.days_before,
+      localTime: String(ackRow.local_time).slice(0, 8),
+      timezoneName: ackRow.timezone_name,
+      revisionNo: ackRow.revision_no,
+      acknowledgedTriggerAt: new Date(ackRow.ack_trigger).toISOString(),
+      acknowledgedAt: new Date(ackRow.ack_at).toISOString(),
+    },
+    event: {
+      identitySource: "litter-care",
+      sourceType: "litter_care",
+      sourceRecordId: ids.dstAmbiguousTask,
+      litterId: ids.litter,
+      itemKind: "task",
+      title: "E2E rappel DST ambigu",
+      contextLabel: "Rosie × Rimbaud",
+      startsOn: "2026-10-25",
+      startsLocalTime: null,
+      endsOn: null,
+      endsLocalTime: null,
+      timezoneName: TZ,
+      isAllDay: true,
+      sequence: 1,
+      lastModifiedAt: "2026-01-01T00:00:00.000Z",
+      kind: "task",
+      category: "veterinary",
+      href: `/litters/journal?litter=${ids.litter}#litter-care-tasks`,
+    },
+    // Align "today" with the acknowledgement civil day so the treated state is visible.
+    now: new Date(ackRow.ack_at),
+  });
+  expect(projection.currentTriggerAt).toBe(canonical);
+  expect(projection.acknowledgedTriggerAt).toBe(canonical);
+  expect(projection.projectionState).toBe("acknowledged_today");
+
+  const replay = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 2,
+    p_expected_trigger_at: canonical!,
+    p_client_command_id: cmd("703"),
+  });
+  expect(replay.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 2,
+    replayed: true,
+  });
+
+  // Spring gap: local 02:30 does not exist; no false success, no mutation.
+  const gapCreate = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "litter_care_task",
+    p_source_record_id: ids.dstGapTask,
+    p_days_before: 0,
+    p_local_time: "02:30",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("710"),
+  });
+  expect(gapCreate.data?.[0]?.outcome).toBe("success");
+  const gapReminderId = gapCreate.data![0].reminder_id!;
+  expect(localCivilDateTimeToUtcIso("2026-03-29", "02:30", TZ)).toBeNull();
+  expect(
+    sql(`
+      select public.calendar_reminder_canonical_trigger_at(
+        '2026-03-29 02:30:00'::timestamp,
+        ${q(TZ)}
+      ) is null;
+    `).trim(),
+  ).toBe("t");
+
+  const gapAttempts = [
+    "2026-03-29T00:30:00.000Z",
+    "2026-03-29T01:30:00.000Z",
+    "2026-03-29T01:00:00.000Z",
+  ];
+  for (const [index, instant] of gapAttempts.entries()) {
+    const refused = await owner.rpc("acknowledge_calendar_reminder", {
+      p_reminder_id: gapReminderId,
+      p_expected_revision_no: 1,
+      p_expected_trigger_at: instant,
+      p_client_command_id: cmd(`71${index + 1}`),
+    });
+    expect(refused.data?.[0]).toMatchObject({
+      outcome: "error",
+      reason: "stale_trigger",
+    });
+  }
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'revision_no', revision_no,
+          'ack', acknowledged_trigger_at is not null
+        )::text
+        from public.calendar_reminders where id = ${q(gapReminderId)}::uuid;
+      `),
+    ),
+  ).toEqual({ revision_no: 1, ack: false });
+
   const after = sourceSnapshot();
   expect(after.doneTask).toEqual(beforeSources.doneTask);
   expect(after.matedCycle).toEqual(beforeSources.matedCycle);

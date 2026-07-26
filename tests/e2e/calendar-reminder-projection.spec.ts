@@ -192,12 +192,12 @@ test("convertit Europe/Paris hiver/été et gère les trous/chevauchements DST",
     "2026-03-29T01:00:00.000Z",
   );
 
-  // Fall back 2026-10-25: first matching wall time (CEST / UTC+2).
+  // Fall back 2026-10-25: latest matching wall time (CET / UTC+1).
   expect(localCivilDateTimeToUtcIso("2026-10-25", "01:30", TZ)).toBe(
     "2026-10-24T23:30:00.000Z",
   );
   expect(localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ)).toBe(
-    "2026-10-25T00:30:00.000Z",
+    "2026-10-25T01:30:00.000Z",
   );
   expect(localCivilDateTimeToUtcIso("2026-10-25", "03:00", TZ)).toBe(
     "2026-10-25T02:00:00.000Z",
@@ -219,6 +219,32 @@ test("convertit Europe/Paris hiver/été et gère les trous/chevauchements DST",
       timezoneName: TZ,
     }),
   ).toBe(localCivilDateTimeToUtcIso("2026-03-29", "03:30", TZ));
+});
+
+test("heure ambiguë Europe/Paris : instant canonique le plus tardif, indépendant du TZ Node", () => {
+  const canonical = localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ);
+  const earlierOccurrence = "2026-10-25T00:30:00.000Z";
+  expect(canonical).toBe("2026-10-25T01:30:00.000Z");
+  expect(earlierOccurrence).not.toBe(canonical);
+
+  const previousTz = process.env.TZ;
+  try {
+    process.env.TZ = "Pacific/Kiritimati";
+    const fromKiritimati = localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ);
+    process.env.TZ = "America/Adak";
+    const fromAdak = localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ);
+    process.env.TZ = "UTC";
+    const fromUtc = localCivilDateTimeToUtcIso("2026-10-25", "02:30", TZ);
+    expect(fromKiritimati).toBe(canonical);
+    expect(fromAdak).toBe(canonical);
+    expect(fromUtc).toBe(canonical);
+  } finally {
+    if (previousTz === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previousTz;
+    }
+  }
 });
 
 test("projette invalid_projection pour une heure locale inexistante", () => {
