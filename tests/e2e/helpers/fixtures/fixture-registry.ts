@@ -17,6 +17,9 @@ export const fixtureTables = [
   "whelping_births",
   "whelping_events",
   "whelping_sessions",
+  "reproductive_cycle_matings",
+  "progesterone_measurements",
+  "reproductive_cycles",
   "litters",
   "litter_groups",
   "animals",
@@ -45,6 +48,9 @@ const cleanupOrder: FixtureTable[] = [
   "whelping_births",
   "whelping_events",
   "whelping_sessions",
+  "reproductive_cycle_matings",
+  "progesterone_measurements",
+  "reproductive_cycles",
   "litters",
   "litter_groups",
   "animals",
@@ -78,6 +84,9 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     if (table === "litter_care_tasks") {
       await execute(`delete from public.litter_care_task_schedule_changes where task_id in (${idsSql(tableIds)})`);
       await execute(`delete from public.litter_care_task_schedule_commands where task_id in (${idsSql(tableIds)})`);
+    }
+    if (table === "reproductive_cycles") {
+      await execute(`update public.reproductive_cycles set litter_id = null where id in (${idsSql(tableIds)})`);
     }
     if (table === "litters" && animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)}) and litter_id is not null`);
     const statement = `delete from public.${table} where id in (${idsSql(tableIds)})`;

@@ -7,6 +7,7 @@ import {
   addProgesteroneMeasurement,
   createReproductiveCycle,
   recordReproductiveCycleMating,
+  updateReproductiveCycle,
   type ProgesteroneUnit,
   type ReproductiveCycleMatingMethod,
   type ReproductiveCycleStatus,
@@ -24,6 +25,12 @@ function optionalValue(formData: FormData, name: string) {
 
 function cycleStatus(value: string): ReproductiveCycleStatus | null {
   return ["planned", "in_progress", "closed", "cancelled"].includes(value)
+    ? (value as ReproductiveCycleStatus)
+    : null;
+}
+
+function updateCycleStatus(value: string): ReproductiveCycleStatus | null {
+  return ["planned", "in_progress", "mated", "closed", "cancelled"].includes(value)
     ? (value as ReproductiveCycleStatus)
     : null;
 }
@@ -47,6 +54,18 @@ function errorMessage(code: string) {
 
   if (code === "forbidden") {
     return "Vous n’avez pas les droits nécessaires pour cette opération.";
+  }
+
+  if (code === "stale") {
+    return "Le cycle a été modifié depuis votre dernière lecture. Rechargez la page avant de réessayer.";
+  }
+
+  if (code === "invalid_transition") {
+    return "Cette transition de statut n’est pas autorisée pour ce cycle.";
+  }
+
+  if (code === "cancellation_blocked") {
+    return "Ce cycle ne peut pas être annulé car une saillie ou une portée y est liée.";
   }
 
   return "Impossible d’enregistrer ces informations. Aucune autre donnée n’a été modifiée.";
@@ -141,6 +160,43 @@ export async function createReproductiveCycleAction(
 
   revalidatePath(`/animals/${result.cycle.motherId}/reproduction`);
   return { status: "success", message: "Le cycle reproductif a été créé." };
+}
+
+export type UpdateReproductiveCycleIntention = {
+  motherId: string;
+  cycleId: string;
+  expectedUpdatedAt: string;
+};
+
+export async function updateReproductiveCycleAction(
+  intention: UpdateReproductiveCycleIntention,
+  _previousState: ReproductionActionState,
+  formData: FormData,
+): Promise<ReproductionActionState> {
+  const status = updateCycleStatus(value(formData, "status"));
+
+  if (!status) {
+    return {
+      status: "error",
+      message: "Les informations du cycle sont invalides.",
+    };
+  }
+
+  const result = await updateReproductiveCycle({
+    cycleId: intention.cycleId,
+    expectedUpdatedAt: intention.expectedUpdatedAt,
+    status,
+    startedOn: value(formData, "started_on"),
+    endedOn: optionalValue(formData, "ended_on"),
+    notes: optionalValue(formData, "notes"),
+  });
+
+  if (result.outcome === "error") {
+    return { status: "error", message: errorMessage(result.error.code) };
+  }
+
+  revalidatePath(`/animals/${intention.motherId}/reproduction`);
+  return { status: "success", message: "Le cycle reproductif a été mis à jour." };
 }
 
 export async function addProgesteroneMeasurementAction(

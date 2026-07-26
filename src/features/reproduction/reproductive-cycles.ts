@@ -9,6 +9,7 @@ import {
   listProgesteroneMeasurementsForCycleCore,
   listReproductiveCyclesForMotherCore,
   recordReproductiveCycleMatingCore,
+  updateReproductiveCycleCore,
 } from "./reproductive-cycles-core";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -36,6 +37,8 @@ export type {
   ReproductiveCycleMatingMethod,
   ReproductiveCycleMatingSummary,
   ReproductiveCycleSummary,
+  UpdateReproductiveCycleInput,
+  UpdateReproductiveCycleResult,
 } from "./reproductive-cycles-core";
 
 async function serverClient(suppliedClient?: Supabase) {
@@ -97,4 +100,11 @@ export async function recordReproductiveCycleMating(
     input,
     await serverClient(suppliedClient),
   );
+}
+
+export async function updateReproductiveCycle(
+  input: Parameters<typeof updateReproductiveCycleCore>[0],
+  suppliedClient?: Supabase,
+) {
+  return updateReproductiveCycleCore(input, await serverClient(suppliedClient));
 }

@@ -1,19 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import {
+  isReproductiveCycleStatus,
+  validateReproductiveCycleUpdateFields,
+  type ReproductiveCycleStatus,
+} from "./reproductive-cycle-transitions";
 import type { Database } from "@/types/database.types";
+
+export {
+  REPRODUCTIVE_CYCLE_STATUSES,
+  type ReproductiveCycleStatus,
+} from "./reproductive-cycle-transitions";
 
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
-
-export const REPRODUCTIVE_CYCLE_STATUSES = [
-  "planned",
-  "in_progress",
-  "mated",
-  "closed",
-  "cancelled",
-] as const;
-export type ReproductiveCycleStatus =
-  (typeof REPRODUCTIVE_CYCLE_STATUSES)[number];
 
 export const PROGESTERONE_UNITS = ["ng_ml", "nmol_l"] as const;
 export type ProgesteroneUnit = (typeof PROGESTERONE_UNITS)[number];
@@ -36,6 +36,9 @@ export type ReproductionServiceErrorCode =
   | "invalid_mother"
   | "invalid_father"
   | "invalid_cycle"
+  | "invalid_transition"
+  | "cancellation_blocked"
+  | "stale"
   | "conflict"
   | "database_error";
 
@@ -99,6 +102,22 @@ export type CreateReproductiveCycleInput = {
 };
 
 export type CreateReproductiveCycleResult =
+  | {
+      outcome: "success";
+      cycle: ReproductiveCycleSummary;
+    }
+  | ErrorResult;
+
+export type UpdateReproductiveCycleInput = {
+  cycleId: string;
+  expectedUpdatedAt: string;
+  status: ReproductiveCycleStatus;
+  startedOn: string;
+  endedOn?: string | null;
+  notes?: string | null;
+};
+
+export type UpdateReproductiveCycleResult =
   | {
       outcome: "success";
       cycle: ReproductiveCycleSummary;
@@ -266,13 +285,6 @@ function normalizeTimestamp(value: unknown) {
 
 function isOrganizationRole(value: string): value is OrganizationRole {
   return ["owner", "admin", "member", "viewer"].includes(value);
-}
-
-function isCycleStatus(value: unknown): value is ReproductiveCycleStatus {
-  return (
-    typeof value === "string" &&
-    REPRODUCTIVE_CYCLE_STATUSES.includes(value as ReproductiveCycleStatus)
-  );
 }
 
 function isProgesteroneUnit(value: unknown): value is ProgesteroneUnit {
@@ -529,7 +541,8 @@ export async function createReproductiveCycleCore(
   const notes = normalizeOptionalText(input.notes, 5_000);
 
   if (
-    !isCycleStatus(status) ||
+    !isReproductiveCycleStatus(status) ||
+    status === "mated" ||
     !startedOn ||
     (input.endedOn !== undefined && input.endedOn !== null && !endedOn) ||
     (endedOn !== null && endedOn < startedOn) ||
@@ -743,6 +756,109 @@ function recordMatingFailure(reason: string | null): ErrorResult {
     default:
       return invalidInput();
   }
+}
+
+function updateCycleFailure(reason: string | null): ErrorResult {
+  switch (reason) {
+    case "not_authenticated":
+      return failure("unauthenticated", "Vous devez être connecté pour continuer.");
+    case "membership_required":
+      return failure(
+        "forbidden",
+        "Vous n’avez pas les droits nécessaires pour cette opération.",
+      );
+    case "cycle_not_found":
+      return failure("not_found", "Le cycle reproductif demandé est introuvable.");
+    case "stale_cycle":
+      return failure(
+        "stale",
+        "Le cycle a été modifié depuis votre dernière lecture. Rechargez la page avant de réessayer.",
+      );
+    case "invalid_transition":
+      return failure(
+        "invalid_transition",
+        "Cette transition de statut n’est pas autorisée pour ce cycle.",
+      );
+    case "cancellation_blocked":
+      return failure(
+        "cancellation_blocked",
+        "Ce cycle ne peut pas être annulé car une saillie ou une portée y est liée.",
+      );
+    default:
+      return invalidInput();
+  }
+}
+
+export async function updateReproductiveCycleCore(
+  input: UpdateReproductiveCycleInput,
+  supabase: Supabase,
+): Promise<UpdateReproductiveCycleResult> {
+  const cycleId = normalizeUuid(input.cycleId);
+  const expectedUpdatedAt =
+    typeof input.expectedUpdatedAt === "string" &&
+    input.expectedUpdatedAt.trim() !== "" &&
+    !Number.isNaN(Date.parse(input.expectedUpdatedAt))
+      ? input.expectedUpdatedAt.trim()
+      : null;
+
+  if (!cycleId || !expectedUpdatedAt || !isReproductiveCycleStatus(input.status)) {
+    return invalidInput();
+  }
+
+  const authorization = await authorizeCycle(supabase, cycleId, true);
+  if ("outcome" in authorization) return authorization;
+
+  const validated = validateReproductiveCycleUpdateFields({
+    currentStatus: authorization.cycle.status as ReproductiveCycleStatus,
+    nextStatus: input.status,
+    startedOn: input.startedOn,
+    endedOn: input.endedOn,
+    notes: input.notes,
+  });
+
+  if (!validated.ok) {
+    return validated.reason === "invalid_transition"
+      ? failure(
+          "invalid_transition",
+          "Cette transition de statut n’est pas autorisée pour ce cycle.",
+        )
+      : invalidInput();
+  }
+
+  const updated = await supabase.rpc("update_reproductive_cycle", {
+    p_cycle_id: cycleId,
+    p_expected_updated_at: expectedUpdatedAt,
+    p_status: input.status,
+    p_started_on: validated.startedOn,
+    p_ended_on: validated.endedOn ?? undefined,
+    p_notes: validated.notes ?? undefined,
+  });
+
+  if (updated.error) {
+    return databaseFailure("reproductive_cycle_update_failed", updated.error);
+  }
+
+  const result = updated.data?.[0];
+  if (!result || result.outcome !== "success" || !result.cycle_id) {
+    return updateCycleFailure(result?.reason ?? null);
+  }
+
+  return {
+    outcome: "success",
+    cycle: {
+      id: result.cycle_id,
+      motherId: result.mother_id!,
+      litterId: result.litter_id,
+      species: authorization.cycle.species,
+      breed: authorization.cycle.breed,
+      status: result.status as ReproductiveCycleStatus,
+      startedOn: result.started_on!,
+      endedOn: result.ended_on,
+      notes: result.notes,
+      createdAt: result.created_at!,
+      updatedAt: result.updated_at!,
+    },
+  };
 }
 
 export async function recordReproductiveCycleMatingCore(

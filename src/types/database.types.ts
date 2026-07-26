@@ -6378,6 +6378,29 @@ export type Database = {
           sequence_no: number
         }[]
       }
+      update_reproductive_cycle: {
+        Args: {
+          p_cycle_id: string
+          p_ended_on?: string
+          p_expected_updated_at: string
+          p_notes?: string
+          p_started_on: string
+          p_status: string
+        }
+        Returns: {
+          created_at: string | null
+          cycle_id: string | null
+          ended_on: string | null
+          litter_id: string | null
+          mother_id: string | null
+          notes: string | null
+          outcome: string
+          reason: string | null
+          started_on: string | null
+          status: string | null
+          updated_at: string | null
+        }[]
+      }
       record_whelping_birth: {
         Args: {
           p_client_command_id: string
