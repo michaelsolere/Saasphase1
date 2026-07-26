@@ -17,6 +17,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/animal-weight-relative-series.spec.ts",
   "tests/e2e/breeding-calendar-core.spec.ts",
   "tests/e2e/breeding-today-core.spec.ts",
+  "tests/e2e/calendar-private-feed-core.spec.ts",
   "tests/e2e/deposit-thresholds.spec.ts",
   "tests/e2e/document-generation-snapshot-schemas.spec.ts",
   "tests/e2e/document-pdf-renderer.spec.ts",

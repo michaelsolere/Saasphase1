@@ -78,6 +78,8 @@ export function buildBreedingCalendarICalendar(input: {
   events: readonly BreedingCalendarEvent[];
   generatedAt: Date;
   calendarName: string;
+  /** Indicative subscription refresh hints (RFC 7986 / common client extensions). */
+  includeSubscriptionHints?: boolean;
 }) {
   const lines = [
     "BEGIN:VCALENDAR",
@@ -87,6 +89,12 @@ export function buildBreedingCalendarICalendar(input: {
     "METHOD:PUBLISH",
     property("X-WR-CALNAME", escapeText(input.calendarName)),
   ];
+  if (input.includeSubscriptionHints) {
+    lines.push(
+      "REFRESH-INTERVAL;VALUE=DURATION:PT1H",
+      "X-PUBLISHED-TTL:PT1H",
+    );
+  }
   for (const event of input.events) {
     const body: string[] = [
       "BEGIN:VEVENT",

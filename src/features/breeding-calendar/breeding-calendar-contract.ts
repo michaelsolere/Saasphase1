@@ -121,3 +121,20 @@ export function isAdopterAppointmentBreedingCalendarEvent(
 export function breedingCalendarEventIdentity(event: BreedingCalendarEvent) {
   return `${event.identitySource}:${event.sourceRecordId}`;
 }
+
+export function filterBreedingCalendarEventsBySources(
+  events: readonly BreedingCalendarEvent[],
+  sources: {
+    includeLitterCare: boolean;
+    includeReproductiveCycle: boolean;
+    includeAdopterAppointment: boolean;
+  },
+): BreedingCalendarEvent[] {
+  return events.filter((event) => {
+    if (event.sourceType === "litter_care") return sources.includeLitterCare;
+    if (event.sourceType === "reproductive_cycle") {
+      return sources.includeReproductiveCycle;
+    }
+    return sources.includeAdopterAppointment;
+  });
+}

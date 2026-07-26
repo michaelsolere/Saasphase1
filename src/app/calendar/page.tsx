@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
 
 import {
   BREEDING_CALENDAR_SOURCE_FILTERS,
@@ -6,6 +7,9 @@ import {
   type BreedingCalendarSourceFilter,
 } from "@/features/breeding-calendar/breeding-calendar";
 import { BreedingCalendarPanel } from "@/features/breeding-calendar/breeding-calendar-panel";
+import { getActiveOrganizationCalendarFeed } from "@/features/breeding-calendar/calendar-feed-service";
+import { CalendarFeedSubscriptionPanel } from "@/features/breeding-calendar/calendar-feed-subscription-panel";
+import type { OrganizationCalendarFeedMetadata } from "@/features/breeding-calendar/calendar-feed-types";
 import {
   formatLitterJournalBusinessDate,
   getLitterJournalBusinessLocalTime,
@@ -73,6 +77,38 @@ export default async function BreedingCalendarPage({
     );
   }
 
+  let feedMetadata: OrganizationCalendarFeedMetadata | null | undefined;
+  let feedLoadFailed = false;
+  try {
+    const feedResult = await getActiveOrganizationCalendarFeed(supabase);
+    if (feedResult.outcome === "success") {
+      feedMetadata = feedResult.feed;
+    } else {
+      feedMetadata = undefined;
+    }
+  } catch {
+    feedLoadFailed = true;
+  }
+
+  let feedPanel: ReactNode = null;
+  if (feedLoadFailed) {
+    feedPanel = (
+      <section
+        role="alert"
+        className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950"
+        data-calendar-feed-panel
+      >
+        <h2 className="font-semibold">Abonnement calendrier externe</h2>
+        <p className="mt-2">
+          La gestion de l’abonnement est momentanément indisponible. Le calendrier
+          interne reste consultable.
+        </p>
+      </section>
+    );
+  } else if (feedMetadata !== undefined) {
+    feedPanel = <CalendarFeedSubscriptionPanel initialFeed={feedMetadata} />;
+  }
+
   const now = new Date();
   return (
     <BreedingCalendarPanel
@@ -85,6 +121,7 @@ export default async function BreedingCalendarPage({
       source={source}
       kind={kind}
       category={category}
+      feedPanel={feedPanel}
     />
   );
 }

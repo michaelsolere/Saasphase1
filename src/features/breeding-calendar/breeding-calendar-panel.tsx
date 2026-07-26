@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import {
   adopterAppointmentStatusLabels,
@@ -310,6 +311,7 @@ export function BreedingCalendarPanel({
   source,
   kind,
   category,
+  feedPanel,
 }: {
   events: readonly BreedingCalendarEvent[];
   todayDate: string;
@@ -320,6 +322,7 @@ export function BreedingCalendarPanel({
   source: BreedingCalendarSourceFilter;
   kind: LitterCareCalendarKindFilter;
   category: LitterCareCalendarCategoryFilter;
+  feedPanel?: ReactNode;
 }) {
   const monthValue = getLitterCareCalendarMonth(month, todayDate);
   const monthCalendar = projectBreedingCalendarMonth({
@@ -514,6 +517,8 @@ export function BreedingCalendarPanel({
           Télécharger le calendrier global
         </Link>
       </div>
+
+      {feedPanel}
 
       {!calendar.hasPlannedItems ? (
         <p

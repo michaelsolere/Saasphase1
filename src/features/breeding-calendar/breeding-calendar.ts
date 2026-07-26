@@ -1,18 +1,28 @@
 import "server-only";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 import {
   toAdopterAppointmentCalendarEvent,
   type AdopterAppointmentCalendarRecord,
 } from "@/features/breeding-calendar/adopter-appointment-calendar";
 import {
+  type CalendarFeedSources,
+  DEFAULT_CALENDAR_FEED_SOURCES,
+} from "@/features/breeding-calendar/calendar-feed-token";
+import {
   resolveReproductiveCycleAnimalLabel,
   toReproductiveCycleCalendarEvent,
   type ReproductiveCycleCalendarRecord,
 } from "@/features/breeding-calendar/reproductive-cycle-calendar";
-import { listOrganizationLitterCareTasks } from "@/features/litter-journal/litter-care-tasks";
+import {
+  listLitterCareTasksForOrganization,
+  listOrganizationLitterCareTasks,
+} from "@/features/litter-journal/litter-care-tasks";
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 import { getLitterDisplayName } from "@/features/litters/formatters";
 import { createClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database.types";
 
 import {
   breedingCalendarEventIdentity,
@@ -34,13 +44,17 @@ export {
   BREEDING_CALENDAR_SOURCE_FILTERS,
   BREEDING_CALENDAR_SOURCE_TYPES,
   breedingCalendarEventIdentity,
+  filterBreedingCalendarEventsBySources,
   isAdopterAppointmentBreedingCalendarEvent,
   isLitterCareBreedingCalendarEvent,
   isReproductiveCycleBreedingCalendarEvent,
   toBreedingCalendarEvent,
 } from "./breeding-calendar-contract";
 
-type Supabase = Awaited<ReturnType<typeof createClient>>;
+export type { CalendarFeedSources } from "./calendar-feed-token";
+export { DEFAULT_CALENDAR_FEED_SOURCES } from "./calendar-feed-token";
+
+type Supabase = SupabaseClient<Database>;
 
 async function resolveActiveOrganizationId(supabase: Supabase) {
   const {
@@ -80,6 +94,26 @@ function toLitterPlanningCalendarEvent(
   };
 }
 
+export async function listLitterPlanningCalendarEventsForOrganization(
+  organizationId: string,
+  supabase: Supabase,
+): Promise<OrganizationBreedingCalendar> {
+  const result = await listLitterCareTasksForOrganization(organizationId, supabase);
+  if (result.outcome !== "success") {
+    throw new Error("Unable to load litter planning calendar events.");
+  }
+  const events = result.tasks
+    .map((task) =>
+      toLitterPlanningCalendarEvent(task, result.litterNames[task.litterId]),
+    )
+    .filter((event): event is BreedingCalendarEvent => event !== null);
+  return {
+    organizationId: result.organizationId,
+    events,
+    litterNames: result.litterNames,
+  };
+}
+
 export async function listLitterPlanningCalendarEvents(): Promise<OrganizationBreedingCalendar> {
   const result = await listOrganizationLitterCareTasks();
   if (result.outcome !== "success") {
@@ -97,19 +131,16 @@ export async function listLitterPlanningCalendarEvents(): Promise<OrganizationBr
   };
 }
 
-export async function listReproductiveCycleCalendarEvents(
-  organizationId?: string,
+export async function listReproductiveCycleCalendarEventsForOrganization(
+  organizationId: string,
+  supabase: Supabase,
 ): Promise<BreedingCalendarEvent[]> {
-  const supabase = await createClient();
-  const activeOrganizationId =
-    organizationId ?? (await resolveActiveOrganizationId(supabase));
-
   const cyclesResult = await supabase
     .from("reproductive_cycles")
     .select(
       "id, organization_id, mother_id, status, started_on, updated_at, created_at, deleted_at",
     )
-    .eq("organization_id", activeOrganizationId)
+    .eq("organization_id", organizationId)
     .in("status", ["planned", "in_progress"])
     .is("deleted_at", null);
 
@@ -143,7 +174,7 @@ export async function listReproductiveCycleCalendarEvents(
       : await supabase
           .from("animals")
           .select("id, organization_id, call_name, official_name, deleted_at")
-          .eq("organization_id", activeOrganizationId)
+          .eq("organization_id", organizationId)
           .in("id", motherIds)
           .is("deleted_at", null);
 
@@ -153,7 +184,7 @@ export async function listReproductiveCycleCalendarEvents(
 
   const animals = new Map(
     (animalsResult.data ?? [])
-      .filter((row) => row.organization_id === activeOrganizationId && !row.deleted_at)
+      .filter((row) => row.organization_id === organizationId && !row.deleted_at)
       .map((row) => [row.id as string, row]),
   );
 
@@ -161,7 +192,7 @@ export async function listReproductiveCycleCalendarEvents(
   for (const row of rows) {
     if (typeof row.id !== "string" || typeof row.mother_id !== "string") continue;
     if (typeof row.started_on !== "string") continue;
-    if (row.organization_id !== activeOrganizationId || row.deleted_at) continue;
+    if (row.organization_id !== organizationId || row.deleted_at) continue;
     const animal = animals.get(row.mother_id);
     if (!animal) continue;
     records.push({
@@ -187,17 +218,26 @@ export async function listReproductiveCycleCalendarEvents(
     .filter((event): event is NonNullable<typeof event> => event !== null);
 }
 
-export async function listAdopterAppointmentCalendarEvents(
+export async function listReproductiveCycleCalendarEvents(
   organizationId?: string,
 ): Promise<BreedingCalendarEvent[]> {
   const supabase = await createClient();
   const activeOrganizationId =
     organizationId ?? (await resolveActiveOrganizationId(supabase));
+  return listReproductiveCycleCalendarEventsForOrganization(
+    activeOrganizationId,
+    supabase,
+  );
+}
 
+export async function listAdopterAppointmentCalendarEventsForOrganization(
+  organizationId: string,
+  supabase: Supabase,
+): Promise<BreedingCalendarEvent[]> {
   const eventsResult = await supabase
     .from("events")
     .select("id, reservation_id, event_type, status, planned_at, updated_at, created_at")
-    .eq("organization_id", activeOrganizationId)
+    .eq("organization_id", organizationId)
     .in("event_type", ["puppy_choice", "adoption"])
     .in("status", ["planned", "done"])
     .not("reservation_id", "is", null)
@@ -222,7 +262,7 @@ export async function listAdopterAppointmentCalendarEvents(
   const reservationsResult = await supabase
     .from("reservations")
     .select("id, contact_id, organization_id, deleted_at")
-    .eq("organization_id", activeOrganizationId)
+    .eq("organization_id", organizationId)
     .in("id", reservationIds)
     .is("deleted_at", null);
 
@@ -232,7 +272,7 @@ export async function listAdopterAppointmentCalendarEvents(
 
   const reservations = new Map(
     (reservationsResult.data ?? [])
-      .filter((row) => row.organization_id === activeOrganizationId && !row.deleted_at)
+      .filter((row) => row.organization_id === organizationId && !row.deleted_at)
       .map((row) => [row.id as string, row]),
   );
 
@@ -258,7 +298,7 @@ export async function listAdopterAppointmentCalendarEvents(
       : await supabase
           .from("contacts")
           .select("id, display_name, first_name, last_name")
-          .eq("organization_id", activeOrganizationId)
+          .eq("organization_id", organizationId)
           .in("id", contactIds)
           .is("deleted_at", null);
 
@@ -303,6 +343,18 @@ export async function listAdopterAppointmentCalendarEvents(
     .filter((event): event is NonNullable<typeof event> => event !== null);
 }
 
+export async function listAdopterAppointmentCalendarEvents(
+  organizationId?: string,
+): Promise<BreedingCalendarEvent[]> {
+  const supabase = await createClient();
+  const activeOrganizationId =
+    organizationId ?? (await resolveActiveOrganizationId(supabase));
+  return listAdopterAppointmentCalendarEventsForOrganization(
+    activeOrganizationId,
+    supabase,
+  );
+}
+
 function sourceSortRank(sourceType: BreedingCalendarEvent["sourceType"]) {
   if (sourceType === "litter_care") return 0;
   if (sourceType === "reproductive_cycle") return 1;
@@ -320,12 +372,38 @@ function sortBreedingCalendarEvents(events: BreedingCalendarEvent[]) {
   );
 }
 
-export async function listOrganizationBreedingCalendarEvents(): Promise<OrganizationBreedingCalendar> {
-  const litterSource = await listLitterPlanningCalendarEvents();
+export async function listBreedingCalendarEventsForOrganization(input: {
+  organizationId: string;
+  supabase: Supabase;
+  sources?: CalendarFeedSources;
+}): Promise<OrganizationBreedingCalendar> {
+  const sources = input.sources ?? DEFAULT_CALENDAR_FEED_SOURCES;
+  const litterSource = sources.includeLitterCare
+    ? await listLitterPlanningCalendarEventsForOrganization(
+        input.organizationId,
+        input.supabase,
+      )
+    : {
+        organizationId: input.organizationId,
+        events: [] as BreedingCalendarEvent[],
+        litterNames: {} as Record<string, string>,
+      };
+
   const [cycles, appointments] = await Promise.all([
-    listReproductiveCycleCalendarEvents(litterSource.organizationId),
-    listAdopterAppointmentCalendarEvents(litterSource.organizationId),
+    sources.includeReproductiveCycle
+      ? listReproductiveCycleCalendarEventsForOrganization(
+          input.organizationId,
+          input.supabase,
+        )
+      : Promise.resolve([] as BreedingCalendarEvent[]),
+    sources.includeAdopterAppointment
+      ? listAdopterAppointmentCalendarEventsForOrganization(
+          input.organizationId,
+          input.supabase,
+        )
+      : Promise.resolve([] as BreedingCalendarEvent[]),
   ]);
+
   const seen = new Set<string>();
   const events = sortBreedingCalendarEvents(
     [...litterSource.events, ...cycles, ...appointments].filter((event) => {
@@ -335,5 +413,20 @@ export async function listOrganizationBreedingCalendarEvents(): Promise<Organiza
       return true;
     }),
   );
-  return { ...litterSource, events };
+
+  return {
+    organizationId: input.organizationId,
+    events,
+    litterNames: litterSource.litterNames,
+  };
+}
+
+export async function listOrganizationBreedingCalendarEvents(): Promise<OrganizationBreedingCalendar> {
+  const supabase = await createClient();
+  const organizationId = await resolveActiveOrganizationId(supabase);
+  return listBreedingCalendarEventsForOrganization({
+    organizationId,
+    supabase,
+    sources: DEFAULT_CALENDAR_FEED_SOURCES,
+  });
 }
