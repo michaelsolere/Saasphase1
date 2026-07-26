@@ -64,21 +64,63 @@ function addDay(date: string) { const [year, month, day] = date.split("-").map(N
 function uid(task: LitterCareTaskSummary) { return `${createHash("sha256").update(`litter-care:${task.litterId}:${task.id}`).digest("hex")}@saas-elevage`; }
 function matches(task: LitterCareTaskSummary, filters: IcalendarInput["filters"]) { return task.status === "planned" && (filters.kind === "all" || task.itemKind === filters.kind) && (filters.category === "all" || task.category === filters.category); }
 
-export function buildBreedingCalendarICalendar(input: { events: readonly BreedingCalendarEvent[]; generatedAt: Date; calendarName: string }) {
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//SaaS Elevage//Calendrier elevage//FR", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", property("X-WR-CALNAME", escapeText(input.calendarName))];
+function breedingCalendarUid(event: BreedingCalendarEvent) {
+  if (event.sourceType === "adopter_appointment") {
+    return `${createHash("sha256").update(`adopter-appointment:${event.sourceRecordId}`).digest("hex")}@saas-elevage`;
+  }
+  return `${createHash("sha256").update(`litter-care:${event.litterId}:${event.sourceRecordId}`).digest("hex")}@saas-elevage`;
+}
+
+export function buildBreedingCalendarICalendar(input: {
+  events: readonly BreedingCalendarEvent[];
+  generatedAt: Date;
+  calendarName: string;
+}) {
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//SaaS Elevage//Calendrier elevage//FR",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    property("X-WR-CALNAME", escapeText(input.calendarName)),
+  ];
   for (const event of input.events) {
-    const body: string[] = ["BEGIN:VEVENT", property("UID", `${createHash("sha256").update(`litter-care:${event.litterId}:${event.sourceRecordId}`).digest("hex")}@saas-elevage`), property("DTSTAMP", formatUtc(input.generatedAt)), property("SUMMARY", escapeText(`${event.contextLabel} — ${event.title}`)), property("CATEGORIES", escapeText(event.category)), property("X-SAAS-ELEVAGE-KIND", event.itemKind), property("SEQUENCE", String(event.revision))];
+    const body: string[] = [
+      "BEGIN:VEVENT",
+      property("UID", breedingCalendarUid(event)),
+      property("DTSTAMP", formatUtc(input.generatedAt)),
+      property("SUMMARY", escapeText(`${event.contextLabel} — ${event.title}`)),
+      property("CATEGORIES", escapeText(event.category)),
+      property("X-SAAS-ELEVAGE-SOURCE", event.sourceType),
+      property("X-SAAS-ELEVAGE-KIND", event.kind),
+      property("SEQUENCE", String(event.sequence)),
+    ];
     if (event.endsOn) {
       if (!validDate(event.startsOn) || !validDate(event.endsOn)) continue;
-      if (validTime(event.startsLocalTime) && validTime(event.endsLocalTime)) body.push(property("DTSTART", dateTime(event.startsOn, event.startsLocalTime, event.timezoneName)), property("DTEND", dateTime(event.endsOn, event.endsLocalTime, event.timezoneName)));
-      else body.push(property("DTSTART;VALUE=DATE", ymd(event.startsOn)), property("DTEND;VALUE=DATE", addDay(event.endsOn)));
+      if (validTime(event.startsLocalTime) && validTime(event.endsLocalTime)) {
+        body.push(
+          property("DTSTART", dateTime(event.startsOn, event.startsLocalTime, event.timezoneName)),
+          property("DTEND", dateTime(event.endsOn, event.endsLocalTime, event.timezoneName)),
+        );
+      } else {
+        body.push(
+          property("DTSTART;VALUE=DATE", ymd(event.startsOn)),
+          property("DTEND;VALUE=DATE", addDay(event.endsOn)),
+        );
+      }
     } else {
       if (!validDate(event.startsOn)) continue;
-      body.push(validTime(event.startsLocalTime) ? property("DTSTART", dateTime(event.startsOn, event.startsLocalTime, event.timezoneName)) : property("DTSTART;VALUE=DATE", ymd(event.startsOn)));
+      body.push(
+        validTime(event.startsLocalTime)
+          ? property("DTSTART", dateTime(event.startsOn, event.startsLocalTime, event.timezoneName))
+          : property("DTSTART;VALUE=DATE", ymd(event.startsOn)),
+      );
     }
-    body.push("END:VEVENT"); lines.push(...body);
+    body.push("END:VEVENT");
+    lines.push(...body);
   }
-  lines.push("END:VCALENDAR"); return `${lines.join(CRLF)}${CRLF}`;
+  lines.push("END:VCALENDAR");
+  return `${lines.join(CRLF)}${CRLF}`;
 }
 
 export function buildLitterCareICalendar(input: IcalendarInput) {

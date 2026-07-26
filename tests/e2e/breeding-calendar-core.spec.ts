@@ -1,26 +1,291 @@
 import { expect, test } from "@playwright/test";
 
+import {
+  sequenceFromUpdatedAt,
+  toAdopterAppointmentCalendarEvent,
+} from "../../src/features/breeding-calendar/adopter-appointment-calendar";
 import { toBreedingCalendarEvent } from "../../src/features/breeding-calendar/breeding-calendar-contract";
-import { buildBreedingCalendarICalendar, buildLitterCareICalendar } from "../../src/features/litter-journal/litter-care-icalendar";
+import { filterBreedingCalendarEvents } from "../../src/features/breeding-calendar/breeding-calendar-projection";
+import {
+  buildBreedingCalendarICalendar,
+  buildLitterCareICalendar,
+} from "../../src/features/litter-journal/litter-care-icalendar";
 import type { LitterCareTaskSummary } from "../../src/features/litter-journal/litter-care-tasks";
 
 const litterA = "11111111-1111-4111-8111-111111111111";
 const litterB = "11111111-1111-4111-8111-111111111112";
 const taskA = "22222222-2222-4222-8222-222222222222";
-function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSummary { return { id: taskA, litterId: litterA, source: "manual", litterPlanItemId: null, organizationTemplateId: null, systemTemplateCode: null, occurrenceNo: 1, category: "veterinary", targetScope: "litter", title: "Visite vétérinaire", description: "Description privée", anchorType: null, anchorDate: null, offsetDays: null, itemKind: "task", priority: "normal", suggestedFor: null, suggestedLocalTime: null, plannedFor: "2026-08-12", scheduledLocalTime: null, scheduleTimezoneName: "Europe/Paris", suggestedStartsOn: null, suggestedStartsLocalTime: null, suggestedEndsOn: null, suggestedEndsLocalTime: null, retainedStartsOn: null, retainedStartsLocalTime: null, retainedEndsOn: null, retainedEndsLocalTime: null, scheduleSource: "suggested", isScheduleLocked: false, scheduleLockedAt: null, scheduleLockedBy: null, revisionNo: 2, status: "planned", resolvedAt: null, resolvedTimezoneName: null, resolvedBy: null, resolutionNote: "Ne pas exporter", createdAt: "2026-01-01T00:00:00Z", ...overrides }; }
-function event(value: LitterCareTaskSummary, name = "Rosie × Rimbaud") { return toBreedingCalendarEvent(value, name); }
+const appointmentA = "33333333-3333-4333-8333-333333333333";
+const appointmentB = "44444444-4444-4444-8444-444444444444";
+const reservationA = "55555555-5555-4555-8555-555555555555";
+
+function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSummary {
+  return {
+    id: taskA,
+    litterId: litterA,
+    source: "manual",
+    litterPlanItemId: null,
+    organizationTemplateId: null,
+    systemTemplateCode: null,
+    occurrenceNo: 1,
+    category: "veterinary",
+    targetScope: "litter",
+    title: "Visite vétérinaire",
+    description: "Description privée",
+    anchorType: null,
+    anchorDate: null,
+    offsetDays: null,
+    itemKind: "task",
+    priority: "normal",
+    suggestedFor: null,
+    suggestedLocalTime: null,
+    plannedFor: "2026-08-12",
+    scheduledLocalTime: null,
+    scheduleTimezoneName: "Europe/Paris",
+    suggestedStartsOn: null,
+    suggestedStartsLocalTime: null,
+    suggestedEndsOn: null,
+    suggestedEndsLocalTime: null,
+    retainedStartsOn: null,
+    retainedStartsLocalTime: null,
+    retainedEndsOn: null,
+    retainedEndsLocalTime: null,
+    scheduleSource: "suggested",
+    isScheduleLocked: false,
+    scheduleLockedAt: null,
+    scheduleLockedBy: null,
+    revisionNo: 2,
+    status: "planned",
+    resolvedAt: null,
+    resolvedTimezoneName: null,
+    resolvedBy: null,
+    resolutionNote: "Ne pas exporter",
+    createdAt: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function event(value: LitterCareTaskSummary, name = "Rosie × Rimbaud") {
+  return toBreedingCalendarEvent(value, name);
+}
+
+function appointment(
+  overrides: Partial<Parameters<typeof toAdopterAppointmentCalendarEvent>[0]> = {},
+) {
+  return toAdopterAppointmentCalendarEvent({
+    id: appointmentA,
+    reservationId: reservationA,
+    eventType: "puppy_choice",
+    status: "planned",
+    plannedAt: "2026-09-10T08:00:00.000Z",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+    contactLabel: "Camille Dupont",
+    ...overrides,
+  });
+}
 
 test("convertit les tâches planifiées, fenêtres et contextualise sans mutation", () => {
-  const point = task(); const window = task({ id: "22222222-2222-4222-8222-222222222223", itemKind: "window", plannedFor: null, retainedStartsOn: "2026-08-13", retainedEndsOn: "2026-08-15", retainedStartsLocalTime: "08:00", retainedEndsLocalTime: "18:00" }); const snapshot = JSON.stringify([point, window]);
-  expect(event(point)).toMatchObject({ startsOn: "2026-08-12", endsOn: null, contextLabel: "Rosie × Rimbaud" });
-  expect(event(window)).toMatchObject({ startsOn: "2026-08-13", endsOn: "2026-08-15", isAllDay: false });
-  expect(event(task({ status: "done" }))).toBeNull(); expect(event(task({ plannedFor: null }))).toBeNull(); expect(JSON.stringify([point, window])).toBe(snapshot);
+  const point = task();
+  const window = task({
+    id: "22222222-2222-4222-8222-222222222223",
+    itemKind: "window",
+    plannedFor: null,
+    retainedStartsOn: "2026-08-13",
+    retainedEndsOn: "2026-08-15",
+    retainedStartsLocalTime: "08:00",
+    retainedEndsLocalTime: "18:00",
+  });
+  const snapshot = JSON.stringify([point, window]);
+  expect(event(point)).toMatchObject({
+    startsOn: "2026-08-12",
+    endsOn: null,
+    contextLabel: "Rosie × Rimbaud",
+    sequence: 2,
+    kind: "task",
+    href: `/litters/journal?litter=${litterA}#litter-care-tasks`,
+  });
+  expect(event(window)).toMatchObject({
+    startsOn: "2026-08-13",
+    endsOn: "2026-08-15",
+    isAllDay: false,
+  });
+  expect(event(task({ status: "done" }))).toBeNull();
+  expect(event(task({ plannedFor: null }))).toBeNull();
+  expect(JSON.stringify([point, window])).toBe(snapshot);
 });
 
-test("sérialise l’agrégation sans UUID ou descriptions et conserve les UID", () => {
-  const first = event(task())!; const second = event(task({ id: "22222222-2222-4222-8222-222222222224", litterId: litterB, title: "Vaccination" }), "Nova × Orion")!;
-  const global = buildBreedingCalendarICalendar({ events: [second, first].sort((a, b) => a.startsOn.localeCompare(b.startsOn) || a.contextLabel.localeCompare(b.contextLabel)), generatedAt: new Date("2026-01-01T00:00:00Z"), calendarName: "Calendrier" });
-  const perLitter = buildLitterCareICalendar({ litterName: "Rosie × Rimbaud", tasks: [task()], filters: { kind: "all", category: "all" }, generatedAt: new Date("2026-01-01T00:00:00Z") });
-  const uid = /UID:([^\r]+)/.exec(perLitter)?.[1]; expect(global).toContain(`UID:${uid}`); expect([...global.matchAll(/UID:([^\r]+)/g)].map((match) => match[1])).toHaveLength(2); expect(global).not.toContain(taskA); expect(global).not.toContain(litterA); expect(global).not.toContain("Description privée"); expect(global).not.toContain("Ne pas exporter");
-  const empty = buildBreedingCalendarICalendar({ events: [], generatedAt: new Date(), calendarName: "Calendrier" }); expect(empty).toContain("BEGIN:VCALENDAR\r\n"); expect(empty).toMatch(/END:VCALENDAR\r\n$/);
+test("convertit les rendez-vous puppy_choice et adoption avec planned et done", () => {
+  const choice = appointment();
+  const adoption = appointment({
+    id: appointmentB,
+    eventType: "adoption",
+    status: "done",
+    plannedAt: "2026-09-20T12:30:00.000Z",
+  });
+  expect(choice).toMatchObject({
+    sourceType: "adopter_appointment",
+    identitySource: "adopter-appointment",
+    title: "Choix du chiot/chaton",
+    contextLabel: "Camille Dupont",
+    startsOn: "2026-09-10",
+    startsLocalTime: "10:00",
+    appointmentStatus: "planned",
+    href: `/reservations/${reservationA}#appointments`,
+    category: "adopter_appointment",
+  });
+  expect(adoption).toMatchObject({
+    title: "Adoption / départ",
+    appointmentStatus: "done",
+    startsOn: "2026-09-20",
+    startsLocalTime: "14:30",
+  });
+  expect(appointment({ status: "planned" })).not.toBeNull();
+  expect(appointment({ status: "done" })).not.toBeNull();
+});
+
+test("exclut postponed et les autres types d’événements", () => {
+  expect(appointment({ status: "postponed" })).toBeNull();
+  expect(appointment({ eventType: "post_adoption_follow_up" })).toBeNull();
+  expect(appointment({ eventType: "payment_due" })).toBeNull();
+  expect(appointment({ eventType: "document_reminder" })).toBeNull();
+  expect(appointment({ plannedAt: "not-a-date" })).toBeNull();
+});
+
+test("projette Europe/Paris autour de minuit et du changement d’heure", () => {
+  // 23:30 UTC le 15 janvier = 00:30 Europe/Paris le 16 janvier (hiver).
+  expect(
+    appointment({ plannedAt: "2026-01-15T23:30:00.000Z" }),
+  ).toMatchObject({ startsOn: "2026-01-16", startsLocalTime: "00:30" });
+  // Après le passage à l’heure d’été (29 mars 2026, 02:00 → 03:00).
+  expect(
+    appointment({ plannedAt: "2026-03-29T01:30:00.000Z" }),
+  ).toMatchObject({ startsOn: "2026-03-29", startsLocalTime: "03:30" });
+  // Avant le retour à l’heure d’hiver (25 octobre 2026).
+  expect(
+    appointment({ plannedAt: "2026-07-25T22:00:00.000Z" }),
+  ).toMatchObject({ startsOn: "2026-07-26", startsLocalTime: "00:00" });
+});
+
+test("conserve une identité stable distincte de litter_care", () => {
+  const litter = event(task())!;
+  const adopter = appointment()!;
+  expect(litter.identitySource).toBe("litter-care");
+  expect(adopter.identitySource).toBe("adopter-appointment");
+  expect(litter.sourceRecordId).not.toBe(adopter.sourceRecordId);
+  const litterUid = /UID:([^\r]+)/.exec(
+    buildBreedingCalendarICalendar({
+      events: [litter],
+      generatedAt: new Date("2026-01-01T00:00:00Z"),
+      calendarName: "Calendrier",
+    }),
+  )?.[1];
+  const adopterUid = /UID:([^\r]+)/.exec(
+    buildBreedingCalendarICalendar({
+      events: [adopter],
+      generatedAt: new Date("2026-01-01T00:00:00Z"),
+      calendarName: "Calendrier",
+    }),
+  )?.[1];
+  expect(litterUid).toBeTruthy();
+  expect(adopterUid).toBeTruthy();
+  expect(litterUid).not.toBe(adopterUid);
+  const modified = appointment({ updatedAt: "2026-08-02T10:00:00.000Z" })!;
+  const modifiedIcs = buildBreedingCalendarICalendar({
+    events: [modified],
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  expect(modifiedIcs).toContain(`UID:${adopterUid}`);
+  expect(modifiedIcs).toContain(`SEQUENCE:${sequenceFromUpdatedAt(modified.lastModifiedAt)}`);
+  expect(modified.sequence).not.toBe(adopter.sequence);
+});
+
+test("filtre par source sans croiser litter_care et adopter_appointment", () => {
+  const litter = event(task())!;
+  const adopter = appointment()!;
+  const events = [litter, adopter];
+  expect(filterBreedingCalendarEvents({ events, source: "all" })).toHaveLength(2);
+  expect(
+    filterBreedingCalendarEvents({ events, source: "litter_care" }).map((item) => item.sourceType),
+  ).toEqual(["litter_care"]);
+  expect(
+    filterBreedingCalendarEvents({ events, source: "adopter_appointment" }).map(
+      (item) => item.sourceType,
+    ),
+  ).toEqual(["adopter_appointment"]);
+  expect(
+    filterBreedingCalendarEvents({
+      events,
+      source: "all",
+      kind: "task",
+      category: "veterinary",
+    }).map((item) => item.sourceType),
+  ).toEqual(["litter_care", "adopter_appointment"]);
+});
+
+test("sérialise l’agrégation sans UUID, description, email, paiement ou document", () => {
+  const first = event(task())!;
+  const second = event(
+    task({
+      id: "22222222-2222-4222-8222-222222222224",
+      litterId: litterB,
+      title: "Vaccination",
+    }),
+    "Nova × Orion",
+  )!;
+  const choice = appointment({
+    contactLabel: "Camille Dupont",
+    updatedAt: "2026-08-01T10:00:00.000Z",
+  })!;
+  const adoption = appointment({
+    id: appointmentB,
+    eventType: "adoption",
+    status: "done",
+    plannedAt: "2026-09-20T12:30:00.000Z",
+    updatedAt: "2026-08-01T11:00:00.000Z",
+  })!;
+  const global = buildBreedingCalendarICalendar({
+    events: [second, first, adoption, choice].sort(
+      (a, b) =>
+        a.startsOn.localeCompare(b.startsOn) ||
+        a.contextLabel.localeCompare(b.contextLabel),
+    ),
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  const perLitter = buildLitterCareICalendar({
+    litterName: "Rosie × Rimbaud",
+    tasks: [task()],
+    filters: { kind: "all", category: "all" },
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+  });
+  const uid = /UID:([^\r]+)/.exec(perLitter)?.[1];
+  expect(global).toContain(`UID:${uid}`);
+  expect([...global.matchAll(/UID:([^\r]+)/g)].map((match) => match[1])).toHaveLength(4);
+  expect(global).toContain("Choix du chiot/chaton");
+  expect(global).toContain("Adoption / départ");
+  expect(global).toContain("X-SAAS-ELEVAGE-SOURCE:adopter_appointment");
+  expect(global).toContain("X-SAAS-ELEVAGE-SOURCE:litter_care");
+  for (const forbidden of [
+    taskA,
+    litterA,
+    appointmentA,
+    appointmentB,
+    reservationA,
+    "Description privée",
+    "Ne pas exporter",
+    "camille@example.com",
+    "paiement",
+    "document",
+    "DESCRIPTION:",
+  ]) {
+    expect(global.toLowerCase()).not.toContain(forbidden.toLowerCase());
+  }
+  const empty = buildBreedingCalendarICalendar({
+    events: [],
+    generatedAt: new Date(),
+    calendarName: "Calendrier",
+  });
+  expect(empty).toContain("BEGIN:VCALENDAR\r\n");
+  expect(empty).toMatch(/END:VCALENDAR\r\n$/);
 });

@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import {
+  isAdopterAppointmentBreedingCalendarEvent,
+  listAdopterAppointmentCalendarEvents,
+} from "@/features/breeding-calendar/breeding-calendar";
 import { BreedingTodayPanel } from "@/features/breeding-calendar/breeding-today-panel";
 import {
   formatLitterJournalBusinessDate,
@@ -96,11 +100,16 @@ export default async function BreedingTodayPage() {
 
   let source: Awaited<ReturnType<typeof listOrganizationLitterCareTodayTasks>> | null =
     null;
+  let appointments: Awaited<ReturnType<typeof listAdopterAppointmentCalendarEvents>> =
+    [];
   let hasLoadingError = false;
 
   try {
     source = await listOrganizationLitterCareTodayTasks({ referenceDate: todayDate });
     if (source.outcome !== "success") hasLoadingError = true;
+    else {
+      appointments = await listAdopterAppointmentCalendarEvents(source.organizationId);
+    }
   } catch {
     hasLoadingError = true;
   }
@@ -168,6 +177,7 @@ export default async function BreedingTodayPage() {
         litterNames={source.litterNames}
         todayDate={todayDate}
         todayLocalTime={todayLocalTime}
+        appointments={appointments.filter(isAdopterAppointmentBreedingCalendarEvent)}
         quickActions={quickActions}
         scheduleActions={scheduleActions}
       />
