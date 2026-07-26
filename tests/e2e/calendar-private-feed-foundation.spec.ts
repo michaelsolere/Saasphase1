@@ -301,14 +301,163 @@ test("RPC calendar feed: rôles, unicité, rotation, révocation, RLS", async ()
     `),
   ).toBe("1");
 
-  const foreignTouch = await foreign.rpc("update_organization_calendar_feed_sources", {
-    p_feed_id: newFeedId,
+  const foreignFeedToken = tokenPair();
+  const foreignCreated = await foreign.rpc("create_or_rotate_organization_calendar_feed", {
+    p_token_hash: foreignFeedToken.hash,
+    p_token_hint: foreignFeedToken.hint,
+    p_include_litter_care: true,
+    p_include_reproductive_cycle: false,
+    p_include_adopter_appointment: false,
+  });
+  expect(foreignCreated.error).toBeNull();
+  expect(foreignCreated.data?.[0]?.outcome).toBe("success");
+  const foreignFeedId = foreignCreated.data![0].feed_id as string;
+  expect(foreignFeedId).toBeTruthy();
+  const foreignBefore = sql(`
+    select json_build_object(
+      'token_hash', token_hash,
+      'token_hint', token_hint,
+      'revision_no', revision_no,
+      'revoked_at', revoked_at,
+      'include_litter_care', include_litter_care,
+      'include_reproductive_cycle', include_reproductive_cycle,
+      'include_adopter_appointment', include_adopter_appointment
+    )::text
+    from public.organization_calendar_feeds
+    where id = ${q(foreignFeedId)}::uuid
+  `);
+
+  const unknownFeedId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+  function expectFeedNotFound(row: Record<string, unknown> | undefined) {
+    expect(row).toMatchObject({
+      outcome: "error",
+      reason: "feed_not_found",
+    });
+    expect(row?.organization_id ?? null).toBeNull();
+    expect(row?.token_hint ?? null).toBeNull();
+    expect(row?.include_litter_care ?? null).toBeNull();
+    expect(row?.include_reproductive_cycle ?? null).toBeNull();
+    expect(row?.include_adopter_appointment ?? null).toBeNull();
+    expect(row?.revision_no ?? null).toBeNull();
+    expect(row?.created_at ?? null).toBeNull();
+    expect(row?.updated_at ?? null).toBeNull();
+    expect(row?.revoked_at ?? null).toBeNull();
+  }
+
+  const foreignUpdateByOwner = await owner.rpc("update_organization_calendar_feed_sources", {
+    p_feed_id: foreignFeedId,
     p_expected_revision_no: 1,
     p_include_litter_care: false,
     p_include_reproductive_cycle: true,
     p_include_adopter_appointment: false,
   });
-  expect(foreignTouch.data?.[0]?.reason).toBe("forbidden");
+  expect(foreignUpdateByOwner.error).toBeNull();
+  expectFeedNotFound(foreignUpdateByOwner.data?.[0] as Record<string, unknown>);
+
+  const unknownUpdate = await owner.rpc("update_organization_calendar_feed_sources", {
+    p_feed_id: unknownFeedId,
+    p_expected_revision_no: 1,
+    p_include_litter_care: false,
+    p_include_reproductive_cycle: true,
+    p_include_adopter_appointment: false,
+  });
+  expect(unknownUpdate.error).toBeNull();
+  expectFeedNotFound(unknownUpdate.data?.[0] as Record<string, unknown>);
+  expect(JSON.stringify(foreignUpdateByOwner.data?.[0])).toBe(
+    JSON.stringify(unknownUpdate.data?.[0]),
+  );
+
+  const foreignRevokeByOwner = await owner.rpc("revoke_organization_calendar_feed", {
+    p_feed_id: foreignFeedId,
+    p_expected_revision_no: 1,
+  });
+  expect(foreignRevokeByOwner.error).toBeNull();
+  expectFeedNotFound(foreignRevokeByOwner.data?.[0] as Record<string, unknown>);
+
+  const unknownRevoke = await owner.rpc("revoke_organization_calendar_feed", {
+    p_feed_id: unknownFeedId,
+    p_expected_revision_no: 1,
+  });
+  expect(unknownRevoke.error).toBeNull();
+  expectFeedNotFound(unknownRevoke.data?.[0] as Record<string, unknown>);
+  expect(JSON.stringify(foreignRevokeByOwner.data?.[0])).toBe(
+    JSON.stringify(unknownRevoke.data?.[0]),
+  );
+
+  const foreignAfter = sql(`
+    select json_build_object(
+      'token_hash', token_hash,
+      'token_hint', token_hint,
+      'revision_no', revision_no,
+      'revoked_at', revoked_at,
+      'include_litter_care', include_litter_care,
+      'include_reproductive_cycle', include_reproductive_cycle,
+      'include_adopter_appointment', include_adopter_appointment
+    )::text
+    from public.organization_calendar_feeds
+    where id = ${q(foreignFeedId)}::uuid
+  `);
+  expect(foreignAfter).toBe(foreignBefore);
+
+  const memberUpdate = await member.rpc("update_organization_calendar_feed_sources", {
+    p_feed_id: newFeedId,
+    p_expected_revision_no: 1,
+    p_include_litter_care: true,
+    p_include_reproductive_cycle: false,
+    p_include_adopter_appointment: false,
+  });
+  expect(memberUpdate.data?.[0]?.reason).toBe("forbidden");
+  expect(memberUpdate.data?.[0]?.organization_id ?? null).toBeNull();
+
+  const viewerRevoke = await viewer.rpc("revoke_organization_calendar_feed", {
+    p_feed_id: newFeedId,
+    p_expected_revision_no: 1,
+  });
+  expect(viewerRevoke.data?.[0]?.reason).toBe("forbidden");
+  expect(viewerRevoke.data?.[0]?.organization_id ?? null).toBeNull();
+
+  const ownerMeta = await owner
+    .from("organization_calendar_feeds")
+    .select(
+      "id, organization_id, token_hint, include_litter_care, include_reproductive_cycle, include_adopter_appointment, revision_no, created_at, created_by, updated_at, updated_by, revoked_at, revoked_by",
+    )
+    .eq("id", newFeedId)
+    .maybeSingle();
+  expect(ownerMeta.error).toBeNull();
+  expect(ownerMeta.data?.token_hint).toBe(rotatedToken.hint);
+  expect(ownerMeta.data?.revoked_at).toBeNull();
+
+  const ownerHash = await owner
+    .from("organization_calendar_feeds")
+    .select("token_hash")
+    .eq("id", newFeedId)
+    .maybeSingle();
+  expect(ownerHash.error).toBeTruthy();
+  expect(ownerHash.error?.message ?? "").toMatch(/permission denied|token_hash/i);
+  expect(ownerHash.data).toBeNull();
+
+  const adminHash = await admin
+    .from("organization_calendar_feeds")
+    .select("token_hash")
+    .eq("id", newFeedId)
+    .maybeSingle();
+  expect(adminHash.error).toBeTruthy();
+  expect(adminHash.data).toBeNull();
+
+  const service = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const serviceHash = await service
+    .from("organization_calendar_feeds")
+    .select("token_hash")
+    .eq("token_hash", rotatedToken.hash)
+    .is("revoked_at", null)
+    .maybeSingle();
+  expect(serviceHash.error).toBeNull();
+  expect(serviceHash.data?.token_hash).toBe(rotatedToken.hash);
 
   const revoked = await owner.rpc("revoke_organization_calendar_feed", {
     p_feed_id: newFeedId,
@@ -355,6 +504,13 @@ test("RPC calendar feed: rôles, unicité, rotation, révocation, RLS", async ()
     .eq("organization_id", organizationId);
   expect(memberSelect.error).toBeNull();
   expect(memberSelect.data ?? []).toEqual([]);
+
+  const viewerSelect = await viewer
+    .from("organization_calendar_feeds")
+    .select("id, token_hint")
+    .eq("organization_id", organizationId);
+  expect(viewerSelect.error).toBeNull();
+  expect(viewerSelect.data ?? []).toEqual([]);
 
   const tokenLeak = sql(`
     select coalesce(string_agg(token_hash || token_hint, ','), '')

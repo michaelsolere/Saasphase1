@@ -236,8 +236,11 @@ test("abonnement iCalendar privé : création, sources, rotation, révocation", 
     const urlInput = panel.locator("[data-calendar-feed-url]");
     await expect(urlInput).toBeVisible();
     const feedUrl = await urlInput.inputValue();
-    expect(feedUrl).toMatch(/\/calendar\/feed\/[A-Za-z0-9_-]{43}$/);
+    expect(feedUrl).toMatch(/^http:\/\/127\.0\.0\.1:3100\/calendar\/feed\/[A-Za-z0-9_-]{43}$/);
+    expect(feedUrl).not.toContain("attacker.invalid");
+    expect(feedUrl).not.toMatch(/x-forwarded-host/i);
     const token = feedUrl.split("/calendar/feed/")[1]!;
+    expect(feedUrl).toBe(`http://127.0.0.1:3100/calendar/feed/${token}`);
     await expect(
       panel.getByText("Ce lien ne sera pas réaffiché après rechargement de la page."),
     ).toBeVisible();
@@ -356,6 +359,8 @@ test("abonnement iCalendar privé : création, sources, rotation, révocation", 
     await expect(newUrlInput).toBeVisible();
     const newFeedUrl = await newUrlInput.inputValue();
     expect(newFeedUrl).not.toBe(feedUrl);
+    expect(newFeedUrl).toMatch(/^http:\/\/127\.0\.0\.1:3100\/calendar\/feed\/[A-Za-z0-9_-]{43}$/);
+    expect(newFeedUrl).not.toContain("attacker.invalid");
     const newToken = newFeedUrl.split("/calendar/feed/")[1]!;
     const newFeedRow = JSON.parse(
       sql(`

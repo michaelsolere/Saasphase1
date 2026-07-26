@@ -54,7 +54,24 @@ revoke all on table public.organization_calendar_feeds from public;
 revoke all on table public.organization_calendar_feeds from anon;
 revoke all on table public.organization_calendar_feeds from authenticated;
 
-grant select on table public.organization_calendar_feeds to authenticated;
+-- Authenticated clients may read metadata only — never token_hash.
+grant select (
+  id,
+  organization_id,
+  token_hint,
+  include_litter_care,
+  include_reproductive_cycle,
+  include_adopter_appointment,
+  revision_no,
+  created_at,
+  created_by,
+  updated_at,
+  updated_by,
+  revoked_at,
+  revoked_by
+) on table public.organization_calendar_feeds to authenticated;
+
+-- Service role keeps full SELECT for private feed token resolution.
 grant select on table public.organization_calendar_feeds to service_role;
 
 -- Privileged feed route reads org-scoped calendar sources after token hash resolution.
@@ -281,12 +298,13 @@ set row_security = off
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_organization_id uuid;
   v_membership_role text;
   v_feed public.organization_calendar_feeds%rowtype;
 begin
   outcome := 'error';
   reason := null;
-  feed_id := p_feed_id;
+  feed_id := null;
   organization_id := null;
   token_hint := null;
   include_litter_care := null;
@@ -325,10 +343,33 @@ begin
     return;
   end if;
 
+  select membership.organization_id, membership.role
+  into v_organization_id, v_membership_role
+  from public.memberships membership
+  where membership.profile_id = v_user_id
+    and membership.status = 'active'
+    and membership.deleted_at is null
+  order by membership.created_at asc
+  limit 1
+  for share;
+
+  if not found then
+    reason := 'organization_unavailable';
+    return next;
+    return;
+  end if;
+
+  if v_membership_role not in ('owner', 'admin') then
+    reason := 'forbidden';
+    return next;
+    return;
+  end if;
+
   select *
   into v_feed
   from public.organization_calendar_feeds feed
   where feed.id = p_feed_id
+    and feed.organization_id = v_organization_id
   for update;
 
   if not found then
@@ -337,23 +378,9 @@ begin
     return;
   end if;
 
-  select membership.role
-  into v_membership_role
-  from public.memberships membership
-  where membership.organization_id = v_feed.organization_id
-    and membership.profile_id = v_user_id
-    and membership.status = 'active'
-    and membership.deleted_at is null
-  for share;
-
-  if not found or v_membership_role not in ('owner', 'admin') then
-    reason := 'forbidden';
-    return next;
-    return;
-  end if;
-
   if v_feed.revoked_at is not null then
     reason := 'feed_revoked';
+    feed_id := v_feed.id;
     organization_id := v_feed.organization_id;
     token_hint := v_feed.token_hint;
     include_litter_care := v_feed.include_litter_care;
@@ -369,6 +396,7 @@ begin
 
   if v_feed.revision_no is distinct from p_expected_revision_no then
     reason := 'stale_revision';
+    feed_id := v_feed.id;
     organization_id := v_feed.organization_id;
     token_hint := v_feed.token_hint;
     include_litter_care := v_feed.include_litter_care;
@@ -390,7 +418,7 @@ begin
     revision_no = feed.revision_no + 1,
     updated_by = v_user_id
   where feed.id = v_feed.id
-    and feed.organization_id = v_feed.organization_id
+    and feed.organization_id = v_organization_id
     and feed.revoked_at is null
   returning feed.* into v_feed;
 
@@ -441,12 +469,13 @@ set row_security = off
 as $$
 declare
   v_user_id uuid := auth.uid();
+  v_organization_id uuid;
   v_membership_role text;
   v_feed public.organization_calendar_feeds%rowtype;
 begin
   outcome := 'error';
   reason := null;
-  feed_id := p_feed_id;
+  feed_id := null;
   organization_id := null;
   token_hint := null;
   include_litter_care := null;
@@ -472,10 +501,33 @@ begin
     return;
   end if;
 
+  select membership.organization_id, membership.role
+  into v_organization_id, v_membership_role
+  from public.memberships membership
+  where membership.profile_id = v_user_id
+    and membership.status = 'active'
+    and membership.deleted_at is null
+  order by membership.created_at asc
+  limit 1
+  for share;
+
+  if not found then
+    reason := 'organization_unavailable';
+    return next;
+    return;
+  end if;
+
+  if v_membership_role not in ('owner', 'admin') then
+    reason := 'forbidden';
+    return next;
+    return;
+  end if;
+
   select *
   into v_feed
   from public.organization_calendar_feeds feed
   where feed.id = p_feed_id
+    and feed.organization_id = v_organization_id
   for update;
 
   if not found then
@@ -484,24 +536,10 @@ begin
     return;
   end if;
 
-  select membership.role
-  into v_membership_role
-  from public.memberships membership
-  where membership.organization_id = v_feed.organization_id
-    and membership.profile_id = v_user_id
-    and membership.status = 'active'
-    and membership.deleted_at is null
-  for share;
-
-  if not found or v_membership_role not in ('owner', 'admin') then
-    reason := 'forbidden';
-    return next;
-    return;
-  end if;
-
   if v_feed.revoked_at is not null then
     outcome := 'success';
     reason := 'already_revoked';
+    feed_id := v_feed.id;
     organization_id := v_feed.organization_id;
     token_hint := v_feed.token_hint;
     include_litter_care := v_feed.include_litter_care;
@@ -517,6 +555,7 @@ begin
 
   if v_feed.revision_no is distinct from p_expected_revision_no then
     reason := 'stale_revision';
+    feed_id := v_feed.id;
     organization_id := v_feed.organization_id;
     token_hint := v_feed.token_hint;
     include_litter_care := v_feed.include_litter_care;
@@ -536,7 +575,7 @@ begin
     revoked_by = v_user_id,
     updated_by = v_user_id
   where feed.id = v_feed.id
-    and feed.organization_id = v_feed.organization_id
+    and feed.organization_id = v_organization_id
     and feed.revoked_at is null
   returning feed.* into v_feed;
 

@@ -11,6 +11,8 @@ import {
 } from "../../src/features/breeding-calendar/breeding-calendar-contract";
 import {
   CALENDAR_FEED_TOKEN_BYTE_LENGTH,
+  absoluteCalendarFeedUrl,
+  buildCalendarFeedPath,
   calendarFeedTokenHint,
   generateCalendarFeedToken,
   hashCalendarFeedToken,
@@ -233,4 +235,26 @@ test("Content-Disposition inline pour le flux et attachment pour l’export", ()
     'attachment; filename="calendrier-elevage.ics"',
   );
   expect(randomBytes(1).byteLength).toBe(1);
+});
+
+test("le service expose un chemin relatif, jamais un domaine provenant de la requête", () => {
+  const token = generateCalendarFeedToken();
+  const feedPath = buildCalendarFeedPath(token);
+  expect(feedPath).toBe(`/calendar/feed/${token}`);
+  expect(feedPath).toMatch(/^\/calendar\/feed\/[A-Za-z0-9_-]{43}$/);
+  expect(feedPath).not.toMatch(/^https?:\/\//);
+  expect(feedPath).not.toContain("attacker.invalid");
+  expect(feedPath).not.toContain("x-forwarded-host");
+
+  const pageOrigin = "http://127.0.0.1:3000";
+  const absolute = absoluteCalendarFeedUrl(feedPath, pageOrigin);
+  expect(absolute).toBe(`http://127.0.0.1:3000/calendar/feed/${token}`);
+  expect(absolute).toContain(token);
+  expect(absolute).not.toContain("attacker.invalid");
+
+  const forgedHeader = "attacker.invalid";
+  expect(absolute).not.toContain(forgedHeader);
+  expect(
+    absoluteCalendarFeedUrl(feedPath, "http://127.0.0.1:3100"),
+  ).toBe(`http://127.0.0.1:3100/calendar/feed/${token}`);
 });

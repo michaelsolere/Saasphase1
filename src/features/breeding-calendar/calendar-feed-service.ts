@@ -7,6 +7,7 @@ import {
   generateCalendarFeedToken,
   hashCalendarFeedToken,
   normalizeCalendarFeedSources,
+  buildCalendarFeedPath,
   type CalendarFeedSources,
   DEFAULT_CALENDAR_FEED_SOURCES,
 } from "@/features/breeding-calendar/calendar-feed-token";
@@ -35,7 +36,8 @@ export type CreateOrRotateCalendarFeedResult =
   | {
       outcome: "success";
       feed: OrganizationCalendarFeedMetadata;
-      feedUrl: string;
+      /** Relative path only — never includes a host from request headers. */
+      feedPath: string;
       token: string;
     }
   | ErrorResult;
@@ -192,7 +194,6 @@ export async function getActiveOrganizationCalendarFeed(
 
 export async function createOrRotateOrganizationCalendarFeed(input: {
   sources?: Partial<CalendarFeedSources>;
-  origin: string;
   suppliedClient?: Supabase;
 }): Promise<CreateOrRotateCalendarFeedResult> {
   const supabase = input.suppliedClient ?? (await createClient());
@@ -225,11 +226,10 @@ export async function createOrRotateOrganizationCalendarFeed(input: {
     return failure(mapRpcReason(row?.reason));
   }
 
-  const origin = input.origin.replace(/\/$/, "");
   return {
     outcome: "success",
     token,
-    feedUrl: `${origin}/calendar/feed/${token}`,
+    feedPath: buildCalendarFeedPath(token),
     feed: {
       id: row.feed_id,
       organizationId: row.organization_id as string,

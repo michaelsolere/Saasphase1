@@ -38,6 +38,25 @@ export function calendarFeedTokenHint(token: string): string {
   return token.slice(-CALENDAR_FEED_TOKEN_HINT_LENGTH);
 }
 
+/** Relative private feed path. Never includes a host or scheme. */
+export function buildCalendarFeedPath(token: string): string {
+  if (!isCalendarFeedTokenFormat(token)) {
+    throw new Error("Invalid calendar feed token.");
+  }
+  return `/calendar/feed/${token}`;
+}
+
+/**
+ * Builds the absolute subscription URL from a relative path and the page origin.
+ * Call only in the browser with `window.location.origin` — never from proxy headers.
+ */
+export function absoluteCalendarFeedUrl(feedPath: string, pageOrigin: string): string {
+  if (!feedPath.startsWith("/calendar/feed/")) {
+    throw new Error("Invalid calendar feed path.");
+  }
+  return new URL(feedPath, pageOrigin).toString();
+}
+
 export function hasAtLeastOneCalendarFeedSource(sources: CalendarFeedSources): boolean {
   return (
     sources.includeLitterCare ||

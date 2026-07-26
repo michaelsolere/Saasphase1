@@ -9,6 +9,7 @@ import {
 } from "@/features/breeding-calendar/calendar-feed-actions";
 import {
   DEFAULT_CALENDAR_FEED_SOURCES,
+  absoluteCalendarFeedUrl,
   type CalendarFeedSources,
 } from "@/features/breeding-calendar/calendar-feed-token";
 import type { OrganizationCalendarFeedMetadata } from "@/features/breeding-calendar/calendar-feed-types";
@@ -136,7 +137,9 @@ export function CalendarFeedSubscriptionPanel({ initialFeed }: Props) {
       }
       setFeed(result.feed);
       setSources(sourcesFromFeed(result.feed));
-      setRevealedUrl(result.feedUrl);
+      setRevealedUrl(
+        absoluteCalendarFeedUrl(result.feedPath, window.location.origin),
+      );
       setEditingSources(false);
     });
   }
