@@ -81,6 +81,19 @@ const idKeys = [
   "commandOldRpcAttempt",
   "commandConfigRestoreHerpesForVariantConflict",
   "commandConfigRestoreStandardForUnavailable",
+  "foreignUser",
+  "foreignIdentity",
+  "foreignMembership",
+  "fatherAlt",
+  "motherForeignProbe",
+  "motherHistorical",
+  "litterHistorical",
+  "cycleHistorical",
+  "matingHistorical",
+  "commandForeignNoCmd",
+  "commandForeignReplaySource",
+  "commandViewerMating",
+  "commandHistorical",
 ] as const;
 
 const ids = Object.fromEntries(
@@ -92,6 +105,7 @@ const credentials = {
   member: ["gestation-autoapply-member@saasphase1.invalid", "GestationAutoApplyMember-2026!"],
   viewer: ["gestation-autoapply-viewer@saasphase1.invalid", "GestationAutoApplyViewer-2026!"],
   inactive: ["gestation-autoapply-inactive@saasphase1.invalid", "GestationAutoApplyInactive-2026!"],
+  foreign: ["gestation-autoapply-foreign@saasphase1.invalid", "GestationAutoApplyForeign-2026!"],
 } as const;
 
 function q(value: string) {
@@ -269,12 +283,14 @@ function createRoleFixtures() {
     [ids.memberUser, credentials.member[0], credentials.member[1]],
     [ids.viewerUser, credentials.viewer[0], credentials.viewer[1]],
     [ids.inactiveUser, credentials.inactive[0], credentials.inactive[1]],
+    [ids.foreignUser, credentials.foreign[0], credentials.foreign[1]],
   ] as const;
   const identities = [
     [ids.adminIdentity, ids.adminUser, credentials.admin[0]],
     [ids.memberIdentity, ids.memberUser, credentials.member[0]],
     [ids.viewerIdentity, ids.viewerUser, credentials.viewer[0]],
     [ids.inactiveIdentity, ids.inactiveUser, credentials.inactive[0]],
+    [ids.foreignIdentity, ids.foreignUser, credentials.foreign[0]],
   ] as const;
 
   sql(`
@@ -333,7 +349,9 @@ function createRoleFixtures() {
       (${q(ids.viewerMembership)}::uuid, ${q(ids.tempOrg)}::uuid, ${q(ids.viewerUser)}::uuid,
        'viewer', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.inactiveMembership)}::uuid, ${q(ids.tempOrg)}::uuid, ${q(ids.inactiveUser)}::uuid,
-       'member', 'disabled', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+       'member', 'disabled', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.foreignMembership)}::uuid, ${q(ids.otherOrg)}::uuid, ${q(ids.foreignUser)}::uuid,
+       'member', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -346,6 +364,8 @@ function createAnimalFixtures() {
     ["motherVariantConflict", "mère conflit de variante"],
     ["motherUnavailable", "mère modèle indisponible"],
     ["motherInjectError", "mère erreur injectée"],
+    ["motherForeignProbe", "mère sonde étrangère"],
+    ["motherHistorical", "mère historique"],
   ] as const;
 
   sql(`
@@ -355,6 +375,9 @@ function createAnimalFixtures() {
     ) values
       (${q(ids.father)}::uuid, ${q(ids.tempOrg)}::uuid,
        ${q(`${fixtureNamePrefix} père`)}, 'dog', 'Golden Retriever', 'male',
+       'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.fatherAlt)}::uuid, ${q(ids.tempOrg)}::uuid,
+       ${q(`${fixtureNamePrefix} père alternatif`)}, 'dog', 'Golden Retriever', 'male',
        'breeding', 'owned', true, false, false, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       ${mothers
         .map(
@@ -372,9 +395,17 @@ async function authenticatedClient(email: string, password: string): Promise<Sup
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
   );
-  const { error } = await client.auth.signInWithPassword({ email, password });
-  expect(error).toBeNull();
-  return client;
+  let lastError: { message?: string } | null = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { error } = await client.auth.signInWithPassword({ email, password });
+    if (!error) {
+      return client;
+    }
+    lastError = error;
+    await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+  }
+  expect(lastError).toBeNull();
+  throw new Error(`Unable to authenticate ${email}: ${lastError?.message ?? "unknown"}`);
 }
 
 function requireSuccess<T extends { outcome: string }>(result: T): T & { outcome: "success" } {
@@ -474,6 +505,7 @@ const state: {
   member?: SupabaseTestClient;
   viewer?: SupabaseTestClient;
   inactive?: SupabaseTestClient;
+  foreign?: SupabaseTestClient;
   standardOrgModelId?: string;
   herpesOrgModelId?: string;
   standardLitterId?: string;
@@ -494,7 +526,8 @@ test.beforeAll(async () => {
   state.member = await authenticatedClient(...credentials.member);
   state.viewer = await authenticatedClient(...credentials.viewer);
   state.inactive = await authenticatedClient(...credentials.inactive);
-}, { timeout: 180_000 });
+  state.foreign = await authenticatedClient(...credentials.foreign);
+}, { timeout: 300_000 });
 
 test.afterAll(() => {
   cleanup();
@@ -1076,6 +1109,7 @@ test("applique automatiquement le planning de gestation à la première saillie"
         occurredAt: "2026-06-01T10:00:00+02:00",
         timezoneName: "Europe/Paris",
         method: "natural",
+        litterName: `${fixtureNamePrefix} portée déjà appliquée`,
       },
       owner,
     ),
@@ -1119,6 +1153,7 @@ test("applique automatiquement le planning de gestation à la première saillie"
         occurredAt: "2026-06-01T10:00:00+02:00",
         timezoneName: "Europe/Paris",
         method: "natural",
+        litterName: `${fixtureNamePrefix} portée conflit de variante`,
       },
       owner,
     ),
@@ -1238,6 +1273,274 @@ test("applique automatiquement le planning de gestation à la première saillie"
   // --- changing the default never alters plans already applied on litters -------
   expect(litterPlanSnapshot(state.standardLitterId!)).toEqual(state.standardSnapshotAfterFirstMating);
   expect(litterPlanSnapshot(state.herpesLitterId!)).toEqual(state.herpesSnapshotAfterFirstMating);
+
+  // --- security: foreign org without existing orchestration command --------------
+  const foreign = state.foreign!;
+  const viewer = state.viewer!;
+
+  const cycleForeignProbe = requireSuccess(
+    await createReproductiveCycleCore(
+      {
+        motherId: ids.motherForeignProbe,
+        status: "in_progress",
+        startedOn: "2026-05-10",
+        notes: `${fixtureNamePrefix} cycle sonde étrangère`,
+      },
+      owner,
+    ),
+  ).cycle;
+
+  const foreignNoCommandRpc = await foreign.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
+    p_cycle_id: cycleForeignProbe.id,
+    p_client_command_id: ids.commandForeignNoCmd,
+    p_father_id: ids.father,
+    p_occurred_at: "2026-05-10T09:00:00+02:00",
+    p_timezone_name: "Europe/Paris",
+    p_method: "natural",
+    p_litter_name: `${fixtureNamePrefix} portée sonde étrangère`,
+  });
+  expect(foreignNoCommandRpc.error).toBeNull();
+  expect(foreignNoCommandRpc.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "cycle_not_found",
+    mating_id: null,
+    litter_id: null,
+    sequence_no: null,
+    replayed: false,
+    gestation_planning_outcome: null,
+    gestation_model_title: null,
+    gestation_variant_code: null,
+    litter_plan_id: null,
+    litter_plan_revision: null,
+    snapshot_count: 0,
+    materialized_count: 0,
+    pending_anchor_count: 0,
+  });
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'commands', (
+            select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+            where client_command_id = ${q(ids.commandForeignNoCmd)}::uuid
+          ),
+          'matings', (
+            select count(*) from public.reproductive_cycle_matings
+            where cycle_id = ${q(cycleForeignProbe.id)}::uuid
+          ),
+          'litters', (
+            select count(*) from public.litters where mother_id = ${q(ids.motherForeignProbe)}::uuid
+          ),
+          'plans', (
+            select count(*) from public.litter_plans
+            where litter_id in (
+              select id from public.litters where mother_id = ${q(ids.motherForeignProbe)}::uuid
+            )
+          )
+        )::text;
+      `),
+    ),
+  ).toEqual({ commands: 0, matings: 0, litters: 0, plans: 0 });
+
+  // --- security: foreign exact replay of a successful orchestration command -----
+  const authorizedSuccess = requireSuccess(
+    await recordReproductiveCycleMatingCore(
+      {
+        cycleId: cycleForeignProbe.id,
+        clientCommandId: ids.commandForeignReplaySource,
+        fatherId: ids.father,
+        occurredAt: "2026-05-10T09:00:00+02:00",
+        timezoneName: "Europe/Paris",
+        method: "natural",
+        litterName: `${fixtureNamePrefix} portée sonde étrangère`,
+      },
+      owner,
+    ),
+  );
+  expect(authorizedSuccess.replayed).toBe(false);
+
+  const registryBeforeForeignReplay = Number(
+    sql(`
+      select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+      where client_command_id = ${q(ids.commandForeignReplaySource)}::uuid;
+    `),
+  );
+  expect(registryBeforeForeignReplay).toBe(1);
+
+  const foreignReplayRpc = await foreign.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
+    p_cycle_id: cycleForeignProbe.id,
+    p_client_command_id: ids.commandForeignReplaySource,
+    p_father_id: ids.father,
+    p_occurred_at: "2026-05-10T09:00:00+02:00",
+    p_timezone_name: "Europe/Paris",
+    p_method: "natural",
+    p_litter_name: `${fixtureNamePrefix} portée sonde étrangère`,
+  });
+  expect(foreignReplayRpc.error).toBeNull();
+  expect(foreignReplayRpc.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "cycle_not_found",
+    mating_id: null,
+    litter_id: null,
+    sequence_no: null,
+    replayed: false,
+    gestation_planning_outcome: null,
+    gestation_model_title: null,
+    gestation_variant_code: null,
+    litter_plan_id: null,
+    snapshot_count: 0,
+    materialized_count: 0,
+    pending_anchor_count: 0,
+  });
+  expect(
+    Number(
+      sql(`
+        select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+        where client_command_id = ${q(ids.commandForeignReplaySource)}::uuid;
+      `),
+    ),
+  ).toBe(1);
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'matingId', mating_id, 'litterId', litter_id, 'outcome', mating_outcome
+        )::text
+        from public.reproductive_cycle_mating_gestation_plan_commands
+        where client_command_id = ${q(ids.commandForeignReplaySource)}::uuid;
+      `),
+    ),
+  ).toEqual({
+    matingId: authorizedSuccess.matingId,
+    litterId: authorizedSuccess.litterId,
+    outcome: "success",
+  });
+
+  // --- security: viewer of the owning organization ------------------------------
+  const viewerRpc = await viewer.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
+    p_cycle_id: cycleForeignProbe.id,
+    p_client_command_id: ids.commandViewerMating,
+    p_father_id: ids.father,
+    p_occurred_at: "2026-05-10T10:00:00+02:00",
+    p_timezone_name: "Europe/Paris",
+    p_method: "natural",
+    p_litter_name: `${fixtureNamePrefix} portée viewer`,
+  });
+  expect(viewerRpc.error).toBeNull();
+  expect(viewerRpc.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "membership_required",
+    mating_id: null,
+    litter_id: null,
+    litter_plan_id: null,
+    gestation_planning_outcome: null,
+    replayed: false,
+  });
+  expect(
+    Number(
+      sql(`
+        select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+        where client_command_id = ${q(ids.commandViewerMating)}::uuid;
+      `),
+    ),
+  ).toBe(0);
+
+  // --- security: historical mating without registry (exact + conflicts) ---------
+  const historicalLitterName = `${fixtureNamePrefix} portée historique`;
+  sql(`
+    insert into public.litters (
+      id, organization_id, name, species, breed, mother_id, father_id, status,
+      mating_date, created_by, updated_by
+    ) values (
+      ${q(ids.litterHistorical)}::uuid, ${q(ids.tempOrg)}::uuid,
+      ${q(historicalLitterName)}, 'dog', 'Golden Retriever',
+      ${q(ids.motherHistorical)}::uuid, ${q(ids.father)}::uuid, 'mating_done',
+      '2026-05-12', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+
+    insert into public.reproductive_cycles (
+      id, organization_id, mother_id, species, breed, status, started_on, litter_id, notes,
+      created_by, updated_by
+    ) values (
+      ${q(ids.cycleHistorical)}::uuid, ${q(ids.tempOrg)}::uuid, ${q(ids.motherHistorical)}::uuid,
+      'dog', 'Golden Retriever', 'mated', '2026-05-12', ${q(ids.litterHistorical)}::uuid,
+      ${q(`${fixtureNamePrefix} cycle historique`)}, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+
+    insert into public.reproductive_cycle_matings (
+      id, organization_id, cycle_id, father_id, sequence_no, occurred_at, timezone_name, method,
+      location, note, client_command_id, created_by, updated_by
+    ) values (
+      ${q(ids.matingHistorical)}::uuid, ${q(ids.tempOrg)}::uuid, ${q(ids.cycleHistorical)}::uuid,
+      ${q(ids.father)}::uuid, 1, '2026-05-12T09:00:00+02:00'::timestamptz, 'Europe/Paris', 'natural',
+      null, null, ${q(ids.commandHistorical)}::uuid, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+  `);
+
+  const conflictBase = {
+    cycleId: ids.cycleHistorical,
+    clientCommandId: ids.commandHistorical,
+    fatherId: ids.father,
+    occurredAt: "2026-05-12T09:00:00+02:00",
+    timezoneName: "Europe/Paris",
+    method: "natural" as const,
+    litterName: historicalLitterName,
+  };
+
+  const conflictCases = [
+    { ...conflictBase, fatherId: ids.fatherAlt },
+    { ...conflictBase, occurredAt: "2026-05-12T10:00:00+02:00" },
+    { ...conflictBase, timezoneName: "Europe/Berlin" },
+    { ...conflictBase, method: "ai_fresh" as const },
+    { ...conflictBase, location: "chenil A" },
+    { ...conflictBase, note: "note forgée" },
+    { ...conflictBase, litterName: `${fixtureNamePrefix} autre nom` },
+    { ...conflictBase, estimatedOvulationDate: "2026-05-13" },
+  ] as const;
+
+  for (const conflictInput of conflictCases) {
+    const conflict = await recordReproductiveCycleMatingCore(conflictInput, owner);
+    expect(conflict).toMatchObject({
+      outcome: "error",
+      error: { code: "conflict" },
+    });
+  }
+
+  expect(
+    Number(
+      sql(`
+        select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+        where client_command_id = ${q(ids.commandHistorical)}::uuid;
+      `),
+    ),
+  ).toBe(0);
+  expect(
+    Number(
+      sql(`
+        select count(*) from public.litter_plans
+        where litter_id = ${q(ids.litterHistorical)}::uuid;
+      `),
+    ),
+  ).toBe(0);
+
+  const historicalExact = requireSuccess(
+    await recordReproductiveCycleMatingCore(conflictBase, owner),
+  );
+  expect(historicalExact).toMatchObject({
+    matingId: ids.matingHistorical,
+    litterId: ids.litterHistorical,
+    sequenceNo: 1,
+    replayed: true,
+    gestationPlanningOutcome: "not_configured",
+  });
+  expect(
+    Number(
+      sql(`
+        select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+        where client_command_id = ${q(ids.commandHistorical)}::uuid;
+      `),
+    ),
+  ).toBe(1);
 
   // --- inject error: full rollback of mating + litter + plan ---------------------
   const cycleInjectError = requireSuccess(

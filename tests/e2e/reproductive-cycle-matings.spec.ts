@@ -118,35 +118,54 @@ function fixtureAnimalIdsSql() {
     .join(", ");
 }
 
+function fixtureCycleScopeSql() {
+  return `
+    select id
+    from public.reproductive_cycles
+    where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+      and (
+        mother_id in (${fixtureAnimalIdsSql()})
+        or notes like ${q(`${fixtureNamePrefix}%`)}
+        or id::text like '9f180002-%'
+      )
+  `;
+}
+
 function cleanup() {
   sql(`
     drop function if exists public.e2e_hold_reproductive_mating_father(uuid);
     drop function if exists public.e2e_hold_foreign_reproductive_cycle(uuid);
 
+    delete from public.reproductive_cycle_mating_gestation_plan_commands
+    where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+      and (
+        cycle_id in (${fixtureCycleScopeSql()})
+        or client_command_id::text like '9f180002-%'
+        or id::text like '9f180002-%'
+      );
+
     delete from public.reproductive_cycle_matings
-    where cycle_id in (
-      select id
-      from public.reproductive_cycles
-      where mother_id in (${fixtureAnimalIdsSql()})
-         or notes like ${q(`${fixtureNamePrefix}%`)}
-    )
-       or id::text like '9f180002-%';
+    where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+      and (
+        cycle_id in (${fixtureCycleScopeSql()})
+        or id::text like '9f180002-%'
+        or client_command_id::text like '9f180002-%'
+      );
 
     delete from public.progesterone_measurements
-    where cycle_id in (
-      select id
-      from public.reproductive_cycles
-      where mother_id in (${fixtureAnimalIdsSql()})
-         or notes like ${q(`${fixtureNamePrefix}%`)}
-    );
+    where cycle_id in (${fixtureCycleScopeSql()});
 
     delete from public.reproductive_cycles
-    where mother_id in (${fixtureAnimalIdsSql()})
-       or notes like ${q(`${fixtureNamePrefix}%`)}
-       or id::text like '9f180002-%';
+    where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+      and (
+        mother_id in (${fixtureAnimalIdsSql()})
+        or notes like ${q(`${fixtureNamePrefix}%`)}
+        or id::text like '9f180002-%'
+      );
 
     delete from public.litters
-    where name like ${q(`${fixtureNamePrefix}%`)};
+    where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+      and name like ${q(`${fixtureNamePrefix}%`)};
 
     delete from public.animals
     where id in (${fixtureAnimalIdsSql()});
@@ -162,38 +181,46 @@ function remainingFixtureCounts() {
   return JSON.parse(
     sql(`
       select json_build_object(
+        'reproductive_cycle_mating_gestation_plan_commands', (
+          select count(*)
+          from public.reproductive_cycle_mating_gestation_plan_commands
+          where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+            and (
+              cycle_id in (${fixtureCycleScopeSql()})
+              or client_command_id::text like '9f180002-%'
+              or id::text like '9f180002-%'
+            )
+        ),
         'reproductive_cycle_matings', (
           select count(*)
           from public.reproductive_cycle_matings
-          where cycle_id in (
-            select id
-            from public.reproductive_cycles
-            where mother_id in (${fixtureAnimalIdsSql()})
-               or notes like ${q(`${fixtureNamePrefix}%`)}
-          )
-             or id::text like '9f180002-%'
+          where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+            and (
+              cycle_id in (${fixtureCycleScopeSql()})
+              or id::text like '9f180002-%'
+              or client_command_id::text like '9f180002-%'
+            )
         ),
         'progesterone_measurements', (
           select count(*)
           from public.progesterone_measurements
-          where cycle_id in (
-            select id
-            from public.reproductive_cycles
-            where mother_id in (${fixtureAnimalIdsSql()})
-               or notes like ${q(`${fixtureNamePrefix}%`)}
-          )
+          where cycle_id in (${fixtureCycleScopeSql()})
         ),
         'reproductive_cycles', (
           select count(*)
           from public.reproductive_cycles
-          where mother_id in (${fixtureAnimalIdsSql()})
-             or notes like ${q(`${fixtureNamePrefix}%`)}
-             or id::text like '9f180002-%'
+          where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+            and (
+              mother_id in (${fixtureAnimalIdsSql()})
+              or notes like ${q(`${fixtureNamePrefix}%`)}
+              or id::text like '9f180002-%'
+            )
         ),
         'litters', (
           select count(*)
           from public.litters
-          where name like ${q(`${fixtureNamePrefix}%`)}
+          where organization_id in (${q(organizationId)}::uuid, ${q(ids.otherOrganization)}::uuid)
+            and name like ${q(`${fixtureNamePrefix}%`)}
         ),
         'animals', (
           select count(*) from public.animals
@@ -670,6 +697,9 @@ test("records idempotent reproductive cycle matings and links exactly one litter
           occurredAt: "2026-07-20T10:30:00+02:00",
           timezoneName: "Europe/Paris",
           method: "natural",
+          location: "Élevage E2E",
+          note: `${fixtureNamePrefix} première saillie`,
+          litterName: `${fixtureNamePrefix} principale`,
         },
         owner,
       ),
