@@ -329,7 +329,7 @@ test("utilise le jour civil Europe/Paris après minuit, même lorsque UTC est en
       matingDetails,
       midnightParisInstant,
     ),
-  ).toBe("J+1 depuis la première saillie");
+  ).toBe("J+2 depuis l’ovulation estimée automatiquement");
 
   expect(isUpcoming("2026-07-18", midnightParisInstant)).toBe(false);
   expect(isUpcoming("2026-07-19", midnightParisInstant)).toBe(true);
@@ -382,7 +382,7 @@ test("affiche le cockpit journal actif en lecture seule sans divulguer les autre
 
     await selector.selectOption(ids.mated);
     await expect(page).toHaveURL(new RegExp(`\\?litter=${ids.mated}$`));
-    await expect(page.getByText("J+10 depuis la première saillie")).toBeVisible();
+    await expect(page.getByText("J+11 depuis l’ovulation estimée automatiquement")).toBeVisible();
     await expect(page.getByText("Saillie réalisée")).toBeVisible();
 
     await page.goto(`/litters/journal?litter=${ids.born}`);

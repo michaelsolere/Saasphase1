@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.types";
 
+import { resolveGestationAnchorDate } from "./gestation-anchor";
+
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
 
@@ -1159,7 +1161,10 @@ function litterAnchorDate(
     case "first_mating":
       return litter.mating_date;
     case "estimated_ovulation":
-      return litter.estimated_ovulation_date;
+      return resolveGestationAnchorDate({
+        estimatedOvulationDate: litter.estimated_ovulation_date,
+        matingDate: litter.mating_date,
+      });
     case "expected_birth":
       return litter.expected_birth_date;
     case "actual_birth":
