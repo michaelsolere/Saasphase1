@@ -2631,10 +2631,193 @@ export type Database = {
         Update: { anchor_type?: string; created_at?: string; created_by?: string; display_order?: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind?: string; model_id?: string; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
         Relationships: []
       }
+      litter_planning_model_library_import_commands: {
+        Row: {
+          already_imported_count: number
+          client_command_id: string
+          created_at: string
+          created_by: string
+          elementary_already_imported_count: number
+          elementary_imported_count: number
+          elementary_result: Json
+          id: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Insert: {
+          already_imported_count: number
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          elementary_already_imported_count: number
+          elementary_imported_count: number
+          elementary_result: Json
+          id?: string
+          imported_count: number
+          initial_is_active: boolean
+          organization_id: string
+          result: Json
+          selection: Json
+        }
+        Update: {
+          already_imported_count?: number
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          elementary_already_imported_count?: number
+          elementary_imported_count?: number
+          elementary_result?: Json
+          id?: string
+          imported_count?: number
+          initial_is_active?: boolean
+          organization_id?: string
+          result?: Json
+          selection?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_library_import_comma_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_library_import_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_planning_model_library_items: {
+        Row: {
+          anchor_type: string
+          created_at: string
+          display_order: number
+          id: string
+          is_required: boolean
+          is_selected_by_default: boolean
+          item_kind: string
+          library_model_code: string
+          library_model_version: number
+          library_template_code: string
+          library_template_version: number
+          point_local_time: string | null
+          point_offset_days: number | null
+          priority: string
+          window_ends_local_time: string | null
+          window_ends_offset_days: number | null
+          window_starts_local_time: string | null
+          window_starts_offset_days: number | null
+        }
+        Insert: {
+          anchor_type: string
+          created_at?: string
+          display_order: number
+          id?: string
+          is_required?: boolean
+          is_selected_by_default?: boolean
+          item_kind: string
+          library_model_code: string
+          library_model_version: number
+          library_template_code: string
+          library_template_version: number
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority?: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Update: {
+          anchor_type?: string
+          created_at?: string
+          display_order?: number
+          id?: string
+          is_required?: boolean
+          is_selected_by_default?: boolean
+          item_kind?: string
+          library_model_code?: string
+          library_model_version?: number
+          library_template_code?: string
+          library_template_version?: number
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority?: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_library_items_model_fk"
+            columns: ["library_model_code", "library_model_version"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_model_library_models"
+            referencedColumns: ["code", "version"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_library_items_template_fk"
+            columns: ["library_template_code", "library_template_version"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_library_templates"
+            referencedColumns: ["code", "version"]
+          },
+        ]
+      }
+      litter_planning_model_library_models: {
+        Row: {
+          breed: string | null
+          code: string
+          created_at: string
+          description: string | null
+          family_code: string
+          is_available: boolean
+          sort_order: number
+          species: string
+          title: string
+          variant_code: string
+          version: number
+        }
+        Insert: {
+          breed?: string | null
+          code: string
+          created_at?: string
+          description?: string | null
+          family_code: string
+          is_available?: boolean
+          sort_order?: number
+          species: string
+          title: string
+          variant_code: string
+          version: number
+        }
+        Update: {
+          breed?: string | null
+          code?: string
+          created_at?: string
+          description?: string | null
+          family_code?: string
+          is_available?: boolean
+          sort_order?: number
+          species?: string
+          title?: string
+          variant_code?: string
+          version?: number
+        }
+        Relationships: []
+      }
       litter_planning_models: {
-        Row: { breed: string | null; created_at: string; created_by: string; description: string | null; id: string; is_active: boolean; organization_id: string; revision: number; species: string | null; title: string; updated_at: string; updated_by: string }
-        Insert: { breed?: string | null; created_at?: string; created_by: string; description?: string | null; id?: string; is_active?: boolean; organization_id: string; revision?: number; species?: string | null; title: string; updated_at?: string; updated_by: string }
-        Update: { breed?: string | null; created_at?: string; created_by?: string; description?: string | null; id?: string; is_active?: boolean; organization_id?: string; revision?: number; species?: string | null; title?: string; updated_at?: string; updated_by?: string }
+        Row: { breed: string | null; created_at: string; created_by: string; description: string | null; id: string; is_active: boolean; library_model_code: string | null; library_model_version: number | null; organization_id: string; revision: number; species: string | null; title: string; updated_at: string; updated_by: string }
+        Insert: { breed?: string | null; created_at?: string; created_by: string; description?: string | null; id?: string; is_active?: boolean; library_model_code?: string | null; library_model_version?: number | null; organization_id: string; revision?: number; species?: string | null; title: string; updated_at?: string; updated_by: string }
+        Update: { breed?: string | null; created_at?: string; created_by?: string; description?: string | null; id?: string; is_active?: boolean; library_model_code?: string | null; library_model_version?: number | null; organization_id?: string; revision?: number; species?: string | null; title?: string; updated_at?: string; updated_by?: string }
         Relationships: []
       }
       litter_care_tasks: {
@@ -6512,6 +6695,25 @@ export type Database = {
         }
         Returns: {
           already_imported_count: number
+          imported_count: number
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
+        }[]
+      }
+      import_litter_planning_model_library_models: {
+        Args: {
+          p_client_command_id: string
+          p_is_active: boolean
+          p_organization_id: string
+          p_selection: Json
+        }
+        Returns: {
+          already_imported_count: number
+          elementary_already_imported_count: number
+          elementary_imported_count: number
+          elementary_result: Json
           imported_count: number
           outcome: string
           reason: string
