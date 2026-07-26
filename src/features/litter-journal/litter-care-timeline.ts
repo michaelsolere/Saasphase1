@@ -1,3 +1,4 @@
+import { formatLitterJournalBusinessDate } from "./date";
 import type {
   LitterCareCalendarCategoryFilter,
   LitterCareCalendarKindFilter,
@@ -105,7 +106,10 @@ export type LitterCareTimelineProjection = {
   categories: LitterCareTimelineCategoryLane[];
   unpositionedCount: number;
   hasPlannedItems: boolean;
-  hasFilteredItems: boolean;
+  /** At least one task matches the current kind/category filters. */
+  hasMatchingItems: boolean;
+  /** At least one matching task intersects the visible zoom period. */
+  hasVisibleItems: boolean;
   referenceDate: string;
 };
 
@@ -165,11 +169,41 @@ function isCivilDate(value: string | null | undefined): value is string {
   );
 }
 
-function toCivilDate(value: string | null | undefined): string | null {
-  if (!value) return null;
-  if (isCivilDate(value)) return value;
-  const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-  return match && isCivilDate(match[1]) ? match[1] : null;
+/** Strict SQL civil date (`YYYY-MM-DD`). Rejects timestamps. */
+export function parseTimelineCivilDate(value: string | null | undefined): string | null {
+  return isCivilDate(value) ? value : null;
+}
+
+/** Convert a timestamptz instant to the litter-journal business civil date (Europe/Paris). */
+export function timelineBusinessDateFromInstant(
+  value: string | null | undefined,
+): string | null {
+  if (!value || typeof value !== "string") return null;
+  const trimmed = value.trim();
+  // Civil SQL dates must use parseTimelineCivilDate — never silently slice timestamps.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+
+  let normalized = trimmed.replace(" ", "T");
+  // Supabase/Postgres may return UTC timestamptz without an explicit offset.
+  if (
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(normalized)
+  ) {
+    normalized = `${normalized}Z`;
+  }
+
+  const instant = new Date(normalized);
+  if (Number.isNaN(instant.getTime())) return null;
+  return formatLitterJournalBusinessDate(instant);
+}
+
+/**
+ * `pregnancy_confirmed_at` is stored as SQL `date`, but callers may still pass an
+ * ISO instant in memory/tests — accept civil dates first, then business instants.
+ */
+export function timelineDateFromCivilOrInstant(
+  value: string | null | undefined,
+): string | null {
+  return parseTimelineCivilDate(value) ?? timelineBusinessDateFromInstant(value);
 }
 
 function dateParts(value: string) {
@@ -252,7 +286,7 @@ export function getLitterCareTimelineZoom(
 export function resolveLitterCareTimelineAnchor(
   details: LitterJournalDetails | null,
 ): LitterCareTimelineAnchor {
-  const ovulation = toCivilDate(details?.estimated_ovulation_date);
+  const ovulation = parseTimelineCivilDate(details?.estimated_ovulation_date);
   if (ovulation) {
     return {
       kind: "estimated_ovulation",
@@ -261,7 +295,7 @@ export function resolveLitterCareTimelineAnchor(
     };
   }
 
-  const mating = toCivilDate(details?.mating_date);
+  const mating = parseTimelineCivilDate(details?.mating_date);
   if (mating) {
     return {
       kind: "first_mating",
@@ -297,18 +331,18 @@ export function buildLitterCareTimelineBiologicalWeeks(anchorDate: string) {
 
 function taskPointDate(task: LitterCareTaskSummary): string | null {
   if (task.itemKind === "window") return null;
-  return toCivilDate(task.plannedFor) ?? toCivilDate(task.suggestedFor);
+  return parseTimelineCivilDate(task.plannedFor) ?? parseTimelineCivilDate(task.suggestedFor);
 }
 
 function taskWindowRange(task: LitterCareTaskSummary): { startsOn: string; endsOn: string; suggestedOnly: boolean } | null {
   if (task.itemKind !== "window") return null;
-  const retainedStart = toCivilDate(task.retainedStartsOn);
-  const retainedEnd = toCivilDate(task.retainedEndsOn);
+  const retainedStart = parseTimelineCivilDate(task.retainedStartsOn);
+  const retainedEnd = parseTimelineCivilDate(task.retainedEndsOn);
   if (retainedStart && retainedEnd && retainedStart <= retainedEnd) {
     return { startsOn: retainedStart, endsOn: retainedEnd, suggestedOnly: false };
   }
-  const suggestedStart = toCivilDate(task.suggestedStartsOn);
-  const suggestedEnd = toCivilDate(task.suggestedEndsOn);
+  const suggestedStart = parseTimelineCivilDate(task.suggestedStartsOn);
+  const suggestedEnd = parseTimelineCivilDate(task.suggestedEndsOn);
   if (suggestedStart && suggestedEnd && suggestedStart <= suggestedEnd) {
     return { startsOn: suggestedStart, endsOn: suggestedEnd, suggestedOnly: true };
   }
@@ -320,7 +354,7 @@ function taskSpan(task: LitterCareTaskSummary): { startsOn: string; endsOn: stri
   const date = taskPointDate(task);
   if (!date) return null;
   const suggestedOnly =
-    !toCivilDate(task.plannedFor) && Boolean(toCivilDate(task.suggestedFor));
+    !parseTimelineCivilDate(task.plannedFor) && Boolean(parseTimelineCivilDate(task.suggestedFor));
   return { startsOn: date, endsOn: date, suggestedOnly };
 }
 
@@ -342,13 +376,13 @@ function collectUsableDates(
 ) {
   const dates: string[] = [];
   const push = (value: string | null | undefined) => {
-    const date = toCivilDate(value);
+    const date = parseTimelineCivilDate(value);
     if (date) dates.push(date);
   };
   push(details?.estimated_ovulation_date);
   push(details?.mating_date);
   push(details?.mating_date_2);
-  push(toCivilDate(details?.pregnancy_confirmed_at));
+  push(timelineDateFromCivilOrInstant(details?.pregnancy_confirmed_at));
   push(litter.expected_birth_date);
   push(litter.actual_birth_date);
   for (const task of tasks) {
@@ -387,7 +421,7 @@ function resolveCycleRange({
     ...usable,
     anchor.date ? addLitterCareTimelineCivilDays(anchor.date, 63) : null,
   ]
-    .map((value) => toCivilDate(value))
+    .map((value) => parseTimelineCivilDate(value))
     .filter((value): value is string => Boolean(value))
     .sort();
 
@@ -566,9 +600,10 @@ function buildAccessibleLabel(item: {
         ? "programmation suggérée"
         : "programmation suggérée";
   const overdue = item.isOverdue ? " ; en retard" : "";
+  const resolvedDate = timelineBusinessDateFromInstant(item.resolvedAt);
   const resolved =
-    item.status === "done" && item.resolvedAt
-      ? ` ; réalisée le ${formatFullCivilDate(toCivilDate(item.resolvedAt) ?? item.resolvedAt.slice(0, 10))}`
+    item.status === "done" && resolvedDate
+      ? ` ; réalisée le ${formatFullCivilDate(resolvedDate)}`
       : "";
   return `${kindLabels[item.kind]} ; ${item.title} ; ${litterCareTaskCategoryLabels[item.category]} ; ${period} ; ${statusLabels[item.status]} ; ${schedule}${overdue}${resolved}`;
 }
@@ -588,11 +623,11 @@ function buildHeader({
 }): LitterCareTimelineHeader {
   const mother = litter.mother_display_name?.trim() || "Mère non renseignée";
   const father = litter.father_display_name?.trim() || "Père non renseigné";
-  const ovulation = toCivilDate(details?.estimated_ovulation_date);
-  const mating1 = toCivilDate(details?.mating_date);
-  const mating2 = toCivilDate(details?.mating_date_2);
-  const expectedBirth = toCivilDate(litter.expected_birth_date);
-  const actualBirth = toCivilDate(litter.actual_birth_date);
+  const ovulation = parseTimelineCivilDate(details?.estimated_ovulation_date);
+  const mating1 = parseTimelineCivilDate(details?.mating_date);
+  const mating2 = parseTimelineCivilDate(details?.mating_date_2);
+  const expectedBirth = parseTimelineCivilDate(litter.expected_birth_date);
+  const actualBirth = parseTimelineCivilDate(litter.actual_birth_date);
   const next = findNextAction(tasks, todayDate);
 
   let biologicalDayLabel: string | null = null;
@@ -662,27 +697,27 @@ function buildMarkers({
 
   push(
     "estimated_ovulation",
-    toCivilDate(details?.estimated_ovulation_date),
+    parseTimelineCivilDate(details?.estimated_ovulation_date),
     "Ovulation estimée",
     "diamond",
   );
-  push("first_mating", toCivilDate(details?.mating_date), "Première saillie", "dot");
-  push("second_mating", toCivilDate(details?.mating_date_2), "Deuxième saillie", "dot");
+  push("first_mating", parseTimelineCivilDate(details?.mating_date), "Première saillie", "dot");
+  push("second_mating", parseTimelineCivilDate(details?.mating_date_2), "Deuxième saillie", "dot");
   push(
     "pregnancy_confirmed",
-    toCivilDate(details?.pregnancy_confirmed_at),
+    timelineDateFromCivilOrInstant(details?.pregnancy_confirmed_at),
     "Confirmation de gestation",
     "dot",
   );
   push(
     "expected_birth",
-    toCivilDate(litter.expected_birth_date),
+    parseTimelineCivilDate(litter.expected_birth_date),
     "Mise-bas centrale estimée",
     "diamond",
   );
   push(
     "actual_birth",
-    toCivilDate(litter.actual_birth_date),
+    parseTimelineCivilDate(litter.actual_birth_date),
     "Naissance réelle",
     "dot",
     "strong",
@@ -860,7 +895,8 @@ export function projectLitterCareTimeline({
     categories,
     unpositionedCount,
     hasPlannedItems: tasks.length > 0,
-    hasFilteredItems: filtered.length > 0,
+    hasMatchingItems: filtered.length > 0,
+    hasVisibleItems: projected.length > 0,
     referenceDate: visible.referenceDate,
   };
 }

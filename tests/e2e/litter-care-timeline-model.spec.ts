@@ -8,8 +8,10 @@ import {
   getLitterCareTimelineCategoryOrder,
   getLitterCareTimelineWeekStart,
   packLitterCareTimelineLanes,
+  parseTimelineCivilDate,
   projectLitterCareTimeline,
   resolveLitterCareTimelineAnchor,
+  timelineBusinessDateFromInstant,
 } from "../../src/features/litter-journal/litter-care-timeline";
 import type {
   LitterJournalDetails,
@@ -450,4 +452,123 @@ test("ordonne les catégories et calcule la prochaine action", () => {
   expect(projection.header.nextActionLabel).toBe("radiographie de comptage");
   expect(projection.header.parentsLabel).toBe("Salomé × Mistral");
   expect(projection.header.statusLabel).toBe("Gestation confirmée");
+});
+
+test("convertit les timestamptz dans le fuseau métier Europe/Paris", () => {
+  expect(parseTimelineCivilDate("2026-06-01T22:30:00.000Z")).toBeNull();
+  expect(parseTimelineCivilDate("2026-06-02")).toBe("2026-06-02");
+  expect(timelineBusinessDateFromInstant("2026-06-01T22:30:00.000Z")).toBe("2026-06-02");
+  expect(timelineBusinessDateFromInstant("2026-06-01T22:30:00")).toBe("2026-06-02");
+  expect(timelineBusinessDateFromInstant("2026-06-01 22:30:00")).toBe("2026-06-02");
+  // Hiver (UTC+1) : 23:30Z tombe après minuit à Paris.
+  expect(timelineBusinessDateFromInstant("2026-01-15T23:30:00.000Z")).toBe("2026-01-16");
+  // Veille du changement d’heure 2026 : 23:30Z = 00:30 le 29 à Paris.
+  expect(timelineBusinessDateFromInstant("2026-03-28T23:30:00.000Z")).toBe("2026-03-29");
+  expect(timelineBusinessDateFromInstant("not-a-date")).toBeNull();
+  expect(timelineBusinessDateFromInstant(null)).toBeNull();
+  expect(timelineBusinessDateFromInstant("2026-06-02")).toBeNull();
+
+  const beforeDetails = details({
+    pregnancy_confirmed_at: "2026-06-01T22:30:00.000Z",
+    estimated_ovulation_date: "2026-05-01",
+    mating_date: "2026-05-03",
+    mating_date_2: null,
+  });
+  const snapshot = JSON.stringify(beforeDetails);
+  const tasks = [
+    task({
+      id: "done",
+      plannedFor: "2026-06-10",
+      status: "done",
+      resolvedAt: "2026-06-01T22:30:00.000Z",
+      title: "Échographie",
+    }),
+    task({
+      id: "invalid-resolved",
+      plannedFor: "2026-06-11",
+      status: "done",
+      resolvedAt: "invalid",
+      title: "Sans date métier",
+    }),
+  ];
+  const beforeTasks = JSON.stringify(tasks);
+
+  const projection = projectLitterCareTimeline({
+    litter: litter({
+      expected_birth_date: "2026-07-03",
+      actual_birth_date: null,
+    }),
+    details: beforeDetails,
+    tasks,
+    todayDate: "2026-06-10",
+    zoom: "cycle",
+  })!;
+
+  expect(
+    projection.markers.find((marker) => marker.kind === "pregnancy_confirmed"),
+  ).toMatchObject({ date: "2026-06-02" });
+
+  const civilConfirmation = projectLitterCareTimeline({
+    litter: litter({ expected_birth_date: "2026-07-03" }),
+    details: details({
+      pregnancy_confirmed_at: "2026-06-02",
+      estimated_ovulation_date: "2026-05-01",
+      mating_date: "2026-05-03",
+      mating_date_2: null,
+    }),
+    tasks: [],
+    todayDate: "2026-06-10",
+    zoom: "cycle",
+  })!;
+  expect(
+    civilConfirmation.markers.find((marker) => marker.kind === "pregnancy_confirmed"),
+  ).toMatchObject({ date: "2026-06-02" });
+  expect(
+    projection.categories
+      .flatMap((category) => category.items)
+      .find((item) => item.id === "done")?.accessibleLabel,
+  ).toContain("réalisée le 2 juin 2026");
+  expect(
+    projection.categories
+      .flatMap((category) => category.items)
+      .find((item) => item.id === "invalid-resolved")?.accessibleLabel,
+  ).not.toContain("réalisée le");
+  expect(JSON.stringify(beforeDetails)).toBe(snapshot);
+  expect(JSON.stringify(tasks)).toBe(beforeTasks);
+});
+
+test("distingue filtres correspondants et éléments visibles dans la période", () => {
+  const tasks = [
+    task({
+      id: "august",
+      plannedFor: "2026-08-10",
+      category: "veterinary",
+      title: "Contrôle d’août",
+    }),
+  ];
+  const before = JSON.stringify(tasks);
+  const projection = projectLitterCareTimeline({
+    litter: litter({
+      expected_birth_date: "2026-09-01",
+      actual_birth_date: null,
+    }),
+    details: details({
+      estimated_ovulation_date: "2026-07-01",
+      mating_date: "2026-07-03",
+      mating_date_2: null,
+      pregnancy_confirmed_at: null,
+    }),
+    tasks,
+    todayDate: "2026-09-15",
+    zoom: "week",
+    requestedDate: "2026-09-15",
+    kind: "task",
+    category: "veterinary",
+  })!;
+
+  expect(projection.hasPlannedItems).toBe(true);
+  expect(projection.hasMatchingItems).toBe(true);
+  expect(projection.hasVisibleItems).toBe(false);
+  expect(projection.categories).toHaveLength(0);
+  expect(JSON.stringify(tasks)).toBe(before);
 });

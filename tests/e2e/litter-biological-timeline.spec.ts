@@ -39,6 +39,50 @@ async function login(page: Page) {
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
 
+async function assertTodayLineAligned(page: Page, today: string) {
+  const cell = page.locator(`[data-timeline-date="${today}"]`);
+  const line = page.locator("[data-timeline-today-line]");
+  await expect(cell).toBeVisible();
+  await expect(line).toBeVisible();
+  const cellBox = await cell.boundingBox();
+  const lineBox = await line.boundingBox();
+  expect(cellBox, "date cell bounding box").toBeTruthy();
+  expect(lineBox, "today line bounding box").toBeTruthy();
+  const cellCenter = cellBox!.x + cellBox!.width / 2;
+  const lineCenter = lineBox!.x + lineBox!.width / 2;
+  expect(Math.abs(cellCenter - lineCenter)).toBeLessThan(4);
+}
+
+async function assertMarkersNotStacked(page: Page, date: string, expectedCount: number) {
+  const markers = page.locator(
+    `[data-timeline-biology-cell="${date}"] [data-timeline-marker]`,
+  );
+  await expect(markers).toHaveCount(expectedCount);
+  const boxes = await markers.evaluateAll((nodes) =>
+    nodes.map((node) => {
+      const rect = node.getBoundingClientRect();
+      return {
+        x: Math.round(rect.x * 10) / 10,
+        y: Math.round(rect.y * 10) / 10,
+        width: rect.width,
+        height: rect.height,
+        label: node.getAttribute("aria-label"),
+      };
+    }),
+  );
+  expect(boxes.every((box) => box.width > 0 && box.height > 0)).toBe(true);
+  expect(new Set(boxes.map((box) => `${box.x}:${box.y}`)).size).toBe(boxes.length);
+  expect(new Set(boxes.map((box) => box.label)).size).toBe(boxes.length);
+
+  const biology = page.locator("[data-timeline-biology-row]");
+  const nextRow = page.locator("[data-timeline-category]").first();
+  const biologyBox = await biology.boundingBox();
+  const nextBox = await nextRow.boundingBox();
+  expect(biologyBox).toBeTruthy();
+  expect(nextBox).toBeTruthy();
+  expect(biologyBox!.y + biologyBox!.height).toBeLessThanOrEqual(nextBox!.y + 1);
+}
+
 test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", async ({
   page,
 }) => {
@@ -95,6 +139,48 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
       name: `E2E frise civile ${label}`,
       status: "birth_expected",
       expectedBirthDate: addCivilDays(today, 30),
+    });
+    const sameDay = "2026-05-20";
+    const sharedBirth = "2026-07-22";
+    const litterOverlap = await createTestLitter(sql, fixtures, {
+      organizationId,
+      ownerId,
+      motherId: mother,
+      fatherId: father,
+      name: `E2E frise overlap ${label}`,
+      status: "born",
+      estimatedOvulationDate: sameDay,
+      matingDate: sameDay,
+      matingDate2: sameDay,
+      expectedBirthDate: sharedBirth,
+      actualBirthDate: sharedBirth,
+      pregnancyConfirmedAt: "2026-06-02",
+    });
+    const litterPeriod = await createTestLitter(sql, fixtures, {
+      organizationId,
+      ownerId,
+      motherId: mother,
+      name: `E2E frise période ${label}`,
+      status: "birth_expected",
+      estimatedOvulationDate: "2026-07-01",
+      matingDate: "2026-07-03",
+      expectedBirthDate: "2026-09-01",
+    });
+    await createPlannedLitterCareTask(sql, fixtures, {
+      organizationId,
+      ownerId,
+      litterId: litterPeriod,
+      title: `E2E hors période ${label}`,
+      day: "2026-08-10",
+      category: "veterinary",
+    });
+    await createPlannedLitterCareTask(sql, fixtures, {
+      organizationId,
+      ownerId,
+      litterId: litterOverlap,
+      title: `E2E overlap tâche ${label}`,
+      day: sameDay,
+      category: "preparation",
     });
 
     await createPlannedLitterCareTask(sql, fixtures, {
@@ -167,7 +253,7 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
       title: `E2E réalisée frise ${label}`,
       day: addCivilDays(today, -2),
       category: "identification",
-      resolvedAt: `${addCivilDays(today, -1)}T10:00:00.000Z`,
+      resolvedAt: "2026-06-01T22:30:00.000Z",
     });
     await createPlannedLitterCareTask(sql, fixtures, {
       organizationId,
@@ -252,6 +338,25 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
     await expect(page.locator("[data-timeline-marker='second_mating']")).toHaveCount(1);
     await expect(page.locator("[data-timeline-marker='expected_birth']")).toHaveCount(1);
     await expect(page.locator("[data-timeline-today-line]")).toHaveCount(1);
+    await assertTodayLineAligned(page, today);
+    await page.locator("[data-timeline-grid]").evaluate((node) => {
+      node.scrollLeft = Math.min(240, node.scrollWidth - node.clientWidth);
+    });
+    await assertTodayLineAligned(page, today);
+    await page.locator("[data-timeline-grid]").evaluate((node) => {
+      node.scrollLeft = 0;
+    });
+    const shell = page.locator("[data-collapsed]");
+    await page.getByRole("button", { name: "Replier la navigation" }).click();
+    await expect(shell).toHaveAttribute("data-collapsed", "true");
+    await assertTodayLineAligned(page, today);
+    await page.getByRole("button", { name: "Déplier la navigation" }).click();
+    await expect(shell).toHaveAttribute("data-collapsed", "false");
+    await assertTodayLineAligned(page, today);
+
+    await expect(
+      page.locator("[data-timeline-status='done']"),
+    ).toHaveAttribute("aria-label", /réalisée le 2 juin 2026/);
 
     const categoryOrder = await page.locator("[data-timeline-category]").evaluateAll(
       (nodes) => nodes.map((node) => node.getAttribute("data-timeline-category")),
@@ -362,6 +467,25 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
       page.getByRole("navigation", { name: "Niveaux de zoom de la frise" }).getByText("9 semaines"),
     ).toHaveAttribute("aria-disabled", "true");
 
+    await page.goto(
+      `/litters/journal/calendar?litter=${litterOverlap}&view=timeline&zoom=gestation`,
+    );
+    await assertMarkersNotStacked(page, sameDay, 3);
+    await assertMarkersNotStacked(page, sharedBirth, 2);
+    await expect(page.locator("[data-timeline-marker='pregnancy_confirmed']")).toHaveAttribute(
+      "aria-label",
+      /Confirmation de gestation le 2026-06-02/,
+    );
+
+    await page.goto(
+      `/litters/journal/calendar?litter=${litterPeriod}&view=timeline&zoom=week&date=2026-09-15&kind=task&category=veterinary`,
+    );
+    await expect(page.locator("[data-timeline-empty-period]")).toContainText(
+      "Aucun élément ne se trouve dans la période affichée.",
+    );
+    await expect(page.locator("[data-timeline-item]")).toHaveCount(0);
+    await expect(page.locator("[data-timeline-bio-day='J0']")).toHaveCount(0);
+
     await page.goto("/calendar");
     const friseLink = page.getByRole("link", {
       name: "Ouvrir la frise d’une portée",
@@ -380,6 +504,11 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
     await page.goto(`/litters/journal/calendar?litter=${litterA}&view=timeline`);
     const grid = page.locator("[data-timeline-grid]");
     await expect(grid).toBeVisible();
+    await assertTodayLineAligned(page, today);
+    await grid.evaluate((node) => {
+      node.scrollLeft = Math.min(180, node.scrollWidth - node.clientWidth);
+    });
+    await assertTodayLineAligned(page, today);
     const overflow = await page.evaluate(() => {
       const grid = document.querySelector("[data-timeline-grid]") as HTMLElement | null;
       return {

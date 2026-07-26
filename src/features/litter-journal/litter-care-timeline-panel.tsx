@@ -311,11 +311,12 @@ function TimelineGrid({
         ) : null}
 
         <div
-          className="relative grid min-h-16 border-b"
+          className="relative grid min-h-[4.5rem] border-b"
           style={{
             gridTemplateColumns: `9rem 1fr`,
           }}
           aria-label="Repères fixes de la portée"
+          data-timeline-biology-row
         >
           <div className="sticky left-0 z-20 border-r bg-surface px-3 py-3 text-xs font-semibold">
             Biologie
@@ -331,15 +332,19 @@ function TimelineGrid({
                 (marker) => marker.columnIndex === index,
               );
               return (
-                <div key={`fixed-${date}`} className="relative border-r px-1 py-3">
+                <div
+                  key={`fixed-${date}`}
+                  className="flex min-h-[4.5rem] flex-wrap items-center justify-center gap-1 border-r px-0.5 py-2"
+                  data-timeline-biology-cell={date}
+                >
                   {markers.map((marker) => (
                     <span
                       key={marker.id}
-                      className={`absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center text-xs ${
+                      className={`relative z-[1] inline-flex shrink-0 items-center justify-center text-xs ${
                         marker.shape === "diamond"
                           ? "h-3 w-3 rotate-45 border border-accent bg-accent/20"
                           : marker.emphasis === "strong"
-                            ? "h-3.5 w-3.5 rounded-full bg-accent"
+                            ? "h-3.5 w-3.5 rounded-full bg-accent ring-2 ring-accent/30"
                             : "h-2.5 w-2.5 rounded-full bg-foreground"
                       }`}
                       title={marker.label}
@@ -394,12 +399,19 @@ function TimelineGrid({
         {projection.todayColumnIndex != null ? (
           <div
             aria-hidden="true"
-            data-timeline-today-line
-            className="pointer-events-none absolute bottom-0 top-0 z-10 w-0.5 bg-accent"
+            className="pointer-events-none absolute inset-0 z-10 grid"
             style={{
-              left: `calc(9rem + ((100% - 9rem) / ${projection.columnCount}) * ${projection.todayColumnIndex + 0.5})`,
+              gridTemplateColumns: `9rem repeat(${projection.columnCount}, minmax(2.25rem, 1fr))`,
             }}
-          />
+          >
+            <div
+              data-timeline-today-line
+              className="relative h-full min-h-full"
+              style={{ gridColumn: projection.todayColumnIndex + 2 }}
+            >
+              <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-accent" />
+            </div>
+          </div>
         ) : null}
       </div>
     </section>
@@ -585,12 +597,21 @@ export function LitterCareTimelinePanel({
               repères biologiques disponibles.
             </p>
           ) : null}
-          {projection.hasPlannedItems && !projection.hasFilteredItems ? (
+          {projection.hasPlannedItems && !projection.hasMatchingItems ? (
             <p
               role="status"
               className="rounded-2xl border border-dashed bg-surface p-5 text-sm text-muted"
             >
               Aucun élément ne correspond aux filtres sélectionnés.
+            </p>
+          ) : null}
+          {projection.hasMatchingItems && !projection.hasVisibleItems ? (
+            <p
+              role="status"
+              className="rounded-2xl border border-dashed bg-surface p-5 text-sm text-muted"
+              data-timeline-empty-period
+            >
+              Aucun élément ne se trouve dans la période affichée.
             </p>
           ) : null}
           {projection.unpositionedCount > 0 ? (
