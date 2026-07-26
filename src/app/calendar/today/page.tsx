@@ -122,8 +122,8 @@ export default async function BreedingTodayPage() {
             Aujourd’hui — élevage
           </h1>
           <p className="mt-3 max-w-3xl text-sm text-muted">
-            Vue quotidienne des actions planifiées pour toutes les portées de
-            l’élevage.
+            Vue quotidienne des actions planifiées des portées et des
+            rendez-vous adoptants du jour.
           </p>
           <BreedingTodayNav active="today" />
         </header>
@@ -167,8 +167,9 @@ export default async function BreedingTodayPage() {
           Aujourd’hui — élevage
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-muted">
-          Vue quotidienne des actions planifiées pour toutes les portées de
-          l’élevage. Traitez-les ici ou ouvrez le Journal de la portée concernée.
+          Vue quotidienne des actions planifiées des portées et des rendez-vous
+          adoptants du jour. Traitez les tâches de portée ici ou ouvrez le
+          Journal concerné ; les rendez-vous se gèrent dans le parcours adoptant.
         </p>
         <BreedingTodayNav active="today" />
       </header>

@@ -129,6 +129,7 @@ test("convertit les rendez-vous puppy_choice et adoption avec planned et done", 
     contextLabel: "Camille Dupont",
     startsOn: "2026-09-10",
     startsLocalTime: "10:00",
+    startsAt: "2026-09-10T08:00:00.000Z",
     appointmentStatus: "planned",
     href: `/reservations/${reservationA}#appointments`,
     category: "adopter_appointment",
@@ -138,6 +139,7 @@ test("convertit les rendez-vous puppy_choice et adoption avec planned et done", 
     appointmentStatus: "done",
     startsOn: "2026-09-20",
     startsLocalTime: "14:30",
+    startsAt: "2026-09-20T12:30:00.000Z",
   });
   expect(appointment({ status: "planned" })).not.toBeNull();
   expect(appointment({ status: "done" })).not.toBeNull();
@@ -155,15 +157,99 @@ test("projette Europe/Paris autour de minuit et du changement d’heure", () => 
   // 23:30 UTC le 15 janvier = 00:30 Europe/Paris le 16 janvier (hiver).
   expect(
     appointment({ plannedAt: "2026-01-15T23:30:00.000Z" }),
-  ).toMatchObject({ startsOn: "2026-01-16", startsLocalTime: "00:30" });
+  ).toMatchObject({
+    startsOn: "2026-01-16",
+    startsLocalTime: "00:30",
+    startsAt: "2026-01-15T23:30:00.000Z",
+  });
   // Après le passage à l’heure d’été (29 mars 2026, 02:00 → 03:00).
   expect(
     appointment({ plannedAt: "2026-03-29T01:30:00.000Z" }),
-  ).toMatchObject({ startsOn: "2026-03-29", startsLocalTime: "03:30" });
-  // Avant le retour à l’heure d’hiver (25 octobre 2026).
+  ).toMatchObject({
+    startsOn: "2026-03-29",
+    startsLocalTime: "03:30",
+    startsAt: "2026-03-29T01:30:00.000Z",
+  });
+  // Changement de date autour de minuit Europe/Paris (été UTC+2).
   expect(
     appointment({ plannedAt: "2026-07-25T22:00:00.000Z" }),
-  ).toMatchObject({ startsOn: "2026-07-26", startsLocalTime: "00:00" });
+  ).toMatchObject({
+    startsOn: "2026-07-26",
+    startsLocalTime: "00:00",
+    startsAt: "2026-07-25T22:00:00.000Z",
+  });
+});
+
+test("préserve les deux occurrences de 02:30 au retour à l’heure d’hiver", () => {
+  const firstOccurrenceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const secondOccurrenceId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  // 25 octobre 2026 : 03:00 CEST → 02:00 CET. 02:30 existe deux fois.
+  const first = appointment({
+    id: firstOccurrenceId,
+    plannedAt: "2026-10-25T00:30:00.000Z",
+    updatedAt: "2026-10-01T10:00:00.000Z",
+  })!;
+  const second = appointment({
+    id: secondOccurrenceId,
+    plannedAt: "2026-10-25T01:30:00.000Z",
+    updatedAt: "2026-10-01T10:00:00.000Z",
+  })!;
+
+  expect(first).toMatchObject({
+    startsOn: "2026-10-25",
+    startsLocalTime: "02:30",
+    startsAt: "2026-10-25T00:30:00.000Z",
+  });
+  expect(second).toMatchObject({
+    startsOn: "2026-10-25",
+    startsLocalTime: "02:30",
+    startsAt: "2026-10-25T01:30:00.000Z",
+  });
+
+  const ics = buildBreedingCalendarICalendar({
+    events: [first, second],
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  expect(ics).toContain("DTSTART:20261025T003000Z");
+  expect(ics).toContain("DTSTART:20261025T013000Z");
+  expect(ics).not.toContain("DTSTART:20261025T003000Z\r\nDTSTART:20261025T003000Z");
+
+  const uids = [...ics.matchAll(/UID:([^\r]+)/g)].map((match) => match[1]);
+  expect(uids).toHaveLength(2);
+  expect(uids[0]).not.toBe(uids[1]);
+  expect(uids[0]).not.toContain(firstOccurrenceId);
+  expect(uids[1]).not.toContain(secondOccurrenceId);
+
+  const firstAlone = buildBreedingCalendarICalendar({
+    events: [first],
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  const secondAlone = buildBreedingCalendarICalendar({
+    events: [second],
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  expect(/UID:([^\r]+)/.exec(firstAlone)?.[1]).toBe(uids[0]);
+  expect(/UID:([^\r]+)/.exec(secondAlone)?.[1]).toBe(uids[1]);
+
+  const modifiedSecond = appointment({
+    id: secondOccurrenceId,
+    plannedAt: "2026-10-25T01:30:00.000Z",
+    updatedAt: "2026-10-02T12:00:00.000Z",
+  })!;
+  const modifiedIcs = buildBreedingCalendarICalendar({
+    events: [modifiedSecond],
+    generatedAt: new Date("2026-01-01T00:00:00Z"),
+    calendarName: "Calendrier",
+  });
+  expect(modifiedIcs).toContain(`UID:${uids[1]}`);
+  expect(modifiedIcs).toContain("DTSTART:20261025T013000Z");
+  expect(modifiedIcs).toContain(
+    `SEQUENCE:${sequenceFromUpdatedAt(modifiedSecond.lastModifiedAt)}`,
+  );
+  expect(modifiedSecond.sequence).not.toBe(second.sequence);
 });
 
 test("conserve une identité stable distincte de litter_care", () => {

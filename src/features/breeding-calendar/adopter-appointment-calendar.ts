@@ -84,6 +84,7 @@ export function toAdopterAppointmentCalendarEvent(
   const instant = new Date(record.plannedAt);
   if (!Number.isFinite(instant.getTime())) return null;
 
+  const startsAt = instant.toISOString();
   const startsOn = formatLitterJournalBusinessDate(instant);
   const startsLocalTime = getLitterJournalBusinessLocalTime(instant);
 
@@ -95,6 +96,7 @@ export function toAdopterAppointmentCalendarEvent(
     appointmentStatus: record.status,
     title: adopterAppointmentTypeLabels[record.eventType],
     contextLabel: resolveAdopterContactLabel({ displayName: record.contactLabel }),
+    startsAt,
     startsOn,
     startsLocalTime,
     endsOn: null,

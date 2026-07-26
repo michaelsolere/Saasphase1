@@ -37,6 +37,8 @@ export type AdopterAppointmentBreedingCalendarEvent = BreedingCalendarEventCommo
   sourceType: "adopter_appointment";
   reservationId: string;
   appointmentStatus: "planned" | "done";
+  /** Exact UTC ISO instant from events.planned_at; used for ICS, not shown in UI. */
+  startsAt: string;
 };
 
 export type BreedingCalendarEvent =

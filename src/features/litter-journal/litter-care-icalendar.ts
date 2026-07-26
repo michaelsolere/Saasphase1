@@ -95,7 +95,11 @@ export function buildBreedingCalendarICalendar(input: {
       property("X-SAAS-ELEVAGE-KIND", event.kind),
       property("SEQUENCE", String(event.sequence)),
     ];
-    if (event.endsOn) {
+    if (event.sourceType === "adopter_appointment") {
+      const instant = new Date(event.startsAt);
+      if (!Number.isFinite(instant.getTime())) continue;
+      body.push(property("DTSTART", formatUtc(instant)));
+    } else if (event.endsOn) {
       if (!validDate(event.startsOn) || !validDate(event.endsOn)) continue;
       if (validTime(event.startsLocalTime) && validTime(event.endsLocalTime)) {
         body.push(
