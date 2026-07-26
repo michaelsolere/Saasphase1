@@ -27,6 +27,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/litter-age-comparison-chart-model.spec.ts",
   "tests/e2e/litter-age-comparison-model.spec.ts",
   "tests/e2e/litter-care-calendar-model.spec.ts",
+  "tests/e2e/litter-care-timeline-model.spec.ts",
   "tests/e2e/litter-care-icalendar.spec.ts",
   "tests/e2e/litter-care-task-window-state.spec.ts",
   "tests/e2e/litter-care-today-projection.spec.ts",

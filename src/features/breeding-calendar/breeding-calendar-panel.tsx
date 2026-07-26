@@ -36,7 +36,7 @@ import {
   type LitterCareCalendarCategoryFilter,
   type LitterCareCalendarKindFilter,
 } from "@/features/litter-journal/litter-care-calendar";
-import type { LitterCareCalendarView } from "@/features/litter-journal/litter-care-calendar-panel";
+import type { LitterCareCalendarGridView as LitterCareCalendarView } from "@/features/litter-journal/litter-care-calendar-panel";
 import { litterCareTaskCategoryLabels } from "@/features/litter-journal/litter-care-task-labels";
 import { LITTER_CARE_TASK_CATEGORIES } from "@/features/litter-journal/litter-care-tasks";
 
@@ -492,6 +492,14 @@ export function BreedingCalendarPanel({
         <p className="mt-3 max-w-3xl text-sm text-muted">
           Ce calendrier rassemble le planning des portées, les chaleurs du
           cheptel et les rendez-vous adoptants programmés.
+        </p>
+        <p className="mt-3">
+          <Link
+            href="/litters/journal/calendar?view=timeline"
+            className="inline-flex text-sm font-semibold text-accent hover:underline"
+          >
+            Ouvrir la frise d’une portée
+          </Link>
         </p>
         <nav aria-label="Choix de la vue" className="mt-5 flex flex-wrap gap-3">
           <Link

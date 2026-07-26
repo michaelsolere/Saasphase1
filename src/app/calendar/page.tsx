@@ -24,7 +24,7 @@ import type {
   LitterCareCalendarCategoryFilter,
   LitterCareCalendarKindFilter,
 } from "@/features/litter-journal/litter-care-calendar";
-import type { LitterCareCalendarView } from "@/features/litter-journal/litter-care-calendar-panel";
+import type { LitterCareCalendarGridView } from "@/features/litter-journal/litter-care-calendar-panel";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -63,7 +63,7 @@ export default async function BreedingCalendarPage({
     params.category && LITTER_CARE_TASK_CATEGORIES.includes(params.category as never)
       ? (params.category as LitterCareCalendarCategoryFilter)
       : "all";
-  const view: LitterCareCalendarView =
+  const view: LitterCareCalendarGridView =
     params.view === "week" || params.view === "agenda" ? params.view : "month";
 
   let calendar;
