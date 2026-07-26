@@ -153,6 +153,7 @@ async function runScheduleCommand(
     return { status: "error", message: scheduleErrorMessage(result.error.code) };
   }
   revalidatePath("/litters/journal");
+  revalidatePath("/calendar/today");
   return { status: "success", message: successMessage };
 }
 
@@ -508,5 +509,6 @@ export async function resolveLitterCareTaskAction(
   }
 
   revalidatePath("/litters/journal");
+  revalidatePath("/calendar/today");
   return { status: "success", message: "La tâche de suivi a été traitée." };
 }

@@ -100,7 +100,7 @@ export function LitterCareTodayQuickActions({
   const [notApplicableState, notApplicableFormAction, notApplicablePending] = useActionState(submitNotApplicable, initialState);
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       <form action={doneFormAction} onSubmit={() => prepareResolution(doneResolvedAtRef, doneTimezoneNameRef)}>
         <input type="hidden" name="resolution_status" value="done" />
         <input ref={doneResolvedAtRef} type="hidden" name="resolved_at" />
