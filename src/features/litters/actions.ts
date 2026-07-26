@@ -10,6 +10,8 @@ import {
   type MatingConfirmationCampaignResult,
 } from "@/features/litters/mating-confirmation-campaign";
 import { isEligibleLitterParent } from "@/features/litters/parent-eligibility";
+import { updateLitterGestationAnchorsAndRecalculatePlan } from "@/features/litters/litter-gestation-anchors";
+import { parseOptionalCivilDate } from "@/features/litters/litter-gestation-anchors-outcome";
 import { runBirthDocumentsDepositCampaign, type BirthDocumentsDepositCampaignResult } from "@/features/reservations/birth-documents-deposit-campaign";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -555,6 +557,20 @@ function litterDetailEditUrl(
   return `/litters/${litterId}?detail_status=${code}#modifier-portee`;
 }
 
+function litterGestationAnchorsUrl(
+  litterId: string,
+  code: string,
+) {
+  return `/litters/${litterId}?gestation_anchors_status=${encodeURIComponent(code)}#dates-gestation`;
+}
+
+export type UpdateLitterGestationAnchorsIntention = {
+  litterId: string;
+  clientCommandId: string;
+  expectedLitterUpdatedAt: string;
+  expectedPlanRevision: number | null;
+};
+
 /**
  * Met à jour les informations principales d'une portée existante depuis sa
  * fiche, en cohérence avec le formulaire de création /litters/new.
@@ -632,17 +648,6 @@ export async function updateLitterDetails(formData: FormData) {
     redirect(litterDetailEditUrl(litterId, "same_parents"));
   }
 
-  const matingDate = normalizeOptionalDate(formData.get("mating_date"));
-  const matingDate2 = normalizeOptionalDate(formData.get("mating_date_2"));
-  const estimatedOvulationDate = normalizeOptionalDate(
-    formData.get("estimated_ovulation_date"),
-  );
-  const expectedBirthDate = normalizeOptionalDate(
-    formData.get("expected_birth_date"),
-  );
-  const actualBirthDate = normalizeOptionalDate(
-    formData.get("actual_birth_date"),
-  );
   const availableFrom = normalizeOptionalDate(formData.get("available_from"));
 
   const notes = normalizeOptionalText(formData.get("notes"));
@@ -712,6 +717,9 @@ export async function updateLitterDetails(formData: FormData) {
     }
   }
 
+  // Les dates de gestation / saillie / naissance réelle ne sont plus
+  // réécrites ici : saillies → Reproduction ; ovulation/prévue → RPC dédiée ;
+  // naissance réelle → Journal de mise-bas.
   const { error: updateError } = await supabase
     .from("litters")
     .update({
@@ -721,11 +729,6 @@ export async function updateLitterDetails(formData: FormData) {
       status,
       mother_id: motherId,
       father_id: fatherId,
-      mating_date: matingDate,
-      mating_date_2: matingDate2,
-      estimated_ovulation_date: estimatedOvulationDate,
-      expected_birth_date: expectedBirthDate,
-      actual_birth_date: actualBirthDate,
       available_from: availableFrom,
       notes,
       updated_at: new Date().toISOString(),
@@ -742,6 +745,89 @@ export async function updateLitterDetails(formData: FormData) {
   revalidatePath("/litters");
   revalidatePath(`/litters/${litterId}`);
   redirect(litterDetailEditUrl(litterId, "success"));
+}
+
+/**
+ * Met à jour l’ovulation estimée et/ou la date prévue de mise-bas, puis
+ * recalcule atomiquement le planning actif via la RPC dédiée.
+ *
+ * L’intention (litterId, clientCommandId, révisions) est liée côté serveur ;
+ * FormData ne fournit que les deux dates métier.
+ */
+export async function updateLitterGestationAnchorsAction(
+  intention: UpdateLitterGestationAnchorsIntention,
+  formData: FormData,
+) {
+  const litterId =
+    typeof intention.litterId === "string" && isUuid(intention.litterId)
+      ? intention.litterId
+      : null;
+  if (!litterId) {
+    redirect("/litters");
+  }
+
+  const clientCommandId =
+    typeof intention.clientCommandId === "string" &&
+    isUuid(intention.clientCommandId)
+      ? intention.clientCommandId
+      : null;
+  if (!clientCommandId || !intention.expectedLitterUpdatedAt) {
+    redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
+  }
+
+  const expectedPlanRevision = intention.expectedPlanRevision;
+  if (
+    expectedPlanRevision !== null &&
+    (!Number.isInteger(expectedPlanRevision) || expectedPlanRevision <= 0)
+  ) {
+    redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
+  }
+
+  const ovulation = parseOptionalCivilDate(
+    formData.get("estimated_ovulation_date"),
+  );
+  const expectedBirth = parseOptionalCivilDate(
+    formData.get("expected_birth_date"),
+  );
+  if (ovulation === "invalid" || expectedBirth === "invalid") {
+    redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
+  }
+
+  const result = await updateLitterGestationAnchorsAndRecalculatePlan({
+    litterId,
+    clientCommandId,
+    expectedLitterUpdatedAt: intention.expectedLitterUpdatedAt,
+    expectedPlanRevision,
+    estimatedOvulationDate: ovulation,
+    expectedBirthDate: expectedBirth,
+  });
+
+  if (result.outcome === "error") {
+    redirect(litterGestationAnchorsUrl(litterId, result.error.code));
+  }
+
+  revalidatePath("/litters");
+  revalidatePath(`/litters/${litterId}`);
+  revalidatePath("/litters/journal");
+  revalidatePath("/litters/journal/calendar");
+  revalidatePath("/calendar");
+  revalidatePath("/calendar/today");
+
+  redirect(
+    litterGestationAnchorsUrl(
+      litterId,
+      [
+        `success_${result.businessOutcome}`,
+        `items=${result.counters.recalculatedItemCount}`,
+        `changed=${result.counters.changedTaskCount}`,
+        `moved=${result.counters.movedAutomaticScheduleCount}`,
+        `manual=${result.counters.preservedManualScheduleCount}`,
+        `locked=${result.counters.preservedLockedScheduleCount}`,
+        `terminal=${result.counters.preservedTerminalCount}`,
+        `unchanged=${result.counters.unchangedTaskCount}`,
+      ].join("|"),
+    ),
+  );
 }
 
 /**

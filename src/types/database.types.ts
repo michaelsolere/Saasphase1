@@ -2620,9 +2620,9 @@ export type Database = {
         Relationships: []
       }
       litter_plans: {
-        Row: { created_at: string; created_by: string; id: string; litter_id: string; organization_id: string; revision: number; status: string; timezone_name: string; title: string; updated_at: string; updated_by: string }
-        Insert: { created_at?: string; created_by: string; id?: string; litter_id: string; organization_id: string; revision?: number; status?: string; timezone_name: string; title: string; updated_at?: string; updated_by: string }
-        Update: { created_at?: string; created_by?: string; id?: string; litter_id?: string; organization_id?: string; revision?: number; status?: string; timezone_name?: string; title?: string; updated_at?: string; updated_by?: string }
+        Row: { created_at: string; created_by: string; id: string; litter_id: string; organization_id: string; revision: number; last_recalculated_at: string | null; last_recalculated_by: string | null; status: string; timezone_name: string; title: string; updated_at: string; updated_by: string }
+        Insert: { created_at?: string; created_by: string; id?: string; litter_id: string; organization_id: string; revision?: number; last_recalculated_at?: string | null; last_recalculated_by?: string | null; status?: string; timezone_name: string; title: string; updated_at?: string; updated_by: string }
+        Update: { created_at?: string; created_by?: string; id?: string; litter_id?: string; organization_id?: string; revision?: number; last_recalculated_at?: string | null; last_recalculated_by?: string | null; status?: string; timezone_name?: string; title?: string; updated_at?: string; updated_by?: string }
         Relationships: []
       }
       litter_planning_model_items: {
@@ -6553,6 +6553,32 @@ export type Database = {
       create_litter_planning_model: {
         Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_is_active: boolean; p_items: Json; p_organization_id: string; p_species: string | null; p_title: string }
         Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
+      }
+      update_litter_gestation_anchors_and_recalculate_plan: {
+        Args: {
+          p_client_command_id: string
+          p_estimated_ovulation_date: string | null
+          p_expected_birth_date: string | null
+          p_expected_litter_updated_at: string
+          p_expected_plan_revision: number | null
+          p_litter_id: string
+        }
+        Returns: {
+          changed_task_count: number
+          litter_id: string
+          litter_plan_id: string | null
+          moved_automatic_schedule_count: number
+          outcome: string
+          preserved_locked_schedule_count: number
+          preserved_manual_schedule_count: number
+          preserved_terminal_count: number
+          reason: string | null
+          recalculated_item_count: number
+          replayed: boolean
+          result: Json
+          result_plan_revision: number | null
+          unchanged_task_count: number
+        }[]
       }
       apply_litter_planning_model: {
         Args: { p_client_command_id: string; p_expected_model_revision: number; p_expected_plan_revision: number | null; p_litter_id: string; p_planning_model_id: string; p_selected_model_item_ids: string[] | null; p_timezone_name: string }

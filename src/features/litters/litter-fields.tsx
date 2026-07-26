@@ -124,12 +124,15 @@ export function LitterFields({
   groups,
   motherOptions,
   fatherOptions,
+  includeGestationDates = true,
 }: {
   idPrefix: string;
   defaults?: LitterFieldDefaults;
   groups?: LitterGroupOption[] | null;
   motherOptions: LitterAnimalOption[];
   fatherOptions: LitterAnimalOption[];
+  /** When false, omit mating / ovulation / birth date fields (edit form). */
+  includeGestationDates?: boolean;
 }) {
   const values = defaults ?? {};
 
@@ -257,6 +260,8 @@ export function LitterFields({
         </select>
       </div>
 
+      {includeGestationDates ? (
+        <>
       <div>
         <label htmlFor={`${idPrefix}-mating-date`} className={labelClass}>
           Date de saillie
@@ -321,6 +326,8 @@ export function LitterFields({
           className={inputClass}
         />
       </div>
+        </>
+      ) : null}
 
       <div>
         <label htmlFor={`${idPrefix}-available-from`} className={labelClass}>
