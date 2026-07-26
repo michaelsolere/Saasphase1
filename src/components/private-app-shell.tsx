@@ -5,43 +5,14 @@ import { useEffect, useState } from "react";
 
 import { MainSidebar } from "@/components/main-sidebar";
 import { createClient } from "@/lib/supabase/client";
-
-const publicRoutes = ["/login", "/candidature"];
-const standalonePrivateRoutes = ["/whelping"];
-const privateRoutes = [
-  "/animals",
-  "/candidatures",
-  "/cheptel",
-  "/contacts",
-  "/documents",
-  "/form-submissions",
-  "/litter-groups",
-  "/litters",
-  "/payments",
-  "/reservations",
-  "/settings",
-];
-const sidebarCollapsedStorageKey = "main-sidebar-collapsed";
+import {
+  isPublicRoute,
+  isStandalonePrivateRoute,
+  shouldShowPrivateSidebar,
+  sidebarCollapsedStorageKey,
+} from "@/lib/private-route-shell";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
-
-function isPublicRoute(pathname: string) {
-  return publicRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-}
-
-function isPrivateRoute(pathname: string) {
-  return privateRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-}
-
-function isStandalonePrivateRoute(pathname: string) {
-  return standalonePrivateRoutes.some(
-    (route) => pathname === route || pathname.startsWith(`${route}/`),
-  );
-}
 
 export function PrivateAppShell({
   children,
@@ -87,10 +58,7 @@ export function PrivateAppShell({
   }, []);
 
   const isAuthenticated = authStatus === "authenticated";
-  const shouldShowSidebar =
-    !isPublicRoute(pathname) &&
-    !isStandalonePrivateRoute(pathname) &&
-    (isPrivateRoute(pathname) || (pathname === "/" && isAuthenticated));
+  const shouldShowSidebar = shouldShowPrivateSidebar(pathname, isAuthenticated);
 
   if (!shouldShowSidebar) {
     return children;
@@ -111,6 +79,10 @@ export function PrivateAppShell({
       data-auth-status={authStatus}
       data-private-shell=""
       data-should-show-sidebar={shouldShowSidebar ? "true" : "false"}
+      data-public-route={isPublicRoute(pathname) ? "true" : "false"}
+      data-standalone-private-route={
+        isStandalonePrivateRoute(pathname) ? "true" : "false"
+      }
     >
       <div className="private-sidebar-desktop" data-sidebar-desktop="">
         <div className="sticky top-0 h-screen">
