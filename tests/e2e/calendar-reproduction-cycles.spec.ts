@@ -359,6 +359,7 @@ test("calendrier global projette les chaleurs planned/in_progress sans dosages n
         .locator('[data-calendar-source="reproductive_cycle"]')
         .filter({ hasText: plannedTodayName })
         .first()
+        .locator("[data-calendar-event-link]")
         .click();
       await expect(page).toHaveURL(
         new RegExp(`/animals/${motherPlannedToday}/reproduction(?:\\?.*)?#cycle-${plannedTodayCycle}`),
@@ -456,6 +457,7 @@ test("calendrier global projette les chaleurs planned/in_progress sans dosages n
         .locator('[data-calendar-source="reproductive_cycle"]')
         .filter({ hasText: inProgressName })
         .first()
+        .locator("[data-calendar-event-link]")
         .click();
       await expect(page).toHaveURL(
         new RegExp(`/animals/${motherInProgress}/reproduction(?:\\?.*)?#cycle-${inProgressCycle}`),

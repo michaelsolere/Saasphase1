@@ -205,6 +205,7 @@ function BreedingCalendarEventCard({
     >
       <Link
         href={event.href}
+        data-calendar-event-link=""
         className="block px-2 py-1.5 hover:bg-accent/10"
       >
         <span className="sr-only">{srLabel}</span>

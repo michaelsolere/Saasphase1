@@ -289,7 +289,12 @@ export function CalendarReminderDialog({
                           <Button
                             type="button"
                             size="sm"
-                            disabled={pending}
+                            disabled={
+                              pending ||
+                              (editDaysBefore === reminder.daysBefore &&
+                                normalizeLocalTimeInput(editLocalTime) ===
+                                  normalizeLocalTimeInput(reminder.localTime))
+                            }
                             data-testid="calendar-reminder-save"
                             onClick={() => handleUpdate(reminder)}
                           >

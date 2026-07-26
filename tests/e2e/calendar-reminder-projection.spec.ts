@@ -467,3 +467,12 @@ test("formatCalendarReminderScheduleLabel pour jour 0, 1 et N", () => {
     "7 jours avant à 18:30",
   );
 });
+
+test("expose le message utilisateur stale_trigger", async () => {
+  const { CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE } = await import(
+    "../../src/features/breeding-calendar/calendar-reminder-projection"
+  );
+  expect(CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE).toBe(
+    "La date de l’événement a changé. Rechargez la page puis traitez le nouveau rappel.",
+  );
+});

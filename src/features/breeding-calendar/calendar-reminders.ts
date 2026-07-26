@@ -15,6 +15,7 @@ import {
 import type { CalendarReminderSourceType } from "@/features/breeding-calendar/calendar-reminder-projection";
 import {
   DEFAULT_CALENDAR_REMINDER_TIMEZONE,
+  CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE,
 } from "@/features/breeding-calendar/calendar-reminder-projection";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -31,8 +32,11 @@ export type CalendarReminderMutationErrorCode =
   | "duplicate_reminder"
   | "reminder_not_found"
   | "stale_revision"
+  | "stale_trigger"
   | "client_command_conflict"
   | "unavailable";
+
+export { CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE };
 
 export type CalendarReminderMutationResult =
   | {
@@ -61,6 +65,7 @@ function mapError(reason: string | null | undefined): CalendarReminderMutationEr
     case "duplicate_reminder":
     case "reminder_not_found":
     case "stale_revision":
+    case "stale_trigger":
     case "client_command_conflict":
       return reason;
     default:
@@ -88,6 +93,8 @@ function errorMessage(code: CalendarReminderMutationErrorCode): string {
       return "Rappel introuvable.";
     case "stale_revision":
       return "Le rappel a été modifié ailleurs. Actualisez la page.";
+    case "stale_trigger":
+      return CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE;
     case "client_command_conflict":
       return "Conflit de commande. Réessayez.";
     case "unavailable":

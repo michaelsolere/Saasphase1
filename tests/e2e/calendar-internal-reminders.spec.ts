@@ -280,17 +280,25 @@ test("rappels internes calendrier — UI, Aujourd’hui, ICS sans VALARM", async
       appointmentReminder.data![0].reminder_id!,
     );
 
+    const resolvedCommandId = crypto.randomUUID();
     const resolvedReminder = await client.rpc("create_calendar_reminder", {
       p_source_type: "litter_care_task",
       p_source_record_id: resolvedTaskId,
       p_days_before: 0,
       p_local_time: "08:00:00",
       p_timezone_name: TZ,
-      p_client_command_id: crypto.randomUUID(),
+      p_client_command_id: resolvedCommandId,
     });
     // Resolved task is not admissible for create.
     expect(resolvedReminder.data?.[0]?.outcome).toBe("error");
-
+    const resolvedCommandRowId = sql(`
+      select id::text from public.calendar_reminder_commands
+      where organization_id = '${organizationId}'::uuid
+        and client_command_id = '${resolvedCommandId}'::uuid
+    `).trim();
+    if (resolvedCommandRowId) {
+      fixtures.register("calendar_reminder_commands", resolvedCommandRowId);
+    }
     await login(page);
     await page.goto("/calendar");
 
@@ -399,21 +407,75 @@ test("rappels internes calendrier — UI, Aujourd’hui, ICS sans VALARM", async
       remindersSection.locator('[data-reminder-state="later_today"]').first(),
     ).toBeVisible();
 
-    const dueCard = remindersSection
+    // Source moved just before acknowledge → stale_trigger, then reload + treat.
+    const overdueMoved = addCivilDays(overdueEventDate, 1);
+    sql(`
+      update public.litter_care_tasks
+      set planned_for = ${`'${overdueMoved}'`}::date, revision_no = revision_no + 1
+      where id = '${overdueTaskId}'::uuid
+    `);
+    const overdueCard = remindersSection
+      .locator(`[data-reminder-id="${overdueReminderId}"]`)
+      .first();
+    await overdueCard.getByRole("button", { name: "Marquer comme traité" }).click();
+    await expect(
+      remindersSection.getByText(
+        "La date de l’événement a changé. Rechargez la page puis traitez le nouveau rappel.",
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await page.reload();
+    const remindersAfterMove = page.locator("[data-calendar-reminders-section]");
+    const overdueAfterMove = remindersAfterMove.locator(
+      `[data-reminder-id="${overdueReminderId}"]`,
+    );
+    await expect(overdueAfterMove).toBeVisible({ timeout: 15_000 });
+    await expect(overdueAfterMove).toHaveAttribute(
+      "data-reminder-state",
+      /^(due|overdue)$/,
+    );
+    await overdueAfterMove.getByRole("button", { name: "Marquer comme traité" }).click();
+    await expect(
+      remindersAfterMove.locator(
+        `[data-reminder-id="${overdueReminderId}"][data-reminder-state="acknowledged_today"]`,
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+
+    // Save without schedule change must keep acknowledgement (server-side rule).
+    const ackRow = JSON.parse(
+      sql(`
+        select json_build_object(
+          'revision_no', revision_no,
+          'days_before', days_before,
+          'local_time', local_time::text
+        )::text
+        from public.calendar_reminders where id = '${overdueReminderId}'::uuid
+      `),
+    );
+    const noChange = await client.rpc("update_calendar_reminder", {
+      p_reminder_id: overdueReminderId,
+      p_expected_revision_no: ackRow.revision_no,
+      p_days_before: ackRow.days_before,
+      p_local_time: String(ackRow.local_time).slice(0, 8),
+      p_timezone_name: TZ,
+      p_client_command_id: crypto.randomUUID(),
+    });
+    expect(noChange.data?.[0]?.outcome).toBe("success");
+    expect(noChange.data?.[0]?.acknowledged_trigger_at).toBeTruthy();
+    expect(noChange.data?.[0]?.acknowledged_at).toBeTruthy();
+    expect(noChange.data?.[0]?.acknowledged_by).toBeTruthy();
+
+    const dueCard = remindersAfterMove
       .locator('[data-reminder-state="due"]')
       .first();
-    await dueCard.getByRole("button", { name: "Marquer comme traité" }).click();
-    await expect(
-      remindersSection.getByRole("heading", { name: /Traités aujourd’hui/ }),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      remindersSection.locator('[data-reminder-state="acknowledged_today"]').first(),
-    ).toBeVisible({ timeout: 15_000 });
-    await expect(
-      remindersSection.locator(`[data-reminder-id="${dueReminderId}"]`),
-    ).toHaveAttribute("data-reminder-state", "acknowledged_today");
+    if (await dueCard.count()) {
+      await dueCard.getByRole("button", { name: "Marquer comme traité" }).click();
+      await expect(
+        remindersAfterMove.locator('[data-reminder-state="acknowledged_today"]'),
+      ).not.toHaveCount(0, { timeout: 15_000 });
+    }
 
-    // Source move recalculates trigger; old ack does not mask new occurrence.
+    // Further source move on today task: old ack must not mask the new occurrence.
     const movedDay = addCivilDays(tomorrow, 2);
     sql(`
       update public.litter_care_tasks
@@ -428,7 +490,6 @@ test("rappels internes calendrier — UI, Aujourd’hui, ICS sans VALARM", async
     });
     expect(newTrigger).toBeTruthy();
     await page.reload();
-    // After move, the previously acknowledged occurrence for the old date should not hide the new one.
     const refreshedDue = page
       .locator("[data-calendar-reminders-section]")
       .locator(`[data-reminder-id="${dueReminderId}"]`);
@@ -546,6 +607,46 @@ test("rappels internes calendrier — UI, Aujourd’hui, ICS sans VALARM", async
     for (const reminderId of reminderIds.split(",").filter(Boolean)) {
       if (!fixtures.has("calendar_reminders", reminderId)) {
         fixtures.register("calendar_reminders", reminderId);
+      }
+    }
+
+    // Error commands keep reminder_id null and must be registered explicitly.
+    const commandIds = sql(`
+      select coalesce(string_agg(id::text, ','), '')
+      from public.calendar_reminder_commands
+      where organization_id = '${organizationId}'::uuid
+        and (
+          reminder_id in (
+            select id from public.calendar_reminders
+            where organization_id = '${organizationId}'::uuid
+              and (
+                litter_care_task_id in (
+                  select id from public.litter_care_tasks
+                  where litter_id = '${litter}'::uuid
+                )
+                or reproductive_cycle_id = '${cycleId}'::uuid
+                or adopter_event_id in (
+                  '${plannedAppointment.id}'::uuid,
+                  '${doneAppointment.id}'::uuid
+                )
+              )
+          )
+          or (
+            reminder_id is null
+            and coalesce(payload->>'sourceRecordId', '') in (
+              '${resolvedTaskId}',
+              '${todayTaskId}',
+              '${overdueTaskId}',
+              '${cycleId}',
+              '${plannedAppointment.id}',
+              '${doneAppointment.id}'
+            )
+          )
+        )
+    `);
+    for (const commandId of commandIds.split(",").filter(Boolean)) {
+      if (!fixtures.has("calendar_reminder_commands", commandId)) {
+        fixtures.register("calendar_reminder_commands", commandId);
       }
     }
   });

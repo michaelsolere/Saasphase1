@@ -829,3 +829,364 @@ test("RPC calendar reminders: rôles, sources, contraintes, ack, soft-delete, RL
     ),
   ).toBe(0);
 });
+
+test("RPC calendar reminders: IANA, stale_trigger, sauvegarde sans changement", async () => {
+  const owner = await createAuthenticatedSupabaseClient();
+  const beforeSources = sourceSnapshot();
+
+  const invalidCreate = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "litter_care_task",
+    p_source_record_id: ids.plannedTask,
+    p_days_before: 1,
+    p_local_time: "08:00",
+    p_timezone_name: "Mars/Phobos",
+    p_client_command_id: cmd("600"),
+  });
+  expect(invalidCreate.error).toBeNull();
+  expect(invalidCreate.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "invalid_input",
+    reminder_id: null,
+  });
+  expect(
+    Number(
+      sql(`
+        select count(*)::text from public.calendar_reminders
+        where organization_id = ${q(organizationId)}::uuid
+          and litter_care_task_id = ${q(ids.plannedTask)}::uuid;
+      `),
+    ),
+  ).toBe(0);
+  expect(
+    Number(
+      sql(`
+        select count(*)::text from public.calendar_reminder_commands
+        where client_command_id = ${q(cmd("600"))}::uuid
+          and outcome = 'success';
+      `),
+    ),
+  ).toBe(0);
+
+  const created = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "litter_care_task",
+    p_source_record_id: ids.plannedTask,
+    p_days_before: 1,
+    p_local_time: "08:00",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("601"),
+  });
+  expect(created.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 1,
+    timezone_name: TZ,
+  });
+  const reminderId = created.data![0].reminder_id!;
+
+  const invalidUpdate = await owner.rpc("update_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 1,
+    p_days_before: 1,
+    p_local_time: "08:00",
+    p_timezone_name: "Mars/Phobos",
+    p_client_command_id: cmd("602"),
+  });
+  expect(invalidUpdate.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "invalid_input",
+  });
+  const afterInvalidUpdate = JSON.parse(
+    sql(`
+      select json_build_object(
+        'revision_no', revision_no,
+        'timezone_name', timezone_name,
+        'days_before', days_before
+      )::text
+      from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+    `),
+  );
+  expect(afterInvalidUpdate).toEqual({
+    revision_no: 1,
+    timezone_name: TZ,
+    days_before: 1,
+  });
+  expect(
+    Number(
+      sql(`
+        select count(*)::text from public.calendar_reminder_commands
+        where client_command_id = ${q(cmd("602"))}::uuid
+          and outcome = 'success';
+      `),
+    ),
+  ).toBe(0);
+
+  const arbitraryAck = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: "2020-01-01T00:00:00.000Z",
+    p_client_command_id: cmd("610"),
+  });
+  expect(arbitraryAck.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "stale_trigger",
+  });
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'revision_no', revision_no,
+          'ack', acknowledged_trigger_at is not null
+        )::text
+        from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+      `),
+    ),
+  ).toEqual({ revision_no: 1, ack: false });
+
+  // planned_for 2026-09-10, days_before 1 → trigger local 2026-09-09 08:00 Paris
+  const currentTrigger = localCivilDateTimeToUtcIso("2026-09-09", "08:00", TZ)!;
+  const ackOk = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: currentTrigger,
+    p_client_command_id: cmd("611"),
+  });
+  expect(ackOk.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 2,
+    replayed: false,
+  });
+  expect(ackOk.data?.[0].acknowledged_trigger_at).toBeTruthy();
+
+  const ackReplay = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 2,
+    p_expected_trigger_at: currentTrigger,
+    p_client_command_id: cmd("612"),
+  });
+  expect(ackReplay.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 2,
+    replayed: true,
+  });
+
+  const noChangeUpdate = await owner.rpc("update_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 2,
+    p_days_before: 1,
+    p_local_time: "08:00",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("620"),
+  });
+  expect(noChangeUpdate.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 3,
+  });
+  const preservedAck = JSON.parse(
+    sql(`
+      select json_build_object(
+        'ack_trigger', acknowledged_trigger_at is not null,
+        'ack_at', acknowledged_at is not null,
+        'ack_by', acknowledged_by is not null,
+        'revision_no', revision_no
+      )::text
+      from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+    `),
+  );
+  expect(preservedAck).toEqual({
+    ack_trigger: true,
+    ack_at: true,
+    ack_by: true,
+    revision_no: 3,
+  });
+
+  const realUpdate = await owner.rpc("update_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 3,
+    p_days_before: 2,
+    p_local_time: "08:00",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("621"),
+  });
+  expect(realUpdate.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: 4,
+    acknowledged_trigger_at: null,
+    acknowledged_at: null,
+    acknowledged_by: null,
+  });
+
+  // Re-ack then move source → stale_trigger; old ack must not succeed.
+  const reAckTrigger = localCivilDateTimeToUtcIso("2026-09-08", "08:00", TZ)!;
+  const reAck = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: 4,
+    p_expected_trigger_at: reAckTrigger,
+    p_client_command_id: cmd("630"),
+  });
+  expect(reAck.data?.[0]?.outcome).toBe("success");
+  const revisionAfterAck = reAck.data![0].revision_no!;
+
+  sql(`
+    update public.litter_care_tasks
+    set planned_for = '2026-09-20'::date, revision_no = revision_no + 1
+    where id = ${q(ids.plannedTask)}::uuid;
+  `);
+
+  const staleAfterMove = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: revisionAfterAck,
+    p_expected_trigger_at: reAckTrigger,
+    p_client_command_id: cmd("631"),
+  });
+  expect(staleAfterMove.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "stale_trigger",
+  });
+  expect(
+    JSON.parse(
+      sql(`
+        select json_build_object(
+          'revision_no', revision_no,
+          'ack_present', acknowledged_trigger_at is not null,
+          'ack_at_present', acknowledged_at is not null,
+          'ack_by_present', acknowledged_by is not null
+        )::text
+        from public.calendar_reminders where id = ${q(reminderId)}::uuid;
+      `),
+    ),
+  ).toEqual({
+    revision_no: revisionAfterAck,
+    ack_present: true,
+    ack_at_present: true,
+    ack_by_present: true,
+  });
+
+  const newTrigger = localCivilDateTimeToUtcIso("2026-09-18", "08:00", TZ)!;
+  const ackNew = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: revisionAfterAck,
+    p_expected_trigger_at: newTrigger,
+    p_client_command_id: cmd("632"),
+  });
+  expect(ackNew.data?.[0]).toMatchObject({
+    outcome: "success",
+    revision_no: revisionAfterAck + 1,
+    replayed: false,
+  });
+
+  // Cycle move → stale_trigger
+  const cycleCreate = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "reproductive_cycle",
+    p_source_record_id: ids.plannedCycle,
+    p_days_before: 0,
+    p_local_time: "09:00",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("640"),
+  });
+  const cycleReminderId = cycleCreate.data![0].reminder_id!;
+  const cycleTrigger = localCivilDateTimeToUtcIso("2026-09-15", "09:00", TZ)!;
+  sql(`
+    update public.reproductive_cycles
+    set started_on = '2026-09-22'::date
+    where id = ${q(ids.plannedCycle)}::uuid;
+  `);
+  const cycleStale = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: cycleReminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: cycleTrigger,
+    p_client_command_id: cmd("641"),
+  });
+  expect(cycleStale.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "stale_trigger",
+  });
+
+  // Appointment move → stale_trigger
+  const eventCreate = await owner.rpc("create_calendar_reminder", {
+    p_source_type: "adopter_event",
+    p_source_record_id: ids.plannedEvent,
+    p_days_before: 0,
+    p_local_time: "08:00",
+    p_timezone_name: TZ,
+    p_client_command_id: cmd("650"),
+  });
+  const eventReminderId = eventCreate.data![0].reminder_id!;
+  // planned_at 2026-09-20T08:00Z = 10:00 Paris → local date 2026-09-20; days_before 0 @ 08:00
+  const eventTrigger = localCivilDateTimeToUtcIso("2026-09-20", "08:00", TZ)!;
+  sql(`
+    update public.events
+    set planned_at = '2026-09-25T08:00:00Z'::timestamptz
+    where id = ${q(ids.plannedEvent)}::uuid;
+  `);
+  const eventStale = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: eventReminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: eventTrigger,
+    p_client_command_id: cmd("651"),
+  });
+  expect(eventStale.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "stale_trigger",
+  });
+
+  // Terminal source
+  sql(`
+    update public.litter_care_tasks
+    set status = 'done',
+        resolution_command_id = ${q(cmd("660"))}::uuid,
+        resolved_at = now(),
+        resolved_timezone_name = ${q(TZ)},
+        resolved_by = ${q(ownerId)}::uuid
+    where id = ${q(ids.plannedTask)}::uuid;
+  `);
+  const terminal = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: reminderId,
+    p_expected_revision_no: revisionAfterAck + 1,
+    p_expected_trigger_at: newTrigger,
+    p_client_command_id: cmd("661"),
+  });
+  expect(terminal.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "source_not_admissible",
+  });
+
+  // Soft-deleted cycle / event sources are indistinguishable (source_not_found).
+  sql(`
+    update public.reproductive_cycles
+    set deleted_at = now()
+    where id = ${q(ids.plannedCycle)}::uuid;
+  `);
+  const cycleGone = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: cycleReminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: cycleTrigger,
+    p_client_command_id: cmd("670"),
+  });
+  sql(`
+    update public.events
+    set deleted_at = now()
+    where id = ${q(ids.plannedEvent)}::uuid;
+  `);
+  const eventGone = await owner.rpc("acknowledge_calendar_reminder", {
+    p_reminder_id: eventReminderId,
+    p_expected_revision_no: 1,
+    p_expected_trigger_at: eventTrigger,
+    p_client_command_id: cmd("671"),
+  });
+  expect(cycleGone.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "source_not_found",
+  });
+  expect(eventGone.data?.[0]).toMatchObject({
+    outcome: "error",
+    reason: "source_not_found",
+  });
+  expect(cycleGone.data?.[0]?.reason).toBe(eventGone.data?.[0]?.reason);
+
+  // Spec #16: reminder RPCs must not silently corrupt unrelated business sources.
+  // Intentional SQL moves/soft-deletes above are excluded from this snapshot.
+  const after = sourceSnapshot();
+  expect(after.doneTask).toEqual(beforeSources.doneTask);
+  expect(after.matedCycle).toEqual(beforeSources.matedCycle);
+  expect(after.doneEvent).toEqual(beforeSources.doneEvent);
+  expect(after.foreignTask).toEqual(beforeSources.foreignTask);
+});

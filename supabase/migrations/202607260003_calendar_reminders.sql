@@ -159,6 +159,7 @@ create table public.calendar_reminder_commands (
           'duplicate_reminder',
           'reminder_not_found',
           'stale_revision',
+          'stale_trigger',
           'client_command_conflict',
           'membership_required',
           'forbidden'
@@ -279,6 +280,16 @@ begin
     return;
   end if;
 
+  if not exists (
+    select 1
+    from pg_catalog.pg_timezone_names timezone
+    where timezone.name = v_timezone
+  ) then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
   select membership.organization_id, membership.role
   into v_organization_id, v_membership_role
   from public.memberships membership
@@ -383,7 +394,8 @@ begin
     into v_task
     from public.litter_care_tasks task
     where task.organization_id = v_organization_id
-      and task.id = p_source_record_id;
+      and task.id = p_source_record_id
+    for share;
 
     if not found then
       reason := 'source_not_found';
@@ -437,7 +449,8 @@ begin
     from public.reproductive_cycles cycle
     where cycle.organization_id = v_organization_id
       and cycle.id = p_source_record_id
-      and cycle.deleted_at is null;
+      and cycle.deleted_at is null
+    for share;
 
     if not found then
       reason := 'source_not_found';
@@ -472,7 +485,8 @@ begin
     from public.events event
     where event.organization_id = v_organization_id
       and event.id = p_source_record_id
-      and event.deleted_at is null;
+      and event.deleted_at is null
+    for share;
 
     if not found then
       reason := 'source_not_found';
@@ -614,6 +628,7 @@ declare
   v_result jsonb;
   v_source_type text;
   v_source_record_id uuid;
+  v_schedule_changed boolean;
 begin
   outcome := 'error';
   reason := null;
@@ -649,6 +664,16 @@ begin
     or char_length(v_timezone) > 255
     or p_client_command_id is null
   then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_timezone_names timezone
+    where timezone.name = v_timezone
+  ) then
     reason := 'invalid_input';
     return next;
     return;
@@ -787,20 +812,38 @@ begin
     return;
   end if;
 
+  v_schedule_changed :=
+    v_reminder.days_before is distinct from p_days_before
+    or v_reminder.local_time is distinct from p_local_time
+    or v_reminder.timezone_name is distinct from v_timezone;
+
   begin
-    update public.calendar_reminders as reminder
-    set
-      days_before = p_days_before,
-      local_time = p_local_time,
-      timezone_name = v_timezone,
-      revision_no = reminder.revision_no + 1,
-      acknowledged_trigger_at = null,
-      acknowledged_at = null,
-      acknowledged_by = null,
-      updated_by = v_user_id
-    where reminder.organization_id = v_organization_id
-      and reminder.id = v_reminder.id
-    returning * into v_reminder;
+    if v_schedule_changed then
+      update public.calendar_reminders as reminder
+      set
+        days_before = p_days_before,
+        local_time = p_local_time,
+        timezone_name = v_timezone,
+        revision_no = reminder.revision_no + 1,
+        acknowledged_trigger_at = null,
+        acknowledged_at = null,
+        acknowledged_by = null,
+        updated_by = v_user_id
+      where reminder.organization_id = v_organization_id
+        and reminder.id = v_reminder.id
+      returning * into v_reminder;
+    else
+      update public.calendar_reminders as reminder
+      set
+        days_before = p_days_before,
+        local_time = p_local_time,
+        timezone_name = v_timezone,
+        revision_no = reminder.revision_no + 1,
+        updated_by = v_user_id
+      where reminder.organization_id = v_organization_id
+        and reminder.id = v_reminder.id
+      returning * into v_reminder;
+    end if;
   exception
     when unique_violation then
       reason := 'duplicate_reminder';
@@ -896,6 +939,11 @@ declare
   v_result jsonb;
   v_source_type text;
   v_source_record_id uuid;
+  v_task public.litter_care_tasks%rowtype;
+  v_cycle public.reproductive_cycles%rowtype;
+  v_event public.events%rowtype;
+  v_source_date date;
+  v_expected_local timestamp without time zone;
 begin
   outcome := 'error';
   reason := null;
@@ -1049,18 +1097,167 @@ begin
     return;
   end if;
 
-  -- Same occurrence already acknowledged: idempotent success without revision bump.
+  -- Resolve and lock the current source before any idempotent success.
+  if v_reminder.litter_care_task_id is not null then
+    select *
+    into v_task
+    from public.litter_care_tasks task
+    where task.organization_id = v_organization_id
+      and task.id = v_reminder.litter_care_task_id
+    for share;
+
+    if not found then
+      reason := 'source_not_found';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_found', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    if v_task.status <> 'planned' then
+      reason := 'source_not_admissible';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_admissible', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    if v_task.item_kind = 'window' then
+      v_source_date := v_task.retained_starts_on;
+    else
+      v_source_date := v_task.planned_for;
+    end if;
+
+    if v_source_date is null then
+      reason := 'source_not_admissible';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_admissible', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    v_source_type := 'litter_care_task';
+    v_source_record_id := v_task.id;
+  elsif v_reminder.reproductive_cycle_id is not null then
+    select *
+    into v_cycle
+    from public.reproductive_cycles cycle
+    where cycle.organization_id = v_organization_id
+      and cycle.id = v_reminder.reproductive_cycle_id
+      and cycle.deleted_at is null
+    for share;
+
+    if not found then
+      reason := 'source_not_found';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_found', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    if v_cycle.status not in ('planned', 'in_progress') then
+      reason := 'source_not_admissible';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_admissible', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    v_source_date := v_cycle.started_on;
+    v_source_type := 'reproductive_cycle';
+    v_source_record_id := v_cycle.id;
+  else
+    select *
+    into v_event
+    from public.events event
+    where event.organization_id = v_organization_id
+      and event.id = v_reminder.adopter_event_id
+      and event.deleted_at is null
+    for share;
+
+    if not found then
+      reason := 'source_not_found';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_found', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    if v_event.event_type not in ('puppy_choice', 'adoption')
+      or v_event.status <> 'planned'
+      or v_event.reservation_id is null
+      or v_event.planned_at is null
+    then
+      reason := 'source_not_admissible';
+      insert into public.calendar_reminder_commands (
+        organization_id, reminder_id, client_command_id, command_type,
+        payload, outcome, result, reason, created_by
+      ) values (
+        v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+        v_payload, 'error', '{}'::jsonb, 'source_not_admissible', v_user_id
+      );
+      return next;
+      return;
+    end if;
+
+    v_source_date := (v_event.planned_at at time zone v_reminder.timezone_name)::date;
+    v_source_type := 'adopter_event';
+    v_source_record_id := v_event.id;
+  end if;
+
+  v_expected_local :=
+    ((v_source_date - v_reminder.days_before)::timestamp + v_reminder.local_time);
+
+  if (p_expected_trigger_at at time zone v_reminder.timezone_name)
+    is distinct from v_expected_local
+  then
+    reason := 'stale_trigger';
+    insert into public.calendar_reminder_commands (
+      organization_id, reminder_id, client_command_id, command_type,
+      payload, outcome, result, reason, created_by
+    ) values (
+      v_organization_id, v_reminder.id, p_client_command_id, 'acknowledge',
+      v_payload, 'error', '{}'::jsonb, 'stale_trigger', v_user_id
+    );
+    return next;
+    return;
+  end if;
+
+  -- Same current occurrence already acknowledged: idempotent success.
   if v_reminder.acknowledged_trigger_at is not distinct from p_expected_trigger_at
     and v_reminder.acknowledged_at is not null
     and v_reminder.acknowledged_by is not null
   then
-    if v_reminder.revision_no is distinct from p_expected_revision_no
-      and v_reminder.revision_no <> p_expected_revision_no
-    then
-      -- Allow ack replay when revision already advanced by a prior identical ack.
-      null;
-    end if;
-
     v_result := jsonb_build_object(
       'reminderId', v_reminder.id,
       'revisionNo', v_reminder.revision_no,
@@ -1078,16 +1275,8 @@ begin
     outcome := 'success';
     reason := null;
     reminder_id := v_reminder.id;
-    source_type := case
-      when v_reminder.litter_care_task_id is not null then 'litter_care_task'
-      when v_reminder.reproductive_cycle_id is not null then 'reproductive_cycle'
-      else 'adopter_event'
-    end;
-    source_record_id := coalesce(
-      v_reminder.litter_care_task_id,
-      v_reminder.reproductive_cycle_id,
-      v_reminder.adopter_event_id
-    );
+    source_type := v_source_type;
+    source_record_id := v_source_record_id;
     days_before := v_reminder.days_before;
     local_time := v_reminder.local_time;
     timezone_name := v_reminder.timezone_name;
@@ -1125,17 +1314,6 @@ begin
   where reminder.organization_id = v_organization_id
     and reminder.id = v_reminder.id
   returning * into v_reminder;
-
-  v_source_type := case
-    when v_reminder.litter_care_task_id is not null then 'litter_care_task'
-    when v_reminder.reproductive_cycle_id is not null then 'reproductive_cycle'
-    else 'adopter_event'
-  end;
-  v_source_record_id := coalesce(
-    v_reminder.litter_care_task_id,
-    v_reminder.reproductive_cycle_id,
-    v_reminder.adopter_event_id
-  );
 
   v_result := jsonb_build_object(
     'reminderId', v_reminder.id,

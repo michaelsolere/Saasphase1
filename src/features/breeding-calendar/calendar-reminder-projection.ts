@@ -32,6 +32,9 @@ export type CalendarReminderProjectionState =
 
 export const DEFAULT_CALENDAR_REMINDER_TIMEZONE = "Europe/Paris";
 
+export const CALENDAR_REMINDER_STALE_TRIGGER_MESSAGE =
+  "La date de l’événement a changé. Rechargez la page puis traitez le nouveau rappel.";
+
 export type CalendarReminderRule = {
   id: string;
   organizationId: string;
