@@ -1,4 +1,8 @@
 import { formatLitterJournalBusinessDate } from "./date";
+import {
+  resolveGestationAnchor,
+  type GestationAnchorResolution,
+} from "./gestation-anchor";
 import type {
   LitterCareCalendarCategoryFilter,
   LitterCareCalendarKindFilter,
@@ -13,12 +17,17 @@ export type LitterCareTimelineZoom =
   | "four_weeks"
   | "week";
 
-export type LitterCareTimelineAnchorKind = "estimated_ovulation" | "first_mating" | null;
+export type LitterCareTimelineAnchorKind =
+  | "estimated_ovulation"
+  | "first_mating_minus_24h"
+  | null;
 
 export type LitterCareTimelineAnchor = {
   kind: LitterCareTimelineAnchorKind;
   date: string | null;
   message: string;
+  isDerived: boolean;
+  sourceDate: string | null;
 };
 
 export type LitterCareTimelineMarkerKind =
@@ -85,6 +94,8 @@ export type LitterCareTimelineHeader = {
   statusLabel: string;
   biologicalDayLabel: string | null;
   ovulationLabel: string | null;
+  /** True when the displayed ovulation date is derived from first mating − 24 h. */
+  ovulationIsDerived: boolean;
   matingsLabel: string | null;
   expectedBirthLabel: string | null;
   actualBirthLabel: string | null;
@@ -283,33 +294,49 @@ export function getLitterCareTimelineZoom(
   return "cycle";
 }
 
-export function resolveLitterCareTimelineAnchor(
-  details: LitterJournalDetails | null,
+function timelineAnchorFromResolution(
+  resolution: GestationAnchorResolution,
 ): LitterCareTimelineAnchor {
-  const ovulation = parseTimelineCivilDate(details?.estimated_ovulation_date);
-  if (ovulation) {
+  if (resolution.outcome === "missing") {
     return {
-      kind: "estimated_ovulation",
-      date: ovulation,
-      message: `Calcul fondé sur l’ovulation estimée du ${formatShortCivilDate(ovulation)}`,
+      kind: null,
+      date: null,
+      message:
+        "Repère biologique J0 indisponible. La frise utilise uniquement les dates civiles retenues.",
+      isDerived: false,
+      sourceDate: null,
     };
   }
 
-  const mating = parseTimelineCivilDate(details?.mating_date);
-  if (mating) {
+  if (resolution.source === "estimated_ovulation") {
     return {
-      kind: "first_mating",
-      date: mating,
-      message: `Repère fondé sur la première saillie du ${formatShortCivilDate(mating)}`,
+      kind: "estimated_ovulation",
+      date: resolution.date,
+      message: `Calcul fondé sur l’ovulation estimée du ${formatShortCivilDate(resolution.date)}`,
+      isDerived: false,
+      sourceDate: resolution.sourceDate,
     };
   }
 
   return {
-    kind: null,
-    date: null,
-    message:
-      "Repère biologique J0 indisponible. La frise utilise uniquement les dates civiles retenues.",
+    kind: "first_mating_minus_24h",
+    date: resolution.date,
+    message: `Ovulation estimée automatiquement : ${formatShortCivilDate(resolution.date)}. Calcul provisoire fondé sur la première saillie du ${formatShortCivilDate(resolution.sourceDate)} − 24 h`,
+    isDerived: true,
+    sourceDate: resolution.sourceDate,
   };
+}
+
+export function resolveLitterCareTimelineAnchor(
+  details: LitterJournalDetails | null,
+): LitterCareTimelineAnchor {
+  return timelineAnchorFromResolution(
+    resolveGestationAnchor({
+      estimatedOvulationDate: details?.estimated_ovulation_date,
+      matingDate: details?.mating_date,
+      matingDate2: details?.mating_date_2,
+    }),
+  );
 }
 
 export function buildLitterCareTimelineBiologicalDays(anchorDate: string) {
@@ -623,7 +650,6 @@ function buildHeader({
 }): LitterCareTimelineHeader {
   const mother = litter.mother_display_name?.trim() || "Mère non renseignée";
   const father = litter.father_display_name?.trim() || "Père non renseigné";
-  const ovulation = parseTimelineCivilDate(details?.estimated_ovulation_date);
   const mating1 = parseTimelineCivilDate(details?.mating_date);
   const mating2 = parseTimelineCivilDate(details?.mating_date_2);
   const expectedBirth = parseTimelineCivilDate(litter.expected_birth_date);
@@ -652,7 +678,8 @@ function buildHeader({
       ? journalStatusLabels[litter.status] ?? litter.status.replaceAll("_", " ")
       : "Statut inconnu",
     biologicalDayLabel,
-    ovulationLabel: ovulation ? formatShortCivilDate(ovulation) : null,
+    ovulationLabel: anchor.date ? formatShortCivilDate(anchor.date) : null,
+    ovulationIsDerived: anchor.isDerived,
     matingsLabel,
     expectedBirthLabel: expectedBirth ? formatShortCivilDate(expectedBirth) : null,
     actualBirthLabel: actualBirth ? formatShortCivilDate(actualBirth) : null,
@@ -695,12 +722,16 @@ function buildMarkers({
     });
   };
 
-  push(
-    "estimated_ovulation",
-    parseTimelineCivilDate(details?.estimated_ovulation_date),
-    "Ovulation estimée",
-    "diamond",
-  );
+  if (anchor.kind === "estimated_ovulation" && anchor.date) {
+    push("estimated_ovulation", anchor.date, "Ovulation estimée", "diamond");
+  } else if (anchor.kind === "first_mating_minus_24h" && anchor.date) {
+    push(
+      "estimated_ovulation",
+      anchor.date,
+      "Ovulation estimée automatiquement",
+      "diamond",
+    );
+  }
   push("first_mating", parseTimelineCivilDate(details?.mating_date), "Première saillie", "dot");
   push("second_mating", parseTimelineCivilDate(details?.mating_date_2), "Deuxième saillie", "dot");
   push(

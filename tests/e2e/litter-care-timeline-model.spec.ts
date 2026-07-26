@@ -103,16 +103,21 @@ test("priorise l’ovulation sur la première saillie", () => {
   const anchor = resolveLitterCareTimelineAnchor(details());
   expect(anchor.kind).toBe("estimated_ovulation");
   expect(anchor.date).toBe("2024-06-06");
+  expect(anchor.isDerived).toBe(false);
   expect(anchor.message).toContain("ovulation estimée du");
 });
 
-test("replie sur la première saillie sans inventer d’ovulation", () => {
+test("replie sur première saillie moins 24 h sans inventer d’ovulation stockée", () => {
   const anchor = resolveLitterCareTimelineAnchor(
     details({ estimated_ovulation_date: null }),
   );
-  expect(anchor.kind).toBe("first_mating");
-  expect(anchor.date).toBe("2024-06-08");
+  expect(anchor.kind).toBe("first_mating_minus_24h");
+  expect(anchor.date).toBe("2024-06-07");
+  expect(anchor.isDerived).toBe(true);
+  expect(anchor.sourceDate).toBe("2024-06-08");
+  expect(anchor.message).toContain("Ovulation estimée automatiquement");
   expect(anchor.message).toContain("première saillie");
+  expect(anchor.message).toContain("− 24 h");
 });
 
 test("n’invente aucun J0 sans ancrage biologique", () => {
@@ -121,6 +126,7 @@ test("n’invente aucun J0 sans ancrage biologique", () => {
   );
   expect(anchor.kind).toBeNull();
   expect(anchor.date).toBeNull();
+  expect(anchor.isDerived).toBe(false);
   expect(anchor.message).toContain("Repère biologique J0 indisponible");
   const projection = projectLitterCareTimeline({
     litter: litter(),
@@ -131,6 +137,52 @@ test("n’invente aucun J0 sans ancrage biologique", () => {
   });
   expect(projection?.gestationZoomAvailable).toBe(false);
   expect(projection?.markers.some((marker) => marker.kind === "biological_day")).toBe(false);
+});
+
+test("projette J0/J7/J63 depuis le repli mating_date − 1 jour", () => {
+  const projection = projectLitterCareTimeline({
+    litter: litter({ expected_birth_date: "2026-08-09" }),
+    details: details({
+      estimated_ovulation_date: null,
+      mating_date: "2026-06-08",
+      mating_date_2: "2026-06-12",
+    }),
+    tasks: [],
+    todayDate: "2026-06-20",
+    zoom: "gestation",
+  })!;
+  expect(projection.anchor.date).toBe("2026-06-07");
+  expect(projection.startsOn).toBe("2026-06-07");
+  expect(projection.endsOn).toBe("2026-08-09");
+  const j0 = projection.markers.find(
+    (marker) => marker.kind === "biological_day" && marker.label === "J0",
+  );
+  const j7 = projection.markers.find(
+    (marker) => marker.kind === "biological_day" && marker.label === "J7",
+  );
+  const j63 = projection.markers.find(
+    (marker) => marker.kind === "biological_day" && marker.label === "J63",
+  );
+  expect(j0?.date).toBe("2026-06-07");
+  expect(j7?.date).toBe("2026-06-14");
+  expect(j63?.date).toBe("2026-08-09");
+  const autoOvulation = projection.markers.find(
+    (marker) => marker.kind === "estimated_ovulation",
+  );
+  expect(autoOvulation).toMatchObject({
+    date: "2026-06-07",
+    label: "Ovulation estimée automatiquement",
+  });
+  const firstMating = projection.markers.find(
+    (marker) => marker.kind === "first_mating",
+  );
+  expect(firstMating).toMatchObject({ date: "2026-06-08" });
+  const secondMating = projection.markers.find(
+    (marker) => marker.kind === "second_mating",
+  );
+  expect(secondMating).toMatchObject({ date: "2026-06-12" });
+  expect(projection.header.ovulationIsDerived).toBe(true);
+  expect(projection.header.anchorMessage).toContain("Calcul provisoire");
 });
 
 test("calcule J0 à J63 et les semaines S1 à S9", () => {

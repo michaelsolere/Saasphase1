@@ -143,8 +143,14 @@ function TimelineHeaderSummary({
       <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
         {header.ovulationLabel ? (
           <div>
-            <dt className="text-muted">Ovulation estimée</dt>
-            <dd>{header.ovulationLabel}</dd>
+            <dt className="text-muted">
+              {header.ovulationIsDerived
+                ? "Ovulation estimée automatiquement"
+                : "Ovulation estimée"}
+            </dt>
+            <dd data-timeline-ovulation-derived={header.ovulationIsDerived ? "true" : "false"}>
+              {header.ovulationLabel}
+            </dd>
           </div>
         ) : null}
         {header.matingsLabel ? (

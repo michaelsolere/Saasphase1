@@ -447,8 +447,12 @@ test("frise biologique en lecture seule : zoom, repères, filtres et cleanup", a
         url.searchParams.get("view") === "timeline",
     );
     await expect(page.locator("[data-timeline-anchor-message]")).toContainText(
-      "première saillie",
+      "Ovulation estimée automatiquement",
     );
+    await expect(page.locator("[data-timeline-anchor-message]")).toContainText(
+      "− 24 h",
+    );
+    await expect(page.locator("[data-timeline-ovulation-derived='true']")).toBeVisible();
     await expect(
       page.locator("[data-timeline-item]").filter({ hasText: `E2E tâche portée B ${label}` }),
     ).toHaveCount(1);

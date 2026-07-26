@@ -1,5 +1,6 @@
 import type { LitterJournalDetails, LitterJournalListItem } from "./types";
 import { getLitterJournalCalendarDaysElapsed } from "./date";
+import { resolveGestationAnchor } from "./gestation-anchor";
 
 const journalStatusLabels: Record<string, string> = {
   mating_done: "Saillie réalisée",
@@ -30,12 +31,18 @@ export function getLitterJournalContextualAge(
     return `J+${getLitterJournalCalendarDaysElapsed(litter.actual_birth_date, now ?? new Date())} depuis la naissance`;
   }
 
-  if (details?.estimated_ovulation_date) {
-    return `J+${getLitterJournalCalendarDaysElapsed(details.estimated_ovulation_date, now ?? new Date())} depuis l’ovulation estimée`;
-  }
+  const anchor = resolveGestationAnchor({
+    estimatedOvulationDate: details?.estimated_ovulation_date,
+    matingDate: details?.mating_date,
+    matingDate2: details?.mating_date_2,
+  });
 
-  if (details?.mating_date) {
-    return `J+${getLitterJournalCalendarDaysElapsed(details.mating_date, now ?? new Date())} depuis la première saillie`;
+  if (anchor.outcome === "resolved") {
+    const day = getLitterJournalCalendarDaysElapsed(anchor.date, now ?? new Date());
+    if (anchor.isDerived) {
+      return `J+${day} depuis l’ovulation estimée automatiquement`;
+    }
+    return `J+${day} depuis l’ovulation estimée`;
   }
 
   return null;
