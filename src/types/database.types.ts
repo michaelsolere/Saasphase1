@@ -3720,6 +3720,86 @@ export type Database = {
           },
         ]
       }
+      organization_calendar_feeds: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          include_adopter_appointment: boolean
+          include_litter_care: boolean
+          include_reproductive_cycle: boolean
+          organization_id: string
+          revision_no: number
+          revoked_at: string | null
+          revoked_by: string | null
+          token_hash: string
+          token_hint: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          include_adopter_appointment?: boolean
+          include_litter_care?: boolean
+          include_reproductive_cycle?: boolean
+          organization_id: string
+          revision_no?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash: string
+          token_hint: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          include_adopter_appointment?: boolean
+          include_litter_care?: boolean
+          include_reproductive_cycle?: boolean
+          organization_id?: string
+          revision_no?: number
+          revoked_at?: string | null
+          revoked_by?: string | null
+          token_hash?: string
+          token_hint?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "organization_calendar_feeds_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_calendar_feeds_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_calendar_feeds_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_calendar_feeds_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_document_settings: {
         Row: {
           commitment_certificate_text: string | null
@@ -6047,6 +6127,29 @@ export type Database = {
         Args: { p_client_command_id: string; p_expected_model_revision: number; p_expected_plan_revision: number | null; p_litter_id: string; p_planning_model_id: string; p_selected_model_item_ids: string[] | null; p_timezone_name: string }
         Returns: { litter_plan_id: string | null; outcome: string; reason: string | null; replayed: boolean; result: Json; revision: number | null }[]
       }
+      create_or_rotate_organization_calendar_feed: {
+        Args: {
+          p_include_adopter_appointment: boolean
+          p_include_litter_care: boolean
+          p_include_reproductive_cycle: boolean
+          p_token_hash: string
+          p_token_hint: string
+        }
+        Returns: {
+          created_at: string
+          feed_id: string
+          include_adopter_appointment: boolean
+          include_litter_care: boolean
+          include_reproductive_cycle: boolean
+          organization_id: string
+          outcome: string
+          reason: string
+          revision_no: number
+          revoked_at: string | null
+          token_hint: string
+          updated_at: string
+        }[]
+      }
       create_organization_with_owner: {
         Args: { p_name: string; p_slug: string }
         Returns: string
@@ -6378,6 +6481,29 @@ export type Database = {
           sequence_no: number
         }[]
       }
+      update_organization_calendar_feed_sources: {
+        Args: {
+          p_expected_revision_no: number
+          p_feed_id: string
+          p_include_adopter_appointment: boolean
+          p_include_litter_care: boolean
+          p_include_reproductive_cycle: boolean
+        }
+        Returns: {
+          created_at: string
+          feed_id: string
+          include_adopter_appointment: boolean
+          include_litter_care: boolean
+          include_reproductive_cycle: boolean
+          organization_id: string
+          outcome: string
+          reason: string
+          revision_no: number
+          revoked_at: string | null
+          token_hint: string
+          updated_at: string
+        }[]
+      }
       update_reproductive_cycle: {
         Args: {
           p_cycle_id: string
@@ -6611,6 +6737,23 @@ export type Database = {
         Returns: {
           asset_id: string
           outcome: string
+        }[]
+      }
+      revoke_organization_calendar_feed: {
+        Args: { p_expected_revision_no: number; p_feed_id: string }
+        Returns: {
+          created_at: string
+          feed_id: string
+          include_adopter_appointment: boolean
+          include_litter_care: boolean
+          include_reproductive_cycle: boolean
+          organization_id: string
+          outcome: string
+          reason: string
+          revision_no: number
+          revoked_at: string | null
+          token_hint: string
+          updated_at: string
         }[]
       }
       set_litter_care_task_schedule_lock: {

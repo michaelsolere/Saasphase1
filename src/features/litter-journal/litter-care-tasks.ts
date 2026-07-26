@@ -14,6 +14,7 @@ import {
   listLitterCareTaskTemplatesForOrganizationCore,
   listLitterCareTaskTemplatesCore,
   listLitterCareTasksForLitterCore,
+  listLitterCareTasksForOrganizationCore,
   listOrganizationLitterCareTasksCore,
   listOrganizationLitterCareTodayTasksCore,
   planLitterCareTaskGenerationCore,
@@ -175,6 +176,16 @@ export async function listLitterCareTasksForLitter(
 
 export async function listOrganizationLitterCareTasks(suppliedClient?: Supabase) {
   return listOrganizationLitterCareTasksCore(await serverClient(suppliedClient));
+}
+
+export async function listLitterCareTasksForOrganization(
+  organizationId: string,
+  suppliedClient?: Supabase,
+) {
+  return listLitterCareTasksForOrganizationCore(
+    await serverClient(suppliedClient),
+    organizationId,
+  );
 }
 
 export async function listOrganizationLitterCareTodayTasks(

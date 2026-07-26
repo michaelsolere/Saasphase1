@@ -1762,20 +1762,44 @@ async function loadOrganizationLitterNames(
   };
 }
 
+export async function listLitterCareTasksForOrganizationCore(
+  supabase: Supabase,
+  organizationId: string,
+): Promise<ListOrganizationLitterCareTasksResult> {
+  const tasks = await supabase
+    .from("litter_care_tasks")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .eq("status", "planned");
+  if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
+  const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
+  const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
+  if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
+  const mapped = (tasks.data ?? [])
+    .map(mapTask)
+    .filter((task) => Boolean(litters.litterNames[task.litterId]));
+  mapped.sort(
+    (left, right) =>
+      (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(
+        right.plannedFor ?? right.retainedStartsOn ?? "",
+      ) ||
+      left.litterId.localeCompare(right.litterId) ||
+      left.id.localeCompare(right.id),
+  );
+  return {
+    outcome: "success",
+    organizationId,
+    tasks: mapped,
+    litterNames: litters.litterNames,
+  };
+}
+
 export async function listOrganizationLitterCareTasksCore(
   supabase: Supabase,
 ): Promise<ListOrganizationLitterCareTasksResult> {
   const membership = await resolveActiveOrganizationMembership(supabase);
   if ("outcome" in membership) return membership;
-  const { organizationId } = membership;
-  const tasks = await supabase.from("litter_care_tasks").select("*").eq("organization_id", organizationId).eq("status", "planned");
-  if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
-  const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
-  const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
-  if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
-  const mapped = (tasks.data ?? []).map(mapTask).filter((task) => Boolean(litters.litterNames[task.litterId]));
-  mapped.sort((left, right) => (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(right.plannedFor ?? right.retainedStartsOn ?? "") || left.litterId.localeCompare(right.litterId) || left.id.localeCompare(right.id));
-  return { outcome: "success", organizationId, tasks: mapped, litterNames: litters.litterNames };
+  return listLitterCareTasksForOrganizationCore(supabase, membership.organizationId);
 }
 
 export async function listOrganizationLitterCareTodayTasksCore(
