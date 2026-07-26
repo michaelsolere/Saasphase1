@@ -94,6 +94,7 @@ const idKeys = [
   "commandForeignReplaySource",
   "commandViewerMating",
   "commandHistorical",
+  "commandConfigRestoreForHistorical",
 ] as const;
 
 const ids = Object.fromEntries(
@@ -1446,16 +1447,20 @@ test("applique automatiquement le planning de gestation à la première saillie"
   ).toBe(0);
 
   // --- security: historical mating without registry (exact + conflicts) ---------
+  // Litter already carries an ovulation date added later (independent of the
+  // historical mating command, which never included ovulation).
   const historicalLitterName = `${fixtureNamePrefix} portée historique`;
+  const historicalPersistedOvulation = "2026-05-13";
   sql(`
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, father_id, status,
-      mating_date, created_by, updated_by
+      mating_date, estimated_ovulation_date, created_by, updated_by
     ) values (
       ${q(ids.litterHistorical)}::uuid, ${q(ids.tempOrg)}::uuid,
       ${q(historicalLitterName)}, 'dog', 'Golden Retriever',
       ${q(ids.motherHistorical)}::uuid, ${q(ids.father)}::uuid, 'mating_done',
-      '2026-05-12', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      '2026-05-12', ${q(historicalPersistedOvulation)}::date,
+      ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
     );
 
     insert into public.reproductive_cycles (
@@ -1495,7 +1500,9 @@ test("applique automatiquement le planning de gestation à la première saillie"
     { ...conflictBase, location: "chenil A" },
     { ...conflictBase, note: "note forgée" },
     { ...conflictBase, litterName: `${fixtureNamePrefix} autre nom` },
-    { ...conflictBase, estimatedOvulationDate: "2026-05-13" },
+    { ...conflictBase, estimatedOvulationDate: "2026-05-14" },
+    // Forged ovulation equal to the later-persisted litter value must still conflict.
+    { ...conflictBase, estimatedOvulationDate: historicalPersistedOvulation },
   ] as const;
 
   for (const conflictInput of conflictCases) {
@@ -1507,21 +1514,40 @@ test("applique automatiquement le planning de gestation à la première saillie"
   }
 
   expect(
-    Number(
+    JSON.parse(
       sql(`
-        select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
-        where client_command_id = ${q(ids.commandHistorical)}::uuid;
+        select json_build_object(
+          'commands', (
+            select count(*) from public.reproductive_cycle_mating_gestation_plan_commands
+            where client_command_id = ${q(ids.commandHistorical)}::uuid
+          ),
+          'plans', (
+            select count(*) from public.litter_plans
+            where litter_id = ${q(ids.litterHistorical)}::uuid
+          ),
+          'ovulation', (
+            select estimated_ovulation_date::text from public.litters
+            where id = ${q(ids.litterHistorical)}::uuid
+          )
+        )::text;
       `),
     ),
-  ).toBe(0);
-  expect(
-    Number(
-      sql(`
-        select count(*) from public.litter_plans
-        where litter_id = ${q(ids.litterHistorical)}::uuid;
-      `),
-    ),
-  ).toBe(0);
+  ).toEqual({
+    commands: 0,
+    plans: 0,
+    ovulation: historicalPersistedOvulation,
+  });
+
+  const restoreForHistorical = await directSetDefault(
+    owner,
+    ids.commandConfigRestoreForHistorical,
+    GESTATION_LIBRARY_STANDARD_CODE,
+    GESTATION_LIBRARY_VERSION,
+  );
+  expect(restoreForHistorical).toMatchObject({
+    outcome: "success",
+    organization_model_id: state.standardOrgModelId,
+  });
 
   const historicalExact = requireSuccess(
     await recordReproductiveCycleMatingCore(conflictBase, owner),
@@ -1531,7 +1557,7 @@ test("applique automatiquement le planning de gestation à la première saillie"
     litterId: ids.litterHistorical,
     sequenceNo: 1,
     replayed: true,
-    gestationPlanningOutcome: "not_configured",
+    gestationPlanningOutcome: "applied",
   });
   expect(
     Number(
@@ -1541,6 +1567,23 @@ test("applique automatiquement le planning de gestation à la première saillie"
       `),
     ),
   ).toBe(1);
+  expect(
+    sql(`
+      select estimated_ovulation_date::text from public.litters
+      where id = ${q(ids.litterHistorical)}::uuid;
+    `),
+  ).toBe(historicalPersistedOvulation);
+  // Ovulation-anchored items must use the persisted litter date (ovulation + 63 → expected birth).
+  expect(anchorRows(ids.litterHistorical, ["dog-pregnancy-ultrasound", "dog-gestation-food-transition"])).toEqual([
+    { code: "dog-gestation-food-transition", source: "estimated_ovulation", adjustment: 63, date: "2026-07-15" },
+    { code: "dog-pregnancy-ultrasound", source: "estimated_ovulation", adjustment: 0, date: "2026-05-13" },
+  ]);
+  expect(
+    taskWindows(ids.litterHistorical, ["dog-pregnancy-ultrasound", "dog-gestation-food-transition"]),
+  ).toEqual([
+    { code: "dog-gestation-food-transition", starts: "2026-06-19", ends: "2026-06-25" },
+    { code: "dog-pregnancy-ultrasound", starts: "2026-06-07", ends: "2026-06-14" },
+  ]);
 
   // --- inject error: full rollback of mating + litter + plan ---------------------
   const cycleInjectError = requireSuccess(
