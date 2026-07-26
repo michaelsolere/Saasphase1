@@ -75,6 +75,10 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     const animalIds = [...ids.get("animals")!];
     for (const table of cleanupOrder) { const tableIds = [...ids.get(table)!]; if (tableIds.length) {
     if (table === "animals" || table === "organizations") continue;
+    if (table === "litter_care_tasks") {
+      await execute(`delete from public.litter_care_task_schedule_changes where task_id in (${idsSql(tableIds)})`);
+      await execute(`delete from public.litter_care_task_schedule_commands where task_id in (${idsSql(tableIds)})`);
+    }
     if (table === "litters" && animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)}) and litter_id is not null`);
     const statement = `delete from public.${table} where id in (${idsSql(tableIds)})`;
     await execute(table === "whelping_birth_adjustment_commands" ? `begin; set local app.fixture_cleanup = 'on'; ${statement}; commit;` : statement);
@@ -83,7 +87,20 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     const organizationIds = [...ids.get("organizations")!];
     if (organizationIds.length) await execute(`delete from public.organizations where id in (${idsSql(organizationIds)})`);
   };
-  const assertEmpty = async () => { const remaining = await counts(); const dirty = Object.entries(remaining).filter(([, count]) => count !== 0); if (dirty.length) throw new Error(`E2E fixture cleanup left rows: ${dirty.map(([table, count]) => `${table}=${count}`).join(", ")}`); return remaining; };
+  const assertEmpty = async () => {
+    const remaining = await counts();
+    const taskIds = [...ids.get("litter_care_tasks")!];
+    const scheduleRemaining = taskIds.length === 0
+      ? { schedule_changes: 0, schedule_commands: 0 }
+      : {
+          schedule_changes: Number(await execute(`select count(*)::text from public.litter_care_task_schedule_changes where task_id in (${idsSql(taskIds)})`)),
+          schedule_commands: Number(await execute(`select count(*)::text from public.litter_care_task_schedule_commands where task_id in (${idsSql(taskIds)})`)),
+        };
+    const allRemaining = { ...remaining, ...scheduleRemaining };
+    const dirty = Object.entries(allRemaining).filter(([, count]) => count !== 0);
+    if (dirty.length) throw new Error(`E2E fixture cleanup left rows: ${dirty.map(([table, count]) => `${table}=${count}`).join(", ")}`);
+    return allRemaining;
+  };
   return { namespace, register, has, cleanup, assertEmpty, counts, cleanupOrder: [...cleanupOrder] };
 }
 

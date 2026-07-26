@@ -236,6 +236,15 @@ export type ListLitterCareTaskTemplatesInput = { litterId: string };
 export type ListOrganizationLitterCareTasksResult =
   | { outcome: "success"; organizationId: string; tasks: LitterCareTaskSummary[]; litterNames: Record<string, string> }
   | ErrorResult;
+export type ListOrganizationLitterCareTodayTasksResult =
+  | {
+      outcome: "success";
+      organizationId: string;
+      role: OrganizationRole;
+      tasks: LitterCareTaskSummary[];
+      litterNames: Record<string, string>;
+    }
+  | ErrorResult;
 export type ListLitterCareTaskTemplatesForOrganizationInput = {
   organizationId: string;
 };
@@ -1702,14 +1711,12 @@ export async function listLitterCareTasksForLitterCore(
   return { outcome: "success", role: authorization.role, litterName: authorization.litter.name, tasks: mapped };
 }
 
-export async function listOrganizationLitterCareTasksCore(
-  supabase: Supabase,
-): Promise<ListOrganizationLitterCareTasksResult> {
+async function resolveActiveOrganizationMembership(supabase: Supabase) {
   const userId = await authenticatedUserId(supabase);
   if (!userId) return failure("unauthenticated", "Vous devez être connecté pour continuer.");
   const membership = await supabase
     .from("memberships")
-    .select("organization_id")
+    .select("organization_id, role")
     .eq("profile_id", userId)
     .eq("status", "active")
     .is("deleted_at", null)
@@ -1717,19 +1724,103 @@ export async function listOrganizationLitterCareTasksCore(
     .limit(1)
     .maybeSingle();
   if (membership.error) return databaseFailure("breeding_calendar_membership_read_failed", membership.error);
-  if (!membership.data?.organization_id) return failure("not_found", "L’organisation active est introuvable.");
-  const organizationId = membership.data.organization_id;
+  if (!membership.data?.organization_id || !isRole(membership.data.role)) {
+    return failure("not_found", "L’organisation active est introuvable.");
+  }
+  return {
+    organizationId: membership.data.organization_id,
+    role: membership.data.role,
+  };
+}
+
+function previousCivilDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day - 1));
+  return [
+    date.getUTCFullYear().toString().padStart(4, "0"),
+    (date.getUTCMonth() + 1).toString().padStart(2, "0"),
+    date.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
+}
+
+async function loadOrganizationLitterNames(
+  supabase: Supabase,
+  organizationId: string,
+  litterIds: string[],
+) {
+  if (litterIds.length === 0) return { litterNames: {} as Record<string, string>, error: null };
+  const litters = await supabase
+    .from("litters")
+    .select("id, name")
+    .eq("organization_id", organizationId)
+    .in("id", litterIds)
+    .is("deleted_at", null);
+  if (litters.error) return { litterNames: {} as Record<string, string>, error: litters.error };
+  return {
+    litterNames: Object.fromEntries((litters.data ?? []).map((litter) => [litter.id, litter.name])),
+    error: null,
+  };
+}
+
+export async function listOrganizationLitterCareTasksCore(
+  supabase: Supabase,
+): Promise<ListOrganizationLitterCareTasksResult> {
+  const membership = await resolveActiveOrganizationMembership(supabase);
+  if ("outcome" in membership) return membership;
+  const { organizationId } = membership;
   const tasks = await supabase.from("litter_care_tasks").select("*").eq("organization_id", organizationId).eq("status", "planned");
   if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
   const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
-  const litters = litterIds.length
-    ? await supabase.from("litters").select("id, name").eq("organization_id", organizationId).in("id", litterIds).is("deleted_at", null)
-    : { data: [], error: null };
+  const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
   if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
-  const litterNames = Object.fromEntries((litters.data ?? []).map((litter) => [litter.id, litter.name]));
-  const mapped = (tasks.data ?? []).map(mapTask).filter((task) => Boolean(litterNames[task.litterId]));
+  const mapped = (tasks.data ?? []).map(mapTask).filter((task) => Boolean(litters.litterNames[task.litterId]));
   mapped.sort((left, right) => (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(right.plannedFor ?? right.retainedStartsOn ?? "") || left.litterId.localeCompare(right.litterId) || left.id.localeCompare(right.id));
-  return { outcome: "success", organizationId, tasks: mapped, litterNames };
+  return { outcome: "success", organizationId, tasks: mapped, litterNames: litters.litterNames };
+}
+
+export async function listOrganizationLitterCareTodayTasksCore(
+  supabase: Supabase,
+  input: { referenceDate: string },
+): Promise<ListOrganizationLitterCareTodayTasksResult> {
+  const membership = await resolveActiveOrganizationMembership(supabase);
+  if ("outcome" in membership) return membership;
+  const { organizationId, role } = membership;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.referenceDate)) {
+    return invalidInput();
+  }
+
+  // Include the previous UTC civil day so Europe/Paris midnight edge cases stay visible.
+  const resolvedSince = `${previousCivilDate(input.referenceDate)}T00:00:00.000Z`;
+  const tasks = await supabase
+    .from("litter_care_tasks")
+    .select("*")
+    .eq("organization_id", organizationId)
+    .or(`status.eq.planned,resolved_at.gte.${resolvedSince}`);
+  if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
+
+  const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
+  const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
+  if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
+
+  const mapped = (tasks.data ?? [])
+    .map(mapTask)
+    .filter((task) => Boolean(litters.litterNames[task.litterId]));
+  mapped.sort(
+    (left, right) =>
+      (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(
+        right.plannedFor ?? right.retainedStartsOn ?? "",
+      ) ||
+      left.litterId.localeCompare(right.litterId) ||
+      left.id.localeCompare(right.id),
+  );
+
+  return {
+    outcome: "success",
+    organizationId,
+    role,
+    tasks: mapped,
+    litterNames: litters.litterNames,
+  };
 }
 
 export async function createLitterCareTaskCore(
