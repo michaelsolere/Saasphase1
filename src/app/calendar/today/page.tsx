@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import {
+  isAdopterAppointmentBreedingCalendarEvent,
+  listAdopterAppointmentCalendarEvents,
+} from "@/features/breeding-calendar/breeding-calendar";
 import { BreedingTodayPanel } from "@/features/breeding-calendar/breeding-today-panel";
 import {
   formatLitterJournalBusinessDate,
@@ -96,11 +100,16 @@ export default async function BreedingTodayPage() {
 
   let source: Awaited<ReturnType<typeof listOrganizationLitterCareTodayTasks>> | null =
     null;
+  let appointments: Awaited<ReturnType<typeof listAdopterAppointmentCalendarEvents>> =
+    [];
   let hasLoadingError = false;
 
   try {
     source = await listOrganizationLitterCareTodayTasks({ referenceDate: todayDate });
     if (source.outcome !== "success") hasLoadingError = true;
+    else {
+      appointments = await listAdopterAppointmentCalendarEvents(source.organizationId);
+    }
   } catch {
     hasLoadingError = true;
   }
@@ -113,8 +122,8 @@ export default async function BreedingTodayPage() {
             Aujourd’hui — élevage
           </h1>
           <p className="mt-3 max-w-3xl text-sm text-muted">
-            Vue quotidienne des actions planifiées pour toutes les portées de
-            l’élevage.
+            Vue quotidienne des actions planifiées des portées et des
+            rendez-vous adoptants du jour.
           </p>
           <BreedingTodayNav active="today" />
         </header>
@@ -158,8 +167,9 @@ export default async function BreedingTodayPage() {
           Aujourd’hui — élevage
         </h1>
         <p className="mt-3 max-w-3xl text-sm text-muted">
-          Vue quotidienne des actions planifiées pour toutes les portées de
-          l’élevage. Traitez-les ici ou ouvrez le Journal de la portée concernée.
+          Vue quotidienne des actions planifiées des portées et des rendez-vous
+          adoptants du jour. Traitez les tâches de portée ici ou ouvrez le
+          Journal concerné ; les rendez-vous se gèrent dans le parcours adoptant.
         </p>
         <BreedingTodayNav active="today" />
       </header>
@@ -168,6 +178,7 @@ export default async function BreedingTodayPage() {
         litterNames={source.litterNames}
         todayDate={todayDate}
         todayLocalTime={todayLocalTime}
+        appointments={appointments.filter(isAdopterAppointmentBreedingCalendarEvent)}
         quickActions={quickActions}
         scheduleActions={scheduleActions}
       />

@@ -1,5 +1,10 @@
 import Link from "next/link";
 
+import {
+  adopterAppointmentStatusLabels,
+} from "@/features/breeding-calendar/adopter-appointment-calendar";
+import type { AdopterAppointmentBreedingCalendarEvent } from "@/features/breeding-calendar/breeding-calendar-contract";
+import { filterAdopterAppointmentsForToday } from "@/features/breeding-calendar/breeding-calendar-projection";
 import { getLitterDisplayName } from "@/features/litters/formatters";
 import { litterCareTaskCategoryLabels } from "@/features/litter-journal/litter-care-task-labels";
 import {
@@ -198,11 +203,77 @@ function TodaySection({
   );
 }
 
+function TodayAppointment({
+  appointment,
+}: {
+  appointment: AdopterAppointmentBreedingCalendarEvent;
+}) {
+  const time = formatTime(appointment.startsLocalTime);
+  return (
+    <li
+      className="min-w-0 rounded-xl border border-sky-500/40 bg-sky-50/50 px-4 py-3"
+      data-calendar-source="adopter_appointment"
+    >
+      <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            Rendez-vous · {adopterAppointmentStatusLabels[appointment.appointmentStatus]}
+          </p>
+          <h4 className="mt-1 break-words font-semibold">{appointment.title}</h4>
+          <p className="mt-1 break-words text-sm font-medium text-foreground">
+            {appointment.contextLabel}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">
+            <span>{formatCivilDate(appointment.startsOn)}</span>
+            {time ? <span>À {time}</span> : null}
+            <span className="font-medium text-foreground">
+              {adopterAppointmentStatusLabels[appointment.appointmentStatus]}
+            </span>
+          </div>
+        </div>
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-3">
+          <Link
+            href={appointment.href}
+            className="text-sm font-semibold text-accent hover:underline"
+          >
+            Ouvrir le parcours adoptant
+          </Link>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function TodayAppointmentsSection({
+  appointments,
+}: {
+  appointments: readonly AdopterAppointmentBreedingCalendarEvent[];
+}) {
+  if (appointments.length === 0) return null;
+  return (
+    <section
+      aria-label="Rendez-vous adoptants aujourd’hui"
+      className="min-w-0 overflow-x-hidden rounded-2xl border bg-surface p-5 sm:p-6"
+    >
+      <h2 className="text-lg font-semibold">Rendez-vous adoptants aujourd’hui</h2>
+      <p className="mt-1 text-sm text-muted">
+        Lecture seule — la modification se fait dans le parcours adoptant.
+      </p>
+      <ul className="mt-5 space-y-2">
+        {appointments.map((appointment) => (
+          <TodayAppointment key={appointment.sourceRecordId} appointment={appointment} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function BreedingTodayPanel({
   tasks,
   litterNames,
   todayDate,
   todayLocalTime,
+  appointments = [],
   quickActions = [],
   scheduleActions = [],
   unavailable = false,
@@ -211,6 +282,7 @@ export function BreedingTodayPanel({
   litterNames: Record<string, string>;
   todayDate: string;
   todayLocalTime: string;
+  appointments?: readonly AdopterAppointmentBreedingCalendarEvent[];
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActions[];
   unavailable?: boolean;
@@ -228,65 +300,69 @@ export function BreedingTodayPanel({
   const scheduleActionsByTaskId = new Map(
     scheduleActions.map((actions) => [actions.taskId, actions]),
   );
+  const todayAppointments = filterAdopterAppointmentsForToday(appointments, todayDate);
 
   return (
-    <section
-      className="min-w-0 overflow-x-hidden rounded-2xl border bg-surface p-5 sm:p-6"
-      aria-labelledby="breeding-today-heading"
-    >
-      <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-baseline">
-        <div>
-          <h2 id="breeding-today-heading" className="text-lg font-semibold">
-            Aujourd’hui
-          </h2>
-          <p className="mt-1 text-sm text-muted">{formatCivilDate(todayDate)}</p>
+    <div className="space-y-6">
+      <section
+        className="min-w-0 overflow-x-hidden rounded-2xl border bg-surface p-5 sm:p-6"
+        aria-labelledby="breeding-today-heading"
+      >
+        <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-baseline">
+          <div>
+            <h2 id="breeding-today-heading" className="text-lg font-semibold">
+              Aujourd’hui
+            </h2>
+            <p className="mt-1 text-sm text-muted">{formatCivilDate(todayDate)}</p>
+          </div>
+          {!unavailable ? (
+            <p className="text-sm text-muted">
+              {total} élément{total > 1 ? "s" : ""}
+            </p>
+          ) : null}
         </div>
-        {!unavailable ? (
-          <p className="text-sm text-muted">
-            {total} élément{total > 1 ? "s" : ""}
-          </p>
-        ) : null}
-      </div>
-      {unavailable ? (
-        <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_UNAVAILABLE_MESSAGE}</p>
-      ) : total === 0 ? (
-        <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_EMPTY_MESSAGE}</p>
-      ) : (
-        <div className="mt-5 space-y-6">
-          <TodaySection
-            title="À faire aujourd’hui"
-            tasks={projection.dueToday}
-            litterNames={litterNames}
-            active
-            quickActionsByTaskId={quickActionsByTaskId}
-            scheduleActionsByTaskId={scheduleActionsByTaskId}
-          />
-          <TodaySection
-            title="En retard"
-            tasks={projection.overdue}
-            litterNames={litterNames}
-            active
-            quickActionsByTaskId={quickActionsByTaskId}
-            scheduleActionsByTaskId={scheduleActionsByTaskId}
-          />
-          <TodaySection
-            title="Fenêtres ouvertes"
-            tasks={projection.openWindows}
-            litterNames={litterNames}
-            active
-            quickActionsByTaskId={quickActionsByTaskId}
-            scheduleActionsByTaskId={scheduleActionsByTaskId}
-          />
-          <TodaySection
-            title="Traité aujourd’hui"
-            tasks={projection.handledToday}
-            litterNames={litterNames}
-            active={false}
-            quickActionsByTaskId={quickActionsByTaskId}
-            scheduleActionsByTaskId={scheduleActionsByTaskId}
-          />
-        </div>
-      )}
-    </section>
+        {unavailable ? (
+          <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_UNAVAILABLE_MESSAGE}</p>
+        ) : total === 0 ? (
+          <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_EMPTY_MESSAGE}</p>
+        ) : (
+          <div className="mt-5 space-y-6">
+            <TodaySection
+              title="À faire aujourd’hui"
+              tasks={projection.dueToday}
+              litterNames={litterNames}
+              active
+              quickActionsByTaskId={quickActionsByTaskId}
+              scheduleActionsByTaskId={scheduleActionsByTaskId}
+            />
+            <TodaySection
+              title="En retard"
+              tasks={projection.overdue}
+              litterNames={litterNames}
+              active
+              quickActionsByTaskId={quickActionsByTaskId}
+              scheduleActionsByTaskId={scheduleActionsByTaskId}
+            />
+            <TodaySection
+              title="Fenêtres ouvertes"
+              tasks={projection.openWindows}
+              litterNames={litterNames}
+              active
+              quickActionsByTaskId={quickActionsByTaskId}
+              scheduleActionsByTaskId={scheduleActionsByTaskId}
+            />
+            <TodaySection
+              title="Traité aujourd’hui"
+              tasks={projection.handledToday}
+              litterNames={litterNames}
+              active={false}
+              quickActionsByTaskId={quickActionsByTaskId}
+              scheduleActionsByTaskId={scheduleActionsByTaskId}
+            />
+          </div>
+        )}
+      </section>
+      <TodayAppointmentsSection appointments={todayAppointments} />
+    </div>
   );
 }
