@@ -43,6 +43,7 @@ import {
   LitterFields,
   type LitterAnimalOption,
 } from "@/features/litters/litter-fields";
+import { LitterGestationAnchorsSection } from "@/features/litters/litter-gestation-anchors-section";
 import { LitterReservationDocumentBatchSection } from "@/features/litters/litter-reservation-document-batch-section";
 import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { OffspringCreationForm } from "@/features/litters/offspring-creation-form";
@@ -1494,6 +1495,7 @@ export default async function LitterDetailPage({
     birth_documents_deposit_error_count?: string;
     group_assignment_status?: string;
     detail_status?: string;
+    gestation_anchors_status?: string;
     offspring_status?: string;
     offspring_count?: string;
     animal_availability_status?: string;
@@ -1571,6 +1573,7 @@ export default async function LitterDetailPage({
     birth_documents_deposit_error_count,
     group_assignment_status,
     detail_status,
+    gestation_anchors_status,
     offspring_status,
     offspring_count,
     animal_availability_status,
@@ -1585,6 +1588,21 @@ export default async function LitterDetailPage({
     redirect("/login");
   }
 
+  const { data: membership } = await supabase
+    .from("memberships")
+    .select("organization_id, role")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const canWriteGestationAnchors =
+    membership?.role === "owner" ||
+    membership?.role === "admin" ||
+    membership?.role === "member";
+
   const { data: rawLitter, error: readError } = await supabase
     .from("litters")
     .select(
@@ -1595,6 +1613,15 @@ export default async function LitterDetailPage({
     .maybeSingle();
 
   const litter = rawLitter as DBLitter | null;
+
+  const { data: activePlan } = litter
+    ? await supabase
+        .from("litter_plans")
+        .select("id, revision")
+        .eq("litter_id", litter.id)
+        .eq("status", "active")
+        .maybeSingle()
+    : { data: null };
 
   const depositSettings =
     litter?.organization_id
@@ -3211,12 +3238,30 @@ export default async function LitterDetailPage({
                 </div>
               </CollapsibleSection>
 
+              <CollapsibleSection id="dates-gestation" title="Dates de gestation">
+                <LitterGestationAnchorsSection
+                  litterId={litter.id}
+                  litterUpdatedAt={litter.updated_at}
+                  planRevision={activePlan?.revision ?? null}
+                  matingDate={litter.mating_date}
+                  matingDate2={litter.mating_date_2}
+                  estimatedOvulationDate={litter.estimated_ovulation_date}
+                  expectedBirthDate={litter.expected_birth_date}
+                  actualBirthDate={litter.actual_birth_date}
+                  canWrite={canWriteGestationAnchors}
+                  clientCommandId={crypto.randomUUID()}
+                  status={gestation_anchors_status}
+                />
+              </CollapsibleSection>
+
               <CollapsibleSection id="modifier-portee" title="Modifier la portée">
                 <p className="text-sm text-muted">
                   Mettez à jour les informations principales de la portée. Le
                   rattachement à un groupe se gère dans la section dédiée
                   ci-dessous. Aucun animal, réservation ou document n’est créé ou
-                  modifié par cette action.
+                  modifié par cette action. Les dates de saillie, d’ovulation,
+                  de mise-bas prévue et de naissance réelle se gèrent dans la
+                  section « Dates de gestation » ou les modules spécialisés.
                 </p>
 
                 {detail_status === "success" ? (
@@ -3241,6 +3286,7 @@ export default async function LitterDetailPage({
                   <input type="hidden" name="litter_id" value={litter.id} />
                   <LitterFields
                     idPrefix="litter-edit"
+                    includeGestationDates={false}
                     defaults={{
                       name: litter.name,
                       species: litter.species,
@@ -3248,11 +3294,6 @@ export default async function LitterDetailPage({
                       status: litter.status,
                       motherId: litter.mother_id,
                       fatherId: litter.father_id,
-                      matingDate: litter.mating_date,
-                      matingDate2: litter.mating_date_2,
-                      estimatedOvulationDate: litter.estimated_ovulation_date,
-                      expectedBirthDate: litter.expected_birth_date,
-                      actualBirthDate: litter.actual_birth_date,
                       availableFrom: litter.available_from,
                       notes: litter.notes,
                     }}
