@@ -1,9 +1,13 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { getBrevoTransactionalTemplateConfig } from "@/features/settings/brevo-template-registry";
+import { parseGestationDefaultChoice } from "@/features/settings/gestation-default-planning";
+import { setDefaultGestationPlanningModelCore } from "@/features/settings/gestation-default-planning-core";
 import {
   retireActiveOrganizationLogo,
   uploadOrganizationLogo,
@@ -99,6 +103,10 @@ function maternalTemperatureDropPolicyStatusUrl(
   outcome: "success" | "disabled" | "error",
 ) {
   return `${settingsPath}?maternal_temperature_drop_policy_status=${outcome}#maternal-temperature-drop-policy`;
+}
+
+function gestationDefaultPlanningStatusUrl(outcome: "success" | "error") {
+  return `${settingsPath}?gestation_default_planning_status=${outcome}#gestation-default-planning`;
 }
 
 function brevoStatusUrl(outcome: string) {
@@ -518,6 +526,38 @@ export async function updateMaternalTemperatureDropPolicy(formData: FormData) {
   revalidatePath(settingsPath);
   revalidatePath("/litters/journal");
   redirect(maternalTemperatureDropPolicyStatusUrl("success"));
+}
+
+export async function setDefaultGestationPlanningModelAction(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const choice = parseGestationDefaultChoice(formData.get("choice"));
+
+  if (!organizationId || !choice) {
+    redirect(gestationDefaultPlanningStatusUrl("error"));
+  }
+
+  const { supabase } = await requireAdminOrganization(
+    organizationId,
+    "gestation_default_planning_status",
+    "gestation-default-planning",
+  );
+
+  const result = await setDefaultGestationPlanningModelCore(
+    {
+      organizationId,
+      clientCommandId: randomUUID(),
+      choice,
+    },
+    supabase,
+  );
+
+  if (result.outcome === "error") {
+    redirect(gestationDefaultPlanningStatusUrl("error"));
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath("/litters/journal");
+  redirect(gestationDefaultPlanningStatusUrl("success"));
 }
 
 async function requireCurrentAdminOrganization(errorOutcome: string) {

@@ -479,21 +479,23 @@ test("records idempotent reproductive cycle matings and links exactly one litter
     });
 
     const [foreignCycleRpc, missingCycleRpc] = await Promise.all([
-      owner.rpc("record_reproductive_cycle_mating", {
+      owner.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
         p_cycle_id: ids.foreignCycle,
         p_client_command_id: ids.commandForeignCycle,
         p_father_id: ids.father,
         p_occurred_at: "2026-07-20T06:00:00.000Z",
         p_timezone_name: "Europe/Paris",
         p_method: "natural",
+        p_estimated_ovulation_date: undefined,
       }),
-      owner.rpc("record_reproductive_cycle_mating", {
+      owner.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
         p_cycle_id: ids.missingCycle,
         p_client_command_id: ids.commandMissingCycle,
         p_father_id: ids.father,
         p_occurred_at: "2026-07-20T06:00:00.000Z",
         p_timezone_name: "Europe/Paris",
         p_method: "natural",
+        p_estimated_ovulation_date: undefined,
       }),
     ]);
     expect(foreignCycleRpc.error).toBeNull();
@@ -542,21 +544,23 @@ test("records idempotent reproductive cycle matings and links exactly one litter
     await waitForForeignCycleLock();
     const foreignLockStartedAt = Date.now();
     const [lockedForeignCycleRpc, lockedMissingCycleRpc] = await Promise.all([
-      owner.rpc("record_reproductive_cycle_mating", {
+      owner.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
         p_cycle_id: ids.foreignCycle,
         p_client_command_id: ids.commandForeignCycle,
         p_father_id: ids.father,
         p_occurred_at: "2026-07-20T06:00:00.000Z",
         p_timezone_name: "Europe/Paris",
         p_method: "natural",
+        p_estimated_ovulation_date: undefined,
       }),
-      owner.rpc("record_reproductive_cycle_mating", {
+      owner.rpc("record_reproductive_cycle_mating_with_gestation_plan", {
         p_cycle_id: ids.missingCycle,
         p_client_command_id: ids.commandMissingCycle,
         p_father_id: ids.father,
         p_occurred_at: "2026-07-20T06:00:00.000Z",
         p_timezone_name: "Europe/Paris",
         p_method: "natural",
+        p_estimated_ovulation_date: undefined,
       }),
     ]);
     const foreignLockElapsedMs = Date.now() - foreignLockStartedAt;

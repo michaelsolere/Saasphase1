@@ -561,10 +561,13 @@ function RecordMatingDialog({
 
     window.sessionStorage.setItem(
       `reproduction-mating-success:${cycle.id}`,
-      "La saillie a été enregistrée.",
+      JSON.stringify({
+        message: state.message ?? "La saillie a été enregistrée.",
+        settingsHref: state.settingsHref,
+      }),
     );
     window.location.reload();
-  }, [cycle.id, state.status]);
+  }, [cycle.id, state.message, state.settingsHref, state.status]);
 
   function prepareTimestamp() {
     if (occurredAtIsoRef.current) {
@@ -624,6 +627,13 @@ function RecordMatingDialog({
               <input id={`mating-litter-name-${cycle.id}`} className={inputClass} name="litter_name" type="text" maxLength={255} required />
             </div>
           ) : null}
+          {isFirstMating ? (
+            <div>
+              <label className={labelClass} htmlFor={`mating-estimated-ovulation-${cycle.id}`}>Ovulation estimée</label>
+              <input id={`mating-estimated-ovulation-${cycle.id}`} className={inputClass} name="estimated_ovulation_date" type="date" />
+              <p className="mt-2 text-xs text-muted">Facultatif. Utilisée en priorité pour dériver la date prévue de mise-bas.</p>
+            </div>
+          ) : null}
           <div>
             <label className={labelClass} htmlFor={`mating-location-${cycle.id}`}>Lieu</label>
             <input id={`mating-location-${cycle.id}`} className={inputClass} name="location" type="text" maxLength={500} />
@@ -644,18 +654,50 @@ function RecordMatingDialog({
 }
 
 function MatingSuccessNotice({ cycleId }: { cycleId: string }) {
-  const [message, setMessage] = useState<string | null>(null);
+  const [success, setSuccess] = useState<{
+    message: string;
+    settingsHref?: string;
+  } | null>(null);
 
   useEffect(() => {
     const key = `reproduction-mating-success:${cycleId}`;
     const saved = window.sessionStorage.getItem(key);
     if (!saved) return;
     window.sessionStorage.removeItem(key);
-    const frame = window.requestAnimationFrame(() => setMessage(saved));
+
+    let parsed: { message: string; settingsHref?: string } | null = null;
+    try {
+      const value: unknown = JSON.parse(saved);
+      if (value && typeof value === "object" && "message" in value) {
+        const record = value as { message: unknown; settingsHref?: unknown };
+        parsed = {
+          message: typeof record.message === "string" ? record.message : saved,
+          settingsHref:
+            typeof record.settingsHref === "string" ? record.settingsHref : undefined,
+        };
+      }
+    } catch {
+      parsed = { message: saved };
+    }
+
+    const frame = window.requestAnimationFrame(() => setSuccess(parsed));
     return () => window.cancelAnimationFrame(frame);
   }, [cycleId]);
 
-  return message ? <ActionMessage status="success" message={message} /> : null;
+  if (!success) return null;
+
+  return (
+    <div className="space-y-2">
+      <ActionMessage status="success" message={success.message} />
+      {success.settingsHref ? (
+        <p className="text-sm">
+          <Link href={success.settingsHref} className="font-semibold text-accent hover:underline">
+            Ouvrir les paramètres de l’organisation
+          </Link>
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function Matings({

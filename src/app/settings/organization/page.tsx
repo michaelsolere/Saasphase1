@@ -15,6 +15,14 @@ import {
 } from "@/features/litter-weights/litter-weighing-schedule-model";
 import { parseMaternalTemperatureDropPolicy } from "@/features/litter-journal/maternal-temperature-drop-policy";
 import { brevoTransactionalTemplateConfigs } from "@/features/settings/brevo-template-registry";
+import {
+  GESTATION_LIBRARY_HERPESVIROSE_CODE,
+  GESTATION_LIBRARY_STANDARD_CODE,
+  GESTATION_LIBRARY_VERSION,
+  gestationDefaultChoiceFromLibrary,
+  type GestationDefaultChoice,
+} from "@/features/settings/gestation-default-planning";
+import { GestationDefaultPlanningSettings } from "@/features/settings/gestation-default-planning-settings";
 import { LitterWeighingPolicySettings } from "@/features/settings/litter-weighing-policy-settings";
 import { MaternalTemperatureDropPolicySettings } from "@/features/settings/maternal-temperature-drop-policy-settings";
 import { OrganizationLogoSettings } from "@/features/settings/organization-logo-settings";
@@ -43,6 +51,7 @@ type MaternalTemperatureDropPolicyStatusValue =
   | "disabled"
   | "error"
   | undefined;
+type GestationDefaultPlanningStatusValue = "success" | "error" | undefined;
 type BrandingErrorValue =
   | "invalid_dimensions"
   | "too_large"
@@ -149,6 +158,30 @@ function LitterWeighingPolicyStatusMessage({
         ? "La cadence recommandée du logiciel est désormais utilisée."
         : "Impossible de modifier la cadence. Vérifiez les phases saisies puis réessayez.";
 
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-6 py-5 text-sm ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {message}
+    </section>
+  );
+}
+
+function GestationDefaultPlanningStatusMessage({
+  value,
+}: {
+  value: GestationDefaultPlanningStatusValue;
+}) {
+  if (!value) return null;
+  const isSuccess = value === "success";
+  const message = isSuccess
+    ? "Le planning de gestation automatique a bien été enregistré."
+    : "Impossible de modifier le planning de gestation automatique.";
   return (
     <section
       role={isSuccess ? "status" : "alert"}
@@ -336,6 +369,7 @@ export default async function OrganizationSettingsPage({
     branding_error?: BrandingErrorValue;
     litter_weighing_policy_status?: LitterWeighingPolicyStatusValue;
     maternal_temperature_drop_policy_status?: MaternalTemperatureDropPolicyStatusValue;
+    gestation_default_planning_status?: GestationDefaultPlanningStatusValue;
   }>;
 }) {
   const query = await searchParams;
@@ -414,11 +448,33 @@ export default async function OrganizationSettingsPage({
   const { data: organizationSettings, error: organizationSettingsError } = await supabase
     .from("organization_settings")
     .select(
-      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy, maternal_temperature_drop_policy",
+      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy, maternal_temperature_drop_policy, default_gestation_planning_model_id",
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
     .maybeSingle();
+
+  const { data: defaultGestationPlanningModel } = organizationSettings?.default_gestation_planning_model_id
+    ? await supabase
+        .from("litter_planning_models")
+        .select("library_model_code, library_model_version, is_active")
+        .eq("organization_id", membership.organization_id)
+        .eq("id", organizationSettings.default_gestation_planning_model_id)
+        .maybeSingle()
+    : { data: null };
+
+  const { data: gestationLibraryModels } = await supabase
+    .from("litter_planning_model_library_models")
+    .select("code, description")
+    .in("code", [GESTATION_LIBRARY_STANDARD_CODE, GESTATION_LIBRARY_HERPESVIROSE_CODE])
+    .eq("version", GESTATION_LIBRARY_VERSION)
+    .eq("is_available", true);
+
+  const { data: gestationLibraryItems } = await supabase
+    .from("litter_planning_model_library_items")
+    .select("library_model_code")
+    .in("library_model_code", [GESTATION_LIBRARY_STANDARD_CODE, GESTATION_LIBRARY_HERPESVIROSE_CODE])
+    .eq("library_model_version", GESTATION_LIBRARY_VERSION);
 
   const { data: activeLogo } = await supabase
     .from("organization_brand_assets")
@@ -525,6 +581,43 @@ export default async function OrganizationSettingsPage({
     Boolean(organizationSettingsError) ||
     persistedTemperatureDropPolicyResult?.ok === false;
 
+  const gestationChoiceFromLibrary = gestationDefaultChoiceFromLibrary(
+    defaultGestationPlanningModel?.library_model_code,
+    defaultGestationPlanningModel?.library_model_version,
+  );
+  const currentGestationChoice: GestationDefaultChoice =
+    gestationChoiceFromLibrary ?? "none";
+  const isCurrentGestationChoiceUnavailable = Boolean(
+    organizationSettings?.default_gestation_planning_model_id &&
+      (gestationChoiceFromLibrary === null ||
+        defaultGestationPlanningModel?.is_active === false),
+  );
+  const gestationItemCountByCode = new Map<string, number>();
+  for (const item of gestationLibraryItems ?? []) {
+    gestationItemCountByCode.set(
+      item.library_model_code,
+      (gestationItemCountByCode.get(item.library_model_code) ?? 0) + 1,
+    );
+  }
+  const gestationLibraryModelsByCode = new Map(
+    (gestationLibraryModels ?? []).map((model) => [model.code, model]),
+  );
+  const gestationVariantSummaries = (["standard", "herpesvirose"] as const)
+    .map((choice) => {
+      const code =
+        choice === "standard"
+          ? GESTATION_LIBRARY_STANDARD_CODE
+          : GESTATION_LIBRARY_HERPESVIROSE_CODE;
+      const model = gestationLibraryModelsByCode.get(code);
+      if (!model) return null;
+      return {
+        choice,
+        description: model.description,
+        itemCount: gestationItemCountByCode.get(code) ?? 0,
+      };
+    })
+    .filter((summary): summary is NonNullable<typeof summary> => summary !== null);
+
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
@@ -584,6 +677,9 @@ export default async function OrganizationSettingsPage({
         />
         <MaternalTemperatureDropPolicyStatusMessage
           value={query.maternal_temperature_drop_policy_status}
+        />
+        <GestationDefaultPlanningStatusMessage
+          value={query.gestation_default_planning_status}
         />
         <StatusMessage
           value={query.branding_status === "removed" ? "success" : query.branding_status}
@@ -694,6 +790,14 @@ export default async function OrganizationSettingsPage({
         hasInvalidPersistedPolicy={
           hasInvalidPersistedMaternalTemperatureDropPolicy
         }
+      />
+
+      <GestationDefaultPlanningSettings
+        organizationId={organization.id}
+        canEdit={canEdit}
+        currentChoice={currentGestationChoice}
+        isCurrentChoiceUnavailable={isCurrentGestationChoiceUnavailable}
+        variantSummaries={gestationVariantSummaries}
       />
 
       <section className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8">

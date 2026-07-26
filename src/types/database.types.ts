@@ -4339,6 +4339,7 @@ export type Database = {
           default_currency: string
           default_dog_breed: string
           default_female_puppy_price_cents: number | null
+          default_gestation_planning_model_id: string | null
           default_male_puppy_price_cents: number | null
           default_pre_reservation_deposit_cents: number
           default_puppy_price_cents: number | null
@@ -4368,6 +4369,7 @@ export type Database = {
           default_currency?: string
           default_dog_breed?: string
           default_female_puppy_price_cents?: number | null
+          default_gestation_planning_model_id?: string | null
           default_male_puppy_price_cents?: number | null
           default_pre_reservation_deposit_cents?: number
           default_puppy_price_cents?: number | null
@@ -4397,6 +4399,7 @@ export type Database = {
           default_currency?: string
           default_dog_breed?: string
           default_female_puppy_price_cents?: number | null
+          default_gestation_planning_model_id?: string | null
           default_male_puppy_price_cents?: number | null
           default_pre_reservation_deposit_cents?: number
           default_puppy_price_cents?: number | null
@@ -4426,6 +4429,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "organization_settings_default_gestation_planning_model_fk"
+            columns: ["organization_id", "default_gestation_planning_model_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_models"
+            referencedColumns: ["organization_id", "id"]
           },
           {
             foreignKeyName: "organization_settings_organization_id_fkey"
@@ -6938,6 +6948,37 @@ export type Database = {
           sequence_no: number
         }[]
       }
+      record_reproductive_cycle_mating_with_gestation_plan: {
+        Args: {
+          p_client_command_id: string
+          p_cycle_id: string
+          p_estimated_ovulation_date?: string
+          p_father_id: string
+          p_litter_name?: string
+          p_location?: string
+          p_method: string
+          p_note?: string
+          p_occurred_at: string
+          p_timezone_name: string
+        }
+        Returns: {
+          cycle_id: string
+          gestation_model_title: string
+          gestation_planning_outcome: string
+          gestation_variant_code: string
+          litter_id: string
+          litter_plan_id: string
+          litter_plan_revision: number
+          materialized_count: number
+          mating_id: string
+          outcome: string
+          pending_anchor_count: number
+          reason: string
+          replayed: boolean
+          sequence_no: number
+          snapshot_count: number
+        }[]
+      }
       update_calendar_reminder: {
         Args: {
           p_client_command_id: string
@@ -7239,6 +7280,22 @@ export type Database = {
           revoked_at: string | null
           token_hint: string
           updated_at: string
+        }[]
+      }
+      set_default_gestation_planning_model: {
+        Args: {
+          p_client_command_id: string
+          p_library_model_code?: string
+          p_library_model_version?: number
+          p_organization_id: string
+        }
+        Returns: {
+          library_model_code: string
+          library_model_version: number
+          organization_model_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
         }[]
       }
       set_litter_care_task_schedule_lock: {
