@@ -4,6 +4,11 @@ import {
   toAdopterAppointmentCalendarEvent,
   type AdopterAppointmentCalendarRecord,
 } from "@/features/breeding-calendar/adopter-appointment-calendar";
+import {
+  resolveReproductiveCycleAnimalLabel,
+  toReproductiveCycleCalendarEvent,
+  type ReproductiveCycleCalendarRecord,
+} from "@/features/breeding-calendar/reproductive-cycle-calendar";
 import { listOrganizationLitterCareTasks } from "@/features/litter-journal/litter-care-tasks";
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 import { getLitterDisplayName } from "@/features/litters/formatters";
@@ -23,6 +28,7 @@ export type {
   BreedingCalendarSourceType,
   LitterCareBreedingCalendarEvent,
   OrganizationBreedingCalendar,
+  ReproductiveCycleBreedingCalendarEvent,
 } from "./breeding-calendar-contract";
 export {
   BREEDING_CALENDAR_SOURCE_FILTERS,
@@ -30,6 +36,7 @@ export {
   breedingCalendarEventIdentity,
   isAdopterAppointmentBreedingCalendarEvent,
   isLitterCareBreedingCalendarEvent,
+  isReproductiveCycleBreedingCalendarEvent,
   toBreedingCalendarEvent,
 } from "./breeding-calendar-contract";
 
@@ -88,6 +95,96 @@ export async function listLitterPlanningCalendarEvents(): Promise<OrganizationBr
     events,
     litterNames: result.litterNames,
   };
+}
+
+export async function listReproductiveCycleCalendarEvents(
+  organizationId?: string,
+): Promise<BreedingCalendarEvent[]> {
+  const supabase = await createClient();
+  const activeOrganizationId =
+    organizationId ?? (await resolveActiveOrganizationId(supabase));
+
+  const cyclesResult = await supabase
+    .from("reproductive_cycles")
+    .select(
+      "id, organization_id, mother_id, status, started_on, updated_at, created_at, deleted_at",
+    )
+    .eq("organization_id", activeOrganizationId)
+    .in("status", ["planned", "in_progress"])
+    .is("deleted_at", null);
+
+  if (cyclesResult.error) {
+    throw new Error("Unable to load reproductive cycle calendar events.");
+  }
+
+  const rows = cyclesResult.data ?? [];
+  if (rows.length === 0) return [];
+
+  const motherIds = [
+    ...new Set(
+      rows
+        .map((row) => row.mother_id)
+        .filter((value): value is string => typeof value === "string" && Boolean(value)),
+    ),
+  ];
+
+  const animalsResult =
+    motherIds.length === 0
+      ? {
+          data: [] as {
+            id: string;
+            organization_id: string;
+            call_name: string | null;
+            official_name: string | null;
+            deleted_at: string | null;
+          }[],
+          error: null,
+        }
+      : await supabase
+          .from("animals")
+          .select("id, organization_id, call_name, official_name, deleted_at")
+          .eq("organization_id", activeOrganizationId)
+          .in("id", motherIds)
+          .is("deleted_at", null);
+
+  if (animalsResult.error) {
+    throw new Error("Unable to load reproductive cycle calendar animals.");
+  }
+
+  const animals = new Map(
+    (animalsResult.data ?? [])
+      .filter((row) => row.organization_id === activeOrganizationId && !row.deleted_at)
+      .map((row) => [row.id as string, row]),
+  );
+
+  const records: ReproductiveCycleCalendarRecord[] = [];
+  for (const row of rows) {
+    if (typeof row.id !== "string" || typeof row.mother_id !== "string") continue;
+    if (typeof row.started_on !== "string") continue;
+    if (row.organization_id !== activeOrganizationId || row.deleted_at) continue;
+    const animal = animals.get(row.mother_id);
+    if (!animal) continue;
+    records.push({
+      id: row.id,
+      motherId: row.mother_id,
+      status: String(row.status ?? ""),
+      startedOn: row.started_on,
+      updatedAt:
+        typeof row.updated_at === "string"
+          ? row.updated_at
+          : typeof row.created_at === "string"
+            ? row.created_at
+            : new Date(0).toISOString(),
+      animalLabel: resolveReproductiveCycleAnimalLabel({
+        callName: animal.call_name,
+        officialName: animal.official_name,
+      }),
+    });
+  }
+
+  return records
+    .map(toReproductiveCycleCalendarEvent)
+    .filter((event): event is NonNullable<typeof event> => event !== null);
 }
 
 export async function listAdopterAppointmentCalendarEvents(
@@ -149,7 +246,15 @@ export async function listAdopterAppointmentCalendarEvents(
 
   const contactsResult =
     contactIds.length === 0
-      ? { data: [] as { id: string; display_name: string | null; first_name: string | null; last_name: string | null }[], error: null }
+      ? {
+          data: [] as {
+            id: string;
+            display_name: string | null;
+            first_name: string | null;
+            last_name: string | null;
+          }[],
+          error: null,
+        }
       : await supabase
           .from("contacts")
           .select("id, display_name, first_name, last_name")
@@ -195,9 +300,13 @@ export async function listAdopterAppointmentCalendarEvents(
 
   return records
     .map(toAdopterAppointmentCalendarEvent)
-    .filter(
-      (event): event is NonNullable<typeof event> => event !== null,
-    );
+    .filter((event): event is NonNullable<typeof event> => event !== null);
+}
+
+function sourceSortRank(sourceType: BreedingCalendarEvent["sourceType"]) {
+  if (sourceType === "litter_care") return 0;
+  if (sourceType === "reproductive_cycle") return 1;
+  return 2;
 }
 
 function sortBreedingCalendarEvents(events: BreedingCalendarEvent[]) {
@@ -205,6 +314,7 @@ function sortBreedingCalendarEvents(events: BreedingCalendarEvent[]) {
     (left, right) =>
       left.startsOn.localeCompare(right.startsOn) ||
       (left.startsLocalTime ?? "").localeCompare(right.startsLocalTime ?? "") ||
+      sourceSortRank(left.sourceType) - sourceSortRank(right.sourceType) ||
       left.contextLabel.localeCompare(right.contextLabel) ||
       left.sourceRecordId.localeCompare(right.sourceRecordId),
   );
@@ -212,12 +322,13 @@ function sortBreedingCalendarEvents(events: BreedingCalendarEvent[]) {
 
 export async function listOrganizationBreedingCalendarEvents(): Promise<OrganizationBreedingCalendar> {
   const litterSource = await listLitterPlanningCalendarEvents();
-  const appointments = await listAdopterAppointmentCalendarEvents(
-    litterSource.organizationId,
-  );
+  const [cycles, appointments] = await Promise.all([
+    listReproductiveCycleCalendarEvents(litterSource.organizationId),
+    listAdopterAppointmentCalendarEvents(litterSource.organizationId),
+  ]);
   const seen = new Set<string>();
   const events = sortBreedingCalendarEvents(
-    [...litterSource.events, ...appointments].filter((event) => {
+    [...litterSource.events, ...cycles, ...appointments].filter((event) => {
       const identity = breedingCalendarEventIdentity(event);
       if (seen.has(identity)) return false;
       seen.add(identity);

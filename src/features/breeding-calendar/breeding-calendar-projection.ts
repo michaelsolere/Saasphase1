@@ -12,9 +12,11 @@ import {
 import {
   breedingCalendarEventIdentity,
   isLitterCareBreedingCalendarEvent,
+  isReproductiveCycleBreedingCalendarEvent,
   type AdopterAppointmentBreedingCalendarEvent,
   type BreedingCalendarEvent,
   type BreedingCalendarSourceFilter,
+  type ReproductiveCycleBreedingCalendarEvent,
 } from "./breeding-calendar-contract";
 
 export type BreedingCalendarProjectedItem = {
@@ -78,14 +80,19 @@ function matchesLitterFilters(
   );
 }
 
+function sourceSortRank(sourceType: BreedingCalendarEvent["sourceType"]) {
+  if (sourceType === "litter_care") return 0;
+  if (sourceType === "reproductive_cycle") return 1;
+  return 2;
+}
+
 function compareItems(left: BreedingCalendarProjectedItem, right: BreedingCalendarProjectedItem) {
   if (Boolean(left.time) !== Boolean(right.time)) return left.time ? -1 : 1;
   if (left.time && right.time && left.time !== right.time) {
     return left.time.localeCompare(right.time);
   }
   const sourceOrder =
-    Number(left.event.sourceType === "adopter_appointment") -
-    Number(right.event.sourceType === "adopter_appointment");
+    sourceSortRank(left.event.sourceType) - sourceSortRank(right.event.sourceType);
   if (sourceOrder) return sourceOrder;
   const title = left.event.title.localeCompare(right.event.title, "fr");
   if (title) return title;
@@ -233,7 +240,11 @@ export function projectBreedingCalendarRange({
       date: event.startsOn,
       time: event.startsLocalTime,
       windowPosition: null,
-      operationalState: pointState(event.startsOn, todayDate),
+      operationalState: isReproductiveCycleBreedingCalendarEvent(event)
+        ? event.startsOn === todayDate
+          ? "today"
+          : null
+        : pointState(event.startsOn, todayDate),
       retainedStartsOn: null,
       retainedEndsOn: null,
     });
@@ -336,4 +347,37 @@ export function filterAdopterAppointmentsForToday(
         left.contextLabel.localeCompare(right.contextLabel, "fr") ||
         left.sourceRecordId.localeCompare(right.sourceRecordId),
     );
+}
+
+export type ReproductiveCyclesForToday = {
+  plannedToday: ReproductiveCycleBreedingCalendarEvent[];
+  inProgress: ReproductiveCycleBreedingCalendarEvent[];
+};
+
+export function filterReproductiveCyclesForToday(
+  events: readonly BreedingCalendarEvent[],
+  todayDate: string,
+): ReproductiveCyclesForToday {
+  const cycles = events.filter(
+    (event): event is ReproductiveCycleBreedingCalendarEvent =>
+      event.sourceType === "reproductive_cycle",
+  );
+  const plannedToday = cycles
+    .filter((event) => event.cycleStatus === "planned" && event.startsOn === todayDate)
+    .sort(
+      (left, right) =>
+        left.contextLabel.localeCompare(right.contextLabel, "fr") ||
+        left.sourceRecordId.localeCompare(right.sourceRecordId),
+    );
+  const inProgress = cycles
+    .filter(
+      (event) => event.cycleStatus === "in_progress" && event.startsOn <= todayDate,
+    )
+    .sort(
+      (left, right) =>
+        left.startsOn.localeCompare(right.startsOn) ||
+        left.contextLabel.localeCompare(right.contextLabel, "fr") ||
+        left.sourceRecordId.localeCompare(right.sourceRecordId),
+    );
+  return { plannedToday, inProgress };
 }

@@ -741,7 +741,7 @@ export function ReproductionPanel({
       ) : (
         <ol className="mt-6 space-y-5">
           {cycles.map((cycle) => (
-            <li key={cycle.id} className="min-w-0 rounded-2xl border bg-background p-4 sm:p-6">
+            <li key={cycle.id} id={`cycle-${cycle.id}`} className="min-w-0 scroll-mt-24 rounded-2xl border bg-background p-4 sm:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="font-semibold">Cycle débuté le {formatDate(cycle.startedOn)}</p>
