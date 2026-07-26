@@ -6,6 +6,7 @@ import {
 } from "@/features/breeding-calendar/adopter-appointment-calendar";
 import {
   BREEDING_CALENDAR_SOURCE_FILTERS,
+  breedingCalendarEventIdentity,
   isAdopterAppointmentBreedingCalendarEvent,
   isLitterCareBreedingCalendarEvent,
   isReproductiveCycleBreedingCalendarEvent,
@@ -19,6 +20,13 @@ import {
   type BreedingCalendarProjectedItem,
   type BreedingCalendarProjection,
 } from "@/features/breeding-calendar/breeding-calendar-projection";
+import { CalendarReminderDialog } from "@/features/breeding-calendar/calendar-reminder-dialog";
+import {
+  canCreateCalendarReminderForEvent,
+  countRemindersByEventIdentity,
+  remindersForEventIdentity,
+  type CalendarReminderSummary,
+} from "@/features/breeding-calendar/calendar-reminders-core";
 import {
   reproductiveCycleCalendarStatusLabels,
 } from "@/features/breeding-calendar/reproductive-cycle-calendar";
@@ -84,12 +92,40 @@ function query(params: Record<string, string | undefined>) {
   return `/calendar?${search.toString()}`;
 }
 
+type CalendarReminderViewProps = {
+  reminderCounts: Map<string, number>;
+  allReminders: readonly CalendarReminderSummary[];
+  canManageReminders: boolean;
+  remindersAvailable: boolean;
+};
+
+function shouldShowReminderCommand(
+  item: BreedingCalendarProjectedItem,
+  reminderCount: number,
+) {
+  const windowPosition = item.windowPosition;
+  const isReminderAnchor =
+    windowPosition === "start" ||
+    windowPosition === "single" ||
+    windowPosition == null;
+  if (!isReminderAnchor) return false;
+  return canCreateCalendarReminderForEvent(item.event) || reminderCount > 0;
+}
+
 function BreedingCalendarEventCard({
   item,
   agenda = false,
+  reminderCount,
+  reminders,
+  canManageReminders,
+  remindersAvailable,
 }: {
   item: BreedingCalendarProjectedItem;
   agenda?: boolean;
+  reminderCount: number;
+  reminders: CalendarReminderSummary[];
+  canManageReminders: boolean;
+  remindersAvailable: boolean;
 }) {
   const { event } = item;
   const isAppointment = isAdopterAppointmentBreedingCalendarEvent(event);
@@ -155,47 +191,76 @@ function BreedingCalendarEventCard({
     : isCycle
       ? "Ouvrir la reproduction de la femelle : "
       : "Ouvrir le suivi dans le Journal : ";
+  const showReminderCommand =
+    remindersAvailable &&
+    shouldShowReminderCommand(item, reminderCount) &&
+    (canManageReminders || reminderCount > 0);
+  const reminderTriggerLabel =
+    reminderCount > 0 ? `Rappels (${reminderCount})` : "Ajouter un rappel";
 
   return (
-    <Link
-      href={event.href}
+    <div
       data-calendar-source={event.sourceType}
-      className={`block rounded border px-2 py-1.5 text-xs text-foreground hover:bg-accent/10 ${cardClass} ${border}`}
+      className={`rounded border text-xs text-foreground ${cardClass} ${border}`}
     >
-      <span className="sr-only">{srLabel}</span>
-      {showTitle ? (
-        <span className="block break-words font-semibold">
-          {event.contextLabel ? `${event.contextLabel} — ` : ""}
-          {event.title}
+      <Link
+        href={event.href}
+        className="block px-2 py-1.5 hover:bg-accent/10"
+      >
+        <span className="sr-only">{srLabel}</span>
+        {showTitle ? (
+          <span className="block break-words font-semibold">
+            {event.contextLabel ? `${event.contextLabel} — ` : ""}
+            {event.title}
+          </span>
+        ) : (
+          <span className="block font-medium">{windowSegment}</span>
+        )}
+        <span className="mt-0.5 block text-muted">
+          {windowSegment && !agenda ? `${windowSegment} · ` : ""}
+          {meta}
         </span>
-      ) : (
-        <span className="block font-medium">{windowSegment}</span>
-      )}
-      <span className="mt-0.5 block text-muted">
-        {windowSegment && !agenda ? `${windowSegment} · ` : ""}
-        {meta}
-      </span>
-      {fullWindow ? <span className="block text-muted">{fullWindow}</span> : null}
-      {!fullWindow && item.time ? (
-        <span className="block text-muted">{item.time.slice(0, 5)}</span>
+        {fullWindow ? <span className="block text-muted">{fullWindow}</span> : null}
+        {!fullWindow && item.time ? (
+          <span className="block text-muted">{item.time.slice(0, 5)}</span>
+        ) : null}
+        {agenda && isCycle ? (
+          <span className="block text-muted">{item.date}</span>
+        ) : null}
+        {state && !isAppointment && !isCycle ? (
+          <span className="block font-medium">{state}</span>
+        ) : null}
+        {cycleStatus && agenda ? (
+          <span className="block font-medium">{cycleStatus}</span>
+        ) : null}
+        {appointmentStatus && agenda ? (
+          <span className="block font-medium">{appointmentStatus}</span>
+        ) : null}
+      </Link>
+      {showReminderCommand ? (
+        <div
+          className="border-t border-black/5 px-2 py-1"
+          data-testid="calendar-reminder-actions"
+        >
+          <CalendarReminderDialog
+            event={event}
+            reminders={reminders}
+            canWrite={canManageReminders}
+            triggerLabel={reminderTriggerLabel}
+          />
+        </div>
       ) : null}
-      {agenda && isCycle ? (
-        <span className="block text-muted">{item.date}</span>
-      ) : null}
-      {state && !isAppointment && !isCycle ? (
-        <span className="block font-medium">{state}</span>
-      ) : null}
-      {cycleStatus && agenda ? (
-        <span className="block font-medium">{cycleStatus}</span>
-      ) : null}
-      {appointmentStatus && agenda ? (
-        <span className="block font-medium">{appointmentStatus}</span>
-      ) : null}
-    </Link>
+    </div>
   );
 }
 
-function BreedingCalendarMonthView({ calendar }: { calendar: BreedingCalendarProjection }) {
+function BreedingCalendarMonthView({
+  calendar,
+  reminderProps,
+}: {
+  calendar: BreedingCalendarProjection;
+  reminderProps: CalendarReminderViewProps;
+}) {
   return (
     <section
       aria-label={`Calendrier du mois ${calendar.month}`}
@@ -219,12 +284,24 @@ function BreedingCalendarMonthView({ calendar }: { calendar: BreedingCalendarPro
               {day.isToday ? `Aujourd’hui · ${day.date.slice(8, 10)}` : day.date.slice(8, 10)}
             </p>
             <div className="space-y-1.5">
-              {day.items.map((item) => (
-                <BreedingCalendarEventCard
-                  key={`${item.event.identitySource}:${item.event.sourceRecordId}:${day.date}`}
-                  item={item}
-                />
-              ))}
+              {day.items.map((item) => {
+                const identity = breedingCalendarEventIdentity(item.event);
+                const reminderCount =
+                  reminderProps.reminderCounts.get(identity) ?? 0;
+                return (
+                  <BreedingCalendarEventCard
+                    key={`${item.event.identitySource}:${item.event.sourceRecordId}:${day.date}`}
+                    item={item}
+                    reminderCount={reminderCount}
+                    reminders={remindersForEventIdentity(
+                      reminderProps.allReminders,
+                      identity,
+                    )}
+                    canManageReminders={reminderProps.canManageReminders}
+                    remindersAvailable={reminderProps.remindersAvailable}
+                  />
+                );
+              })}
             </div>
           </article>
         ))}
@@ -233,7 +310,13 @@ function BreedingCalendarMonthView({ calendar }: { calendar: BreedingCalendarPro
   );
 }
 
-function BreedingCalendarWeekView({ calendar }: { calendar: BreedingCalendarProjection }) {
+function BreedingCalendarWeekView({
+  calendar,
+  reminderProps,
+}: {
+  calendar: BreedingCalendarProjection;
+  reminderProps: CalendarReminderViewProps;
+}) {
   return (
     <section
       aria-label={`Calendrier de la semaine du ${calendar.startsOn}`}
@@ -250,12 +333,24 @@ function BreedingCalendarWeekView({ calendar }: { calendar: BreedingCalendarProj
             <span className="block text-xs text-muted">{day.date.slice(8, 10)}</span>
           </p>
           <div className="space-y-1.5">
-            {day.items.map((item) => (
-              <BreedingCalendarEventCard
-                key={`${item.event.identitySource}:${item.event.sourceRecordId}:${day.date}`}
-                item={item}
-              />
-            ))}
+            {day.items.map((item) => {
+              const identity = breedingCalendarEventIdentity(item.event);
+              const reminderCount =
+                reminderProps.reminderCounts.get(identity) ?? 0;
+              return (
+                <BreedingCalendarEventCard
+                  key={`${item.event.identitySource}:${item.event.sourceRecordId}:${day.date}`}
+                  item={item}
+                  reminderCount={reminderCount}
+                  reminders={remindersForEventIdentity(
+                    reminderProps.allReminders,
+                    identity,
+                  )}
+                  canManageReminders={reminderProps.canManageReminders}
+                  remindersAvailable={reminderProps.remindersAvailable}
+                />
+              );
+            })}
           </div>
         </article>
       ))}
@@ -263,7 +358,13 @@ function BreedingCalendarWeekView({ calendar }: { calendar: BreedingCalendarProj
   );
 }
 
-function BreedingCalendarAgendaView({ calendar }: { calendar: BreedingCalendarProjection }) {
+function BreedingCalendarAgendaView({
+  calendar,
+  reminderProps,
+}: {
+  calendar: BreedingCalendarProjection;
+  reminderProps: CalendarReminderViewProps;
+}) {
   const days = calendar.days
     .map((day) => ({ ...day, items: sortBreedingCalendarAgendaItems(day.items) }))
     .filter((day) => day.items.length > 0);
@@ -287,13 +388,25 @@ function BreedingCalendarAgendaView({ calendar }: { calendar: BreedingCalendarPr
             {day.isToday ? `Aujourd’hui · ${dayLabel(day.date)}` : dayLabel(day.date)}
           </h3>
           <div className="space-y-2">
-            {day.items.map((item) => (
-              <BreedingCalendarEventCard
-                key={`${item.event.identitySource}:${item.event.sourceRecordId}`}
-                item={item}
-                agenda
-              />
-            ))}
+            {day.items.map((item) => {
+              const identity = breedingCalendarEventIdentity(item.event);
+              const reminderCount =
+                reminderProps.reminderCounts.get(identity) ?? 0;
+              return (
+                <BreedingCalendarEventCard
+                  key={`${item.event.identitySource}:${item.event.sourceRecordId}`}
+                  item={item}
+                  agenda
+                  reminderCount={reminderCount}
+                  reminders={remindersForEventIdentity(
+                    reminderProps.allReminders,
+                    identity,
+                  )}
+                  canManageReminders={reminderProps.canManageReminders}
+                  remindersAvailable={reminderProps.remindersAvailable}
+                />
+              );
+            })}
           </div>
         </article>
       ))}
@@ -312,6 +425,9 @@ export function BreedingCalendarPanel({
   kind,
   category,
   feedPanel,
+  reminders = [],
+  canManageReminders = false,
+  reminderLoadFailed = false,
 }: {
   events: readonly BreedingCalendarEvent[];
   todayDate: string;
@@ -323,6 +439,9 @@ export function BreedingCalendarPanel({
   kind: LitterCareCalendarKindFilter;
   category: LitterCareCalendarCategoryFilter;
   feedPanel?: ReactNode;
+  reminders?: CalendarReminderSummary[];
+  canManageReminders?: boolean;
+  reminderLoadFailed?: boolean;
 }) {
   const monthValue = getLitterCareCalendarMonth(month, todayDate);
   const monthCalendar = projectBreedingCalendarMonth({
@@ -354,6 +473,13 @@ export function BreedingCalendarPanel({
     source: source === "all" ? undefined : source,
     kind: showLitterFilters && kind !== "all" ? kind : undefined,
     category: showLitterFilters && category !== "all" ? category : undefined,
+  };
+  const reminderCounts = countRemindersByEventIdentity(reminders);
+  const reminderProps: CalendarReminderViewProps = {
+    reminderCounts,
+    allReminders: reminders,
+    canManageReminders,
+    remindersAvailable: !reminderLoadFailed,
   };
 
   return (
@@ -537,12 +663,31 @@ export function BreedingCalendarPanel({
         </p>
       ) : null}
 
+      {reminderLoadFailed ? (
+        <p
+          role="alert"
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950"
+          data-testid="calendar-reminders-unavailable"
+        >
+          Les rappels sont momentanément indisponibles.
+        </p>
+      ) : null}
+
       {view === "month" ? (
-        <BreedingCalendarMonthView calendar={monthCalendar} />
+        <BreedingCalendarMonthView
+          calendar={monthCalendar}
+          reminderProps={reminderProps}
+        />
       ) : view === "week" ? (
-        <BreedingCalendarWeekView calendar={weekCalendar} />
+        <BreedingCalendarWeekView
+          calendar={weekCalendar}
+          reminderProps={reminderProps}
+        />
       ) : (
-        <BreedingCalendarAgendaView calendar={weekCalendar} />
+        <BreedingCalendarAgendaView
+          calendar={weekCalendar}
+          reminderProps={reminderProps}
+        />
       )}
     </main>
   );

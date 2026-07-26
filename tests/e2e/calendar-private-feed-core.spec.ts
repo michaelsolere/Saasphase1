@@ -215,6 +215,8 @@ test("sérialiseur ICS conserve les UID et accepte les hints d’abonnement", ()
   expect(body).toContain("REFRESH-INTERVAL;VALUE=DURATION:PT1H");
   expect(body).toContain("X-PUBLISHED-TTL:PT1H");
   expect(body).toContain("Camille Dupont");
+  expect(body).not.toContain("VALARM");
+  expect(body).not.toContain("X-SAAS-ELEVAGE-REMINDER");
   expect(body).not.toContain(taskA);
   expect(body).not.toContain(appointmentA);
   expect(body).not.toContain("Description privée");

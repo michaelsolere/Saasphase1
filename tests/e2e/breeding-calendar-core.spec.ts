@@ -505,6 +505,8 @@ test("sérialise l’agrégation sans UUID, description, email, paiement ou docu
   expect(global).toContain("X-SAAS-ELEVAGE-SOURCE:adopter_appointment");
   expect(global).toContain("X-SAAS-ELEVAGE-SOURCE:litter_care");
   expect(global).toContain("X-SAAS-ELEVAGE-SOURCE:reproductive_cycle");
+  expect(global).not.toContain("VALARM");
+  expect(global).not.toContain("X-SAAS-ELEVAGE-REMINDER");
   for (const forbidden of [
     taskA,
     litterA,

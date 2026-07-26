@@ -1,5 +1,7 @@
 export const fixtureTables = [
   "notes",
+  "calendar_reminder_commands",
+  "calendar_reminders",
   "events",
   "documents",
   "payments",
@@ -32,6 +34,8 @@ export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
   "notes",
+  "calendar_reminder_commands",
+  "calendar_reminders",
   "events",
   "documents",
   "payments",
