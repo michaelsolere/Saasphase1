@@ -215,3 +215,10 @@ comment on function public.update_reproductive_cycle(
   uuid, timestamptz, text, date, date, text
 ) is
   'Updates a reproductive cycle with role checks, concurrency control, and allowed status transitions.';
+
+-- La RPC est la seule voie de modification des cycles existants.
+-- SELECT et INSERT restent disponibles pour la lecture et la création encadrée.
+revoke update on table public.reproductive_cycles from authenticated;
+
+drop policy if exists reproductive_cycles_update_writer
+on public.reproductive_cycles;

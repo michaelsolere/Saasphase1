@@ -649,3 +649,214 @@ test("pilote le cycle de vie d’un cycle reproductif sans duplication", async (
     setOwnerRole("owner");
   }
 });
+
+test("refuse les UPDATE directs authentifiés hors RPC", async () => {
+  setOwnerRole("owner");
+
+  try {
+    await withE2eFixtures(sql, async (fixtures) => {
+      const owner = await createAuthenticatedSupabaseClient();
+      const label = fixtures.namespace.slice(-8);
+
+      const mother = await createTestAnimal(sql, fixtures, {
+        organizationId,
+        ownerId,
+        callName: `E2E lifecycle bypass mère ${label}`,
+        sex: "female",
+      });
+      const father = await createTestAnimal(sql, fixtures, {
+        organizationId,
+        ownerId,
+        callName: `E2E lifecycle bypass père ${label}`,
+        sex: "male",
+      });
+      sql(`
+        update public.animals
+        set is_breeder = true
+        where id in (${q(mother)}::uuid, ${q(father)}::uuid);
+      `);
+
+      const closed = await createReproductiveCycleCore(
+        {
+          motherId: mother,
+          status: "closed",
+          startedOn: "2026-01-01",
+          endedOn: "2026-01-20",
+          notes: `E2E lifecycle bypass closed ${label}`,
+        },
+        owner,
+      );
+      expect(closed.outcome).toBe("success");
+      if (closed.outcome !== "success") throw new Error("closed cycle required");
+      fixtures.register("reproductive_cycles", closed.cycle.id);
+      const closedBefore = cycleRow(closed.cycle.id);
+
+      const reopenDirect = await owner
+        .from("reproductive_cycles")
+        .update({ status: "in_progress" })
+        .eq("id", closed.cycle.id)
+        .select("id, status");
+      expect(reopenDirect.error).not.toBeNull();
+      expect(reopenDirect.data ?? []).toEqual([]);
+      expect(cycleRow(closed.cycle.id)).toEqual(closedBefore);
+
+      const matedCycle = await createReproductiveCycleCore(
+        {
+          motherId: mother,
+          status: "in_progress",
+          startedOn: "2026-02-01",
+          notes: `E2E lifecycle bypass mated ${label}`,
+        },
+        owner,
+      );
+      expect(matedCycle.outcome).toBe("success");
+      if (matedCycle.outcome !== "success") throw new Error("mated source cycle required");
+      fixtures.register("reproductive_cycles", matedCycle.cycle.id);
+
+      const mating = await recordReproductiveCycleMatingCore(
+        {
+          cycleId: matedCycle.cycle.id,
+          clientCommandId: randomUUID(),
+          fatherId: father,
+          occurredAt: "2026-02-03T10:00:00.000Z",
+          timezoneName: "Europe/Paris",
+          method: "natural",
+          litterName: `E2E lifecycle bypass litter ${label}`,
+        },
+        owner,
+      );
+      expect(mating.outcome).toBe("success");
+      if (mating.outcome !== "success") throw new Error("mating required");
+      fixtures.register("reproductive_cycle_matings", mating.matingId);
+      fixtures.register("litters", mating.litterId);
+      expect(cycleRow(matedCycle.cycle.id).status).toBe("mated");
+      expect(cycleRow(matedCycle.cycle.id).litter_id).toBe(mating.litterId);
+      const matedBefore = cycleRow(matedCycle.cycle.id);
+
+      const cancelDirect = await owner
+        .from("reproductive_cycles")
+        .update({ status: "cancelled" })
+        .eq("id", matedCycle.cycle.id)
+        .select("id, status");
+      expect(cancelDirect.error).not.toBeNull();
+      expect(cancelDirect.data ?? []).toEqual([]);
+      expect(cycleRow(matedCycle.cycle.id)).toEqual(matedBefore);
+      expect(
+        Number(
+          sql(
+            `select count(*)::text from public.reproductive_cycle_matings where id = ${q(mating.matingId)}::uuid`,
+          ),
+        ),
+      ).toBe(1);
+
+      const notesDirect = await owner
+        .from("reproductive_cycles")
+        .update({
+          started_on: "2026-02-10",
+          ended_on: "2026-02-28",
+          notes: `E2E lifecycle bypass notes ${label}`,
+        })
+        .eq("id", matedCycle.cycle.id)
+        .select("id, notes");
+      expect(notesDirect.error).not.toBeNull();
+      expect(notesDirect.data ?? []).toEqual([]);
+      expect(cycleRow(matedCycle.cycle.id)).toEqual(matedBefore);
+
+      const rpcClose = await updateReproductiveCycleCore(
+        {
+          cycleId: matedCycle.cycle.id,
+          expectedUpdatedAt: matedBefore.updated_at,
+          status: "closed",
+          startedOn: "2026-02-01",
+          endedOn: "2026-02-20",
+          notes: `E2E lifecycle bypass rpc closed ${label}`,
+        },
+        owner,
+      );
+      expect(rpcClose.outcome).toBe("success");
+      if (rpcClose.outcome !== "success") throw new Error("rpc close required");
+      expect(rpcClose.cycle.status).toBe("closed");
+      expect(rpcClose.cycle.litterId).toBe(mating.litterId);
+
+      setOwnerRole("member");
+      const memberCycle = await createReproductiveCycleCore(
+        {
+          motherId: mother,
+          status: "planned",
+          startedOn: "2026-03-01",
+          notes: `E2E lifecycle bypass member ${label}`,
+        },
+        owner,
+      );
+      expect(memberCycle.outcome).toBe("success");
+      if (memberCycle.outcome !== "success") throw new Error("member cycle required");
+      fixtures.register("reproductive_cycles", memberCycle.cycle.id);
+
+      const memberUpdate = await updateReproductiveCycleCore(
+        {
+          cycleId: memberCycle.cycle.id,
+          expectedUpdatedAt: memberCycle.cycle.updatedAt,
+          status: "in_progress",
+          startedOn: "2026-03-01",
+          notes: `E2E lifecycle bypass member updated ${label}`,
+        },
+        owner,
+      );
+      expect(memberUpdate.outcome).toBe("success");
+
+      const memberDirect = await owner
+        .from("reproductive_cycles")
+        .update({ notes: "member direct bypass" })
+        .eq("id", memberCycle.cycle.id);
+      expect(memberDirect.error).not.toBeNull();
+
+      setOwnerRole("viewer");
+      const viewerDenied = await updateReproductiveCycleCore(
+        {
+          cycleId: memberCycle.cycle.id,
+          expectedUpdatedAt:
+            memberUpdate.outcome === "success"
+              ? memberUpdate.cycle.updatedAt
+              : memberCycle.cycle.updatedAt,
+          status: "cancelled",
+          startedOn: "2026-03-01",
+          notes: "viewer denied",
+        },
+        owner,
+      );
+      expect(viewerDenied).toMatchObject({
+        outcome: "error",
+        error: { code: "forbidden" },
+      });
+
+      const privileges = JSON.parse(
+        sql(`
+          select json_build_object(
+            'has_update', has_table_privilege('authenticated', 'public.reproductive_cycles', 'UPDATE'),
+            'has_insert', has_table_privilege('authenticated', 'public.reproductive_cycles', 'INSERT'),
+            'has_select', has_table_privilege('authenticated', 'public.reproductive_cycles', 'SELECT'),
+            'update_policy', exists (
+              select 1 from pg_policies
+              where schemaname = 'public'
+                and tablename = 'reproductive_cycles'
+                and policyname = 'reproductive_cycles_update_writer'
+            )
+          )::text;
+        `),
+      ) as {
+        has_update: boolean;
+        has_insert: boolean;
+        has_select: boolean;
+        update_policy: boolean;
+      };
+      expect(privileges).toEqual({
+        has_update: false,
+        has_insert: true,
+        has_select: true,
+        update_policy: false,
+      });
+    });
+  } finally {
+    setOwnerRole("owner");
+  }
+});
