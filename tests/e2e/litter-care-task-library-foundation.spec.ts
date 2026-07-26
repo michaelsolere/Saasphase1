@@ -73,14 +73,42 @@ const productPacks = [
   },
 ] as const;
 
+const historicalDogTemplateCodes = [
+  "dog-confirm-pregnancy",
+  "dog-plan-litter-count-xray",
+  "dog-prepare-whelping-area",
+  "dog-check-whelping-equipment",
+  "dog-start-temperature-monitoring",
+  "dog-check-emergency-protocol",
+  "dog-prepare-whelping-journal",
+  "dog-complete-birth-summary",
+  "dog-record-birth-weights",
+  "dog-check-provisional-identification",
+  "dog-check-mother-postpartum",
+  "dog-check-litter-general-condition",
+  "dog-open-socialization-checklist",
+  "dog-prepare-identification-visit",
+  "dog-prepare-puppy-departures",
+] as const;
+
 const productTemplates = [
   ["dog-confirm-pregnancy", "Confirmer la gestation", "veterinary", "litter", "estimated_ovulation", 28, 10, "dog-gestation-preparation"],
+  ["dog-pregnancy-ultrasound", "Échographie de gestation", "veterinary", "litter", "estimated_ovulation", 28, 15, "dog-gestation-preparation"],
+  ["dog-herpesvirose-injection-1", "Première injection herpèsvirose", "maternal_health", "mother", "first_mating", 8, 16, "dog-gestation-preparation"],
   ["dog-plan-litter-count-xray", "Planifier la radiographie de comptage", "veterinary", "litter", "estimated_ovulation", 55, 20, "dog-gestation-preparation"],
+  ["dog-gestation-food-transition", "Transition vers Mother & Babydog", "maternal_feeding", "mother", "expected_birth", -23, 22, "dog-gestation-preparation"],
+  ["dog-gestation-food-plus-10", "Ration +10 %", "maternal_feeding", "mother", "expected_birth", -16, 24, "dog-gestation-preparation"],
+  ["dog-gestation-food-plus-20", "Ration +20 %", "maternal_feeding", "mother", "expected_birth", -9, 26, "dog-gestation-preparation"],
+  ["dog-gestation-food-plus-40", "Augmentation progressive jusqu'à +40 %", "maternal_feeding", "mother", "expected_birth", -2, 28, "dog-gestation-preparation"],
   ["dog-prepare-whelping-area", "Préparer l’espace de mise-bas", "preparation", "organization", "expected_birth", -14, 30, "dog-gestation-preparation"],
+  ["dog-deworm-mother-before-birth", "Vermifuger la mère", "maternal_health", "mother", "expected_birth", -15, 35, "dog-gestation-preparation"],
+  ["dog-herpesvirose-injection-2", "Deuxième injection herpèsvirose", "maternal_health", "mother", "expected_birth", -10, 36, "dog-gestation-preparation"],
   ["dog-check-whelping-equipment", "Vérifier le matériel de mise-bas", "preparation", "organization", "expected_birth", -7, 40, "dog-gestation-preparation"],
   ["dog-start-temperature-monitoring", "Démarrer les relevés de température", "maternal_health", "mother", "expected_birth", -7, 50, "dog-gestation-preparation"],
+  ["dog-temperature-monitoring-period", "Période de relevés de température", "maternal_health", "mother", "expected_birth", -5, 55, "dog-gestation-preparation"],
   ["dog-check-emergency-protocol", "Vérifier le protocole et les contacts d’urgence", "preparation", "organization", "expected_birth", -7, 60, "dog-gestation-preparation"],
   ["dog-prepare-whelping-journal", "Préparer le Journal de mise-bas", "preparation", "litter", "expected_birth", -2, 70, "dog-gestation-preparation"],
+  ["dog-whelping-vigilance-window", "Fenêtre probable de mise-bas", "reproduction", "litter", "expected_birth", 0, 75, "dog-gestation-preparation"],
   ["dog-complete-birth-summary", "Compléter la synthèse de mise-bas", "reproduction", "litter", "actual_birth", 0, 80, "dog-birth-first-days"],
   ["dog-record-birth-weights", "Enregistrer les poids de naissance", "offspring_weight", "all_offspring", "actual_birth", 0, 90, "dog-birth-first-days"],
   ["dog-check-provisional-identification", "Vérifier l’identification provisoire de chaque chiot", "identification", "all_offspring", "actual_birth", 1, 100, "dog-birth-first-days"],
@@ -229,7 +257,7 @@ function expectCleanupAtZero() {
   expect(Number(sql(`
     select count(*) from public.litter_care_task_library_templates
     where code like 'dog-%';
-  `))).toBe(15);
+  `))).toBe(25);
 }
 
 function operationalCounts() {
@@ -394,6 +422,9 @@ test("fonde une bibliothèque globale versionnée et un import atomique", async 
   expect(templates).toEqual(
     productTemplates.map((template) => [...template, 1, "dog", null, true]),
   );
+  expect(
+    templates.map((template: string[]) => template[0]),
+  ).toEqual(expect.arrayContaining([...historicalDogTemplateCodes]));
   expect(Number(sql("select count(*) from public.litter_care_task_templates;"))).toBe(0);
   expect(Number(sql("select count(*) from public.litter_care_tasks;"))).toBe(0);
 
@@ -427,10 +458,10 @@ test("fonde une bibliothèque globale versionnée et un import atomique", async 
         expect(listed.packs.slice(0, 3).map((pack) => pack.code)).toEqual(
           productPacks.map((pack) => pack.code),
         );
-        expect(listed.templates.slice(0, 15).map((template) => template.code)).toEqual(
+        expect(listed.templates.slice(0, 25).map((template) => template.code)).toEqual(
           productTemplates.map((template) => template[0]),
         );
-        expect(listed.templates.slice(0, 15).every((template) => !template.isImported)).toBe(true);
+        expect(listed.templates.slice(0, 25).every((template) => !template.isImported)).toBe(true);
       }
     }
 

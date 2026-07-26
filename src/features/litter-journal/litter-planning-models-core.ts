@@ -71,6 +71,8 @@ export type LitterPlanningModel = {
   breed: string | null;
   isActive: boolean;
   revision: number;
+  libraryModelCode: string | null;
+  libraryModelVersion: number | null;
   items: LitterPlanningModelItem[];
 };
 export type LitterPlanningModelErrorCode =
@@ -194,6 +196,8 @@ function normalizeItems(items: unknown) {
 }
 
 function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
+  const libraryCode = row.library_model_code;
+  const libraryVersion = row.library_model_version;
   if (
     !normalizeUuid(row.id) ||
     typeof row.title !== "string" ||
@@ -201,9 +205,24 @@ function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
     !Number.isInteger(row.revision) ||
     row.revision <= 0 ||
     (row.species !== null && row.species !== "dog" && row.species !== "cat") ||
-    (row.breed !== null && row.species === null)
-  ) return null;
-  return { id: row.id, title: row.title, description: row.description, species: row.species, breed: row.breed, isActive: row.is_active, revision: row.revision };
+    (row.breed !== null && row.species === null) ||
+    (libraryCode === null) !== (libraryVersion === null) ||
+    (libraryVersion !== null &&
+      (!Number.isInteger(libraryVersion) || libraryVersion <= 0))
+  ) {
+    return null;
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    species: row.species,
+    breed: row.breed,
+    isActive: row.is_active,
+    revision: row.revision,
+    libraryModelCode: libraryCode,
+    libraryModelVersion: libraryVersion,
+  };
 }
 
 function mapItem(row: ItemRow): LitterPlanningModelItem | null {
