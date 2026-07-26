@@ -37,6 +37,7 @@ import {
   launchBirthDocumentsDepositCampaign,
   launchLitterMatingConfirmationCampaign,
   updateLitterDetails,
+  updateLitterGestationAnchorsAction,
   updateLitterGroupAssignment,
 } from "@/features/litters/actions";
 import {
@@ -3241,15 +3242,23 @@ export default async function LitterDetailPage({
               <CollapsibleSection id="dates-gestation" title="Dates de gestation">
                 <LitterGestationAnchorsSection
                   litterId={litter.id}
-                  litterUpdatedAt={litter.updated_at}
-                  planRevision={activePlan?.revision ?? null}
+                  motherId={litter.mother_id}
                   matingDate={litter.mating_date}
                   matingDate2={litter.mating_date_2}
                   estimatedOvulationDate={litter.estimated_ovulation_date}
                   expectedBirthDate={litter.expected_birth_date}
                   actualBirthDate={litter.actual_birth_date}
                   canWrite={canWriteGestationAnchors}
-                  clientCommandId={crypto.randomUUID()}
+                  action={
+                    canWriteGestationAnchors
+                      ? updateLitterGestationAnchorsAction.bind(null, {
+                          litterId: litter.id,
+                          clientCommandId: crypto.randomUUID(),
+                          expectedLitterUpdatedAt: litter.updated_at,
+                          expectedPlanRevision: activePlan?.revision ?? null,
+                        })
+                      : undefined
+                  }
                   status={gestation_anchors_status}
                 />
               </CollapsibleSection>

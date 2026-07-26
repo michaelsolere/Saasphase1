@@ -10,7 +10,6 @@ import {
   type LitterGestationAnchorBusinessOutcome,
   type LitterGestationAnchorCounters,
 } from "./litter-gestation-anchors-outcome";
-import { updateLitterGestationAnchors } from "./actions";
 
 const inputClass =
   "mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none";
@@ -21,15 +20,15 @@ const readonlyClass =
 
 export type LitterGestationAnchorsSectionProps = {
   litterId: string;
-  litterUpdatedAt: string;
-  planRevision: number | null;
+  motherId: string | null;
   matingDate: string | null;
   matingDate2: string | null;
   estimatedOvulationDate: string | null;
   expectedBirthDate: string | null;
   actualBirthDate: string | null;
   canWrite: boolean;
-  clientCommandId: string;
+  /** Server Action already bound with the mutation intention. */
+  action?: (formData: FormData) => void | Promise<void>;
   status?: string | null;
 };
 
@@ -74,17 +73,177 @@ function parseSuccessCounters(
   };
 }
 
+function MatingOriginNote({ motherId }: { motherId: string | null }) {
+  if (motherId) {
+    return (
+      <p className="mt-1 text-xs text-muted">
+        Issue du module{" "}
+        <Link
+          href={`/animals/${motherId}/reproduction`}
+          className="font-medium text-accent hover:underline"
+          data-testid="gestation-reproduction-link"
+        >
+          Reproduction
+        </Link>
+        .
+      </p>
+    );
+  }
+
+  return (
+    <p
+      className="mt-1 text-xs text-muted"
+      data-testid="gestation-reproduction-nolink"
+    >
+      Les saillies se gèrent depuis la fiche de la reproductrice.
+    </p>
+  );
+}
+
+function GestationDatesPresentation({
+  litterId,
+  motherId,
+  matingDate,
+  matingDate2,
+  estimatedOvulationDate,
+  expectedBirthDate,
+  actualBirthDate,
+  editable,
+}: {
+  litterId: string;
+  motherId: string | null;
+  matingDate: string | null;
+  matingDate2: string | null;
+  estimatedOvulationDate: string | null;
+  expectedBirthDate: string | null;
+  actualBirthDate: string | null;
+  editable: boolean;
+}) {
+  const fallbackHint = expectedBirthFallbackHint({
+    expectedBirthDate,
+    estimatedOvulationDate,
+    matingDate,
+  });
+
+  return (
+    <div className="grid gap-5 sm:grid-cols-2" data-testid="gestation-anchors-panel">
+      <div>
+        <p className={labelClass}>Première saillie</p>
+        <p className={readonlyClass} data-testid="gestation-mating-date-readonly">
+          {matingDate ? formatLitterDate(matingDate) : "Non renseignée"}
+        </p>
+        <MatingOriginNote motherId={motherId} />
+      </div>
+
+      <div>
+        <p className={labelClass}>Deuxième saillie</p>
+        <p className={readonlyClass} data-testid="gestation-mating-date-2-readonly">
+          {matingDate2 ? formatLitterDate(matingDate2) : "Non renseignée"}
+        </p>
+        <MatingOriginNote motherId={motherId} />
+      </div>
+
+      <div>
+        {editable ? (
+          <>
+            <label htmlFor="gestation-estimated-ovulation" className={labelClass}>
+              Ovulation estimée
+            </label>
+            <input
+              id="gestation-estimated-ovulation"
+              name="estimated_ovulation_date"
+              type="date"
+              defaultValue={explicitEstimatedOvulationFieldValue(
+                estimatedOvulationDate,
+              )}
+              className={inputClass}
+              data-testid="gestation-estimated-ovulation-input"
+            />
+          </>
+        ) : (
+          <>
+            <p className={labelClass}>Ovulation estimée</p>
+            <p
+              className={readonlyClass}
+              data-testid="gestation-estimated-ovulation-readonly"
+            >
+              {estimatedOvulationDate
+                ? formatLitterDate(estimatedOvulationDate)
+                : "Non renseignée"}
+            </p>
+          </>
+        )}
+      </div>
+
+      <div>
+        {editable ? (
+          <>
+            <label htmlFor="gestation-expected-birth" className={labelClass}>
+              Mise-bas prévue
+            </label>
+            <input
+              id="gestation-expected-birth"
+              name="expected_birth_date"
+              type="date"
+              defaultValue={explicitExpectedBirthFieldValue(expectedBirthDate)}
+              className={inputClass}
+              data-testid="gestation-expected-birth-input"
+            />
+          </>
+        ) : (
+          <>
+            <p className={labelClass}>Mise-bas prévue</p>
+            <p
+              className={readonlyClass}
+              data-testid="gestation-expected-birth-readonly"
+            >
+              {expectedBirthDate
+                ? formatLitterDate(expectedBirthDate)
+                : "Non renseignée"}
+            </p>
+          </>
+        )}
+        {fallbackHint ? (
+          <p
+            className="mt-1 text-xs text-muted"
+            data-testid="gestation-expected-birth-hint"
+          >
+            {fallbackHint}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="sm:col-span-2">
+        <p className={labelClass}>Naissance réelle</p>
+        <p className={readonlyClass} data-testid="gestation-actual-birth-readonly">
+          {actualBirthDate ? formatLitterDate(actualBirthDate) : "Non renseignée"}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          Issue du{" "}
+          <Link
+            href={`/litters/journal?litter=${litterId}`}
+            className="font-medium text-accent hover:underline"
+            data-testid="gestation-journal-link"
+          >
+            Journal de mise-bas
+          </Link>
+          .
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function LitterGestationAnchorsSection({
   litterId,
-  litterUpdatedAt,
-  planRevision,
+  motherId,
   matingDate,
   matingDate2,
   estimatedOvulationDate,
   expectedBirthDate,
   actualBirthDate,
   canWrite,
-  clientCommandId,
+  action,
   status,
 }: LitterGestationAnchorsSectionProps) {
   const successOutcome = parseSuccessOutcome(status);
@@ -109,11 +268,18 @@ export function LitterGestationAnchorsSection({
       ).message
     : null;
 
-  const fallbackHint = expectedBirthFallbackHint({
-    expectedBirthDate,
-    estimatedOvulationDate,
-    matingDate,
-  });
+  const presentation = (
+    <GestationDatesPresentation
+      litterId={litterId}
+      motherId={motherId}
+      matingDate={matingDate}
+      matingDate2={matingDate2}
+      estimatedOvulationDate={estimatedOvulationDate}
+      expectedBirthDate={expectedBirthDate}
+      actualBirthDate={actualBirthDate}
+      editable={canWrite && Boolean(action)}
+    />
+  );
 
   return (
     <div className="space-y-4">
@@ -144,118 +310,10 @@ export function LitterGestationAnchorsSection({
         </p>
       ) : null}
 
-      <form action={updateLitterGestationAnchors} className="grid gap-5 sm:grid-cols-2">
-        <input type="hidden" name="litter_id" value={litterId} />
-        <input type="hidden" name="client_command_id" value={clientCommandId} />
-        <input
-          type="hidden"
-          name="expected_litter_updated_at"
-          value={litterUpdatedAt}
-        />
-        <input
-          type="hidden"
-          name="expected_plan_revision"
-          value={planRevision ?? ""}
-        />
-
-        <div>
-          <p className={labelClass}>Première saillie</p>
-          <p className={readonlyClass} data-testid="gestation-mating-date-readonly">
-            {matingDate ? formatLitterDate(matingDate) : "Non renseignée"}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Issue du module{" "}
-            <Link href="/reproduction" className="font-medium text-accent hover:underline">
-              Reproduction
-            </Link>
-            .
-          </p>
-        </div>
-
-        <div>
-          <p className={labelClass}>Deuxième saillie</p>
-          <p className={readonlyClass} data-testid="gestation-mating-date-2-readonly">
-            {matingDate2 ? formatLitterDate(matingDate2) : "Non renseignée"}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Issue du module{" "}
-            <Link href="/reproduction" className="font-medium text-accent hover:underline">
-              Reproduction
-            </Link>
-            .
-          </p>
-        </div>
-
-        <div>
-          <label htmlFor="gestation-estimated-ovulation" className={labelClass}>
-            Ovulation estimée
-          </label>
-          {canWrite ? (
-            <input
-              id="gestation-estimated-ovulation"
-              name="estimated_ovulation_date"
-              type="date"
-              defaultValue={explicitEstimatedOvulationFieldValue(
-                estimatedOvulationDate,
-              )}
-              className={inputClass}
-              data-testid="gestation-estimated-ovulation-input"
-            />
-          ) : (
-            <p className={readonlyClass}>
-              {estimatedOvulationDate
-                ? formatLitterDate(estimatedOvulationDate)
-                : "Non renseignée"}
-            </p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="gestation-expected-birth" className={labelClass}>
-            Mise-bas prévue
-          </label>
-          {canWrite ? (
-            <input
-              id="gestation-expected-birth"
-              name="expected_birth_date"
-              type="date"
-              defaultValue={explicitExpectedBirthFieldValue(expectedBirthDate)}
-              className={inputClass}
-              data-testid="gestation-expected-birth-input"
-            />
-          ) : (
-            <p className={readonlyClass}>
-              {expectedBirthDate
-                ? formatLitterDate(expectedBirthDate)
-                : "Non renseignée"}
-            </p>
-          )}
-          {fallbackHint ? (
-            <p className="mt-1 text-xs text-muted" data-testid="gestation-expected-birth-hint">
-              {fallbackHint}
-            </p>
-          ) : null}
-        </div>
-
-        <div className="sm:col-span-2">
-          <p className={labelClass}>Naissance réelle</p>
-          <p className={readonlyClass} data-testid="gestation-actual-birth-readonly">
-            {actualBirthDate ? formatLitterDate(actualBirthDate) : "Non renseignée"}
-          </p>
-          <p className="mt-1 text-xs text-muted">
-            Issue du{" "}
-            <Link
-              href={`/litters/journal?litterId=${litterId}`}
-              className="font-medium text-accent hover:underline"
-            >
-              Journal de mise-bas
-            </Link>
-            .
-          </p>
-        </div>
-
-        {canWrite ? (
-          <div className="sm:col-span-2 flex justify-end border-t pt-6">
+      {canWrite && action ? (
+        <form action={action} className="space-y-5" data-testid="gestation-anchors-form">
+          {presentation}
+          <div className="flex justify-end border-t pt-6">
             <button
               type="submit"
               className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
@@ -264,12 +322,15 @@ export function LitterGestationAnchorsSection({
               Enregistrer les dates de gestation
             </button>
           </div>
-        ) : (
-          <p className="sm:col-span-2 text-sm text-muted">
+        </form>
+      ) : (
+        <div data-testid="gestation-anchors-readonly">
+          {presentation}
+          <p className="mt-5 text-sm text-muted">
             Lecture seule — votre rôle ne permet pas de modifier ces dates.
           </p>
-        )}
-      </form>
+        </div>
+      )}
     </div>
   );
 }

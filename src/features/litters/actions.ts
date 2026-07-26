@@ -564,6 +564,13 @@ function litterGestationAnchorsUrl(
   return `/litters/${litterId}?gestation_anchors_status=${encodeURIComponent(code)}#dates-gestation`;
 }
 
+export type UpdateLitterGestationAnchorsIntention = {
+  litterId: string;
+  clientCommandId: string;
+  expectedLitterUpdatedAt: string;
+  expectedPlanRevision: number | null;
+};
+
 /**
  * Met à jour les informations principales d'une portée existante depuis sa
  * fiche, en cohérence avec le formulaire de création /litters/new.
@@ -743,43 +750,37 @@ export async function updateLitterDetails(formData: FormData) {
 /**
  * Met à jour l’ovulation estimée et/ou la date prévue de mise-bas, puis
  * recalcule atomiquement le planning actif via la RPC dédiée.
+ *
+ * L’intention (litterId, clientCommandId, révisions) est liée côté serveur ;
+ * FormData ne fournit que les deux dates métier.
  */
-export async function updateLitterGestationAnchors(formData: FormData) {
-  const rawLitterId = formData.get("litter_id");
-  if (typeof rawLitterId !== "string" || !isUuid(rawLitterId.trim())) {
+export async function updateLitterGestationAnchorsAction(
+  intention: UpdateLitterGestationAnchorsIntention,
+  formData: FormData,
+) {
+  const litterId =
+    typeof intention.litterId === "string" && isUuid(intention.litterId)
+      ? intention.litterId
+      : null;
+  if (!litterId) {
     redirect("/litters");
   }
-  const litterId = rawLitterId.trim();
 
-  const clientCommandIdRaw = formData.get("client_command_id");
   const clientCommandId =
-    typeof clientCommandIdRaw === "string" && isUuid(clientCommandIdRaw.trim())
-      ? clientCommandIdRaw.trim()
+    typeof intention.clientCommandId === "string" &&
+    isUuid(intention.clientCommandId)
+      ? intention.clientCommandId
       : null;
-  if (!clientCommandId) {
+  if (!clientCommandId || !intention.expectedLitterUpdatedAt) {
     redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
   }
 
-  const expectedUpdatedAtRaw = formData.get("expected_litter_updated_at");
-  const expectedLitterUpdatedAt =
-    typeof expectedUpdatedAtRaw === "string" && expectedUpdatedAtRaw.trim()
-      ? expectedUpdatedAtRaw.trim()
-      : null;
-  if (!expectedLitterUpdatedAt) {
-    redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
-  }
-
-  const expectedPlanRevisionRaw = formData.get("expected_plan_revision");
-  let expectedPlanRevision: number | null = null;
+  const expectedPlanRevision = intention.expectedPlanRevision;
   if (
-    typeof expectedPlanRevisionRaw === "string" &&
-    expectedPlanRevisionRaw.trim()
+    expectedPlanRevision !== null &&
+    (!Number.isInteger(expectedPlanRevision) || expectedPlanRevision <= 0)
   ) {
-    const parsed = Number(expectedPlanRevisionRaw.trim());
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
-    }
-    expectedPlanRevision = parsed;
+    redirect(litterGestationAnchorsUrl(litterId, "invalid_input"));
   }
 
   const ovulation = parseOptionalCivilDate(
@@ -795,7 +796,7 @@ export async function updateLitterGestationAnchors(formData: FormData) {
   const result = await updateLitterGestationAnchorsAndRecalculatePlan({
     litterId,
     clientCommandId,
-    expectedLitterUpdatedAt,
+    expectedLitterUpdatedAt: intention.expectedLitterUpdatedAt,
     expectedPlanRevision,
     estimatedOvulationDate: ovulation,
     expectedBirthDate: expectedBirth,
