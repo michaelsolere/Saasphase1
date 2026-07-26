@@ -11,6 +11,8 @@ import {
   filterAdopterAppointmentsForToday,
   filterReproductiveCyclesForToday,
 } from "@/features/breeding-calendar/breeding-calendar-projection";
+import { CalendarRemindersTodaySection } from "@/features/breeding-calendar/calendar-reminders-today-section";
+import type { CalendarReminderSummary } from "@/features/breeding-calendar/calendar-reminders-core";
 import {
   reproductiveCycleCalendarStatusLabels,
 } from "@/features/breeding-calendar/reproductive-cycle-calendar";
@@ -369,6 +371,9 @@ export function BreedingTodayPanel({
   todayLocalTime,
   appointments = [],
   reproductiveCycles = [],
+  reminders = [],
+  canManageReminders = false,
+  reminderLoadFailed = false,
   quickActions = [],
   scheduleActions = [],
   unavailable = false,
@@ -379,6 +384,9 @@ export function BreedingTodayPanel({
   todayLocalTime: string;
   appointments?: readonly AdopterAppointmentBreedingCalendarEvent[];
   reproductiveCycles?: readonly ReproductiveCycleBreedingCalendarEvent[];
+  reminders?: CalendarReminderSummary[];
+  canManageReminders?: boolean;
+  reminderLoadFailed?: boolean;
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActions[];
   unavailable?: boolean;
@@ -458,6 +466,11 @@ export function BreedingTodayPanel({
           </div>
         )}
       </section>
+      <CalendarRemindersTodaySection
+        reminders={reminders}
+        canWrite={canManageReminders}
+        loadFailed={reminderLoadFailed}
+      />
       <TodayReproductionSection cycles={reproductiveCycles} todayDate={todayDate} />
       <TodayAppointmentsSection appointments={todayAppointments} />
     </div>

@@ -8,6 +8,8 @@ import {
   listReproductiveCycleCalendarEvents,
 } from "@/features/breeding-calendar/breeding-calendar";
 import { BreedingTodayPanel } from "@/features/breeding-calendar/breeding-today-panel";
+import { listOrganizationCalendarReminders } from "@/features/breeding-calendar/calendar-reminders";
+import type { CalendarReminderSummary } from "@/features/breeding-calendar/calendar-reminders-core";
 import {
   formatLitterJournalBusinessDate,
   getLitterJournalBusinessLocalTime,
@@ -168,6 +170,15 @@ export default async function BreedingTodayPage() {
     ? plannedTasks.map(bindLitterCareTaskScheduleActions)
     : [];
 
+  let reminders: CalendarReminderSummary[] = [];
+  let reminderLoadFailed = false;
+  try {
+    const reminderResult = await listOrganizationCalendarReminders();
+    reminders = reminderResult.reminders;
+  } catch {
+    reminderLoadFailed = true;
+  }
+
   return (
     <main className="mx-auto max-w-7xl space-y-6 overflow-x-hidden px-4 py-6 sm:px-6">
       <header className="rounded-2xl border bg-surface p-5 sm:p-6">
@@ -191,6 +202,9 @@ export default async function BreedingTodayPage() {
         reproductiveCycles={reproductiveCycles.filter(
           isReproductiveCycleBreedingCalendarEvent,
         )}
+        reminders={reminders}
+        canManageReminders={canWrite}
+        reminderLoadFailed={reminderLoadFailed}
         quickActions={quickActions}
         scheduleActions={scheduleActions}
       />

@@ -3,6 +3,13 @@ import { createHash } from "node:crypto";
 import type { LitterCareCalendarCategoryFilter, LitterCareCalendarKindFilter } from "./litter-care-calendar";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import type { BreedingCalendarEvent } from "@/features/breeding-calendar/breeding-calendar-contract";
+import {
+  formatUtcIcsDateTime,
+  isValidCivilDate,
+  isValidIanaTimeZone,
+  isValidLocalTime,
+  localCivilDateTimeToUtcIcs,
+} from "@/lib/timezone";
 
 type IcalendarInput = {
   litterName: string;
@@ -13,20 +20,16 @@ type IcalendarInput = {
 
 const CRLF = "\r\n";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const TIME = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 
 function validDate(value: string | null): value is string {
-  if (!value || !DATE.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return Boolean(value && isValidCivilDate(value));
 }
 
-function validTime(value: string | null): value is string { return Boolean(value && TIME.test(value)); }
+function validTime(value: string | null): value is string {
+  return Boolean(value && isValidLocalTime(value));
+}
 function validTimezone(value: string | null): value is string {
-  if (!value?.trim()) return false;
-  try { Intl.DateTimeFormat("en-GB", { timeZone: value }); return true; } catch { return false; }
+  return Boolean(value && isValidIanaTimeZone(value));
 }
 function ymd(value: string) { return value.replaceAll("-", ""); }
 function hms(value: string) { return value.replaceAll(":", "").padEnd(6, "0"); }
@@ -41,23 +44,11 @@ function fold(line: string) {
   parts.push(current); return parts.join(CRLF);
 }
 function property(name: string, value: string) { return fold(`${name}:${value}`); }
-function formatUtc(date: Date) { return `${date.getUTCFullYear().toString().padStart(4, "0")}${(date.getUTCMonth() + 1).toString().padStart(2, "0")}${date.getUTCDate().toString().padStart(2, "0")}T${date.getUTCHours().toString().padStart(2, "0")}${date.getUTCMinutes().toString().padStart(2, "0")}${date.getUTCSeconds().toString().padStart(2, "0")}Z`; }
-function localParts(instant: number, timezone: string) {
-  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(new Date(instant));
-  const values = new Map(parts.map((part) => [part.type, part.value]));
-  return `${values.get("year")}-${values.get("month")}-${values.get("day")}T${values.get("hour")}:${values.get("minute")}:${values.get("second")}`;
-}
-function localToUtc(date: string, time: string, timezone: string): string | null {
-  const local = `${date}T${time.length === 5 ? `${time}:00` : time}`;
-  const expected = Date.parse(`${local}Z`); if (!Number.isFinite(expected)) return null;
-  for (let minute = -840; minute <= 840; minute += 1) {
-    const candidate = expected + minute * 60_000;
-    if (localParts(candidate, timezone) === local) return formatUtc(new Date(candidate));
-  }
-  return null;
-}
+function formatUtc(date: Date) { return formatUtcIcsDateTime(date); }
 function dateTime(date: string, time: string, timezone: string | null) {
-  if (validTimezone(timezone)) return localToUtc(date, time, timezone) ?? `${ymd(date)}T${hms(time)}`;
+  if (validTimezone(timezone)) {
+    return localCivilDateTimeToUtcIcs(date, time, timezone) ?? `${ymd(date)}T${hms(time)}`;
+  }
   return `${ymd(date)}T${hms(time)}`;
 }
 function addDay(date: string) { const [year, month, day] = date.split("-").map(Number); const next = new Date(Date.UTC(year, month - 1, day + 1)); return `${next.getUTCFullYear().toString().padStart(4, "0")}${(next.getUTCMonth() + 1).toString().padStart(2, "0")}${next.getUTCDate().toString().padStart(2, "0")}`; }

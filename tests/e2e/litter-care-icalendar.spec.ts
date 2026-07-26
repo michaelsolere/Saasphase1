@@ -32,6 +32,8 @@ test("projette les événements ponctuels, DST et fuseaux flottants sans donnée
   expect(allDay).toContain("SEQUENCE:3");
   expect(allDay).toContain("CATEGORIES:veterinary");
   expect(allDay).not.toContain("Note privée"); expect(allDay).not.toContain("Ne pas exporter"); expect(allDay).not.toContain(taskId); expect(allDay).not.toContain(litterId);
+  expect(allDay).not.toContain("VALARM");
+  expect(allDay).not.toContain("X-SAAS-ELEVAGE-REMINDER");
 });
 
 test("projette chaque fenêtre une seule fois avec une borne de fin exclusive", () => {

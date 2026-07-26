@@ -242,6 +242,7 @@ test("calendrier global agrège portées et rendez-vous adoptants", async ({ pag
       .locator('[data-calendar-source="adopter_appointment"]')
       .filter({ hasText: "Choix du chiot/chaton" })
       .first()
+      .locator("[data-calendar-event-link]")
       .click();
     await expect(page).toHaveURL(new RegExp(`/reservations/${reservation.id}(?:\\?.*)?#appointments`));
     await expect(page.getByRole("heading", { name: "Créneaux de rendez-vous" })).toBeVisible();

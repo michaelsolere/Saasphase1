@@ -483,6 +483,190 @@ export type Database = {
           },
         ]
       }
+      calendar_reminder_commands: {
+        Row: {
+          client_command_id: string
+          command_type: string
+          created_at: string
+          created_by: string
+          id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason: string | null
+          reminder_id: string | null
+          result: Json
+        }
+        Insert: {
+          client_command_id: string
+          command_type: string
+          created_at?: string
+          created_by: string
+          id?: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason?: string | null
+          reminder_id?: string | null
+          result: Json
+        }
+        Update: {
+          client_command_id?: string
+          command_type?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          reason?: string | null
+          reminder_id?: string | null
+          result?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_reminder_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminder_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminder_commands_reminder_fk"
+            columns: ["organization_id", "reminder_id"]
+            isOneToOne: false
+            referencedRelation: "calendar_reminders"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      calendar_reminders: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          acknowledged_trigger_at: string | null
+          adopter_event_id: string | null
+          created_at: string
+          created_by: string
+          days_before: number
+          deleted_at: string | null
+          deleted_by: string | null
+          id: string
+          litter_care_task_id: string | null
+          local_time: string
+          organization_id: string
+          reproductive_cycle_id: string | null
+          revision_no: number
+          timezone_name: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          acknowledged_trigger_at?: string | null
+          adopter_event_id?: string | null
+          created_at?: string
+          created_by: string
+          days_before: number
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          litter_care_task_id?: string | null
+          local_time: string
+          organization_id: string
+          reproductive_cycle_id?: string | null
+          revision_no?: number
+          timezone_name: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          acknowledged_trigger_at?: string | null
+          adopter_event_id?: string | null
+          created_at?: string
+          created_by?: string
+          days_before?: number
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: string
+          litter_care_task_id?: string | null
+          local_time?: string
+          organization_id?: string
+          reproductive_cycle_id?: string | null
+          revision_no?: number
+          timezone_name?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_reminders_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_adopter_event_fk"
+            columns: ["organization_id", "adopter_event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_litter_care_task_fk"
+            columns: ["organization_id", "litter_care_task_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_tasks"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_reproductive_cycle_fk"
+            columns: ["organization_id", "reproductive_cycle_id"]
+            isOneToOne: false
+            referencedRelation: "reproductive_cycles"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "calendar_reminders_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_roles: {
         Row: {
           contact_id: string
@@ -5891,6 +6075,32 @@ export type Database = {
       }
     }
     Functions: {
+      acknowledge_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_expected_trigger_at: string
+          p_reminder_id: string
+        }
+        Returns: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          acknowledged_trigger_at: string | null
+          created_at: string | null
+          days_before: number | null
+          local_time: string | null
+          organization_id: string | null
+          outcome: string
+          reason: string | null
+          reminder_id: string | null
+          replayed: boolean
+          revision_no: number | null
+          source_record_id: string | null
+          source_type: string | null
+          timezone_name: string | null
+          updated_at: string | null
+        }[]
+      }
       activate_organization_logo: {
         Args: {
           p_asset_id: string
@@ -6077,6 +6287,34 @@ export type Database = {
           version: number
         }[]
       }
+      create_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_days_before: number
+          p_local_time: string
+          p_source_record_id: string
+          p_source_type: string
+          p_timezone_name: string
+        }
+        Returns: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          acknowledged_trigger_at: string | null
+          created_at: string | null
+          days_before: number | null
+          local_time: string | null
+          organization_id: string | null
+          outcome: string
+          reason: string | null
+          reminder_id: string | null
+          replayed: boolean
+          revision_no: number | null
+          source_record_id: string | null
+          source_type: string | null
+          timezone_name: string | null
+          updated_at: string | null
+        }[]
+      }
       create_litter_care_task: {
         Args: {
           p_category: string
@@ -6219,6 +6457,23 @@ export type Database = {
           refundable_cents: number
           refunded_cents: number
           reservation_id: string
+        }[]
+      }
+      delete_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_reminder_id: string
+        }
+        Returns: {
+          deleted_at: string | null
+          deleted_by: string | null
+          organization_id: string | null
+          outcome: string
+          reason: string | null
+          reminder_id: string | null
+          replayed: boolean
+          revision_no: number | null
         }[]
       }
       discard_document_template_draft: {
@@ -6479,6 +6734,34 @@ export type Database = {
           reason: string
           replayed: boolean
           sequence_no: number
+        }[]
+      }
+      update_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_days_before: number
+          p_expected_revision_no: number
+          p_local_time: string
+          p_reminder_id: string
+          p_timezone_name: string
+        }
+        Returns: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          acknowledged_trigger_at: string | null
+          created_at: string | null
+          days_before: number | null
+          local_time: string | null
+          organization_id: string | null
+          outcome: string
+          reason: string | null
+          reminder_id: string | null
+          replayed: boolean
+          revision_no: number | null
+          source_record_id: string | null
+          source_type: string | null
+          timezone_name: string | null
+          updated_at: string | null
         }[]
       }
       update_organization_calendar_feed_sources: {

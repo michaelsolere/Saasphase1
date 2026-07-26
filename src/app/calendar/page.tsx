@@ -10,6 +10,8 @@ import { BreedingCalendarPanel } from "@/features/breeding-calendar/breeding-cal
 import { getActiveOrganizationCalendarFeed } from "@/features/breeding-calendar/calendar-feed-service";
 import { CalendarFeedSubscriptionPanel } from "@/features/breeding-calendar/calendar-feed-subscription-panel";
 import type { OrganizationCalendarFeedMetadata } from "@/features/breeding-calendar/calendar-feed-types";
+import { listOrganizationCalendarReminders } from "@/features/breeding-calendar/calendar-reminders";
+import type { CalendarReminderSummary } from "@/features/breeding-calendar/calendar-reminders-core";
 import {
   formatLitterJournalBusinessDate,
   getLitterJournalBusinessLocalTime,
@@ -26,6 +28,10 @@ import type { LitterCareCalendarView } from "@/features/litter-journal/litter-ca
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
+
+function canManageCalendarReminders(role: string | null | undefined) {
+  return role === "owner" || role === "admin" || role === "member";
+}
 
 export default async function BreedingCalendarPage({
   searchParams,
@@ -109,6 +115,29 @@ export default async function BreedingCalendarPage({
     feedPanel = <CalendarFeedSubscriptionPanel initialFeed={feedMetadata} />;
   }
 
+  let reminders: CalendarReminderSummary[] = [];
+  let reminderLoadFailed = false;
+  let canManageReminders = false;
+  try {
+    const reminderResult = await listOrganizationCalendarReminders({
+      events: calendar.events,
+    });
+    reminders = reminderResult.reminders;
+    canManageReminders = canManageCalendarReminders(reminderResult.role);
+  } catch {
+    reminderLoadFailed = true;
+    const membership = await supabase
+      .from("memberships")
+      .select("role")
+      .eq("profile_id", auth.data.user.id)
+      .eq("status", "active")
+      .is("deleted_at", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    canManageReminders = canManageCalendarReminders(membership.data?.role);
+  }
+
   const now = new Date();
   return (
     <BreedingCalendarPanel
@@ -122,6 +151,9 @@ export default async function BreedingCalendarPage({
       kind={kind}
       category={category}
       feedPanel={feedPanel}
+      reminders={reminders}
+      canManageReminders={canManageReminders}
+      reminderLoadFailed={reminderLoadFailed}
     />
   );
 }
