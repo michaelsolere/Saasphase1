@@ -170,7 +170,7 @@ function createdRecordIds() {
           from public.reproductive_cycles where mother_id = ${q(ids.mother)}::uuid
         ), '[]'::json),
         'measurements', coalesce((
-          select json_agg(id::text order by measured_at)
+          select json_agg(measurement.id::text order by measurement.measured_at)
           from public.progesterone_measurements measurement
           join public.reproductive_cycles cycle on cycle.id = measurement.cycle_id
           where cycle.mother_id = ${q(ids.mother)}::uuid
@@ -230,7 +230,9 @@ test("gère les cycles reproductifs et dosages dans une interface sécurisée", 
     await expect(cycleDialog.getByRole("alert")).toHaveText("Un cycle actif existe déjà pour cette reproductrice.");
     await page.keyboard.press("Escape");
 
-    const cycleCard = page.getByText("Cycle débuté le 12 juillet 2026").locator("..").locator("..");
+    const cycleCard = page
+      .getByRole("listitem")
+      .filter({ hasText: "Cycle débuté le 12 juillet 2026" });
     await cycleCard.getByRole("button", { name: "Ajouter un dosage" }).click();
     let dosageDialog = page.getByRole("dialog");
     await expect(dosageDialog.getByLabel("Prélèvement")).toHaveAttribute("required", "");
@@ -277,6 +279,7 @@ test("gère les cycles reproductifs et dosages dans une interface sécurisée", 
     await expect(page.getByText("Lecture seule")).toBeVisible();
     await expect(page.getByRole("button", { name: "Ajouter un cycle" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Ajouter un dosage" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Modifier le cycle" })).toHaveCount(0);
 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.reload();

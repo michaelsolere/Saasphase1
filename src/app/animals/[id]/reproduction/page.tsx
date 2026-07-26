@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 
-import { recordReproductiveCycleMatingAction } from "@/features/reproduction/actions";
+import { recordReproductiveCycleMatingAction, updateReproductiveCycleAction } from "@/features/reproduction/actions";
 import { filterEligibleLitterParents } from "@/features/litters/parent-eligibility";
 import { ReproductionPanel } from "@/features/reproduction/reproduction-panel";
 import {
@@ -158,6 +158,11 @@ export default async function AnimalReproductionPage({
         matingsResult.outcome === "success" && matingsResult.matings.length > 0
           ? matingsResult.matings[0].fatherId
           : undefined,
+    }),
+    updateAction: updateReproductiveCycleAction.bind(null, {
+      motherId: animal.id,
+      cycleId: cycle.id,
+      expectedUpdatedAt: cycle.updatedAt,
     }),
   }));
   const animalName = animal.official_name?.trim() || animal.call_name?.trim() || "Femelle";

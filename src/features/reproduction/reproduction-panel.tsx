@@ -24,10 +24,12 @@ import {
   initialReproductionActionState,
   type ReproductionActionState,
 } from "@/features/reproduction/action-state";
+import { allowedManualStatusesFor } from "@/features/reproduction/reproductive-cycle-transitions";
 import type {
   ProgesteroneMeasurementSummary,
   ReproductiveCycleMatingMethod,
   ReproductiveCycleMatingSummary,
+  ReproductiveCycleStatus,
   ReproductiveCycleSummary,
 } from "@/features/reproduction/reproductive-cycles";
 
@@ -36,6 +38,10 @@ type CycleWithMeasurements = ReproductiveCycleSummary & {
   matings: ReproductiveCycleMatingSummary[];
   litterName: string | null;
   matingAction: (
+    previousState: ReproductionActionState,
+    formData: FormData,
+  ) => Promise<ReproductionActionState>;
+  updateAction: (
     previousState: ReproductionActionState,
     formData: FormData,
   ) => Promise<ReproductionActionState>;
@@ -185,6 +191,194 @@ function CreateCycleDialog({ motherId }: { motherId: string }) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function EditCycleDialog({ cycle }: { cycle: CycleWithMeasurements }) {
+  const actionRef = useRef(cycle.updateAction);
+  const stableAction = useCallback(
+    (previousState: ReproductionActionState, formData: FormData) =>
+      actionRef.current(previousState, formData),
+    [],
+  );
+  const [state, formAction] = useActionState(stableAction, initialReproductionActionState);
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<ReproductiveCycleStatus>(cycle.status);
+  const [confirming, setConfirming] = useState<"closed" | "cancelled" | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const allowedStatuses = allowedManualStatusesFor(cycle.status);
+  const hasMatingOrLitter = cycle.matings.length > 0 || cycle.litterId !== null;
+  const isEditable = allowedStatuses.length > 0;
+
+  useEffect(() => {
+    actionRef.current = cycle.updateAction;
+  }, [cycle.updateAction]);
+
+  useEffect(() => {
+    if (state.status !== "success") return;
+    window.sessionStorage.setItem(
+      `reproduction-cycle-update-success:${cycle.id}`,
+      state.message ?? "Le cycle reproductif a été mis à jour.",
+    );
+    window.location.reload();
+  }, [cycle.id, state.message, state.status]);
+
+  if (!isEditable) return null;
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (!nextOpen) {
+      setStatus(cycle.status);
+      setConfirming(null);
+    }
+  }
+
+  function requestSubmit() {
+    if ((status === "closed" || status === "cancelled") && status !== cycle.status) {
+      setConfirming(status);
+      return;
+    }
+    formRef.current?.requestSubmit();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm">
+          Modifier le cycle
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Modifier le cycle</DialogTitle>
+          <DialogDescription>
+            Corrigez les dates, les notes ou le statut sans recréer le cycle.
+          </DialogDescription>
+        </DialogHeader>
+        {confirming ? (
+          <div className="space-y-4">
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950">
+              {confirming === "cancelled"
+                ? "L’annulation rend ce cycle terminal. Aucune saillie, portée ou mesure de progestérone n’est supprimée."
+                : "La clôture termine ce cycle. Aucune saillie, portée ou mesure de progestérone n’est supprimée."}
+            </p>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConfirming(null)}>
+                Revenir
+              </Button>
+              <Button type="button" onClick={() => formRef.current?.requestSubmit()}>
+                Confirmer
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : null}
+        <form
+          ref={formRef}
+          action={formAction}
+          className={confirming ? "hidden" : "space-y-4"}
+        >
+          <div className="rounded-xl border bg-muted/30 px-3 py-3 text-sm">
+            <p className="font-semibold">État courant</p>
+            <p className="mt-1 text-muted">{statusLabels[cycle.status]}</p>
+            {cycle.litterId ? (
+              <p className="mt-2 text-muted">
+                Portée liée :{" "}
+                <Link href={`/litters/${cycle.litterId}`} className="font-semibold text-accent hover:underline">
+                  {cycle.litterName ?? "Ouvrir la portée"}
+                </Link>
+              </p>
+            ) : null}
+            {hasMatingOrLitter ? (
+              <p className="mt-2 text-amber-900">
+                Une saillie ou une portée est liée : l’annulation est impossible.
+              </p>
+            ) : null}
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`edit-cycle-started-on-${cycle.id}`}>
+              Date de début
+            </label>
+            <input
+              id={`edit-cycle-started-on-${cycle.id}`}
+              className={inputClass}
+              name="started_on"
+              type="date"
+              required
+              defaultValue={cycle.startedOn}
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`edit-cycle-ended-on-${cycle.id}`}>
+              Date de fin
+            </label>
+            <input
+              id={`edit-cycle-ended-on-${cycle.id}`}
+              className={inputClass}
+              name="ended_on"
+              type="date"
+              defaultValue={cycle.endedOn ?? ""}
+              required={status === "closed"}
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`edit-cycle-status-${cycle.id}`}>
+              Statut
+            </label>
+            <select
+              id={`edit-cycle-status-${cycle.id}`}
+              className={inputClass}
+              name="status"
+              required
+              value={status}
+              onChange={(event) => setStatus(event.target.value as ReproductiveCycleStatus)}
+            >
+              {allowedStatuses.map((value) => (
+                <option key={value} value={value} disabled={value === "cancelled" && hasMatingOrLitter}>
+                  {statusLabels[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`edit-cycle-notes-${cycle.id}`}>
+              Notes
+            </label>
+            <textarea
+              id={`edit-cycle-notes-${cycle.id}`}
+              className={inputClass}
+              name="notes"
+              rows={4}
+              maxLength={5000}
+              defaultValue={cycle.notes ?? ""}
+            />
+          </div>
+          <ActionMessage status={state.status} message={state.message} />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">Annuler</Button>
+            </DialogClose>
+            <Button type="button" onClick={requestSubmit}>
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CycleUpdateSuccessNotice({ cycleId }: { cycleId: string }) {
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const key = `reproduction-cycle-update-success:${cycleId}`;
+    const saved = window.sessionStorage.getItem(key);
+    if (!saved) return;
+    window.sessionStorage.removeItem(key);
+    const frame = window.requestAnimationFrame(() => setMessage(saved));
+    return () => window.cancelAnimationFrame(frame);
+  }, [cycleId]);
+
+  return message ? <ActionMessage status="success" message={message} /> : null;
 }
 
 function AddMeasurementDialog({
@@ -553,8 +747,12 @@ export function ReproductionPanel({
                   <p className="font-semibold">Cycle débuté le {formatDate(cycle.startedOn)}</p>
                   <p className="mt-1 text-sm text-muted">{cycle.endedOn ? `Terminé le ${formatDate(cycle.endedOn)}` : "Date de fin non renseignée"}</p>
                 </div>
-                <span className="w-fit rounded-full border px-3 py-1 text-xs font-semibold text-muted">{statusLabels[cycle.status]}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-fit rounded-full border px-3 py-1 text-xs font-semibold text-muted">{statusLabels[cycle.status]}</span>
+                  {canWrite ? <EditCycleDialog cycle={cycle} /> : null}
+                </div>
               </div>
+              <div className="mt-4"><CycleUpdateSuccessNotice cycleId={cycle.id} /></div>
               <div className="mt-4 text-sm leading-6 text-muted">
                 <p className="font-medium text-foreground">Notes</p>
                 <p className="mt-1 whitespace-pre-wrap break-words">{cycle.notes || "Aucune note renseignée."}</p>
