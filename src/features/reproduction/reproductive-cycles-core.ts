@@ -5,6 +5,7 @@ import {
   validateReproductiveCycleUpdateFields,
   type ReproductiveCycleStatus,
 } from "./reproductive-cycle-transitions";
+import type { GestationPlanningOutcome } from "./gestation-planning-outcome";
 import type { Database } from "@/types/database.types";
 
 export {
@@ -192,6 +193,8 @@ export type RecordReproductiveCycleMatingInput = {
   location?: string | null;
   note?: string | null;
   litterName?: string | null;
+  /** Only meaningful for the first mating of a cycle; ignored otherwise. */
+  estimatedOvulationDate?: string | null;
 };
 
 export type RecordReproductiveCycleMatingResult =
@@ -202,6 +205,15 @@ export type RecordReproductiveCycleMatingResult =
       litterId: string;
       sequenceNo: number;
       replayed: boolean;
+      /** `null` only when the mating was not the first of its cycle in a replayed row predating this field. */
+      gestationPlanningOutcome: GestationPlanningOutcome | null;
+      gestationModelTitle: string | null;
+      gestationVariantCode: string | null;
+      litterPlanId: string | null;
+      litterPlanRevision: number | null;
+      snapshotCount: number;
+      materializedCount: number;
+      pendingAnchorCount: number;
     }
   | ErrorResult;
 
@@ -748,6 +760,10 @@ function recordMatingFailure(reason: string | null): ErrorResult {
         "conflict",
         "Les saillies d’un cycle doivent conserver le même reproducteur.",
       );
+    case "estimated_ovulation_not_allowed":
+      return invalidInput(
+        "La date d’ovulation estimée ne peut être renseignée que pour la première saillie.",
+      );
     case "client_command_conflict":
     case "cycle_litter_conflict":
     case "cycle_litter_missing":
@@ -861,6 +877,22 @@ export async function updateReproductiveCycleCore(
   };
 }
 
+function isGestationPlanningOutcome(
+  value: unknown,
+): value is GestationPlanningOutcome {
+  return (
+    typeof value === "string" &&
+    [
+      "applied",
+      "already_applied",
+      "not_configured",
+      "default_model_unavailable",
+      "variant_conflict",
+      "not_applicable",
+    ].includes(value)
+  );
+}
+
 export async function recordReproductiveCycleMatingCore(
   input: RecordReproductiveCycleMatingInput,
   supabase: Supabase,
@@ -873,6 +905,11 @@ export async function recordReproductiveCycleMatingCore(
   const location = normalizeOptionalText(input.location, 500);
   const note = normalizeOptionalText(input.note, 5_000);
   const litterName = normalizeOptionalText(input.litterName, 255);
+  const estimatedOvulationDate =
+    input.estimatedOvulationDate === undefined ||
+    input.estimatedOvulationDate === null
+      ? null
+      : normalizeDateOnly(input.estimatedOvulationDate);
 
   if (
     !cycleId ||
@@ -883,22 +920,29 @@ export async function recordReproductiveCycleMatingCore(
     !isMatingMethod(input.method) ||
     location === undefined ||
     note === undefined ||
-    litterName === undefined
+    litterName === undefined ||
+    (input.estimatedOvulationDate !== undefined &&
+      input.estimatedOvulationDate !== null &&
+      !estimatedOvulationDate)
   ) {
     return invalidInput();
   }
 
-  const recorded = await supabase.rpc("record_reproductive_cycle_mating", {
-    p_cycle_id: cycleId,
-    p_client_command_id: clientCommandId,
-    p_father_id: fatherId,
-    p_occurred_at: occurredAt,
-    p_timezone_name: timezoneName,
-    p_method: input.method,
-    p_location: location ?? undefined,
-    p_note: note ?? undefined,
-    p_litter_name: litterName ?? undefined,
-  });
+  const recorded = await supabase.rpc(
+    "record_reproductive_cycle_mating_with_gestation_plan",
+    {
+      p_cycle_id: cycleId,
+      p_client_command_id: clientCommandId,
+      p_father_id: fatherId,
+      p_occurred_at: occurredAt,
+      p_timezone_name: timezoneName,
+      p_method: input.method,
+      p_location: location ?? undefined,
+      p_note: note ?? undefined,
+      p_litter_name: litterName ?? undefined,
+      p_estimated_ovulation_date: estimatedOvulationDate ?? undefined,
+    },
+  );
 
   if (recorded.error) {
     return databaseFailure("reproductive_cycle_mating_record_failed", recorded.error);
@@ -923,5 +967,17 @@ export async function recordReproductiveCycleMatingCore(
     litterId: result.litter_id,
     sequenceNo: result.sequence_no,
     replayed: result.replayed === true,
+    gestationPlanningOutcome: isGestationPlanningOutcome(
+      result.gestation_planning_outcome,
+    )
+      ? result.gestation_planning_outcome
+      : null,
+    gestationModelTitle: result.gestation_model_title ?? null,
+    gestationVariantCode: result.gestation_variant_code ?? null,
+    litterPlanId: result.litter_plan_id ?? null,
+    litterPlanRevision: result.litter_plan_revision ?? null,
+    snapshotCount: result.snapshot_count ?? 0,
+    materializedCount: result.materialized_count ?? 0,
+    pendingAnchorCount: result.pending_anchor_count ?? 0,
   };
 }

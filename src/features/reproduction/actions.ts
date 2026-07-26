@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import type { ReproductionActionState } from "@/features/reproduction/action-state";
+import { matingSuccessMessage } from "@/features/reproduction/gestation-planning-outcome";
 import {
   addProgesteroneMeasurement,
   createReproductiveCycle,
@@ -87,6 +88,9 @@ function matingErrorMessage(code: string, message: string) {
   if (code === "conflict") {
     return "L’état du cycle a changé. Rechargez la page avant de réessayer.";
   }
+  if (code === "invalid_input" && message.includes("ovulation estimée")) {
+    return message;
+  }
   return "Les informations de la saillie sont invalides ou ne peuvent pas être enregistrées pour le moment.";
 }
 
@@ -104,6 +108,7 @@ export async function recordReproductiveCycleMatingAction(
 ): Promise<ReproductionActionState> {
   const method = matingMethod(value(formData, "method"));
   const fatherId = intention.fatherId ?? value(formData, "father_id");
+  const isFirstMating = !intention.fatherId;
 
   if (!method || !fatherId) {
     return { status: "error", message: "Les informations de la saillie sont invalides." };
@@ -118,7 +123,10 @@ export async function recordReproductiveCycleMatingAction(
     method,
     location: optionalValue(formData, "location"),
     note: optionalValue(formData, "note"),
-    litterName: intention.fatherId ? null : optionalValue(formData, "litter_name"),
+    litterName: isFirstMating ? optionalValue(formData, "litter_name") : null,
+    estimatedOvulationDate: isFirstMating
+      ? optionalValue(formData, "estimated_ovulation_date")
+      : null,
   });
 
   if (result.outcome === "error") {
@@ -129,8 +137,22 @@ export async function recordReproductiveCycleMatingAction(
   }
 
   revalidatePath(`/animals/${intention.motherId}/reproduction`);
+  revalidatePath("/litters");
   revalidatePath(`/litters/${result.litterId}`);
-  return { status: "success", message: "La saillie a été enregistrée." };
+  revalidatePath("/litters/journal");
+  revalidatePath("/litters/journal/calendar");
+  revalidatePath("/calendar");
+  revalidatePath("/calendar/today");
+
+  const success = result.gestationPlanningOutcome
+    ? matingSuccessMessage(result.gestationPlanningOutcome, result.gestationModelTitle)
+    : null;
+
+  return {
+    status: "success",
+    message: success?.message ?? "La saillie a été enregistrée.",
+    settingsHref: success && "settingsPath" in success ? success.settingsPath : undefined,
+  };
 }
 
 export async function createReproductiveCycleAction(

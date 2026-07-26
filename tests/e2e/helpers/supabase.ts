@@ -10,9 +10,18 @@ import type { Database } from "../../../src/types/database.types";
 
 const execFileAsync = promisify(execFile);
 
-const E2E_PROJECT_ID = "saasphase1-e2e";
-const E2E_SUPABASE_URL = "http://127.0.0.1:55321";
-const E2E_DB_CONTAINER = "supabase_db_saasphase1-e2e";
+const E2E_STACKS = {
+  "saasphase1-e2e": {
+    supabaseUrl: "http://127.0.0.1:55321",
+    dbContainer: "supabase_db_saasphase1-e2e",
+  },
+  "saasphase1-e2e-trial": {
+    supabaseUrl: "http://127.0.0.1:56321",
+    dbContainer: "supabase_db_saasphase1-e2e-trial",
+  },
+} as const;
+
+type E2eProjectId = keyof typeof E2E_STACKS;
 
 export const E2E_OWNER_EMAIL = "e2e-owner@saasphase1.invalid";
 export const E2E_OWNER_PASSWORD = "LocalE2EOwner-2026!";
@@ -38,17 +47,18 @@ function assertE2eEnvironment() {
   const ownerPassword = requiredEnv("E2E_OWNER_PASSWORD");
   const dbContainer = requiredEnv("SUPABASE_E2E_DB_CONTAINER");
 
-  if (projectId !== E2E_PROJECT_ID) {
+  const stack = E2E_STACKS[projectId as E2eProjectId];
+  if (!stack) {
     throw new Error(`Refusing to run E2E against Supabase project ${projectId}`);
   }
 
-  if (supabaseUrl !== E2E_SUPABASE_URL || supabaseUrl.includes("54321")) {
+  if (supabaseUrl !== stack.supabaseUrl || supabaseUrl.includes("54321")) {
     throw new Error(`Refusing to run E2E against Supabase URL ${supabaseUrl}`);
   }
 
   const forbiddenDbContainer: string = "supabase_db_saasphase1";
 
-  if (dbContainer !== E2E_DB_CONTAINER || dbContainer === forbiddenDbContainer) {
+  if (dbContainer !== stack.dbContainer || dbContainer === forbiddenDbContainer) {
     throw new Error(`Refusing to run E2E SQL against container ${dbContainer}`);
   }
 
@@ -90,12 +100,13 @@ export async function createAuthenticatedSupabaseClient() {
 
 export function runE2eSqlSync(sql: string) {
   assertE2eEnvironment();
+  const dbContainer = requiredEnv("SUPABASE_E2E_DB_CONTAINER");
 
   return execFileSync(
     "docker",
     [
       "exec",
-      E2E_DB_CONTAINER,
+      dbContainer,
       "psql",
       "-X",
       "-A",
@@ -115,12 +126,13 @@ export function runE2eSqlSync(sql: string) {
 
 export async function runE2eSql(sql: string) {
   assertE2eEnvironment();
+  const dbContainer = requiredEnv("SUPABASE_E2E_DB_CONTAINER");
 
   const { stdout } = await execFileAsync(
     "docker",
     [
       "exec",
-      E2E_DB_CONTAINER,
+      dbContainer,
       "psql",
       "-X",
       "-q",
