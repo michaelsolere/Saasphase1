@@ -10,7 +10,7 @@ import {
   LitterCareTodayQuickActions as LitterCareTodayQuickActionsComponent,
   type LitterCareTodayQuickActions,
 } from "./litter-care-today-quick-actions";
-import type { LitterCareTaskScheduleActions } from "./litter-care-task-schedule-dialog";
+import type { LitterCareTaskScheduleActionBinding } from "./litter-care-task-schedule-dialog";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",
@@ -59,7 +59,7 @@ function scheduleLabel(task: LitterCareTaskSummary) {
   return time ? `À ${time}` : null;
 }
 
-function TodayTask({ task, active, quickActions, scheduleActions }: { task: LitterCareTaskSummary; active: boolean; quickActions: LitterCareTodayQuickActions | null; scheduleActions: LitterCareTaskScheduleActions | null }) {
+function TodayTask({ task, active, quickActions, scheduleActions }: { task: LitterCareTaskSummary; active: boolean; quickActions: LitterCareTodayQuickActions | null; scheduleActions: LitterCareTaskScheduleActionBinding | null }) {
   const priority = priorityLabels[task.priority];
   const schedule = active
     ? scheduleLabel(task)
@@ -93,7 +93,7 @@ function TodayTask({ task, active, quickActions, scheduleActions }: { task: Litt
   );
 }
 
-function TodaySection({ title, tasks, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActions> }) {
+function TodaySection({ title, tasks, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding> }) {
   if (tasks.length === 0) return null;
 
   return (
@@ -118,7 +118,7 @@ export function LitterCareTodayPanel({
   todayDate: string;
   todayLocalTime: string;
   quickActions?: LitterCareTodayQuickActions[];
-  scheduleActions?: LitterCareTaskScheduleActions[];
+  scheduleActions?: LitterCareTaskScheduleActionBinding[];
   unavailable?: boolean;
 }) {
   const projection = projectLitterCareToday(tasks, { date: todayDate, localTime: todayLocalTime });

@@ -20,10 +20,13 @@ import {
   type LitterCareTaskResolutionStatus,
   type LitterCareTaskTargetScope,
 } from "./litter-care-tasks";
+import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
 
 export type LitterCareTaskActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+  code?: string;
+  requiresRefresh?: boolean;
 };
 
 export type GenerateLitterCareTasksActionState = LitterCareTaskActionState & {
@@ -150,11 +153,19 @@ async function runScheduleCommand(
 ): Promise<LitterCareTaskActionState> {
   const result = await command;
   if (result.outcome === "error") {
-    return { status: "error", message: scheduleErrorMessage(result.error.code) };
+    return {
+      status: "error",
+      message: scheduleErrorMessage(result.error.code),
+      code: result.error.code,
+      requiresRefresh: true,
+    };
   }
-  revalidatePath("/litters/journal");
-  revalidatePath("/calendar/today");
-  return { status: "success", message: successMessage };
+  revalidateLitterCareTaskSchedulePaths(result.litterId);
+  return {
+    status: "success",
+    message: successMessage,
+    requiresRefresh: true,
+  };
 }
 
 export async function rescheduleLitterCareTaskPointAction(
@@ -163,7 +174,13 @@ export async function rescheduleLitterCareTaskPointAction(
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
   const input = scheduleInput(formData, { start: "planned_for" });
-  if ("error" in input) return { status: "error", message: input.error ?? "La date retenue est invalide." };
+  if ("error" in input) {
+    return {
+      status: "error",
+      message: input.error ?? "La date retenue est invalide.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(rescheduleLitterCareTaskPoint({ ...submission, plannedFor: input.start, scheduledLocalTime: input.startTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation a été modifiée.");
 }
 
@@ -173,7 +190,13 @@ export async function rescheduleLitterCareTaskWindowAction(
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
   const input = scheduleInput(formData, { start: "retained_starts_on", end: "retained_ends_on" });
-  if ("error" in input || !input.end) return { status: "error", message: "Les bornes retenues sont invalides." };
+  if ("error" in input || !input.end) {
+    return {
+      status: "error",
+      message: "Les bornes retenues sont invalides.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(rescheduleLitterCareTaskWindow({ ...submission, retainedStartsOn: input.start, retainedStartsLocalTime: input.startTime, retainedEndsOn: input.end, retainedEndsLocalTime: input.endTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation a été modifiée.");
 }
 
@@ -182,9 +205,21 @@ export async function replaceLockedLitterCareTaskPointScheduleAction(
   _previousState: LitterCareTaskActionState,
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
-  if (value(formData, "locked_confirmation") !== "confirmed") return { status: "error", message: "La confirmation du remplacement verrouillé est requise." };
+  if (value(formData, "locked_confirmation") !== "confirmed") {
+    return {
+      status: "error",
+      message: "La confirmation du remplacement verrouillé est requise.",
+      requiresRefresh: false,
+    };
+  }
   const input = scheduleInput(formData, { start: "planned_for" });
-  if ("error" in input) return { status: "error", message: input.error ?? "La date retenue est invalide." };
+  if ("error" in input) {
+    return {
+      status: "error",
+      message: input.error ?? "La date retenue est invalide.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(replaceLockedLitterCareTaskPointSchedule({ ...submission, plannedFor: input.start, scheduledLocalTime: input.startTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation verrouillée a été remplacée.");
 }
 
@@ -193,9 +228,21 @@ export async function replaceLockedLitterCareTaskWindowScheduleAction(
   _previousState: LitterCareTaskActionState,
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
-  if (value(formData, "locked_confirmation") !== "confirmed") return { status: "error", message: "La confirmation du remplacement verrouillé est requise." };
+  if (value(formData, "locked_confirmation") !== "confirmed") {
+    return {
+      status: "error",
+      message: "La confirmation du remplacement verrouillé est requise.",
+      requiresRefresh: false,
+    };
+  }
   const input = scheduleInput(formData, { start: "retained_starts_on", end: "retained_ends_on" });
-  if ("error" in input || !input.end) return { status: "error", message: "Les bornes retenues sont invalides." };
+  if ("error" in input || !input.end) {
+    return {
+      status: "error",
+      message: "Les bornes retenues sont invalides.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(replaceLockedLitterCareTaskWindowSchedule({ ...submission, retainedStartsOn: input.start, retainedStartsLocalTime: input.startTime, retainedEndsOn: input.end, retainedEndsLocalTime: input.endTime, timezoneName: input.timezoneName, reason: input.reason }), "La programmation verrouillée a été remplacée.");
 }
 
@@ -205,7 +252,13 @@ export async function setLitterCareTaskScheduleLockAction(
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
   const reason = optionalValue(formData, "reason");
-  if (reason && reason.length > 500) return { status: "error", message: "Le motif ne doit pas dépasser 500 caractères." };
+  if (reason && reason.length > 500) {
+    return {
+      status: "error",
+      message: "Le motif ne doit pas dépasser 500 caractères.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(setLitterCareTaskScheduleLock({ ...submission, reason }), submission.isLocked ? "La programmation a été verrouillée." : "La programmation a été déverrouillée.");
 }
 
@@ -215,7 +268,13 @@ export async function reapplyLitterCareTaskScheduleSuggestionAction(
   formData: FormData,
 ): Promise<LitterCareTaskActionState> {
   const reason = optionalValue(formData, "reason");
-  if (reason && reason.length > 500) return { status: "error", message: "Le motif ne doit pas dépasser 500 caractères." };
+  if (reason && reason.length > 500) {
+    return {
+      status: "error",
+      message: "Le motif ne doit pas dépasser 500 caractères.",
+      requiresRefresh: false,
+    };
+  }
   return runScheduleCommand(reapplyLitterCareTaskScheduleSuggestion({ ...submission, reason }), "Le retour à la suggestion a réussi.");
 }
 

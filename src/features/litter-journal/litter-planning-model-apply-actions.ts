@@ -1,7 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
+import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -42,11 +41,7 @@ function parseSelectedIndexes(formData: FormData): unknown[] {
 }
 
 function revalidateAfterApply(litterId: string) {
-  revalidatePath("/litters/journal");
-  revalidatePath("/litters/journal/calendar");
-  revalidatePath("/calendar");
-  revalidatePath("/calendar/today");
-  revalidatePath(`/litters/${litterId}`);
+  revalidateLitterCareTaskSchedulePaths(litterId);
 }
 
 export async function applyLitterPlanningModelAction(

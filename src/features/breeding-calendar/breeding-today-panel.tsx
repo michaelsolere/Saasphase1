@@ -27,7 +27,7 @@ import {
   LitterCareTodayQuickActions as LitterCareTodayQuickActionsComponent,
   type LitterCareTodayQuickActions,
 } from "@/features/litter-journal/litter-care-today-quick-actions";
-import type { LitterCareTaskScheduleActions } from "@/features/litter-journal/litter-care-task-schedule-dialog";
+import type { LitterCareTaskScheduleActionBinding } from "@/features/litter-journal/litter-care-task-schedule-dialog";
 
 export const BREEDING_TODAY_EMPTY_MESSAGE =
   "Aucune action à traiter aujourd’hui pour l’élevage.";
@@ -125,7 +125,7 @@ function TodayTask({
   litterName: string | undefined;
   active: boolean;
   quickActions: LitterCareTodayQuickActions | null;
-  scheduleActions: LitterCareTaskScheduleActions | null;
+  scheduleActions: LitterCareTaskScheduleActionBinding | null;
 }) {
   const priority = priorityLabels[task.priority];
   const retainedDate = active ? retainedDateLabel(task) : null;
@@ -189,7 +189,7 @@ function TodaySection({
   litterNames: Record<string, string>;
   active: boolean;
   quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>;
-  scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActions>;
+  scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding>;
 }) {
   if (tasks.length === 0) return null;
 
@@ -388,7 +388,7 @@ export function BreedingTodayPanel({
   canManageReminders?: boolean;
   reminderLoadFailed?: boolean;
   quickActions?: LitterCareTodayQuickActions[];
-  scheduleActions?: LitterCareTaskScheduleActions[];
+  scheduleActions?: LitterCareTaskScheduleActionBinding[];
   unavailable?: boolean;
 }) {
   const projection = projectLitterCareToday(tasks, {

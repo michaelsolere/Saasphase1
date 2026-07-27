@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   ScheduleTaskDialog,
-  type LitterCareTaskScheduleActions,
+  type LitterCareTaskScheduleActionBinding,
 } from "./litter-care-task-schedule-dialog";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
@@ -74,7 +74,7 @@ export function LitterCareTodayQuickActions({
 }: {
   task: LitterCareTaskSummary;
   actions: LitterCareTodayQuickActions;
-  scheduleActions: LitterCareTaskScheduleActions | null;
+  scheduleActions: LitterCareTaskScheduleActionBinding | null;
 }) {
   const router = useRouter();
   const [notApplicableOpen, setNotApplicableOpen] = useState(false);
@@ -141,11 +141,12 @@ export function LitterCareTodayQuickActions({
       </AlertDialog>
       {scheduleActions ? (
         <ScheduleTaskDialog
-          key={`today-${task.id}-${task.revisionNo}`}
-          task={task}
-          actions={scheduleActions}
+          key={scheduleActions.domIdPrefix}
+          view={scheduleActions.view}
+          actions={scheduleActions.actions}
           onSuccess={setScheduleMessage}
           triggerLabel="Reporter"
+          domIdPrefix={scheduleActions.domIdPrefix}
         />
       ) : null}
       <ActionMessage state={doneState} />

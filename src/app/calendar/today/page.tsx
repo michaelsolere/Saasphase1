@@ -14,7 +14,7 @@ import {
   formatLitterJournalBusinessDate,
   getLitterJournalBusinessLocalTime,
 } from "@/features/litter-journal/date";
-import type { LitterCareTaskScheduleActions } from "@/features/litter-journal/litter-care-task-schedule-dialog";
+import type { LitterCareTaskScheduleActionBinding } from "@/features/litter-journal/litter-care-task-schedule-dialog";
 import {
   reapplyLitterCareTaskScheduleSuggestionAction,
   replaceLockedLitterCareTaskPointScheduleAction,
@@ -28,13 +28,16 @@ import {
   listOrganizationLitterCareTodayTasks,
   type LitterCareTaskSummary,
 } from "@/features/litter-journal/litter-care-tasks";
+import { toLitterCareTaskScheduleView } from "@/features/litter-journal/litter-care-task-schedule-view";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-function bindLitterCareTaskScheduleActions(
+function bindLitterCareTaskScheduleBinding(
   task: LitterCareTaskSummary,
-): LitterCareTaskScheduleActions {
+): LitterCareTaskScheduleActionBinding | null {
+  const view = toLitterCareTaskScheduleView(task);
+  if (!view) return null;
   const base = { taskId: task.id, expectedRevisionNo: task.revisionNo };
   const isWindow = task.itemKind === "window";
   const hasSuggestion = isWindow
@@ -43,30 +46,34 @@ function bindLitterCareTaskScheduleActions(
 
   return {
     taskId: task.id,
-    rescheduleAction: (isWindow
-      ? rescheduleLitterCareTaskWindowAction
-      : rescheduleLitterCareTaskPointAction
-    ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
-    replaceLockedAction: (isWindow
-      ? replaceLockedLitterCareTaskWindowScheduleAction
-      : replaceLockedLitterCareTaskPointScheduleAction
-    ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
-    lockAction: setLitterCareTaskScheduleLockAction.bind(null, {
-      ...base,
-      isLocked: true,
-      clientCommandId: crypto.randomUUID(),
-    }),
-    unlockAction: setLitterCareTaskScheduleLockAction.bind(null, {
-      ...base,
-      isLocked: false,
-      clientCommandId: crypto.randomUUID(),
-    }),
-    reapplySuggestionAction: hasSuggestion
-      ? reapplyLitterCareTaskScheduleSuggestionAction.bind(null, {
-          ...base,
-          clientCommandId: crypto.randomUUID(),
-        })
-      : null,
+    domIdPrefix: `care-schedule-${crypto.randomUUID()}`,
+    view,
+    actions: {
+      rescheduleAction: (isWindow
+        ? rescheduleLitterCareTaskWindowAction
+        : rescheduleLitterCareTaskPointAction
+      ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
+      replaceLockedAction: (isWindow
+        ? replaceLockedLitterCareTaskWindowScheduleAction
+        : replaceLockedLitterCareTaskPointScheduleAction
+      ).bind(null, { ...base, clientCommandId: crypto.randomUUID() }),
+      lockAction: setLitterCareTaskScheduleLockAction.bind(null, {
+        ...base,
+        isLocked: true,
+        clientCommandId: crypto.randomUUID(),
+      }),
+      unlockAction: setLitterCareTaskScheduleLockAction.bind(null, {
+        ...base,
+        isLocked: false,
+        clientCommandId: crypto.randomUUID(),
+      }),
+      reapplySuggestionAction: hasSuggestion
+        ? reapplyLitterCareTaskScheduleSuggestionAction.bind(null, {
+            ...base,
+            clientCommandId: crypto.randomUUID(),
+          })
+        : null,
+    },
   };
 }
 
@@ -167,7 +174,9 @@ export default async function BreedingTodayPage() {
       }))
     : [];
   const scheduleActions = canWrite
-    ? plannedTasks.map(bindLitterCareTaskScheduleActions)
+    ? plannedTasks
+        .map(bindLitterCareTaskScheduleBinding)
+        .filter((binding): binding is LitterCareTaskScheduleActionBinding => binding !== null)
     : [];
 
   let reminders: CalendarReminderSummary[] = [];
