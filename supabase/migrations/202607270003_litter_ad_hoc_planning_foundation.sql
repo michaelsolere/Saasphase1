@@ -1656,9 +1656,10 @@ declare
   v_target_scope text;
   v_priority text;
   v_lock boolean;
-  v_version integer;
+  v_version numeric;
   v_keys text[];
   v_allowed text[];
+  v_required_key text;
   v_date date;
   v_time time;
   v_starts date;
@@ -1666,11 +1667,13 @@ declare
   v_starts_time time;
   v_ends_time time;
   v_interval integer;
+  v_interval_num numeric;
   v_end_kind text;
   v_recurrence_day_count integer;
-  v_slots text[];
+  v_recurrence_day_count_num numeric;
+  v_slot_elem jsonb;
+  v_slot_raw text;
   v_slot_times time[] := '{}'::time[];
-  v_slot text;
   v_slot_time time;
   v_slot_no integer;
   v_slot_count integer;
@@ -1691,7 +1694,8 @@ declare
   v_membership_id uuid;
   v_lock_at timestamptz;
   v_result jsonb := '{}'::jsonb;
-  v_unknown_key text;
+  v_time_text text;
+  v_date_text text;
 begin
   outcome := 'error';
   litter_plan_id := null;
@@ -1753,85 +1757,40 @@ begin
     return;
   end if;
 
-  -- Normalize + validate payload (authoritative server-side)
-  begin
-    v_version := (p_item->>'version')::integer;
-  exception when others then
+  -- ------------------------------------------------------------------
+  -- Authoritative payload validation (exact keys + jsonb_typeof)
+  -- ------------------------------------------------------------------
+  if not (p_item ? 'version')
+    or jsonb_typeof(p_item->'version') <> 'number'
+  then
     reason := 'invalid_input';
     return next;
     return;
-  end;
-  if v_version is distinct from 1 then
+  end if;
+  v_version := (p_item->>'version')::numeric;
+  if v_version is distinct from 1
+    or trunc(v_version) <> v_version
+  then
     reason := 'invalid_input';
     return next;
     return;
   end if;
 
+  if not (p_item ? 'kind')
+    or jsonb_typeof(p_item->'kind') <> 'string'
+  then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
   v_kind := p_item->>'kind';
-  if v_kind not in ('milestone', 'task', 'window', 'recurring_task') then
+  if v_kind is null
+    or v_kind not in ('milestone', 'task', 'window', 'recurring_task')
+  then
     reason := 'invalid_input';
     return next;
     return;
   end if;
-
-  v_title := btrim(coalesce(p_item->>'title', ''));
-  if char_length(v_title) < 1 or char_length(v_title) > 255 then
-    reason := 'invalid_input';
-    return next;
-    return;
-  end if;
-
-  if p_item ? 'description' and p_item->'description' is not null and jsonb_typeof(p_item->'description') <> 'null' then
-    if jsonb_typeof(p_item->'description') <> 'string' then
-      reason := 'invalid_input';
-      return next;
-      return;
-    end if;
-    v_description := p_item->>'description';
-    if char_length(v_description) > 5000 then
-      reason := 'invalid_input';
-      return next;
-      return;
-    end if;
-  else
-    v_description := null;
-  end if;
-
-  v_category := p_item->>'category';
-  if v_category not in (
-    'reproduction', 'maternal_health', 'maternal_feeding', 'preparation',
-    'offspring_weight', 'offspring_health', 'offspring_feeding',
-    'socialization', 'veterinary', 'identification', 'vaccination', 'other'
-  ) then
-    reason := 'invalid_input';
-    return next;
-    return;
-  end if;
-
-  v_target_scope := p_item->>'targetScope';
-  if v_target_scope not in ('mother', 'litter', 'all_offspring', 'organization') then
-    reason := 'invalid_input';
-    return next;
-    return;
-  end if;
-
-  v_priority := p_item->>'priority';
-  if v_priority not in ('normal', 'important', 'organization_critical') then
-    reason := 'invalid_input';
-    return next;
-    return;
-  end if;
-
-  if jsonb_typeof(p_item->'lockSchedule') <> 'boolean' then
-    reason := 'invalid_input';
-    return next;
-    return;
-  end if;
-  v_lock := (p_item->>'lockSchedule')::boolean;
-
-  -- Reject unknown keys / foreign structural ids
-  select array_agg(k order by k) into v_keys
-  from jsonb_object_keys(p_item) k;
 
   if v_kind in ('milestone', 'task') then
     v_allowed := array[
@@ -1850,38 +1809,152 @@ begin
     ];
   end if;
 
-  foreach v_unknown_key in array v_keys loop
-    if not (v_unknown_key = any (v_allowed)) then
+  select coalesce(array_agg(k order by k), '{}'::text[])
+  into v_keys
+  from jsonb_object_keys(p_item) k;
+
+  if cardinality(v_keys) is distinct from cardinality(v_allowed) then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  foreach v_required_key in array v_allowed loop
+    if not (p_item ? v_required_key) then
       reason := 'invalid_input';
       return next;
       return;
     end if;
   end loop;
 
-  -- Kind-specific validation
+  foreach v_required_key in array v_keys loop
+    if not (v_required_key = any (v_allowed)) then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+  end loop;
+
+  if jsonb_typeof(p_item->'title') <> 'string' then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+  v_title := btrim(p_item->>'title');
+  if v_title is null or char_length(v_title) < 1 or char_length(v_title) > 255 then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if jsonb_typeof(p_item->'description') = 'null' then
+    v_description := null;
+  elsif jsonb_typeof(p_item->'description') = 'string' then
+    v_description := btrim(p_item->>'description');
+    if v_description = '' then
+      v_description := null;
+    elsif char_length(v_description) > 5000 then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+  else
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if jsonb_typeof(p_item->'category') <> 'string' then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+  v_category := p_item->>'category';
+  if v_category is null or v_category not in (
+    'reproduction', 'maternal_health', 'maternal_feeding', 'preparation',
+    'offspring_weight', 'offspring_health', 'offspring_feeding',
+    'socialization', 'veterinary', 'identification', 'vaccination', 'other'
+  ) then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if jsonb_typeof(p_item->'targetScope') <> 'string' then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+  v_target_scope := p_item->>'targetScope';
+  if v_target_scope is null
+    or v_target_scope not in ('mother', 'litter', 'all_offspring', 'organization')
+  then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if jsonb_typeof(p_item->'priority') <> 'string' then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+  v_priority := p_item->>'priority';
+  if v_priority is null
+    or v_priority not in ('normal', 'important', 'organization_critical')
+  then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+
+  if jsonb_typeof(p_item->'lockSchedule') <> 'boolean' then
+    reason := 'invalid_input';
+    return next;
+    return;
+  end if;
+  v_lock := (p_item->>'lockSchedule')::boolean;
+
   if v_kind in ('milestone', 'task') then
+    if jsonb_typeof(p_item->'scheduledDate') <> 'string' then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+    v_date_text := p_item->>'scheduledDate';
     begin
-      v_date := (p_item->>'scheduledDate')::date;
+      v_date := v_date_text::date;
     exception when others then
       reason := 'invalid_input';
       return next;
       return;
     end;
-    if p_item->>'scheduledDate' is distinct from to_char(v_date, 'YYYY-MM-DD') then
+    if v_date_text is distinct from to_char(v_date, 'YYYY-MM-DD') then
       reason := 'invalid_input';
       return next;
       return;
     end if;
-    if p_item ? 'localTime' and p_item->'localTime' is not null and jsonb_typeof(p_item->'localTime') <> 'null' then
+
+    if jsonb_typeof(p_item->'localTime') = 'null' then
+      v_time := null;
+    elsif jsonb_typeof(p_item->'localTime') = 'string' then
+      v_time_text := btrim(p_item->>'localTime');
+      if v_time_text !~ '^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$' then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
       begin
-        v_time := (p_item->>'localTime')::time;
+        v_time := v_time_text::time;
       exception when others then
         reason := 'invalid_input';
         return next;
         return;
       end;
     else
-      v_time := null;
+      reason := 'invalid_input';
+      return next;
+      return;
     end if;
 
     v_item := jsonb_build_object(
@@ -1898,6 +1971,13 @@ begin
     );
 
   elsif v_kind = 'window' then
+    if jsonb_typeof(p_item->'startsOn') <> 'string'
+      or jsonb_typeof(p_item->'endsOn') <> 'string'
+    then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
     begin
       v_starts := (p_item->>'startsOn')::date;
       v_ends := (p_item->>'endsOn')::date;
@@ -1914,17 +1994,56 @@ begin
       return next;
       return;
     end if;
-    if p_item ? 'startsLocalTime' and p_item->'startsLocalTime' is not null and jsonb_typeof(p_item->'startsLocalTime') <> 'null' then
-      begin v_starts_time := (p_item->>'startsLocalTime')::time; exception when others then reason := 'invalid_input'; return next; return; end;
-    else
+
+    if jsonb_typeof(p_item->'startsLocalTime') = 'null' then
       v_starts_time := null;
-    end if;
-    if p_item ? 'endsLocalTime' and p_item->'endsLocalTime' is not null and jsonb_typeof(p_item->'endsLocalTime') <> 'null' then
-      begin v_ends_time := (p_item->>'endsLocalTime')::time; exception when others then reason := 'invalid_input'; return next; return; end;
+    elsif jsonb_typeof(p_item->'startsLocalTime') = 'string' then
+      v_time_text := btrim(p_item->>'startsLocalTime');
+      if v_time_text !~ '^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$' then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
+      begin
+        v_starts_time := v_time_text::time;
+      exception when others then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end;
     else
-      v_ends_time := null;
+      reason := 'invalid_input';
+      return next;
+      return;
     end if;
-    if v_starts = v_ends and v_starts_time is not null and v_ends_time is not null and v_starts_time > v_ends_time then
+
+    if jsonb_typeof(p_item->'endsLocalTime') = 'null' then
+      v_ends_time := null;
+    elsif jsonb_typeof(p_item->'endsLocalTime') = 'string' then
+      v_time_text := btrim(p_item->>'endsLocalTime');
+      if v_time_text !~ '^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$' then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
+      begin
+        v_ends_time := v_time_text::time;
+      exception when others then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end;
+    else
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+
+    if v_starts = v_ends
+      and v_starts_time is not null
+      and v_ends_time is not null
+      and v_starts_time > v_ends_time
+    then
       reason := 'invalid_input';
       return next;
       return;
@@ -1946,31 +2065,57 @@ begin
     );
 
   else
-    -- recurring_task
-    begin
-      v_starts := (p_item->>'startsOn')::date;
-      v_interval := (p_item->>'intervalDays')::integer;
-    exception when others then
-      reason := 'invalid_input';
-      return next;
-      return;
-    end;
-    if p_item->>'startsOn' is distinct from to_char(v_starts, 'YYYY-MM-DD')
-      or v_interval is null or v_interval < 1 or v_interval > 365
+    if jsonb_typeof(p_item->'startsOn') <> 'string'
+      or jsonb_typeof(p_item->'intervalDays') <> 'number'
+      or jsonb_typeof(p_item->'endKind') <> 'string'
+      or jsonb_typeof(p_item->'timeSlots') <> 'array'
     then
       reason := 'invalid_input';
       return next;
       return;
     end if;
 
+    begin
+      v_starts := (p_item->>'startsOn')::date;
+    exception when others then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end;
+    if p_item->>'startsOn' is distinct from to_char(v_starts, 'YYYY-MM-DD') then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+
+    v_interval_num := (p_item->>'intervalDays')::numeric;
+    if trunc(v_interval_num) <> v_interval_num
+      or v_interval_num < 1
+      or v_interval_num > 365
+    then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+    v_interval := v_interval_num::integer;
+
     v_end_kind := p_item->>'endKind';
-    if v_end_kind not in ('fixed_end_date', 'fixed_recurrence_day_count') then
+    if v_end_kind is null
+      or v_end_kind not in ('fixed_end_date', 'fixed_recurrence_day_count')
+    then
       reason := 'invalid_input';
       return next;
       return;
     end if;
 
     if v_end_kind = 'fixed_end_date' then
+      if jsonb_typeof(p_item->'endsOn') <> 'string'
+        or jsonb_typeof(p_item->'recurrenceDayCount') <> 'null'
+      then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
       begin
         v_ends := (p_item->>'endsOn')::date;
       exception when others then
@@ -1978,25 +2123,17 @@ begin
         return next;
         return;
       end;
-      if p_item->>'endsOn' is distinct from to_char(v_ends, 'YYYY-MM-DD') or v_ends < v_starts then
-        reason := 'invalid_input';
-        return next;
-        return;
-      end if;
-      if p_item ? 'recurrenceDayCount' and p_item->'recurrenceDayCount' is not null and jsonb_typeof(p_item->'recurrenceDayCount') <> 'null' then
+      if p_item->>'endsOn' is distinct from to_char(v_ends, 'YYYY-MM-DD')
+        or v_ends < v_starts
+      then
         reason := 'invalid_input';
         return next;
         return;
       end if;
       v_recurrence_day_count := null;
       v_recurrence_days := ((v_ends - v_starts) / v_interval) + 1;
-      -- Ensure end lands on cadence
-      if v_starts + ((v_recurrence_days - 1) * v_interval) <> v_ends then
-        -- still allow ends that are on cadence only; if not exact, recompute floor days
-        v_recurrence_days := ((v_ends - v_starts) / v_interval) + 1;
-        if v_starts + ((v_recurrence_days - 1) * v_interval) > v_ends then
-          v_recurrence_days := v_recurrence_days - 1;
-        end if;
+      if v_starts + ((v_recurrence_days - 1) * v_interval) > v_ends then
+        v_recurrence_days := v_recurrence_days - 1;
       end if;
       if v_recurrence_days < 1 then
         reason := 'invalid_input';
@@ -2007,22 +2144,23 @@ begin
       v_ends_offset := v_ends - v_starts;
       v_civil_span := (v_ends - v_starts) + 1;
     else
-      begin
-        v_recurrence_day_count := (p_item->>'recurrenceDayCount')::integer;
-      exception when others then
-        reason := 'invalid_input';
-        return next;
-        return;
-      end;
-      if v_recurrence_day_count is null
-        or v_recurrence_day_count < 1
-        or v_recurrence_day_count > 500
-        or (p_item ? 'endsOn' and p_item->'endsOn' is not null and jsonb_typeof(p_item->'endsOn') <> 'null')
+      if jsonb_typeof(p_item->'endsOn') <> 'null'
+        or jsonb_typeof(p_item->'recurrenceDayCount') <> 'number'
       then
         reason := 'invalid_input';
         return next;
         return;
       end if;
+      v_recurrence_day_count_num := (p_item->>'recurrenceDayCount')::numeric;
+      if trunc(v_recurrence_day_count_num) <> v_recurrence_day_count_num
+        or v_recurrence_day_count_num < 1
+        or v_recurrence_day_count_num > 500
+      then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
+      v_recurrence_day_count := v_recurrence_day_count_num::integer;
       v_ends := v_starts + ((v_recurrence_day_count - 1) * v_interval);
       v_recurrence_days := v_recurrence_day_count;
       v_db_end_kind := 'fixed_recurrence_day_count';
@@ -2030,38 +2168,54 @@ begin
       v_civil_span := ((v_recurrence_day_count - 1) * v_interval) + 1;
     end if;
 
-    if jsonb_typeof(p_item->'timeSlots') <> 'array' then
-      reason := 'invalid_input';
-      return next;
-      return;
-    end if;
-    select coalesce(array_agg(x order by ord), '{}'::text[])
-    into v_slots
-    from jsonb_array_elements_text(p_item->'timeSlots') with ordinality as t(x, ord);
+    v_slot_times := '{}'::time[];
+    for v_slot_elem in
+      select value
+      from jsonb_array_elements(p_item->'timeSlots')
+    loop
+      if jsonb_typeof(v_slot_elem) <> 'string' then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
+      v_slot_raw := btrim(v_slot_elem #>> '{}');
+      if v_slot_raw !~ '^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$' then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end if;
+      begin
+        v_slot_time := v_slot_raw::time;
+      exception when others then
+        reason := 'invalid_input';
+        return next;
+        return;
+      end;
+      v_slot_times := array_append(v_slot_times, v_slot_time);
+    end loop;
 
-    v_slot_count := coalesce(cardinality(v_slots), 0);
+    v_slot_count := coalesce(cardinality(v_slot_times), 0);
     if v_slot_count < 1 or v_slot_count > 8 then
       reason := 'invalid_input';
       return next;
       return;
     end if;
 
-    v_slot_times := '{}'::time[];
-    for v_slot_no in 1..v_slot_count loop
-      begin
-        v_slot_time := v_slots[v_slot_no]::time;
-      exception when others then
-        reason := 'invalid_input';
-        return next;
-        return;
-      end;
-      if v_slot_no > 1 and v_slot_time <= v_slot_times[v_slot_no - 1] then
-        reason := 'invalid_input';
-        return next;
-        return;
-      end if;
-      v_slot_times := array_append(v_slot_times, v_slot_time);
-    end loop;
+    -- Duplicates detected after normalization (08:00 vs 08:00:00).
+    if (
+      select count(*) from unnest(v_slot_times) s(t)
+    ) <> (
+      select count(distinct s.t) from unnest(v_slot_times) s(t)
+    ) then
+      reason := 'invalid_input';
+      return next;
+      return;
+    end if;
+
+    -- Deterministic ascending sort for slot_no assignment.
+    select coalesce(array_agg(s.t order by s.t), '{}'::time[])
+    into v_slot_times
+    from unnest(v_slot_times) s(t);
 
     v_absolute_max := v_recurrence_days * v_slot_count;
     if v_absolute_max < 1 or v_absolute_max > 500 then
@@ -2091,11 +2245,6 @@ begin
         from unnest(v_slot_times) with ordinality as u(t, ord)
       )
     );
-  end if;
-
-  -- Normalize description null encoding for payload equality
-  if v_description is null then
-    v_item := v_item || jsonb_build_object('description', null);
   end if;
 
   v_payload := jsonb_build_object(

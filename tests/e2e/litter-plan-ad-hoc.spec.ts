@@ -83,6 +83,27 @@ const ids = {
   duplicateSlotsRpcCommand: `${prefix}5c`,
   cmdConcurrencySetup: `${prefix}5d`,
   reapplyModelBCommand: `${prefix}5e`,
+
+  // Raw RPC hardening (LITTER-AD-HOC-PLANNING-01) — payloads built by hand to
+  // bypass the TS normalizer and exercise the authoritative SQL validation.
+  rawMissingDescription: `${prefix}60`,
+  rawMissingCategory: `${prefix}61`,
+  rawMissingTargetScope: `${prefix}62`,
+  rawMissingPriority: `${prefix}63`,
+  rawMissingLockSchedule: `${prefix}64`,
+  rawMissingLocalTime: `${prefix}65`,
+  rawMissingEndsLocalTime: `${prefix}66`,
+  rawMissingEndsOn: `${prefix}67`,
+  rawWrongTypeVersion: `${prefix}68`,
+  rawWrongTypeIntervalDays: `${prefix}69`,
+  rawWrongTypeRecurrenceDayCount: `${prefix}6a`,
+  rawWrongTypeLockScheduleNull: `${prefix}6b`,
+  rawWrongTypeTimeSlotsNumber: `${prefix}6c`,
+  rawUnknownKey: `${prefix}6d`,
+  rawWrongTypeTitle: `${prefix}6e`,
+  rawWrongTypeDescription: `${prefix}6f`,
+  rawSortedSlotsSuccess: `${prefix}70`,
+  rawNormalizedDuplicateSlots: `${prefix}71`,
 } as const;
 
 const modelTitleA = "Modèle ad hoc E2E — coexistence A";
@@ -490,10 +511,21 @@ function litterCounts(litterId: string = ids.litter) {
         'items', (select count(*) from public.litter_plan_items where litter_id = ${q(litterId)}::uuid),
         'tasks', (select count(*) from public.litter_care_tasks where litter_id = ${q(litterId)}::uuid),
         'series', (select count(*) from public.litter_plan_series where litter_id = ${q(litterId)}::uuid),
+        'slots', (
+          select count(*) from public.litter_plan_series_time_slots s
+          where s.series_id in (select id from public.litter_plan_series where litter_id = ${q(litterId)}::uuid)
+        ),
         'adHocCommands', (select count(*) from public.litter_plan_ad_hoc_commands where litter_id = ${q(litterId)}::uuid)
       )::text;
     `),
-  ) as { plans: number; items: number; tasks: number; series: number; adHocCommands: number };
+  ) as {
+    plans: number;
+    items: number;
+    tasks: number;
+    series: number;
+    slots: number;
+    adHocCommands: number;
+  };
 }
 
 function milestonePayload(overrides: Record<string, unknown> = {}) {
@@ -1335,7 +1367,14 @@ test("validation atomique côté RPC : fenêtre invalide, récurrence hors plafo
   const ownerClient = await createAuthenticatedSupabaseClient();
 
   const baseline = litterCounts();
-  expect(baseline).toEqual({ plans: 0, items: 0, tasks: 0, series: 0, adHocCommands: 0 });
+  expect(baseline).toEqual({
+    plans: 0,
+    items: 0,
+    tasks: 0,
+    series: 0,
+    slots: 0,
+    adHocCommands: 0,
+  });
 
   const invalidWindow = await ownerClient.rpc("create_litter_plan_ad_hoc_item", {
     p_litter_id: ids.litter,
@@ -1415,6 +1454,176 @@ test("validation atomique côté RPC : fenêtre invalide, récurrence hors plafo
   expect(duplicateSlots.data?.[0]?.outcome).toBe("error");
   expect(duplicateSlots.data?.[0]?.reason).toBe("invalid_input");
   expect(litterCounts()).toEqual(baseline);
+});
+
+// ---------------------------------------------------------------------------
+// Validation atomique côté RPC (durcissement) — chaque cas ne teste qu'un
+// seul défaut ciblé : toutes les AUTRES clés requises sont présentes et
+// valides. Ces payloads sont construits à la main pour contourner le
+// normaliseur TypeScript et exercer directement les garde-fous SQL
+// authoritatifs (clés exactes, jsonb_typeof strict).
+// ---------------------------------------------------------------------------
+function omitKey<T extends Record<string, unknown>>(item: T, key: string) {
+  const clone: Record<string, unknown> = { ...item };
+  delete clone[key];
+  return clone;
+}
+
+async function expectRawInvalidInput(
+  client: Supabase,
+  commandId: string,
+  item: Record<string, unknown>,
+) {
+  const before = litterCounts();
+  const rpc = await client.rpc("create_litter_plan_ad_hoc_item", {
+    p_litter_id: ids.litter,
+    p_client_command_id: commandId,
+    p_expected_plan_revision: null,
+    p_timezone_name: "Europe/Paris",
+    p_item: item as unknown as Json,
+  });
+  expect(rpc.error).toBeNull();
+  expect(rpc.data?.[0]?.outcome).toBe("error");
+  expect(rpc.data?.[0]?.reason).toBe("invalid_input");
+  expect(litterCounts()).toEqual(before);
+}
+
+test("validation atomique côté RPC (durcissement) : clés requises absentes n'écrivent jamais rien", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingDescription,
+    omitKey(taskPayload(), "description"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingCategory,
+    omitKey(taskPayload(), "category"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingTargetScope,
+    omitKey(taskPayload(), "targetScope"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingPriority,
+    omitKey(taskPayload(), "priority"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingLockSchedule,
+    omitKey(taskPayload(), "lockSchedule"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingLocalTime,
+    omitKey(taskPayload(), "localTime"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingEndsLocalTime,
+    omitKey(windowPayload(), "endsLocalTime"),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawMissingEndsOn,
+    omitKey(recurringPayload(), "endsOn"),
+  );
+});
+
+test("validation atomique côté RPC (durcissement) : types invalides et clé inconnue n'écrivent jamais rien", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeVersion,
+    taskPayload({ version: "1" }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeIntervalDays,
+    recurringPayload({ intervalDays: "2" }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeRecurrenceDayCount,
+    recurringPayload({ recurrenceDayCount: "5" }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeLockScheduleNull,
+    taskPayload({ lockSchedule: null }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeTimeSlotsNumber,
+    recurringPayload({ timeSlots: ["08:00", 20] }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawUnknownKey,
+    taskPayload({ unexpectedKey: "surprise" }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeTitle,
+    taskPayload({ title: 42 }),
+  );
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawWrongTypeDescription,
+    taskPayload({ description: 42 }),
+  );
+});
+
+test("validation atomique côté RPC : créneaux triés de façon déterministe puis doublon après normalisation refusé", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+
+  const rawSorted = await ownerClient.rpc("create_litter_plan_ad_hoc_item", {
+    p_litter_id: ids.litter,
+    p_client_command_id: ids.rawSortedSlotsSuccess,
+    p_expected_plan_revision: null,
+    p_timezone_name: "Europe/Paris",
+    p_item: recurringPayload({
+      recurrenceDayCount: 3,
+      timeSlots: ["20:00", "08:00"],
+    }) as unknown as Json,
+  });
+  expect(rawSorted.error).toBeNull();
+  expect(rawSorted.data?.[0]?.outcome).toBe("success");
+  const seriesId = rawSorted.data?.[0]?.series_id as string;
+  expect(seriesId).toBeTruthy();
+
+  const slots = JSON.parse(
+    sql(`
+      select coalesce(json_agg(json_build_object(
+        'slotNo', slot_no,
+        'localTime', local_time::text
+      ) order by slot_no), '[]'::json)::text
+      from public.litter_plan_series_time_slots
+      where series_id = ${q(seriesId)}::uuid;
+    `),
+  ) as Array<{ slotNo: number; localTime: string }>;
+  expect(slots).toEqual([
+    { slotNo: 1, localTime: "08:00:00" },
+    { slotNo: 2, localTime: "20:00:00" },
+  ]);
+
+  // A duplicate that only appears after HH:MM → HH:MM:SS normalization must
+  // be refused atomically: no plan, item, task, series or slot is written.
+  await expectRawInvalidInput(
+    ownerClient,
+    ids.rawNormalizedDuplicateSlots,
+    recurringPayload({
+      recurrenceDayCount: 3,
+      timeSlots: ["08:00", "08:00:00"],
+    }),
+  );
 });
 
 // ---------------------------------------------------------------------------

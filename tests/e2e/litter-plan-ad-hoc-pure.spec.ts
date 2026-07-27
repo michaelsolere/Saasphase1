@@ -1,12 +1,15 @@
 import { expect, test } from "@playwright/test";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   countLitterPlanAdHocOccurrences,
+  createLitterPlanAdHocItem,
   litterPlanAdHocInitialHorizonDays,
   mapCreateLitterPlanAdHocItemRpcResult,
   normalizeLitterPlanAdHocItemPayload,
   normalizeLitterPlanAdHocTimeSlots,
 } from "../../src/features/litter-journal/litter-plan-ad-hoc";
+import type { Database } from "../../src/types/database.types";
 
 function baseMilestone(overrides: Record<string, unknown> = {}) {
   return {
@@ -234,6 +237,8 @@ test("normalizes and sorts distinct time slots, rejecting duplicates and range v
   ]);
   expect(input).toEqual(frozenInput);
 
+  // Duplicates that only become equal after HH:MM → HH:MM:SS normalization
+  // must be refused, not silently deduplicated.
   expect(normalizeLitterPlanAdHocTimeSlots(["08:00", "08:00:00"])).toBeNull();
   expect(normalizeLitterPlanAdHocTimeSlots([])).toBeNull();
   expect(
@@ -411,29 +416,88 @@ test("caps the initial materialization horizon at 30 civil days", () => {
   ).toBeNull();
 });
 
-test("maps a successful RPC row strictly", () => {
-  const result = mapCreateLitterPlanAdHocItemRpcResult({
+// ---------------------------------------------------------------------------
+// mapCreateLitterPlanAdHocItemRpcResult — strict RPC row mapping
+// ---------------------------------------------------------------------------
+
+const PLAN_ID = "a7270001-0000-4000-8000-000000000001";
+const ITEM_ID = "a7270001-0000-4000-8000-000000000002";
+const TASK_ID = "a7270001-0000-4000-8000-000000000003";
+const SERIES_ID = "a7270001-0000-4000-8000-000000000004";
+const OTHER_ID = "a7270001-0000-4000-8000-000000000005";
+
+function validSuccessPointRow(overrides: Record<string, unknown> = {}) {
+  return {
     outcome: "success",
     reason: null,
-    litter_plan_id: "a7270001-0000-4000-8000-000000000001",
-    plan_revision: 4,
-    litter_plan_item_id: "a7270001-0000-4000-8000-000000000002",
-    task_id: "a7270001-0000-4000-8000-000000000003",
+    litter_plan_id: PLAN_ID,
+    plan_revision: 1,
+    litter_plan_item_id: ITEM_ID,
+    task_id: TASK_ID,
     series_id: null,
-    materialized_occurrence_count: 6,
+    materialized_occurrence_count: 0,
     replayed: false,
-    result: { ok: true },
-  });
+    result: { kind: "task", planItemId: ITEM_ID, taskId: TASK_ID },
+    ...overrides,
+  };
+}
+
+function validSuccessRecurringRow(overrides: Record<string, unknown> = {}) {
+  return {
+    outcome: "success",
+    reason: null,
+    litter_plan_id: PLAN_ID,
+    plan_revision: 1,
+    litter_plan_item_id: ITEM_ID,
+    task_id: null,
+    series_id: SERIES_ID,
+    materialized_occurrence_count: 10,
+    replayed: false,
+    result: { kind: "recurring_task", planItemId: ITEM_ID, seriesId: SERIES_ID },
+    ...overrides,
+  };
+}
+
+test("maps a successful point RPC row strictly", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(validSuccessPointRow());
   expect(result).toEqual({
     outcome: "success",
-    litterPlanId: "a7270001-0000-4000-8000-000000000001",
-    planRevision: 4,
-    litterPlanItemId: "a7270001-0000-4000-8000-000000000002",
-    taskId: "a7270001-0000-4000-8000-000000000003",
+    litterPlanId: PLAN_ID,
+    planRevision: 1,
+    litterPlanItemId: ITEM_ID,
+    taskId: TASK_ID,
     seriesId: null,
-    materializedOccurrenceCount: 6,
+    materializedOccurrenceCount: 0,
     replayed: false,
-    result: { ok: true },
+    result: { kind: "task", planItemId: ITEM_ID, taskId: TASK_ID },
+  });
+});
+
+test("maps a successful recurring RPC row strictly", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessRecurringRow(),
+  );
+  expect(result).toEqual({
+    outcome: "success",
+    litterPlanId: PLAN_ID,
+    planRevision: 1,
+    litterPlanItemId: ITEM_ID,
+    taskId: null,
+    seriesId: SERIES_ID,
+    materializedOccurrenceCount: 10,
+    replayed: false,
+    result: { kind: "recurring_task", planItemId: ITEM_ID, seriesId: SERIES_ID },
+  });
+});
+
+test("treats a null RPC row as a database error", () => {
+  expect(mapCreateLitterPlanAdHocItemRpcResult(null)).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+  expect(mapCreateLitterPlanAdHocItemRpcResult(undefined)).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
   });
 });
 
@@ -456,8 +520,9 @@ test("treats a malformed success row as a database error", () => {
   });
 });
 
-test("maps known SQL error reasons to stable error codes", () => {
+test("maps known SQL error reasons to stable error codes, including invalid_input", () => {
   const reasonToCode: Array<[string, string]> = [
+    ["invalid_input", "invalid_input"],
     ["not_authenticated", "unauthenticated"],
     ["membership_required", "forbidden"],
     ["stale_revision", "stale_revision"],
@@ -483,7 +548,9 @@ test("maps known SQL error reasons to stable error codes", () => {
       error: { code, message: expect.any(String) },
     });
   }
+});
 
+test("maps an unknown or unlisted error reason to database_error, not conflict", () => {
   const unknownReason = mapCreateLitterPlanAdHocItemRpcResult({
     outcome: "error",
     reason: "some_unlisted_reason",
@@ -498,11 +565,206 @@ test("maps known SQL error reasons to stable error codes", () => {
   });
   expect(unknownReason).toEqual({
     outcome: "error",
-    error: { code: "conflict", message: expect.any(String) },
+    error: { code: "database_error", message: expect.any(String) },
   });
 
-  expect(mapCreateLitterPlanAdHocItemRpcResult(null)).toEqual({
+  const nullReason = mapCreateLitterPlanAdHocItemRpcResult({
     outcome: "error",
-    error: { code: "conflict", message: expect.any(String) },
+    reason: null,
+    litter_plan_id: null,
+    plan_revision: null,
+    litter_plan_item_id: null,
+    task_id: null,
+    series_id: null,
+    materialized_occurrence_count: null,
+    replayed: null,
+    result: null,
+  });
+  expect(nullReason).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success point row missing a task id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({ task_id: null }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success point row that also carries a series id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({ series_id: SERIES_ID }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success recurring row missing a series id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessRecurringRow({ series_id: null }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success recurring row that also carries a task id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessRecurringRow({ task_id: TASK_ID }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success row whose result.planItemId disagrees with litter_plan_item_id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({
+      result: { kind: "task", planItemId: OTHER_ID, taskId: TASK_ID },
+    }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success point row whose result.taskId disagrees with task_id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({
+      result: { kind: "task", planItemId: ITEM_ID, taskId: OTHER_ID },
+    }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success recurring row whose result.seriesId disagrees with series_id", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessRecurringRow({
+      result: { kind: "recurring_task", planItemId: ITEM_ID, seriesId: OTHER_ID },
+    }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success row whose result is an array or null", () => {
+  expect(
+    mapCreateLitterPlanAdHocItemRpcResult(validSuccessPointRow({ result: [] })),
+  ).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+  expect(
+    mapCreateLitterPlanAdHocItemRpcResult(
+      validSuccessPointRow({ result: null }),
+    ),
+  ).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success row whose replayed flag is not a boolean", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({ replayed: null }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createLitterPlanAdHocItem — client-side guard rails before calling the RPC
+// ---------------------------------------------------------------------------
+
+function throwingRpcClient() {
+  return {
+    rpc: async () => {
+      throw new Error("rpc must not be called when client-side input is invalid");
+    },
+  } as unknown as SupabaseClient<Database>;
+}
+
+test("rejects an invalid IANA timezone without ever calling the RPC", async () => {
+  const result = await createLitterPlanAdHocItem(
+    {
+      litterId: "a7270001-0000-4000-8000-000000000006",
+      clientCommandId: "a7270001-0000-4000-8000-000000000007",
+      expectedPlanRevision: null,
+      timezoneName: "Not/AZone",
+      item: baseMilestone(),
+    },
+    throwingRpcClient(),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "invalid_input", message: expect.any(String) },
+  });
+});
+
+test("rejects an empty timezone without ever calling the RPC", async () => {
+  const result = await createLitterPlanAdHocItem(
+    {
+      litterId: "a7270001-0000-4000-8000-000000000006",
+      clientCommandId: "a7270001-0000-4000-8000-000000000007",
+      expectedPlanRevision: null,
+      timezoneName: "",
+      item: baseMilestone(),
+    },
+    throwingRpcClient(),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "invalid_input", message: expect.any(String) },
+  });
+});
+
+test("rejects an invalid litter id without ever calling the RPC", async () => {
+  const result = await createLitterPlanAdHocItem(
+    {
+      litterId: "not-a-uuid",
+      clientCommandId: "a7270001-0000-4000-8000-000000000007",
+      expectedPlanRevision: null,
+      timezoneName: "Europe/Paris",
+      item: baseMilestone(),
+    },
+    throwingRpcClient(),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "invalid_input", message: expect.any(String) },
+  });
+});
+
+test("rejects an invalid payload without ever calling the RPC", async () => {
+  const result = await createLitterPlanAdHocItem(
+    {
+      litterId: "a7270001-0000-4000-8000-000000000006",
+      clientCommandId: "a7270001-0000-4000-8000-000000000007",
+      expectedPlanRevision: null,
+      timezoneName: "Europe/Paris",
+      item: baseMilestone({ unexpectedKey: "x" }),
+    },
+    throwingRpcClient(),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "invalid_input", message: expect.any(String) },
   });
 });

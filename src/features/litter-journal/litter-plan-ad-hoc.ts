@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { isValidIanaTimeZone } from "@/lib/timezone";
 import type { Database, Json } from "@/types/database.types";
 
 import {
@@ -108,7 +109,10 @@ const uuid = (value: unknown) =>
   typeof value === "string" && UUID.test(value) ? value.toLowerCase() : null;
 
 const timezone = (value: unknown) =>
-  typeof value === "string" && value.length > 0 && value.length <= 255
+  typeof value === "string" &&
+  value.length > 0 &&
+  value.length <= 255 &&
+  isValidIanaTimeZone(value)
     ? value
     : null;
 
@@ -124,6 +128,8 @@ function error(code: LitterPlanAdHocErrorCode): {
 
 function reasonCode(reason: string | null): LitterPlanAdHocErrorCode {
   switch (reason) {
+    case "invalid_input":
+      return "invalid_input";
     case "not_authenticated":
       return "unauthenticated";
     case "membership_required":
@@ -137,8 +143,22 @@ function reasonCode(reason: string | null): LitterPlanAdHocErrorCode {
     case "client_command_conflict":
       return "client_command_conflict";
     default:
-      return "conflict";
+      return "database_error";
   }
+}
+
+function isPlainJsonObject(
+  value: Json | null | undefined,
+): value is { [key: string]: Json | undefined } {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function resultString(
+  result: { [key: string]: Json | undefined },
+  key: string,
+): string | null {
+  const value = result[key];
+  return typeof value === "string" ? value : null;
 }
 
 function normalizeCivilDate(value: unknown): string | null {
@@ -496,8 +516,11 @@ export function litterPlanAdHocInitialHorizonDays(args: {
 export function mapCreateLitterPlanAdHocItemRpcResult(
   row: CreateLitterPlanAdHocItemRpcRow | null | undefined,
 ): CreateLitterPlanAdHocItemResult {
-  if (!row || row.outcome !== "success") {
-    return error(reasonCode(row?.reason ?? null));
+  if (!row) {
+    return error("database_error");
+  }
+  if (row.outcome !== "success") {
+    return error(reasonCode(row.reason ?? null));
   }
 
   const litterPlanId = uuid(row.litter_plan_id);
@@ -506,8 +529,10 @@ export function mapCreateLitterPlanAdHocItemRpcResult(
   const seriesId = row.series_id === null ? null : uuid(row.series_id);
   const planRevision = row.plan_revision;
   const materializedOccurrenceCount = row.materialized_occurrence_count;
+  const result = row.result;
 
   if (
+    typeof row.replayed !== "boolean" ||
     !litterPlanId ||
     !litterPlanItemId ||
     (row.task_id !== null && !taskId) ||
@@ -515,8 +540,45 @@ export function mapCreateLitterPlanAdHocItemRpcResult(
     !Number.isInteger(planRevision) ||
     (planRevision as number) <= 0 ||
     !Number.isInteger(materializedOccurrenceCount) ||
-    (materializedOccurrenceCount as number) < 0
+    !isPlainJsonObject(result)
   ) {
+    return error("database_error");
+  }
+
+  const resultKind = resultString(result, "kind");
+  const resultPlanItemId = uuid(resultString(result, "planItemId"));
+  if (!resultKind || resultPlanItemId !== litterPlanItemId) {
+    return error("database_error");
+  }
+
+  if (
+    resultKind === "milestone" ||
+    resultKind === "task" ||
+    resultKind === "window"
+  ) {
+    const resultTaskId = uuid(resultString(result, "taskId"));
+    if (
+      taskId === null ||
+      seriesId !== null ||
+      (materializedOccurrenceCount as number) !== 0 ||
+      resultTaskId !== taskId ||
+      result.seriesId !== undefined
+    ) {
+      return error("database_error");
+    }
+  } else if (resultKind === "recurring_task") {
+    const resultSeriesId = uuid(resultString(result, "seriesId"));
+    if (
+      taskId !== null ||
+      seriesId === null ||
+      (materializedOccurrenceCount as number) <= 0 ||
+      (materializedOccurrenceCount as number) > 500 ||
+      resultSeriesId !== seriesId ||
+      result.taskId !== undefined
+    ) {
+      return error("database_error");
+    }
+  } else {
     return error("database_error");
   }
 
@@ -528,8 +590,8 @@ export function mapCreateLitterPlanAdHocItemRpcResult(
     taskId,
     seriesId,
     materializedOccurrenceCount: materializedOccurrenceCount as number,
-    replayed: row.replayed === true,
-    result: row.result,
+    replayed: row.replayed,
+    result,
   };
 }
 
