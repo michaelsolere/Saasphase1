@@ -167,12 +167,19 @@ export function resolveLitterPlanningModelApplyOrigin(
 
 export function collectAppliedPlanningModelSnapshots(
   items: ReadonlyArray<{
-    source_planning_model_id: string;
-    source_planning_model_revision: number;
+    source_planning_model_id: string | null;
+    source_planning_model_revision: number | null;
   }>,
 ): Map<string, { revision: number; itemCount: number }> {
   const map = new Map<string, { revision: number; itemCount: number }>();
   for (const item of items) {
+    // Ad-hoc snapshots have no model source and must not count as an applied model.
+    if (
+      item.source_planning_model_id === null ||
+      item.source_planning_model_revision === null
+    ) {
+      continue;
+    }
     const existing = map.get(item.source_planning_model_id);
     if (!existing) {
       map.set(item.source_planning_model_id, {
@@ -490,7 +497,7 @@ export function summarizeLitterPlanForApplicationPanel(input: {
   revision: number;
   timezoneName: string;
   items: ReadonlyArray<{
-    source_planning_model_id: string;
+    source_planning_model_id: string | null;
     materialization_state: string;
   }>;
 }): {
@@ -504,7 +511,8 @@ export function summarizeLitterPlanForApplicationPanel(input: {
   const applied = collectAppliedPlanningModelSnapshots(
     input.items.map((item) => ({
       source_planning_model_id: item.source_planning_model_id,
-      source_planning_model_revision: 1,
+      source_planning_model_revision:
+        item.source_planning_model_id === null ? null : 1,
     })),
   );
   return {
