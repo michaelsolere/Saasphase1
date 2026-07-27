@@ -100,19 +100,21 @@ test("viewer n’obtient aucune action d’écriture", () => {
   ).toEqual([]);
 });
 
-test("date proposée pour prolonger sans dépasser ends_on ni le plafond", () => {
+test("première proposition inclusive depuis startsOn", () => {
   expect(
     proposeLitterPlanSeriesMaterializeThrough({
       startsOn: "2026-08-05",
-      endsOn: "2026-08-15",
-      materializedThrough: "2026-08-12",
+      endsOn: null,
+      materializedThrough: null,
       recurrenceIntervalDays: 1,
       absoluteMaxOccurrences: 30,
       timeSlotCount: 2,
       initialMaterializationHorizonDays: 8,
     }),
-  ).toBe("2026-08-15");
+  ).toBe("2026-08-12");
+});
 
+test("extension d’un horizon existant", () => {
   expect(
     proposeLitterPlanSeriesMaterializeThrough({
       startsOn: "2026-08-05",
@@ -124,6 +126,20 @@ test("date proposée pour prolonger sans dépasser ends_on ni le plafond", () =>
       initialMaterializationHorizonDays: 8,
     }),
   ).toBe("2026-08-20");
+});
+
+test("borne endsOn et plafond absolu", () => {
+  expect(
+    proposeLitterPlanSeriesMaterializeThrough({
+      startsOn: "2026-08-05",
+      endsOn: "2026-08-15",
+      materializedThrough: "2026-08-12",
+      recurrenceIntervalDays: 1,
+      absoluteMaxOccurrences: 30,
+      timeSlotCount: 2,
+      initialMaterializationHorizonDays: 8,
+    }),
+  ).toBe("2026-08-15");
 
   // absolute max 5 occurrences / 2 slots → 3 recurrence days → max date starts + 2
   expect(
@@ -139,7 +155,7 @@ test("date proposée pour prolonger sans dépasser ends_on ni le plafond", () =>
   ).toBe("2026-08-07");
 });
 
-test("série en attente d’ancre : aucune date de prolongation proposée", () => {
+test("série en attente d’ancre : aucune date proposée", () => {
   expect(
     proposeLitterPlanSeriesMaterializeThrough({
       startsOn: null,

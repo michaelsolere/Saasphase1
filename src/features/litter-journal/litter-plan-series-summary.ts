@@ -213,20 +213,31 @@ export function proposeLitterPlanSeriesMaterializeThrough(input: {
     !Number.isInteger(input.absoluteMaxOccurrences) ||
     input.absoluteMaxOccurrences < 1 ||
     !Number.isInteger(input.timeSlotCount) ||
-    input.timeSlotCount < 1
+    input.timeSlotCount < 1 ||
+    !Number.isInteger(input.initialMaterializationHorizonDays) ||
+    input.initialMaterializationHorizonDays < 1
   ) {
     return null;
   }
 
-  const horizonBase =
-    input.materializedThrough && DATE.test(input.materializedThrough)
-      ? input.materializedThrough
-      : input.startsOn;
-  const extensionDays = Math.min(
-    Math.max(input.initialMaterializationHorizonDays || 7, 1),
-    14,
-  );
-  let proposed = addCivilDays(horizonBase, extensionDays);
+  const hasExistingHorizon =
+    Boolean(input.materializedThrough) &&
+    DATE.test(input.materializedThrough!);
+
+  let proposed: string | null;
+  if (hasExistingHorizon) {
+    const extensionDays = Math.min(
+      Math.max(input.initialMaterializationHorizonDays, 1),
+      14,
+    );
+    proposed = addCivilDays(input.materializedThrough!, extensionDays);
+  } else {
+    // Inclusive first horizon: startsOn + (horizonDays - 1)
+    proposed = addCivilDays(
+      input.startsOn,
+      input.initialMaterializationHorizonDays - 1,
+    );
+  }
   if (!proposed) return null;
 
   if (input.endsOn && DATE.test(input.endsOn) && proposed > input.endsOn) {

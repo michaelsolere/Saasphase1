@@ -1,6 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useActionState,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -58,13 +65,15 @@ export type LitterPlanSeriesPanelActions = {
 function SubmitButton({
   label,
   variant = "default",
+  disabled = false,
 }: {
   label: string;
   variant?: "default" | "outline" | "secondary";
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={variant} disabled={pending}>
+    <Button type="submit" variant={variant} disabled={pending || disabled}>
       {pending ? "En cours…" : label}
     </Button>
   );
@@ -126,18 +135,24 @@ function AnchorBadge() {
 }
 
 function TerminalDialog({
+  seriesId,
+  actionKind,
   title,
   description,
   actionLabel,
   action,
   onMessage,
 }: {
+  seriesId: string;
+  actionKind: LitterPlanSeriesActionKind;
   title: string;
   description: string;
   actionLabel: string;
   action: SeriesAction;
   onMessage: (message: string | null) => void;
 }) {
+  const fieldId = useId();
+  const reasonId = `${fieldId}-${seriesId}-${actionKind}-reason`;
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(action, initialState);
   useActionFeedback(state, (message) => {
@@ -160,11 +175,11 @@ function TerminalDialog({
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="terminal_confirmation" value="confirmed" />
           <div>
-            <label htmlFor={`${actionLabel}-reason`} className="text-sm font-semibold">
+            <label htmlFor={reasonId} className="text-sm font-semibold">
               Motif (facultatif)
             </label>
             <textarea
-              id={`${actionLabel}-reason`}
+              id={reasonId}
               name="reason"
               maxLength={5000}
               rows={3}
@@ -199,6 +214,8 @@ function MaterializeDialog({
   action: SeriesAction;
   onMessage: (message: string | null) => void;
 }) {
+  const fieldId = useId();
+  const throughId = `${fieldId}-${series.id}-materialize-through`;
   const proposed =
     proposeLitterPlanSeriesMaterializeThrough({
       startsOn: series.startsOn,
@@ -210,6 +227,7 @@ function MaterializeDialog({
       initialMaterializationHorizonDays:
         series.initialMaterializationHorizonDays,
     }) ?? "";
+  const [through, setThrough] = useState(proposed);
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(action, initialState);
   useActionFeedback(state, (message) => {
@@ -218,7 +236,13 @@ function MaterializeDialog({
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setThrough(proposed);
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" variant="secondary" size="sm">
           Préparer les prochaines occurrences
@@ -229,25 +253,22 @@ function MaterializeDialog({
           <DialogTitle>Préparer les occurrences</DialogTitle>
           <DialogDescription>
             {series.anchorPending
-              ? "La date d’ancrage n’est pas encore disponible pour ce suivi."
+              ? "La date de début sera déterminée à partir des informations désormais enregistrées dans la portée."
               : "Préparez les prochaines occurrences sans dupliquer celles déjà créées."}
           </DialogDescription>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
           <div>
-            <label
-              htmlFor={`materialize-${series.id}`}
-              className="text-sm font-semibold"
-            >
+            <label htmlFor={throughId} className="text-sm font-semibold">
               Préparer les occurrences jusqu’au
             </label>
             <input
-              id={`materialize-${series.id}`}
+              id={throughId}
               name="requested_through"
               type="date"
               required
-              defaultValue={proposed}
-              disabled={series.anchorPending}
+              value={through}
+              onChange={(event) => setThrough(event.target.value)}
               className={inputClass}
             />
           </div>
@@ -265,6 +286,7 @@ function MaterializeDialog({
             <SubmitButton
               label="Préparer"
               variant="secondary"
+              disabled={!through}
             />
           </DialogFooter>
         </form>
@@ -297,34 +319,28 @@ function ImmediateActionForm({
   );
 }
 
-function SeriesActions({
+function buildSeriesActionNodes({
   series,
   actions,
   canWrite,
   onMessage,
 }: {
   series: LitterPlanSeriesSummary;
-  actions: LitterPlanSeriesPanelActions | null;
+  actions: LitterPlanSeriesPanelActions;
   canWrite: boolean;
   onMessage: (message: string | null) => void;
-}) {
+}): { kind: LitterPlanSeriesActionKind; node: ReactNode }[] {
   const available = getLitterPlanSeriesAvailableActions({
     state: series.state,
     canWrite,
   });
-  if (available.length === 0 || !actions) return null;
-
-  const buttons: {
-    kind: LitterPlanSeriesActionKind;
-    node: ReactNode;
-  }[] = [];
+  const buttons: { kind: LitterPlanSeriesActionKind; node: ReactNode }[] = [];
 
   if (available.includes("suspend") && actions.suspendAction) {
     buttons.push({
       kind: "suspend",
       node: (
         <ImmediateActionForm
-          key="suspend"
           label="Suspendre"
           action={actions.suspendAction}
           onMessage={onMessage}
@@ -337,7 +353,6 @@ function SeriesActions({
       kind: "resume",
       node: (
         <ImmediateActionForm
-          key="resume"
           label="Reprendre"
           action={actions.resumeAction}
           onMessage={onMessage}
@@ -350,7 +365,6 @@ function SeriesActions({
       kind: "materialize",
       node: (
         <MaterializeDialog
-          key="materialize"
           series={series}
           action={actions.materializeAction}
           onMessage={onMessage}
@@ -363,9 +377,10 @@ function SeriesActions({
       kind: "complete",
       node: (
         <TerminalDialog
-          key="complete"
+          seriesId={series.id}
+          actionKind="complete"
           title="Terminer ce suivi"
-          description="Les occurrences encore à faire seront clôturées. Cette action est définitive."
+          description="Le suivi ne pourra plus être prolongé. Les occurrences déjà préparées conserveront leur état actuel. Cette action est définitive."
           actionLabel="Terminer"
           action={actions.completeAction}
           onMessage={onMessage}
@@ -378,7 +393,8 @@ function SeriesActions({
       kind: "cancel",
       node: (
         <TerminalDialog
-          key="cancel"
+          seriesId={series.id}
+          actionKind="cancel"
           title="Annuler ce suivi"
           description="Les occurrences encore à faire seront annulées. Cette action est définitive."
           actionLabel="Annuler"
@@ -393,7 +409,8 @@ function SeriesActions({
       kind: "not_applicable",
       node: (
         <TerminalDialog
-          key="not_applicable"
+          seriesId={series.id}
+          actionKind="not_applicable"
           title="Déclarer non applicable"
           description="Les occurrences encore à faire seront marquées non applicables. Cette action est définitive."
           actionLabel="Déclarer non applicable"
@@ -404,16 +421,51 @@ function SeriesActions({
     });
   }
 
+  return buttons;
+}
+
+function SeriesActions({
+  series,
+  actions,
+  canWrite,
+  onMessage,
+}: {
+  series: LitterPlanSeriesSummary;
+  actions: LitterPlanSeriesPanelActions | null;
+  canWrite: boolean;
+  onMessage: (message: string | null) => void;
+}) {
+  if (!actions) return null;
+  const desktop = buildSeriesActionNodes({
+    series,
+    actions,
+    canWrite,
+    onMessage,
+  });
+  const mobile = buildSeriesActionNodes({
+    series,
+    actions,
+    canWrite,
+    onMessage,
+  });
+  if (desktop.length === 0) return null;
+
   return (
     <div className="mt-4">
       <div className="hidden flex-wrap gap-2 sm:flex">
-        {buttons.map((button) => button.node)}
+        {desktop.map((button) => (
+          <div key={`desktop-${button.kind}`}>{button.node}</div>
+        ))}
       </div>
       <details className="sm:hidden">
         <summary className="cursor-pointer list-none rounded-xl border px-3 py-2 text-sm font-semibold">
           Actions du suivi
         </summary>
-        <div className="mt-3 flex flex-col gap-2">{buttons.map((button) => button.node)}</div>
+        <div className="mt-3 flex flex-col gap-2">
+          {mobile.map((button) => (
+            <div key={`mobile-${button.kind}`}>{button.node}</div>
+          ))}
+        </div>
       </details>
     </div>
   );
@@ -508,8 +560,8 @@ function SeriesCard({
 
       {series.anchorPending ? (
         <p className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-950">
-          En attente de la date d’ancrage. Le suivi ne peut pas encore être
-          programmé tant que cette date n’est pas renseignée.
+          En attente de l’ancre. Dès que la date d’ancrage est renseignée dans
+          la portée, vous pourrez préparer les occurrences.
         </p>
       ) : null}
 
