@@ -16,7 +16,7 @@ import {
   LitterCareTasksPanel,
   type LitterCareTaskResolutionAction,
 } from "./litter-care-tasks-panel";
-import type { LitterCareTaskScheduleActions } from "./litter-care-task-schedule-dialog";
+import type { LitterCareTaskScheduleActionBinding } from "./litter-care-task-schedule-dialog";
 import type {
   GenerateLitterCareTasksActionState,
   LitterCareTaskActionState,
@@ -293,8 +293,8 @@ export function LitterJournalDashboard({
   createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
   litterCareTodayQuickActions: LitterCareTodayQuickActions[];
-  litterCareTodayScheduleActions: LitterCareTaskScheduleActions[];
-  litterCareTaskScheduleActions: LitterCareTaskScheduleActions[];
+  litterCareTodayScheduleActions: LitterCareTaskScheduleActionBinding[];
+  litterCareTaskScheduleActions: LitterCareTaskScheduleActionBinding[];
   litterCareTasksLoadError: boolean;
   litterCareTodayDate: string;
   litterCareTodayLocalTime: string;

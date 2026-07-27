@@ -7,7 +7,7 @@ import {
   runE2eSqlSync,
 } from "./helpers/supabase";
 
-test.setTimeout(420_000);
+test.setTimeout(600_000);
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -325,10 +325,18 @@ function scheduleCommandCount() {
   );
 }
 
+function scheduleChangeCount() {
+  return Number(
+    sql(`select count(*)::text from public.litter_care_task_schedule_changes
+      where litter_id = ${q(ids.litter)}::uuid;`),
+  );
+}
+
 async function dragHandleByDays(
   page: Page,
   handle: ReturnType<Page["locator"]>,
   days: number,
+  previewHost?: ReturnType<Page["locator"]>,
 ) {
   await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
@@ -338,14 +346,34 @@ async function dragHandleByDays(
     .locator("div.min-w-\\[48rem\\]");
   const trackBox = await track.boundingBox();
   expect(trackBox).not.toBeNull();
-  const pxPerDay = Math.max(32, trackBox!.width / 40);
+  const pxPerDay = Math.max(24, trackBox!.width / 50);
   const startX = box!.x + box!.width / 2;
   const startY = box!.y + box!.height / 2;
-  const endX = startX + Math.sign(days) * pxPerDay * Math.max(1, Math.abs(days));
+  const sign = Math.sign(days) || 1;
+  const targetAbs = Math.abs(days);
   await page.mouse.move(startX, startY);
   await page.mouse.down();
-  await page.mouse.move(endX, startY, { steps: 12 });
-  return { startX, startY, endX, pointerId: 0 };
+  let reached = false;
+  for (let step = 1; step <= targetAbs * 20; step += 1) {
+    await page.mouse.move(startX + sign * pxPerDay * (step / 4), startY, { steps: 2 });
+    if (previewHost) {
+      const text = (await previewHost.textContent()) ?? "";
+      const offsetLabel =
+        days > 0
+          ? `+${targetAbs} jour`
+          : days < 0
+            ? `−${targetAbs} jour`
+            : "0 jour";
+      if (text.includes("Aperçu — non enregistré") && text.includes(offsetLabel)) {
+        reached = true;
+        break;
+      }
+    }
+  }
+  if (previewHost) {
+    expect(reached).toBe(true);
+  }
+  return { startX, startY, endX: startX + sign * pxPerDay * targetAbs, pointerId: 0 };
 }
 
 async function releasePointerDrag(page: Page) {
@@ -360,6 +388,7 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
     await applyPlan();
 
     const beforeLoadCommands = scheduleCommandCount();
+    const beforeLoadChanges = scheduleChangeCount();
     await login(page, E2E_OWNER_EMAIL, E2E_OWNER_PASSWORD);
     await gotoJournal(page, ids.litter);
     const panel = page.getByRole("region", { name: "Planning de la portée", exact: true });
@@ -370,6 +399,7 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
     await expect(panel).toContainText("Traité");
     await expect(panel).toContainText("En attente d’une date de référence");
     expect(scheduleCommandCount()).toBe(beforeLoadCommands);
+    expect(scheduleChangeCount()).toBe(beforeLoadChanges);
 
     const milestone = panel.locator("[data-timeline-item]").filter({ hasText: "Radiographie de comptage" });
     const milestoneHandle = milestone.getByRole("button", { name: /modifier la date de Radiographie de comptage/ });
@@ -379,7 +409,7 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
 
     const beforePoint = taskRow("Radiographie de comptage");
     const commandsBeforeDrag = scheduleCommandCount();
-    const drag = await dragHandleByDays(page, milestoneHandle, 2);
+    const drag = await dragHandleByDays(page, milestoneHandle, 2, milestone);
     await expect(milestone).toContainText("Aperçu — non enregistré");
     expect(scheduleCommandCount()).toBe(commandsBeforeDrag);
     await releasePointerDrag(page);
@@ -393,52 +423,81 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
     expect(afterPoint.timezone).toBe("Europe/Paris");
     expect(afterPoint.scheduleSource).toBe("manual");
     expect(Number(afterPoint.revision)).toBe(Number(beforePoint.revision) + 1);
+    expect(scheduleCommandCount()).toBe(commandsBeforeDrag + 1);
+    expect(scheduleChangeCount()).toBe(beforeLoadChanges + 1);
 
-    await page.reload();
+    await gotoJournal(page, ids.litter);
     await expect(panel).toContainText("Surveillance de la température");
 
     const windowCard = panel.locator("[data-timeline-window]").filter({ hasText: "Surveillance de la température" });
     const beforeWindow = taskRow("Surveillance de la température");
     const endHandle = windowCard.getByRole("button", { name: /modifier la fin/ });
-    await endHandle.focus();
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
+    const commandsBeforeEnd = scheduleCommandCount();
+    await dragHandleByDays(page, endHandle, 2, windowCard);
     await expect(windowCard).toContainText("Aperçu — non enregistré");
-    await page.keyboard.press("Enter");
+    await expect(windowCard).toContainText("Fin déplacée de");
+    expect(scheduleCommandCount()).toBe(commandsBeforeEnd);
+    await releasePointerDrag(page);
     await expect.poll(() => taskRow("Surveillance de la température").retainedEndsOn).toBe(
       sql(`select (date ${q(String(beforeWindow.retainedEndsOn))} + 2)::text;`).trim(),
     );
+    expect(taskRow("Surveillance de la température").retainedStartsOn).toBe(beforeWindow.retainedStartsOn);
+    expect(taskRow("Surveillance de la température").retainedStartsLocalTime).toBe("08:00:00");
+    expect(taskRow("Surveillance de la température").retainedEndsLocalTime).toBe("18:00:00");
 
+    await gotoJournal(page, ids.litter);
     const midWindow = taskRow("Surveillance de la température");
     const startHandle = windowCard.getByRole("button", { name: /modifier le début/ });
-    await startHandle.focus();
-    await page.keyboard.press("ArrowLeft");
-    await page.keyboard.press("Enter");
+    const commandsBeforeStart = scheduleCommandCount();
+    await dragHandleByDays(page, startHandle, -1, windowCard);
+    expect(scheduleCommandCount()).toBe(commandsBeforeStart);
+    await releasePointerDrag(page);
     await expect.poll(() => taskRow("Surveillance de la température").retainedStartsOn).toBe(
       sql(`select (date ${q(String(midWindow.retainedStartsOn))} - 1)::text;`).trim(),
     );
+    expect(taskRow("Surveillance de la température").retainedEndsOn).toBe(midWindow.retainedEndsOn);
 
+    await gotoJournal(page, ids.litter);
     const beforeMove = taskRow("Surveillance de la température");
     const moveHandle = windowCard.getByRole("button", { name: /Déplacer toute la période/ });
-    await moveHandle.focus();
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("ArrowRight");
-    await page.keyboard.press("Enter");
+    const durationBefore = sql(`select ((date ${q(String(beforeMove.retainedEndsOn))} - date ${q(String(beforeMove.retainedStartsOn))}) + 1)::text;`).trim();
+    await dragHandleByDays(page, moveHandle, 3, windowCard);
+    await expect(windowCard).toContainText("Période déplacée de");
+    await releasePointerDrag(page);
     await expect.poll(() => taskRow("Surveillance de la température").retainedStartsOn).toBe(
       sql(`select (date ${q(String(beforeMove.retainedStartsOn))} + 3)::text;`).trim(),
     );
+    await expect.poll(() => taskRow("Surveillance de la température").retainedEndsOn).toBe(
+      sql(`select (date ${q(String(beforeMove.retainedEndsOn))} + 3)::text;`).trim(),
+    );
+    const afterMove = taskRow("Surveillance de la température");
+    expect(sql(`select ((date ${q(String(afterMove.retainedEndsOn))} - date ${q(String(afterMove.retainedStartsOn))}) + 1)::text;`).trim()).toBe(durationBefore);
+    expect(afterMove.retainedStartsLocalTime).toBe("08:00:00");
+    expect(afterMove.retainedEndsLocalTime).toBe("18:00:00");
+    expect(afterMove.suggestedStartsOn).toBe(beforeWindow.suggestedStartsOn);
+    expect(afterMove.suggestedEndsOn).toBe(beforeWindow.suggestedEndsOn);
 
-    const commandsBeforeCancel = scheduleCommandCount();
-    await milestoneHandle.dispatchEvent("pointerdown", { pointerId: 1, bubbles: true, button: 0, clientX: drag.startX, clientY: drag.startY });
-    await milestoneHandle.dispatchEvent("pointercancel", { pointerId: 1, bubbles: true });
-    expect(scheduleCommandCount()).toBe(commandsBeforeCancel);
-
-    await milestoneHandle.focus();
+    await gotoJournal(page, ids.litter);
+    const endHandleForKeyboard = windowCard.getByRole("button", { name: /modifier la fin/ });
+    await endHandleForKeyboard.focus();
     await page.keyboard.press("ArrowRight");
+    await expect(windowCard).toContainText("Fin déplacée de +1 jour");
+    await page.keyboard.press("Shift+ArrowLeft");
+    await expect(windowCard).toContainText("Fin déplacée de −6 jours");
     await page.keyboard.press("Escape");
 
-    await page.reload();
+    const milestoneHandleFresh = milestone.getByRole("button", { name: /modifier la date de Radiographie de comptage/ });
+    const commandsBeforeCancel = scheduleCommandCount();
+    await milestoneHandleFresh.dispatchEvent("pointerdown", { pointerId: 1, bubbles: true, button: 0, clientX: drag.startX, clientY: drag.startY });
+    await milestoneHandleFresh.dispatchEvent("pointercancel", { pointerId: 1, bubbles: true });
+    expect(scheduleCommandCount()).toBe(commandsBeforeCancel);
+
+    await milestoneHandleFresh.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Escape");
+    expect(scheduleCommandCount()).toBe(commandsBeforeCancel);
+
+    await gotoJournal(page, ids.litter);
     const handleAfterReload = page
       .getByRole("region", { name: "Planning de la portée", exact: true })
       .locator("[data-timeline-item]")
@@ -452,7 +511,7 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
       sql(`select (date ${q(String(keyBase.plannedFor))} + 1)::text;`).trim(),
     );
 
-    await page.reload();
+    await gotoJournal(page, ids.litter);
     await expect(panel).toContainText("Tâche ponctuelle frise");
 
     const staleBefore = taskRow("Tâche ponctuelle frise");
@@ -463,6 +522,7 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
     const staleHandle = staleCard.getByRole("button", {
       name: /modifier la date de Tâche ponctuelle frise/,
     });
+    const commandsBeforeStale = scheduleCommandCount();
     await staleHandle.focus();
     await page.keyboard.press("ArrowRight");
     await page.keyboard.press("Enter");
@@ -470,12 +530,30 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
       timeout: 15_000,
     });
     await expect(staleCard.getByRole("button", { name: "Recharger le Journal" })).toBeVisible();
+    await expect(staleCard.getByRole("button", { name: /modifier la date/ })).toHaveCount(0);
+    expect(scheduleCommandCount()).toBe(commandsBeforeStale + 1);
+    const commandsAfterStale = scheduleCommandCount();
+    await staleCard.click({ position: { x: 8, y: 8 } });
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("Enter");
+    expect(scheduleCommandCount()).toBe(commandsAfterStale);
 
+    const lockedBefore = taskRow("Jalon verrouillé frise");
+    const commandsBeforeLocked = scheduleCommandCount();
     await locked.getByRole("button", { name: "Ajuster précisément" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toContainText("Programmation verrouillée");
-    await dialog.getByRole("button", { name: "Annuler" }).click();
-    await expect(dialog).toBeHidden();
+    await dialog.getByLabel("Date retenue").fill("2026-08-10");
+    await dialog.getByRole("button", { name: "Remplacer la programmation" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("confirmation", { timeout: 10_000 });
+    expect(taskRow("Jalon verrouillé frise").plannedFor).toBe(lockedBefore.plannedFor);
+    expect(scheduleCommandCount()).toBe(commandsBeforeLocked);
+    await dialog.getByLabel(/Je confirme le remplacement/).check();
+    await dialog.getByRole("button", { name: "Remplacer la programmation" }).click();
+    await expect(dialog).toBeHidden({ timeout: 30_000 });
+    await expect.poll(() => taskRow("Jalon verrouillé frise").plannedFor).toBe("2026-08-10");
+    expect(Number(taskRow("Jalon verrouillé frise").revision)).toBe(Number(lockedBefore.revision) + 1);
+    expect(scheduleCommandCount()).toBe(commandsBeforeLocked + 1);
 
     await login(page, ...credentials.member);
     await gotoJournal(page, ids.litter);

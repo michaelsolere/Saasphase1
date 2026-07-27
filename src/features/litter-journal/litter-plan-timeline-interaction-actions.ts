@@ -59,10 +59,15 @@ async function runTimelineScheduleCommand(
       status: "error",
       message: timelineScheduleErrorMessage(result.error.code),
       code: result.error.code,
+      requiresRefresh: true,
     };
   }
   revalidateLitterCareTaskSchedulePaths(result.litterId);
-  return { status: "success", message: "Programmation modifiée" };
+  return {
+    status: "success",
+    message: "Programmation modifiée",
+    requiresRefresh: true,
+  };
 }
 
 export async function moveTimelinePointAction(
@@ -72,7 +77,11 @@ export async function moveTimelinePointAction(
 ): Promise<LitterCareTaskActionState> {
   const proposedDate = value(formData, "proposed_date").trim();
   if (!isCivilDate(proposedDate)) {
-    return { status: "error", message: "La date proposée est invalide." };
+    return {
+      status: "error",
+      message: "La date proposée est invalide.",
+      requiresRefresh: false,
+    };
   }
   return runTimelineScheduleCommand(
     rescheduleLitterCareTaskPoint({
@@ -95,12 +104,17 @@ export async function moveOrResizeTimelineWindowAction(
   const proposedStartDate = value(formData, "proposed_start_date").trim();
   const proposedEndDate = value(formData, "proposed_end_date").trim();
   if (!isCivilDate(proposedStartDate) || !isCivilDate(proposedEndDate)) {
-    return { status: "error", message: "Les dates proposées sont invalides." };
+    return {
+      status: "error",
+      message: "Les dates proposées sont invalides.",
+      requiresRefresh: false,
+    };
   }
   if (proposedStartDate > proposedEndDate) {
     return {
       status: "error",
       message: "La date de début doit précéder ou égaler la date de fin.",
+      requiresRefresh: false,
     };
   }
   return runTimelineScheduleCommand(

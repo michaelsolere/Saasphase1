@@ -16,26 +16,29 @@ import { formatLitterDate } from "@/features/litters/formatters";
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
 import {
   ScheduleTaskDialog,
-  type LitterCareTaskScheduleActions,
+  type LitterCareTaskScheduleActionSet,
 } from "./litter-care-task-schedule-dialog";
-import type { LitterCareTaskSummary } from "./litter-care-tasks";
+import type { LitterCareTaskScheduleView } from "./litter-care-task-schedule-view";
 import { litterCareTaskCategoryLabels } from "./litter-care-task-labels";
 import type {
   InteractiveLitterPlanTimeline,
 } from "./litter-plan-timeline-interaction";
 import {
   buildInteractiveTimelineGeometry,
-  civilDayDelta,
+  buildTimelinePreviewLiveMessage,
   civilInclusiveDurationDays,
-  formatCivilDayOffsetLabel,
+  cumulativeDayDeltaForHandle,
+  formatHandleDisplacementLabel,
   keyboardScheduleDayStep,
   pointerDeltaToCivilDays,
   previewPointMove,
   previewWindowMove,
   previewWindowResizeEnd,
   previewWindowResizeStart,
+  timelineScheduleResultRequiresRefresh,
   type InteractiveTimelineGeometryItem,
   type InteractiveTimelineItem,
+  type TimelineDragHandle,
 } from "./litter-plan-timeline-interaction";
 
 type TimelineAction = (
@@ -44,8 +47,8 @@ type TimelineAction = (
 ) => Promise<LitterCareTaskActionState>;
 
 export type LitterPlanTimelineScheduleTarget = {
-  task: LitterCareTaskSummary;
-  actions: LitterCareTaskScheduleActions;
+  view: LitterCareTaskScheduleView;
+  actions: LitterCareTaskScheduleActionSet;
 };
 
 export type LitterPlanTimelinePanelProps = {
@@ -56,7 +59,7 @@ export type LitterPlanTimelinePanelProps = {
   scheduleTargets?: Record<string, LitterPlanTimelineScheduleTarget>;
 };
 
-type DragHandle = "point" | "window-start" | "window-end" | "window-move";
+type DragHandle = TimelineDragHandle;
 
 type DragState = {
   publicKey: string;
@@ -74,6 +77,7 @@ type FeedbackState = {
   publicKey: string | null;
   kind: "preview" | "saving" | "success" | "error" | "stale";
   message: string;
+  requiresRefresh?: boolean;
 };
 
 const idleActionState: LitterCareTaskActionState = { status: "idle" };
@@ -206,20 +210,27 @@ export function LitterPlanTimelinePanel({
 
   const liveMessage = useMemo(() => {
     if (feedback?.kind === "saving") return "Enregistrement…";
-    if (feedback?.message) return feedback.message;
+    if (feedback?.kind === "success" || feedback?.kind === "error" || feedback?.kind === "stale") {
+      return feedback.message;
+    }
     if (!activePreview || !timeline) return "";
     const item = timeline.items.find(
       (entry) => entry.publicKey === activePreview.publicKey,
     );
     if (!item) return "";
-    if (item.kind === "window") {
-      const duration = civilInclusiveDurationDays(
+    return buildTimelinePreviewLiveMessage({
+      kind: item.kind,
+      handle: activePreview.handle,
+      currentDateLabel: dateLabel(item.retainedStartDate),
+      newDateLabel: dateLabel(activePreview.startDate),
+      startLabel: dateLabel(activePreview.startDate),
+      endLabel: dateLabel(activePreview.endDate),
+      durationDays: civilInclusiveDurationDays(
         activePreview.startDate,
         activePreview.endDate,
-      );
-      return `Aperçu — non enregistré. Du ${dateLabel(activePreview.startDate)} au ${dateLabel(activePreview.endDate)}. Durée : ${duration ?? "?"} jours. Fin déplacée de ${formatCivilDayOffsetLabel(activePreview.dayDelta)}.`;
-    }
-    return `Aperçu — non enregistré. Date actuelle : ${dateLabel(item.retainedStartDate)}. Nouvelle date : ${dateLabel(activePreview.startDate)}. Décalage : ${formatCivilDayOffsetLabel(activePreview.dayDelta)}.`;
+      ),
+      dayDelta: activePreview.dayDelta,
+    });
   }, [activePreview, feedback, timeline]);
 
   const cancelPreview = useCallback(() => {
@@ -292,11 +303,16 @@ export function LitterPlanTimelinePanel({
             publicKey,
             kind: "success",
             message: result.message ?? "Programmation modifiée",
+            requiresRefresh: true,
           });
           router.refresh();
           return;
         }
 
+        const needsRefresh = timelineScheduleResultRequiresRefresh(result);
+        if (needsRefresh) {
+          setDisabledKeys((previous) => new Set(previous).add(publicKey));
+        }
         const stale = result.code === "stale_revision";
         setFeedback({
           publicKey,
@@ -304,6 +320,7 @@ export function LitterPlanTimelinePanel({
           message:
             result.message ??
             "La programmation ne peut pas être modifiée pour le moment.",
+          requiresRefresh: needsRefresh,
         });
       });
     },
@@ -354,7 +371,14 @@ export function LitterPlanTimelinePanel({
         ...current,
         previewStart: preview.startDate,
         previewEnd: preview.endDate,
-        dayDelta,
+        dayDelta:
+          cumulativeDayDeltaForHandle(
+            current.handle,
+            current.baseStart,
+            current.baseEnd,
+            preview.startDate,
+            preview.endDate,
+          ) ?? dayDelta,
       };
       dragRef.current = nextDrag;
       setDrag(nextDrag);
@@ -467,9 +491,13 @@ export function LitterPlanTimelinePanel({
     if (!preview) return;
 
     const totalDelta =
-      civilDayDelta(originStart, preview.startDate) ??
-      civilDayDelta(originEnd, preview.endDate) ??
-      0;
+      cumulativeDayDeltaForHandle(
+        handle,
+        originStart,
+        originEnd,
+        preview.startDate,
+        preview.endDate,
+      ) ?? 0;
 
     setDrag(null);
     setKeyboardPreview({
@@ -566,7 +594,12 @@ export function LitterPlanTimelinePanel({
             <div className="mt-2 space-y-1 text-xs">
               <p>Date actuelle : {dateLabel(item.retainedStartDate)}</p>
               <p>Nouvelle date : {dateLabel(activePreview.startDate)}</p>
-              <p>Décalage : {formatCivilDayOffsetLabel(activePreview.dayDelta)}</p>
+              <p>
+                {formatHandleDisplacementLabel(
+                  activePreview.handle,
+                  activePreview.dayDelta,
+                )}
+              </p>
               <p className="font-semibold">Aperçu — non enregistré</p>
             </div>
           ) : null}
@@ -582,7 +615,7 @@ export function LitterPlanTimelinePanel({
           (feedback.kind === "error" || feedback.kind === "stale") ? (
             <div className="mt-2 space-y-2" role="alert">
               <p className="text-xs">{feedback.message}</p>
-              {feedback.kind === "stale" ? (
+              {feedback.requiresRefresh || feedback.kind === "stale" ? (
                 <Button
                   type="button"
                   size="sm"
@@ -607,8 +640,8 @@ export function LitterPlanTimelinePanel({
           {showPrecise && scheduleTarget ? (
             <div className="mt-2">
               <ScheduleTaskDialog
-                key={`${item.publicKey}-${scheduleTarget.task.revisionNo}`}
-                task={scheduleTarget.task}
+                key={item.publicKey}
+                view={scheduleTarget.view}
                 actions={scheduleTarget.actions}
                 onSuccess={setScheduleMessage}
                 triggerLabel="Ajuster précisément"
@@ -679,8 +712,10 @@ export function LitterPlanTimelinePanel({
               </p>
               <p>Durée : {duration ?? "?"} jours</p>
               <p>
-                Fin déplacée de{" "}
-                {formatCivilDayOffsetLabel(activePreview.dayDelta)}
+                {formatHandleDisplacementLabel(
+                  activePreview.handle,
+                  activePreview.dayDelta,
+                )}
               </p>
               <p className="font-semibold">Aperçu — non enregistré</p>
             </div>
@@ -697,7 +732,7 @@ export function LitterPlanTimelinePanel({
           (feedback.kind === "error" || feedback.kind === "stale") ? (
             <div className="mt-2 space-y-2" role="alert">
               <p className="text-xs">{feedback.message}</p>
-              {feedback.kind === "stale" ? (
+              {feedback.requiresRefresh || feedback.kind === "stale" ? (
                 <Button
                   type="button"
                   size="sm"
@@ -712,8 +747,8 @@ export function LitterPlanTimelinePanel({
           {showPrecise && scheduleTarget ? (
             <div className="mt-2">
               <ScheduleTaskDialog
-                key={`${item.publicKey}-${scheduleTarget.task.revisionNo}`}
-                task={scheduleTarget.task}
+                key={item.publicKey}
+                view={scheduleTarget.view}
                 actions={scheduleTarget.actions}
                 onSuccess={setScheduleMessage}
                 triggerLabel="Ajuster précisément"

@@ -590,3 +590,75 @@ export function formatCivilDayOffsetLabel(dayDelta: number) {
   const unit = abs === 1 ? "jour" : "jours";
   return `${dayDelta > 0 ? "+" : "−"}${abs} ${unit}`;
 }
+
+export type TimelineDragHandle =
+  | "point"
+  | "window-start"
+  | "window-end"
+  | "window-move";
+
+export function cumulativeDayDeltaForHandle(
+  handle: TimelineDragHandle,
+  originStart: string,
+  originEnd: string,
+  previewStart: string,
+  previewEnd: string,
+) {
+  if (handle === "point") {
+    return civilDayDelta(originStart, previewStart);
+  }
+  if (handle === "window-start") {
+    return civilDayDelta(originStart, previewStart);
+  }
+  if (handle === "window-end") {
+    return civilDayDelta(originEnd, previewEnd);
+  }
+  const startDelta = civilDayDelta(originStart, previewStart);
+  const endDelta = civilDayDelta(originEnd, previewEnd);
+  if (startDelta === null || endDelta === null) return null;
+  if (startDelta !== endDelta) return null;
+  return startDelta;
+}
+
+export function formatHandleDisplacementLabel(
+  handle: TimelineDragHandle,
+  dayDelta: number,
+) {
+  const offset = formatCivilDayOffsetLabel(dayDelta);
+  if (handle === "point") return `Décalage : ${offset}`;
+  if (handle === "window-start") return `Début déplacé de ${offset}`;
+  if (handle === "window-end") return `Fin déplacée de ${offset}`;
+  return `Période déplacée de ${offset}`;
+}
+
+export function buildTimelinePreviewLiveMessage(input: {
+  kind: "milestone" | "task" | "window";
+  handle: TimelineDragHandle;
+  currentDateLabel: string;
+  newDateLabel: string;
+  startLabel: string;
+  endLabel: string;
+  durationDays: number | null;
+  dayDelta: number;
+}) {
+  const displacement = formatHandleDisplacementLabel(
+    input.handle,
+    input.dayDelta,
+  );
+  if (input.kind === "window") {
+    return `Aperçu — non enregistré. Du ${input.startLabel} au ${input.endLabel}. Durée : ${input.durationDays ?? "?"} jours. ${displacement}.`;
+  }
+  return `Aperçu — non enregistré. Date actuelle : ${input.currentDateLabel}. Nouvelle date : ${input.newDateLabel}. ${displacement}.`;
+}
+
+export function timelineScheduleResultRequiresRefresh(state: {
+  status: "idle" | "success" | "error";
+  requiresRefresh?: boolean;
+  code?: string;
+}) {
+  if (state.requiresRefresh === true) return true;
+  if (state.requiresRefresh === false) return false;
+  if (state.status === "success") return true;
+  if (state.status !== "error") return false;
+  return Boolean(state.code);
+}

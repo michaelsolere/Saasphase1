@@ -23,7 +23,7 @@ import {
 } from "./litter-care-task-labels";
 import {
   ScheduleTaskDialog,
-  type LitterCareTaskScheduleActions,
+  type LitterCareTaskScheduleActionBinding,
 } from "./litter-care-task-schedule-dialog";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
@@ -546,7 +546,7 @@ function PlannedTasks({
   tasks: LitterCareTaskSummary[];
   today: string | null;
   actions: Map<string, LitterCareTaskResolutionAction>;
-  scheduleActions: Map<string, LitterCareTaskScheduleActions>;
+  scheduleActions: Map<string, LitterCareTaskScheduleActionBinding>;
   onSuccess: (message: string) => void;
 }) {
   return (
@@ -593,7 +593,15 @@ function PlannedTasks({
                       onSuccess={onSuccess}
                     />
                   ) : null}
-                  {scheduleAction ? <ScheduleTaskDialog key={`full-${task.id}-${task.revisionNo}`} task={task} actions={scheduleAction} onSuccess={onSuccess} /> : null}
+                  {scheduleAction ? (
+                    <ScheduleTaskDialog
+                      key={scheduleAction.domIdPrefix}
+                      view={scheduleAction.view}
+                      actions={scheduleAction.actions}
+                      onSuccess={onSuccess}
+                      domIdPrefix={scheduleAction.domIdPrefix}
+                    />
+                  ) : null}
                 </div>
               </li>
             );
@@ -664,7 +672,7 @@ export function LitterCareTasksPanel({
   createAction: TaskAction | null;
   createClientCommandId: string;
   resolutionActions: LitterCareTaskResolutionAction[];
-  scheduleActions: LitterCareTaskScheduleActions[];
+  scheduleActions: LitterCareTaskScheduleActionBinding[];
   loadError?: boolean;
 }) {
   const [today, setToday] = useState<string | null>(null);

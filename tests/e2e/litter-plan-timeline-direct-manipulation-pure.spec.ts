@@ -7,12 +7,15 @@ import {
   buildInteractiveLitterPlanTimeline,
   buildInteractiveTimelineGeometry,
   buildLitterPlanTimelineItemPublicKey,
+  buildTimelinePreviewLiveMessage,
   civilDayDelta,
   civilInclusiveDurationDays,
   computeInteractiveTimelineDomain,
   computeInteractiveTimelineMarginDays,
+  cumulativeDayDeltaForHandle,
   dateToDomainPercent,
   domainPercentToDate,
+  formatHandleDisplacementLabel,
   isOpaqueTimelinePublicKey,
   keyboardScheduleDayStep,
   pointerDeltaToCivilDays,
@@ -21,7 +24,13 @@ import {
   previewWindowResizeEnd,
   previewWindowResizeStart,
   publicKeyContainsForbiddenOpaqueData,
+  timelineScheduleResultRequiresRefresh,
 } from "../../src/features/litter-journal/litter-plan-timeline-interaction";
+import {
+  scheduleViewContainsForbiddenIdentity,
+  toLitterCareTaskScheduleView,
+} from "../../src/features/litter-journal/litter-care-task-schedule-view";
+import type { LitterCareTaskScheduleActionSet } from "../../src/features/litter-journal/litter-care-task-schedule-dialog";
 
 function task(overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary {
   return {
@@ -382,4 +391,137 @@ test("géométrie interactive suit l’aperçu sans muter les entrées", () => {
   expect(projected?.displayStartDate).toBe("2026-08-12");
   expect(projected?.displayEndDate).toBe("2026-08-19");
   expect(built).toEqual(before);
+});
+
+test("DTO de programmation sans UUID ni révision, action set sans taskId", () => {
+  const source = tasks.find((entry) => entry.title === "Radiographie de comptage")!;
+  const view = toLitterCareTaskScheduleView(source);
+  expect(view).not.toBeNull();
+  expect(scheduleViewContainsForbiddenIdentity(view!, [
+    source.id,
+    source.litterId,
+    source.createdAt,
+  ])).toBe(false);
+  expect(Object.keys(view!)).not.toContain("id");
+  expect(Object.keys(view!)).not.toContain("revisionNo");
+
+  const actions: LitterCareTaskScheduleActionSet = {
+    rescheduleAction: async (state) => state,
+    replaceLockedAction: async (state) => state,
+    lockAction: async (state) => state,
+    unlockAction: async (state) => state,
+    reapplySuggestionAction: null,
+  };
+  expect(Object.keys(actions)).not.toContain("taskId");
+
+  const publicKey = buildLitterPlanTimelineItemPublicKey("opaque-instance", 1);
+  expect(isOpaqueTimelinePublicKey(publicKey, "opaque-instance")).toBe(true);
+  expect(publicKeyContainsForbiddenOpaqueData(publicKey, [source.id, source.title])).toBe(false);
+});
+
+test("libellés de décalage selon la poignée et message aria-live", () => {
+  expect(
+    cumulativeDayDeltaForHandle(
+      "window-end",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-10",
+      "2026-08-19",
+    ),
+  ).toBe(2);
+  expect(
+    cumulativeDayDeltaForHandle(
+      "window-start",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-09",
+      "2026-08-17",
+    ),
+  ).toBe(-1);
+  expect(
+    cumulativeDayDeltaForHandle(
+      "window-move",
+      "2026-08-10",
+      "2026-08-17",
+      "2026-08-13",
+      "2026-08-20",
+    ),
+  ).toBe(3);
+  expect(formatHandleDisplacementLabel("window-start", -1)).toBe(
+    "Début déplacé de −1 jour",
+  );
+  expect(formatHandleDisplacementLabel("window-end", 2)).toBe(
+    "Fin déplacée de +2 jours",
+  );
+  expect(formatHandleDisplacementLabel("window-move", 3)).toBe(
+    "Période déplacée de +3 jours",
+  );
+
+  const keyboardEnd = previewWindowResizeEnd("2026-08-10", "2026-08-17", keyboardScheduleDayStep(false, 1));
+  expect(keyboardEnd).toEqual({ startDate: "2026-08-10", endDate: "2026-08-18" });
+  expect(
+    cumulativeDayDeltaForHandle(
+      "window-end",
+      "2026-08-10",
+      "2026-08-17",
+      keyboardEnd!.startDate,
+      keyboardEnd!.endDate,
+    ),
+  ).toBe(1);
+
+  expect(
+    buildTimelinePreviewLiveMessage({
+      kind: "milestone",
+      handle: "point",
+      currentDateLabel: "29 juillet",
+      newDateLabel: "30 juillet",
+      startLabel: "30 juillet",
+      endLabel: "30 juillet",
+      durationDays: 1,
+      dayDelta: 1,
+    }),
+  ).toContain("Nouvelle date : 30 juillet");
+  expect(
+    buildTimelinePreviewLiveMessage({
+      kind: "window",
+      handle: "window-end",
+      currentDateLabel: "10 août",
+      newDateLabel: "10 août",
+      startLabel: "10 août",
+      endLabel: "19 août",
+      durationDays: 10,
+      dayDelta: 2,
+    }),
+  ).toBe(
+    "Aperçu — non enregistré. Du 10 août au 19 août. Durée : 10 jours. Fin déplacée de +2 jours.",
+  );
+});
+
+test("erreur locale réessayable versus résultat RPC nécessitant un rafraîchissement", () => {
+  expect(
+    timelineScheduleResultRequiresRefresh({
+      status: "error",
+      requiresRefresh: false,
+    }),
+  ).toBe(false);
+  expect(
+    timelineScheduleResultRequiresRefresh({
+      status: "success",
+      requiresRefresh: true,
+    }),
+  ).toBe(true);
+  expect(
+    timelineScheduleResultRequiresRefresh({
+      status: "error",
+      code: "stale_revision",
+      requiresRefresh: true,
+    }),
+  ).toBe(true);
+  expect(
+    timelineScheduleResultRequiresRefresh({
+      status: "error",
+      code: "conflict",
+      requiresRefresh: true,
+    }),
+  ).toBe(true);
 });
