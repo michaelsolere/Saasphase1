@@ -1,3 +1,7 @@
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+import { LitterPlanningModelDuplicateButton } from "@/features/settings/litter-planning-model-duplicate-button";
 import {
   LitterPlanningModelActiveControl,
   type LitterPlanningModelWriteActions,
@@ -68,6 +72,8 @@ export function LitterPlanningModelDetailView({
     itemCount: model.items.length,
     originLabel: model.originLabel,
     libraryOriginDetail: model.libraryOriginDetail,
+    isLibraryImport: model.isLibraryImport,
+    canEditDirectly: model.canEditDirectly,
   };
 
   return (
@@ -100,10 +106,22 @@ export function LitterPlanningModelDetailView({
             </p>
           </div>
           {writeActions ? (
-            <LitterPlanningModelActiveControl
-              model={organizationCard}
-              action={writeActions.activeAction}
-            />
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              {model.canEditDirectly ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/settings/litter-planning-models/${model.id}/edit`}>
+                    Modifier
+                  </Link>
+                </Button>
+              ) : null}
+              <LitterPlanningModelDuplicateButton
+                action={writeActions.duplicateAction}
+              />
+              <LitterPlanningModelActiveControl
+                model={organizationCard}
+                action={writeActions.activeAction}
+              />
+            </div>
           ) : null}
         </div>
         <dl className="mt-5 grid min-w-0 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">

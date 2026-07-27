@@ -16,10 +16,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { LitterPlanningModelDuplicateButton } from "@/features/settings/litter-planning-model-duplicate-button";
 import { LITTER_PLANNING_MODELS_INDEPENDENCE_MESSAGE } from "@/features/settings/litter-planning-model-labels";
 import type { LitterPlanningModelOrganizationCard } from "@/features/settings/litter-planning-models-presentation";
 
-import type { LitterPlanningModelActiveActionState } from "./litter-planning-models-actions";
+import type {
+  LitterPlanningModelActiveActionState,
+  LitterPlanningModelEditorActionState,
+} from "./litter-planning-models-actions";
 
 const initialActionState: LitterPlanningModelActiveActionState = {
   status: "idle",
@@ -30,9 +34,15 @@ export type LitterPlanningModelActiveAction = (
   formData: FormData,
 ) => Promise<LitterPlanningModelActiveActionState>;
 
+export type LitterPlanningModelDuplicateAction = (
+  previousState: LitterPlanningModelEditorActionState,
+  formData: FormData,
+) => Promise<LitterPlanningModelEditorActionState>;
+
 export type LitterPlanningModelWriteActions = {
   model: LitterPlanningModelOrganizationCard;
   activeAction: LitterPlanningModelActiveAction;
+  duplicateAction: LitterPlanningModelDuplicateAction;
 };
 
 function SubmitButton({
@@ -192,10 +202,22 @@ function OrganizationModelCard({
             </Link>
           </Button>
           {actions ? (
-            <LitterPlanningModelActiveControl
-              model={model}
-              action={actions.activeAction}
-            />
+            <>
+              {model.canEditDirectly ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/settings/litter-planning-models/${model.id}/edit`}>
+                    Modifier
+                  </Link>
+                </Button>
+              ) : null}
+              <LitterPlanningModelDuplicateButton
+                action={actions.duplicateAction}
+              />
+              <LitterPlanningModelActiveControl
+                model={model}
+                action={actions.activeAction}
+              />
+            </>
           ) : null}
         </div>
       </div>
@@ -232,10 +254,18 @@ export function LitterPlanningModelsManager({
     <div className="mt-8 min-w-0 space-y-10">
       {!canManage ? (
         <p className="rounded-xl border bg-surface px-4 py-3 text-sm text-muted">
-          Votre rôle permet de consulter ces modèles, mais pas de les importer
-          ni de les activer ou désactiver.
+          Votre rôle permet de consulter ces modèles, mais pas de les créer,
+          dupliquer, importer ni activer ou désactiver.
         </p>
-      ) : null}
+      ) : (
+        <div>
+          <Button asChild>
+            <Link href="/settings/litter-planning-models/new">
+              Créer un modèle personnalisé
+            </Link>
+          </Button>
+        </div>
+      )}
 
       {models.length === 0 ? (
         <p className="rounded-2xl border bg-surface px-5 py-8 text-center text-sm text-muted">

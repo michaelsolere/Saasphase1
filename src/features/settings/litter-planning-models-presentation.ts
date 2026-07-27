@@ -24,6 +24,15 @@ import {
   type LitterPlanningModelImportStatus,
 } from "@/features/settings/litter-planning-model-labels";
 import {
+  canEditLitterPlanningModelDirectly,
+  createEmptyLitterPlanningModelEditorDraft,
+  createLitterPlanningModelEditorDraftFromModel,
+  isLitterPlanningModelImported,
+  templateOptionFromSummary,
+  type LitterPlanningModelEditorDraft,
+  type LitterPlanningModelEditorTemplateOption,
+} from "@/features/settings/litter-planning-model-editor-draft";
+import {
   listLitterPlanningModelLibrary,
   type LitterPlanningModelLibraryItemSummary,
   type LitterPlanningModelLibraryModelSummary,
@@ -38,6 +47,7 @@ import {
   type LitterPlanningModelAnchor,
   type LitterPlanningModelRecurrenceEndKind,
 } from "@/features/litter-journal/litter-planning-models";
+import { listLitterCareTaskTemplatesForOrganization } from "@/features/litter-journal/litter-care-tasks";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 
@@ -102,6 +112,8 @@ export type LitterPlanningModelOrganizationCard = {
   itemCount: number;
   originLabel: string;
   libraryOriginDetail: string | null;
+  isLibraryImport: boolean;
+  canEditDirectly: boolean;
 };
 
 export type LitterPlanningModelDetailPresentation = {
@@ -115,6 +127,8 @@ export type LitterPlanningModelDetailPresentation = {
   revision: number;
   originLabel: string;
   libraryOriginDetail: string | null;
+  isLibraryImport: boolean;
+  canEditDirectly: boolean;
   items: LitterPlanningModelItemPresentation[];
 };
 
@@ -461,27 +475,32 @@ export async function loadLitterPlanningModelsSettingsPage(
     } else {
       organization = {
         outcome: "success",
-        models: organizationResult.models.map((model) => ({
-          id: model.id,
-          title: model.title,
-          description: model.description,
-          isActive: model.isActive,
-          statusLabel: model.isActive ? "Actif" : "Inactif",
-          speciesLabel: formatLitterCareSpeciesLabel(model.species),
-          breedLabel: formatLitterCareBreedLabel(model.breed),
-          revision: model.revision,
-          itemCount: counts.get(model.id) ?? 0,
-          originLabel: model.libraryModelCode
-            ? "Importé depuis la bibliothèque"
-            : "Créé dans l’organisation",
-          libraryOriginDetail:
-            model.libraryModelCode && model.libraryModelVersion
-              ? formatLitterPlanningModelLibraryOrigin(
-                  model.libraryModelCode,
-                  model.libraryModelVersion,
-                )
-              : null,
-        })),
+        models: organizationResult.models.map((model) => {
+          const isLibraryImport = isLitterPlanningModelImported(model);
+          return {
+            id: model.id,
+            title: model.title,
+            description: model.description,
+            isActive: model.isActive,
+            statusLabel: model.isActive ? "Actif" : "Inactif",
+            speciesLabel: formatLitterCareSpeciesLabel(model.species),
+            breedLabel: formatLitterCareBreedLabel(model.breed),
+            revision: model.revision,
+            itemCount: counts.get(model.id) ?? 0,
+            originLabel: isLibraryImport
+              ? "Importé depuis la bibliothèque"
+              : "Créé dans l’organisation",
+            libraryOriginDetail:
+              model.libraryModelCode && model.libraryModelVersion
+                ? formatLitterPlanningModelLibraryOrigin(
+                    model.libraryModelCode,
+                    model.libraryModelVersion,
+                  )
+                : null,
+            isLibraryImport,
+            canEditDirectly: canEditLitterPlanningModelDirectly(model),
+          };
+        }),
       };
     }
   }
@@ -555,6 +574,8 @@ export async function loadLitterPlanningModelDetail(
     });
   });
 
+  const isLibraryImport = isLitterPlanningModelImported(model);
+
   return {
     outcome: "success",
     role: result.role,
@@ -568,7 +589,7 @@ export async function loadLitterPlanningModelDetail(
       speciesLabel: formatLitterCareSpeciesLabel(model.species),
       breedLabel: formatLitterCareBreedLabel(model.breed),
       revision: model.revision,
-      originLabel: model.libraryModelCode
+      originLabel: isLibraryImport
         ? "Importé depuis la bibliothèque"
         : "Créé dans l’organisation",
       libraryOriginDetail:
@@ -578,7 +599,112 @@ export async function loadLitterPlanningModelDetail(
               model.libraryModelVersion,
             )
           : null,
+      isLibraryImport,
+      canEditDirectly: canEditLitterPlanningModelDirectly(model),
       items,
+    },
+  };
+}
+
+export type LitterPlanningModelEditorPageData = {
+  organizationId: string;
+  role: Role;
+  canManage: boolean;
+  draft: LitterPlanningModelEditorDraft;
+  templates: LitterPlanningModelEditorTemplateOption[];
+};
+
+export async function loadLitterPlanningModelEditorPage(input: {
+  organizationId: string;
+  mode: "create" | "edit";
+  modelId?: string;
+  supabase?: Supabase;
+}): Promise<
+  | { outcome: "success"; data: LitterPlanningModelEditorPageData }
+  | {
+      outcome: "error";
+      code:
+        | "not_found"
+        | "database_error"
+        | "unauthenticated"
+        | "forbidden"
+        | "imported_model";
+    }
+> {
+  const client = input.supabase ?? (await createClient());
+  const templatesResult = await listLitterCareTaskTemplatesForOrganization(
+    { organizationId: input.organizationId },
+    client,
+  );
+  if (templatesResult.outcome === "error") {
+    if (templatesResult.error.code === "unauthenticated") {
+      return { outcome: "error", code: "unauthenticated" };
+    }
+    if (
+      templatesResult.error.code === "forbidden" ||
+      templatesResult.error.code === "not_found"
+    ) {
+      return { outcome: "error", code: "not_found" };
+    }
+    return { outcome: "error", code: "database_error" };
+  }
+
+  const templates = templatesResult.templates.map(templateOptionFromSummary);
+  const canManage = canManageLitterPlanningModels(templatesResult.role);
+  if (!canManage) {
+    return { outcome: "error", code: "forbidden" };
+  }
+
+  if (input.mode === "create") {
+    return {
+      outcome: "success",
+      data: {
+        organizationId: input.organizationId,
+        role: templatesResult.role,
+        canManage,
+        draft: createEmptyLitterPlanningModelEditorDraft(),
+        templates,
+      },
+    };
+  }
+
+  if (!input.modelId) {
+    return { outcome: "error", code: "not_found" };
+  }
+
+  const modelResult = await getLitterPlanningModel(input.modelId, client);
+  if (modelResult.outcome === "error" || !("model" in modelResult)) {
+    if (
+      modelResult.outcome === "error" &&
+      modelResult.error.code === "unauthenticated"
+    ) {
+      return { outcome: "error", code: "unauthenticated" };
+    }
+    if (
+      modelResult.outcome === "error" &&
+      (modelResult.error.code === "not_found" ||
+        modelResult.error.code === "forbidden" ||
+        modelResult.error.code === "invalid_input")
+    ) {
+      return { outcome: "error", code: "not_found" };
+    }
+    return { outcome: "error", code: "database_error" };
+  }
+
+  if (isLitterPlanningModelImported(modelResult.model)) {
+    return { outcome: "error", code: "imported_model" };
+  }
+
+  return {
+    outcome: "success",
+    data: {
+      organizationId: input.organizationId,
+      role: modelResult.role,
+      canManage,
+      draft: createLitterPlanningModelEditorDraftFromModel(modelResult.model, {
+        mode: "edit",
+      }),
+      templates,
     },
   };
 }

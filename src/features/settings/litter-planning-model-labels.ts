@@ -19,6 +19,9 @@ import type {
 export const LITTER_PLANNING_MODELS_INDEPENDENCE_MESSAGE =
   "Importer, activer ou désactiver un modèle ne modifie aucun planning déjà créé pour une portée.";
 
+export const LITTER_PLANNING_MODEL_EDITOR_INDEPENDENCE_MESSAGE =
+  "Modifier un modèle ne modifie aucun planning déjà créé pour une portée. Les changements seront proposés uniquement lors des prochaines applications du modèle.";
+
 export const LITTER_PLANNING_MODELS_NEWER_VERSION_MESSAGE =
   "Importer cette version crée un nouveau modèle dans l’organisation. Les versions déjà importées et les plannings existants ne sont pas modifiés.";
 

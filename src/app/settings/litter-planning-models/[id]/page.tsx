@@ -5,7 +5,10 @@ import { notFound, redirect } from "next/navigation";
 
 import { LITTER_PLANNING_MODELS_INDEPENDENCE_MESSAGE } from "@/features/settings/litter-planning-model-labels";
 import { LitterPlanningModelDetailView } from "@/features/settings/litter-planning-model-detail";
-import { setLitterPlanningModelActiveAction } from "@/features/settings/litter-planning-models-actions";
+import {
+  duplicateLitterPlanningModelAction,
+  setLitterPlanningModelActiveAction,
+} from "@/features/settings/litter-planning-models-actions";
 import { loadLitterPlanningModelDetail } from "@/features/settings/litter-planning-models-presentation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -44,29 +47,47 @@ export default async function LitterPlanningModelDetailPage({
     );
   }
 
-  const writeActions = result.canManage
-    ? {
-        model: {
-          id: result.model.id,
-          title: result.model.title,
-          description: result.model.description,
-          isActive: result.model.isActive,
-          statusLabel: result.model.statusLabel,
-          speciesLabel: result.model.speciesLabel,
-          breedLabel: result.model.breedLabel,
-          revision: result.model.revision,
-          itemCount: result.model.items.length,
-          originLabel: result.model.originLabel,
-          libraryOriginDetail: result.model.libraryOriginDetail,
-        },
-        activeAction: setLitterPlanningModelActiveAction.bind(null, {
-          modelId: result.model.id,
-          expectedRevision: result.model.revision,
-          clientCommandId: randomUUID(),
-          isActive: !result.model.isActive,
-        }),
-      }
-    : null;
+  const membership = await supabase
+    .from("memberships")
+    .select("organization_id")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  const writeActions =
+    result.canManage && membership.data?.organization_id
+      ? {
+          model: {
+            id: result.model.id,
+            title: result.model.title,
+            description: result.model.description,
+            isActive: result.model.isActive,
+            statusLabel: result.model.statusLabel,
+            speciesLabel: result.model.speciesLabel,
+            breedLabel: result.model.breedLabel,
+            revision: result.model.revision,
+            itemCount: result.model.items.length,
+            originLabel: result.model.originLabel,
+            libraryOriginDetail: result.model.libraryOriginDetail,
+            isLibraryImport: result.model.isLibraryImport,
+            canEditDirectly: result.model.canEditDirectly,
+          },
+          activeAction: setLitterPlanningModelActiveAction.bind(null, {
+            modelId: result.model.id,
+            expectedRevision: result.model.revision,
+            clientCommandId: randomUUID(),
+            isActive: !result.model.isActive,
+          }),
+          duplicateAction: duplicateLitterPlanningModelAction.bind(null, {
+            organizationId: membership.data.organization_id,
+            sourceModelId: result.model.id,
+            clientCommandId: randomUUID(),
+          }),
+        }
+      : null;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl min-w-0 px-6 py-10 sm:px-10 lg:px-12">
