@@ -20,10 +20,12 @@ import {
   type LitterCareTaskResolutionStatus,
   type LitterCareTaskTargetScope,
 } from "./litter-care-tasks";
+import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
 
 export type LitterCareTaskActionState = {
   status: "idle" | "success" | "error";
   message?: string;
+  code?: string;
 };
 
 export type GenerateLitterCareTasksActionState = LitterCareTaskActionState & {
@@ -152,8 +154,7 @@ async function runScheduleCommand(
   if (result.outcome === "error") {
     return { status: "error", message: scheduleErrorMessage(result.error.code) };
   }
-  revalidatePath("/litters/journal");
-  revalidatePath("/calendar/today");
+  revalidateLitterCareTaskSchedulePaths(result.litterId);
   return { status: "success", message: successMessage };
 }
 

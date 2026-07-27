@@ -28,7 +28,14 @@ import {
   setLitterPlanSeriesStateAction,
 } from "@/features/litter-journal/litter-plan-series-actions";
 import type { LitterPlanSeriesPanelActions } from "@/features/litter-journal/litter-plan-series-panel";
-import { projectLitterPlanTimeline } from "@/features/litter-journal/litter-plan-timeline";
+import {
+  buildInteractiveLitterPlanTimeline,
+} from "@/features/litter-journal/litter-plan-timeline-interaction";
+import {
+  moveOrResizeTimelineWindowAction,
+  moveTimelinePointAction,
+} from "@/features/litter-journal/litter-plan-timeline-interaction-actions";
+import type { LitterPlanTimelineScheduleTarget } from "@/features/litter-journal/litter-plan-timeline-panel";
 import { applyLitterPlanningModelAction } from "@/features/litter-journal/litter-planning-model-apply-actions";
 import { loadLitterPlanningModelApplicationPanel } from "@/features/litter-journal/litter-planning-model-application";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
@@ -200,13 +207,69 @@ export default async function LitterJournalPage({
     activeLitterPlan === null ||
     litterCareTasksLoaded === null ||
     ("outcome" in activeLitterPlan && activeLitterPlan.error.code !== "not_found");
-  const litterPlanTimeline =
+  const timelineInstanceKey = crypto.randomUUID();
+  const interactiveLitterPlanBuild =
     !litterPlanLoadError &&
     activeLitterPlan &&
     !("outcome" in activeLitterPlan) &&
     litterCareTasksLoaded
-      ? projectLitterPlanTimeline(activeLitterPlan, litterCareTasksLoaded.tasks)
+      ? buildInteractiveLitterPlanTimeline({
+          plan: activeLitterPlan,
+          tasks: litterCareTasksLoaded.tasks,
+          role: litterCareTasksLoaded.role,
+          instanceKey: timelineInstanceKey,
+        })
       : null;
+  const interactiveLitterPlanTimeline = interactiveLitterPlanBuild
+    ? {
+        title: interactiveLitterPlanBuild.title,
+        items: interactiveLitterPlanBuild.items,
+        pendingAnchorItems: interactiveLitterPlanBuild.pendingAnchorItems,
+      }
+    : null;
+  const litterPlanTimelineMovePointActions = Object.fromEntries(
+    (interactiveLitterPlanBuild?.bindings ?? [])
+      .filter((binding) => binding.canMoveGraphically && binding.kind !== "window")
+      .map((binding) => [
+        binding.publicKey,
+        moveTimelinePointAction.bind(null, {
+          taskId: binding.task.id,
+          expectedRevisionNo: binding.task.revisionNo,
+          clientCommandId: crypto.randomUUID(),
+          scheduledLocalTime: binding.task.scheduledLocalTime,
+          timezoneName: binding.task.scheduleTimezoneName,
+        }),
+      ]),
+  );
+  const litterPlanTimelineMoveWindowActions = Object.fromEntries(
+    (interactiveLitterPlanBuild?.bindings ?? [])
+      .filter((binding) => binding.canMoveGraphically && binding.kind === "window")
+      .map((binding) => [
+        binding.publicKey,
+        moveOrResizeTimelineWindowAction.bind(null, {
+          taskId: binding.task.id,
+          expectedRevisionNo: binding.task.revisionNo,
+          clientCommandId: crypto.randomUUID(),
+          retainedStartsLocalTime: binding.task.retainedStartsLocalTime,
+          retainedEndsLocalTime: binding.task.retainedEndsLocalTime,
+          timezoneName: binding.task.scheduleTimezoneName,
+        }),
+      ]),
+  );
+  const litterPlanTimelineScheduleTargets: Record<
+    string,
+    LitterPlanTimelineScheduleTarget
+  > = Object.fromEntries(
+    (interactiveLitterPlanBuild?.bindings ?? [])
+      .filter((binding) => binding.canOpenPrecisePanel)
+      .map((binding) => [
+        binding.publicKey,
+        {
+          task: binding.task,
+          actions: bindLitterCareTaskScheduleActions(binding.task),
+        },
+      ]),
+  );
   const litterPlanningModelApplicationLoaded =
     litterPlanningModelApplication?.outcome === "success"
       ? litterPlanningModelApplication
@@ -464,7 +527,10 @@ export default async function LitterJournalPage({
             litterPlanningModelApplicationLoadError={
               litterPlanningModelApplicationLoaded === null
             }
-            litterPlanTimeline={litterPlanTimeline}
+            litterPlanTimeline={interactiveLitterPlanTimeline}
+            litterPlanTimelineMovePointActions={litterPlanTimelineMovePointActions}
+            litterPlanTimelineMoveWindowActions={litterPlanTimelineMoveWindowActions}
+            litterPlanTimelineScheduleTargets={litterPlanTimelineScheduleTargets}
             litterPlanLoadError={litterPlanLoadError}
             litterPlanSeries={litterPlanSeriesLoaded?.series ?? []}
             litterPlanSeriesRole={litterPlanSeriesLoaded?.role ?? null}

@@ -97,14 +97,15 @@ test("affiche une frise de planning en lecture seule pour un viewer et l’état
   await expect(panel).toContainText("E2E jalon ponctuel");
   await expect(panel).toContainText("Fenêtre");
   await expect(panel).toContainText("E2E fenêtre");
-  const window = panel.locator("[data-timeline-window]");
-  await expect(window).toHaveAttribute("data-start-percent", "25");
-  await expect(window).toHaveAttribute("data-end-percent", "100");
+  const window = panel.locator("[data-timeline-window]").filter({ hasText: "E2E fenêtre" });
+  await expect(window).toHaveAttribute("data-start-percent", /44\.4/);
+  await expect(window).toHaveAttribute("data-end-percent", /61\.1/);
   await expect(window.locator("[data-timeline-window-band]")).toHaveCount(1);
   await expect(window.locator("[data-timeline-window-start]")).toHaveCount(1);
   await expect(window.locator("[data-timeline-window-end]")).toHaveCount(1);
   await expect(panel).toContainText("En attente d’une date de référence");
   await expect(panel).toContainText("E2E attente ancre");
+  await expect(panel.getByRole("button", { name: /Ajuster précisément/ })).toHaveCount(2);
 
   sql(`set session_replication_role = replica; update public.memberships set role = 'viewer' where id = ${q(membershipId)}::uuid; set session_replication_role = origin;`);
   await page.context().clearCookies(); await login(page); await page.goto(`/litters/journal?litter=${ids.litter}`);

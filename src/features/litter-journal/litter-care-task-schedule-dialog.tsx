@@ -97,7 +97,20 @@ export function ScheduleSecondaryAction({ action, label, reason, disabled, onMut
   return <form action={formAction}><input type="hidden" name="reason" value={reason} /><Button type="submit" variant="outline" size="sm" disabled={disabled}>{disabled ? "Actualisation…" : label}</Button><ActionMessage state={state} /></form>;
 }
 
-export function ScheduleTaskDialog({ task, actions, onSuccess, triggerLabel = "Modifier la programmation" }: { task: LitterCareTaskSummary; actions: LitterCareTaskScheduleActions; onSuccess: (message: string) => void; triggerLabel?: string }) {
+export function ScheduleTaskDialog({
+  task,
+  actions,
+  onSuccess,
+  triggerLabel = "Modifier la programmation",
+  domIdPrefix,
+}: {
+  task: LitterCareTaskSummary;
+  actions: LitterCareTaskScheduleActions;
+  onSuccess: (message: string) => void;
+  triggerLabel?: string;
+  domIdPrefix?: string;
+}) {
+  const idPrefix = domIdPrefix ?? `schedule-task-${task.id}`;
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [plannedFor, setPlannedFor] = useState(task.plannedFor ?? "");
@@ -130,14 +143,55 @@ export function ScheduleTaskDialog({ task, actions, onSuccess, triggerLabel = "M
   const handleOpenChange = (nextOpen: boolean) => { if (refreshRequested) return; if (nextOpen && !task.scheduleTimezoneName) setTimezone(browserTimezone()); setOpen(nextOpen); };
   return <Dialog open={open} onOpenChange={handleOpenChange}>
     <DialogTrigger asChild><Button type="button" variant="outline" size="sm">{triggerLabel}</Button></DialogTrigger>
-    <DialogContent className="fixed left-auto right-0 top-0 h-dvh max-h-dvh w-full translate-x-0 translate-y-0 overflow-y-auto rounded-none border-l sm:max-w-xl sm:rounded-none" aria-describedby="litter-care-task-schedule-description">
-      <DialogHeader><DialogTitle>Modifier la programmation</DialogTitle><DialogDescription id="litter-care-task-schedule-description">{task.title}</DialogDescription></DialogHeader>
+    <DialogContent className="fixed left-auto right-0 top-0 h-dvh max-h-dvh w-full translate-x-0 translate-y-0 overflow-y-auto rounded-none border-l sm:max-w-xl sm:rounded-none" aria-describedby={`${idPrefix}-description`}>
+      <DialogHeader><DialogTitle>Modifier la programmation</DialogTitle><DialogDescription id={`${idPrefix}-description`}>{task.title}</DialogDescription></DialogHeader>
       <form action={formAction} className="space-y-4">
         <input type="hidden" name="timezone_name" value={timezone} />
         {task.isScheduleLocked ? <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-semibold">Programmation verrouillée</p><p className="mt-1">Son remplacement exige votre confirmation explicite.</p></div> : null}
         {suggestion.suggested ? <p className="rounded-xl border bg-muted/20 p-3 text-sm">{suggestion.suggested}</p> : null}
-        {isWindow ? <><div className="grid gap-4 sm:grid-cols-2"><div><label className={labelClass} htmlFor={`schedule-start-${task.id}`}>Date retenue de début</label><input id={`schedule-start-${task.id}`} className={inputClass} type="date" name="retained_starts_on" value={start} onChange={(event) => setStart(event.target.value)} required /></div><div><label className={labelClass} htmlFor={`schedule-start-time-${task.id}`}>Heure de début (facultative)</label><input id={`schedule-start-time-${task.id}`} className={inputClass} type="time" name="retained_starts_on_local_time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></div></div><div className="grid gap-4 sm:grid-cols-2"><div><label className={labelClass} htmlFor={`schedule-end-${task.id}`}>Date retenue de fin</label><input id={`schedule-end-${task.id}`} className={inputClass} type="date" name="retained_ends_on" value={end} onChange={(event) => setEnd(event.target.value)} required /></div><div><label className={labelClass} htmlFor={`schedule-end-time-${task.id}`}>Heure de fin (facultative)</label><input id={`schedule-end-time-${task.id}`} className={inputClass} type="time" name="retained_ends_on_local_time" value={endTime} onChange={(event) => setEndTime(event.target.value)} /></div></div><p role={boundsValid ? "status" : "alert"} className={`text-sm ${boundsValid ? "text-muted" : "text-destructive"}`}>{boundsValid ? "L’ordre des bornes est valide." : "La date de début doit précéder ou égaler la date de fin."}</p></> : <div className="grid gap-4 sm:grid-cols-2"><div><label className={labelClass} htmlFor={`schedule-date-${task.id}`}>Date retenue</label><input id={`schedule-date-${task.id}`} className={inputClass} type="date" name="planned_for" value={plannedFor} onChange={(event) => setPlannedFor(event.target.value)} required /></div><div><label className={labelClass} htmlFor={`schedule-time-${task.id}`}>Heure (facultative)</label><input id={`schedule-time-${task.id}`} className={inputClass} type="time" name="planned_for_local_time" value={startTime} onChange={(event) => setStartTime(event.target.value)} /></div></div>}
-        <p className="text-sm text-muted">Fuseau actuel : {timezone}</p><div><label className={labelClass} htmlFor={`schedule-reason-${task.id}`}>Motif (facultatif)</label><textarea id={`schedule-reason-${task.id}`} className={inputClass} name="reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} /></div>
+        {isWindow ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-start`}>Date retenue de début</label>
+                <input id={`${idPrefix}-start`} className={inputClass} type="date" name="retained_starts_on" value={start} onChange={(event) => setStart(event.target.value)} required />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-start-time`}>Heure de début (facultative)</label>
+                <input id={`${idPrefix}-start-time`} className={inputClass} type="time" name="retained_starts_on_local_time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+              </div>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-end`}>Date retenue de fin</label>
+                <input id={`${idPrefix}-end`} className={inputClass} type="date" name="retained_ends_on" value={end} onChange={(event) => setEnd(event.target.value)} required />
+              </div>
+              <div>
+                <label className={labelClass} htmlFor={`${idPrefix}-end-time`}>Heure de fin (facultative)</label>
+                <input id={`${idPrefix}-end-time`} className={inputClass} type="time" name="retained_ends_on_local_time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
+              </div>
+            </div>
+            <p role={boundsValid ? "status" : "alert"} className={`text-sm ${boundsValid ? "text-muted" : "text-destructive"}`}>
+              {boundsValid ? "L’ordre des bornes est valide." : "La date de début doit précéder ou égaler la date de fin."}
+            </p>
+          </>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelClass} htmlFor={`${idPrefix}-date`}>Date retenue</label>
+              <input id={`${idPrefix}-date`} className={inputClass} type="date" name="planned_for" value={plannedFor} onChange={(event) => setPlannedFor(event.target.value)} required />
+            </div>
+            <div>
+              <label className={labelClass} htmlFor={`${idPrefix}-time`}>Heure (facultative)</label>
+              <input id={`${idPrefix}-time`} className={inputClass} type="time" name="planned_for_local_time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+            </div>
+          </div>
+        )}
+        <p className="text-sm text-muted">Fuseau actuel : {timezone}</p>
+        <div>
+          <label className={labelClass} htmlFor={`${idPrefix}-reason`}>Motif (facultatif)</label>
+          <textarea id={`${idPrefix}-reason`} className={inputClass} name="reason" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} rows={3} />
+        </div>
         {task.isScheduleLocked ? <label className="flex gap-2 text-sm"><input type="checkbox" name="locked_confirmation" value="confirmed" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Je confirme le remplacement de la programmation verrouillée.</label> : null}
         <ActionMessage state={state} /><DialogFooter><DialogClose asChild><Button type="button" variant="outline" disabled={refreshRequested}>Annuler</Button></DialogClose><ScheduleSubmitButton locked={task.isScheduleLocked} refreshRequested={refreshRequested} /></DialogFooter>
       </form>
