@@ -819,6 +819,11 @@ declare
   v_allow_inserts boolean;
   v_new_occurrence_count integer;
   v_needs_reconcile boolean;
+  v_terminal_day_no integer;
+  v_absolute_max_date date;
+  v_coverage_through date;
+  v_previous_through date;
+  v_allow_through_update boolean;
 begin
   select * into v_series
   from public.litter_plan_series s
@@ -989,12 +994,20 @@ begin
     end if;
   end if;
 
+  -- Insertion window: requested date capped by known ends_on.
   v_effective_through := p_requested_through;
   if v_ends_on is not null and v_effective_through > v_ends_on then
     v_effective_through := v_ends_on;
   end if;
 
+  v_terminal_day_no := ceil(
+    v_series.absolute_max_occurrences::numeric / v_slot_count::numeric
+  )::integer;
+  v_absolute_max_date := v_starts_on
+    + ((v_terminal_day_no - 1) * v_series.recurrence_interval_days);
+
   v_allow_inserts := v_series.state = 'active' and not p_reconciliation_only;
+  v_previous_through := v_series.materialized_through;
 
   inserted_count := 0;
   skipped_identical_count := 0;
@@ -1109,12 +1122,87 @@ begin
   where t.organization_id = v_series.organization_id
     and t.litter_plan_series_id = v_series.id;
 
-  if v_effective_through is distinct from v_series.materialized_through then
+  if v_series.end_kind = 'actual_birth' and v_litter.actual_birth_date is not null then
+    v_completed := true;
+    v_completion := 'actual_birth_reached';
+  elsif v_new_occurrence_count >= v_series.absolute_max_occurrences
+    or v_completion = 'absolute_max_reached'
+  then
+    v_completed := true;
+    v_completion := 'absolute_max_reached';
+  elsif v_ends_on is not null
+    and (
+      (v_previous_through is not null and v_previous_through >= v_ends_on)
+      or v_effective_through >= v_ends_on
+    )
+  then
+    v_completed := true;
+    v_completion := case
+      when v_series.end_kind = 'fixed_recurrence_day_count' then 'recurrence_day_count_reached'
+      else 'end_offset_reached'
+    end;
+  elsif v_series.end_kind = 'fixed_recurrence_day_count'
+    and exists (
+      select 1 from public.litter_care_tasks t
+      where t.litter_plan_series_id = v_series.id
+        and t.recurrence_day_no = v_series.recurrence_day_count
+    )
+    and (
+      select count(distinct t.recurrence_day_no)
+      from public.litter_care_tasks t
+      where t.litter_plan_series_id = v_series.id
+    ) >= v_series.recurrence_day_count
+  then
+    v_completed := true;
+    v_completion := 'recurrence_day_count_reached';
+  end if;
+
+  -- Coverage horizon: last civil day fully evaluated by the engine.
+  v_coverage_through := v_effective_through;
+
+  if v_needs_reconcile
+    and v_series.end_kind = 'actual_birth'
+    and v_litter.actual_birth_date is not null
+    and v_ends_on is not distinct from v_litter.actual_birth_date
+  then
+    -- Authoritative biological contraction (or snap) to the birth date.
+    v_coverage_through := v_litter.actual_birth_date;
+  end if;
+
+  if v_completion = 'absolute_max_reached' then
+    v_coverage_through := least(v_coverage_through, v_absolute_max_date);
+  end if;
+
+  if v_ends_on is not null
+    and not (
+      v_needs_reconcile
+      and v_series.end_kind = 'actual_birth'
+      and v_litter.actual_birth_date is not null
+    )
+  then
+    v_coverage_through := least(v_coverage_through, v_ends_on);
+  end if;
+
+  v_allow_through_update := false;
+  if v_coverage_through is distinct from v_previous_through then
+    if v_previous_through is null or v_coverage_through > v_previous_through then
+      v_allow_through_update := true;
+    elsif v_needs_reconcile
+      and v_litter.actual_birth_date is not null
+      and v_coverage_through = v_litter.actual_birth_date
+      and v_coverage_through < v_previous_through
+    then
+      -- Only authoritative terminal contraction may retreat coverage.
+      v_allow_through_update := true;
+    end if;
+  end if;
+
+  if v_allow_through_update then
     update public.litter_plan_series
-    set materialized_through = v_effective_through,
+    set materialized_through = v_coverage_through,
         updated_by = p_actor
     where id = v_series.id
-      and materialized_through is distinct from v_effective_through
+      and materialized_through is distinct from v_coverage_through
     returning * into v_series;
     if found then
       v_data_changed := true;
@@ -1139,37 +1227,6 @@ begin
 
   result_materialized_through := v_series.materialized_through;
   result_materialized_occurrence_count := v_series.materialized_occurrence_count;
-
-  if v_series.end_kind = 'actual_birth' and v_litter.actual_birth_date is not null then
-    v_completed := true;
-    v_completion := 'actual_birth_reached';
-  elsif v_series.materialized_occurrence_count >= v_series.absolute_max_occurrences then
-    v_completed := true;
-    v_completion := 'absolute_max_reached';
-  elsif v_ends_on is not null
-    and v_series.materialized_through is not null
-    and v_series.materialized_through >= v_ends_on
-  then
-    v_completed := true;
-    v_completion := case
-      when v_series.end_kind = 'fixed_recurrence_day_count' then 'recurrence_day_count_reached'
-      else 'end_offset_reached'
-    end;
-  elsif v_series.end_kind = 'fixed_recurrence_day_count'
-    and exists (
-      select 1 from public.litter_care_tasks t
-      where t.litter_plan_series_id = v_series.id
-        and t.recurrence_day_no = v_series.recurrence_day_count
-    )
-    and (
-      select count(distinct t.recurrence_day_no)
-      from public.litter_care_tasks t
-      where t.litter_plan_series_id = v_series.id
-    ) >= v_series.recurrence_day_count
-  then
-    v_completed := true;
-    v_completion := 'recurrence_day_count_reached';
-  end if;
 
   if v_completed and v_series.state in ('active', 'suspended') then
     update public.litter_plan_series
@@ -2406,7 +2463,25 @@ begin
     materialized_through := v_command.result_materialized_through;
     materialized_occurrence_count := v_command.result_materialized_occurrence_count;
     result := v_command.result;
-    select s.state into series_state from public.litter_plan_series s where s.id = v_command.series_id;
+    series_state := v_command.result ->> 'seriesState';
+    if outcome = 'success' then
+      if series_state is null
+        or series_state not in (
+          'active', 'suspended', 'completed', 'cancelled', 'not_applicable'
+        )
+      then
+        reason := 'invalid_replay_state';
+        outcome := 'error';
+        series_state := null;
+        return next; return;
+      end if;
+    elsif series_state is not null
+      and series_state not in (
+        'active', 'suspended', 'completed', 'cancelled', 'not_applicable'
+      )
+    then
+      series_state := null;
+    end if;
     return next; return;
   end if;
 

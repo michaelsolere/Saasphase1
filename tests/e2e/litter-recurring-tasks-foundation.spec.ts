@@ -82,6 +82,12 @@ const ids = {
   concurCancelRecalcRecalc: `${prefix}0000000000d3`,
   concurMatStateMat: `${prefix}0000000000d4`,
   concurMatStateSuspend: `${prefix}0000000000d5`,
+  absoluteMax5ModelCmd: `${prefix}0000000000e0`,
+  absoluteMax5Apply: `${prefix}0000000000e1`,
+  absoluteMax5Prolong: `${prefix}0000000000e2`,
+  absoluteMax5Again: `${prefix}0000000000e3`,
+  replayMatCmd: `${prefix}0000000000e4`,
+  replaySuspendCmd: `${prefix}0000000000e5`,
 } as const;
 
 const CONCURRENT_RPC_TIMEOUT_MS = 15_000;
@@ -736,6 +742,8 @@ test("plafond absolu, suspend/resume, terminaux et actual_birth", async () => {
   expect(series.occurrenceCount).toBe(20);
   expect(series.state).toBe("completed");
   expect(series.completionReason).toBe("absolute_max_reached");
+  // 20 occurrences / 2 slots → terminal day 10 from 2026-08-05 → 2026-08-14
+  expect(series.materializedThrough).toBe("2026-08-14");
   expect(Number(sql(`select count(*) from public.litter_care_tasks where litter_plan_series_id=${q(series.id)}::uuid;`))).toBe(20);
 
   cleanup();
@@ -984,10 +992,12 @@ test("réconcilie actual_birth sans faux no-op lorsque l'horizon couvre déjà l
     state: "completed",
     completionReason: "actual_birth_reached",
     endsOn: "2026-08-09",
+    materializedThrough: "2026-08-09",
   });
 
   const afterBirth = occurrences(series.id);
   expect(afterBirth.filter((row) => row.plannedFor > "2026-08-09").every((row) => row.status === "not_applicable")).toBe(true);
+  expect(afterBirth.filter((row) => row.plannedFor === "2026-08-09").every((row) => row.status === "planned")).toBe(true);
   expect(afterBirth.filter((row) => row.plannedFor <= "2026-08-09").every((row) => row.status === "planned")).toBe(true);
   expect(Number(sql(`select count(*) from public.litter_care_tasks where litter_plan_series_id=${q(series.id)}::uuid and planned_for > '2026-08-09' and status='planned';`))).toBe(0);
 });
@@ -1268,6 +1278,7 @@ test("réconcilie une série suspendue puis completed après naissance sans nouv
     state: "completed",
     completionReason: "actual_birth_reached",
     endsOn: "2026-08-09",
+    materializedThrough: "2026-08-09",
   });
   expect(occurrences(series.id)).toHaveLength(countBefore);
 });
@@ -1306,6 +1317,7 @@ test("répare une série completed avec occurrences futures sans création", asy
   series = seriesRow();
   expect(series.state).toBe("completed");
   expect(series.endsOn).toBe("2026-08-09");
+  expect(series.materializedThrough).toBe("2026-08-09");
   expect(occurrences(series.id)).toHaveLength(countBefore);
   expect(
     occurrences(series.id).filter((row) => row.plannedFor > "2026-08-09").every((row) => row.status === "not_applicable"),
@@ -1409,4 +1421,106 @@ test("concurrence matérialisation vs changement d'état sans deadlock", async (
   expect(results.every((result) => result.error === null)).toBe(true);
   const stale = results.filter((result) => result.data?.[0]?.reason === "stale_revision");
   expect(stale.length).toBeLessThanOrEqual(1);
+});
+
+test("plafond absolu partiel dans la journée borne materialized_through au jour terminal", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.absoluteMax5ModelCmd, {
+    absoluteMaxOccurrences: 5,
+    initialMaterializationHorizonDays: 2,
+    recurrenceIntervalDays: 1,
+    timeSlots: ["08:00", "20:00"],
+  });
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.absoluteMax5Apply);
+  let series = seriesRow();
+  expect(series.occurrenceCount).toBe(4);
+  expect(series.materializedThrough).toBe("2026-08-06");
+
+  const prolong = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.absoluteMax5Prolong,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-30",
+  });
+  expect(prolong.error).toBeNull();
+  expect(prolong.data?.[0]?.outcome).toBe("success");
+
+  series = seriesRow();
+  expect(series.occurrenceCount).toBe(5);
+  expect(series.state).toBe("completed");
+  expect(series.completionReason).toBe("absolute_max_reached");
+  // ceil(5/2)=3 → 2026-08-05 + 2 = 2026-08-07
+  expect(series.materializedThrough).toBe("2026-08-07");
+
+  const occ = occurrences(series.id);
+  expect(occ).toHaveLength(5);
+  expect(occ[0]).toMatchObject({ day: 1, slot: 1, occurrenceNo: 1, plannedFor: "2026-08-05" });
+  expect(occ[1]).toMatchObject({ day: 1, slot: 2, occurrenceNo: 2, plannedFor: "2026-08-05" });
+  expect(occ[2]).toMatchObject({ day: 2, slot: 1, occurrenceNo: 3, plannedFor: "2026-08-06" });
+  expect(occ[3]).toMatchObject({ day: 2, slot: 2, occurrenceNo: 4, plannedFor: "2026-08-06" });
+  expect(occ[4]).toMatchObject({ day: 3, slot: 1, occurrenceNo: 5, plannedFor: "2026-08-07" });
+
+  const blocked = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.absoluteMax5Again,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-09-01",
+  });
+  expect(blocked.error).toBeNull();
+  expect(blocked.data?.[0]?.reason).toBe("series_not_active");
+  expect(occurrences(series.id)).toHaveLength(5);
+});
+
+test("rejeu de matérialisation conserve series_state append-only après suspension", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  const series = seriesRow();
+
+  const first = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.replayMatCmd,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-14",
+  });
+  expect(first.error).toBeNull();
+  expect(first.data?.[0]).toMatchObject({
+    outcome: "success",
+    replayed: false,
+    series_state: "active",
+  });
+  const original = first.data![0]!;
+
+  const suspend = await ownerClient.rpc("set_litter_plan_series_state", {
+    p_series_id: series.id,
+    p_client_command_id: ids.replaySuspendCmd,
+    p_expected_revision_no: seriesRow().revision,
+    p_new_state: "suspended",
+    p_reason: "pause after mat",
+  });
+  expect(suspend.error).toBeNull();
+  expect(suspend.data?.[0]?.series_state).toBe("suspended");
+  expect(seriesRow().state).toBe("suspended");
+
+  const replay = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.replayMatCmd,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-14",
+  });
+  expect(replay.error).toBeNull();
+  expect(replay.data?.[0]).toMatchObject({
+    outcome: "success",
+    replayed: true,
+    series_state: "active",
+    revision_no: original.revision_no,
+    inserted_count: original.inserted_count,
+    skipped_identical_count: original.skipped_identical_count,
+    materialized_through: original.materialized_through,
+    materialized_occurrence_count: original.materialized_occurrence_count,
+  });
+  expect(replay.data?.[0]?.result).toEqual(original.result);
+  expect(seriesRow().state).toBe("suspended");
 });
