@@ -65,6 +65,10 @@ const ids = {
   inactiveMat: `${prefix}000000000095`,
   viewerMat: `${prefix}000000000096`,
   fakeCollisionTask: `${prefix}0000000000a0`,
+  pendingAnchorModelCmd: `${prefix}0000000000b0`,
+  pendingApply: `${prefix}0000000000b1`,
+  pendingMat: `${prefix}0000000000b2`,
+  reconcileBirthMat: `${prefix}0000000000b3`,
 } as const;
 
 const credentials = {
@@ -841,6 +845,136 @@ test("plafond absolu, suspend/resume, terminaux et actual_birth", async () => {
   expect(afterBirth.every((row) => row.plannedFor <= "2026-08-12")).toBe(true);
   expect(Number(sql(`select count(*) from public.litter_care_tasks where litter_plan_series_id=${q(series.id)}::uuid and planned_for > '2026-08-09' and status='planned';`))).toBe(0);
   expect(Number(sql(`select count(*) from public.maternal_observations where litter_id=${q(ids.litter)}::uuid;`))).toBe(0);
+});
+
+test("active une série pending_anchor après naissance réelle via matérialisation explicite", async () => {
+  seedBaseActorsAndLitter();
+  sql(`
+    update public.litters
+    set actual_birth_date = null, updated_by = ${q(owner)}::uuid
+    where id = ${q(ids.litter)}::uuid;
+  `);
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.pendingAnchorModelCmd, {
+    anchorType: "actual_birth",
+    recurrenceStartsOffsetDays: 0,
+    initialMaterializationHorizonDays: 7,
+    timeSlots: ["08:00", "20:00"],
+  });
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.pendingApply);
+
+  const pendingItem = JSON.parse(
+    sql(`
+      select json_build_object(
+        'materializationState', materialization_state,
+        'anchorDate', anchor_date_snapshot
+      )::text
+      from public.litter_plan_items
+      where litter_id = ${q(ids.litter)}::uuid
+      order by display_order desc
+      limit 1;
+    `),
+  ) as { materializationState: string; anchorDate: string | null };
+  expect(pendingItem).toMatchObject({
+    materializationState: "pending_anchor",
+    anchorDate: null,
+  });
+
+  let series = seriesRow();
+  expect(series.occurrenceCount).toBe(0);
+  expect(occurrences(series.id)).toHaveLength(0);
+
+  sql(`
+    update public.litters
+    set actual_birth_date = '2026-08-10'::date,
+        status = 'born',
+        updated_by = ${q(owner)}::uuid
+    where id = ${q(ids.litter)}::uuid;
+  `);
+
+  const mat = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.pendingMat,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-16",
+  });
+  expect(mat.error).toBeNull();
+  expect(mat.data?.[0]).toMatchObject({ outcome: "success" });
+
+  const activatedItem = JSON.parse(
+    sql(`
+      select json_build_object(
+        'materializationState', materialization_state,
+        'anchorDate', anchor_date_snapshot
+      )::text
+      from public.litter_plan_items
+      where id = ${q(series.planItemId)}::uuid;
+    `),
+  );
+  expect(activatedItem).toMatchObject({
+    materializationState: "materialized",
+    anchorDate: "2026-08-10",
+  });
+
+  series = seriesRow();
+  expect(series).toMatchObject({
+    startsOn: "2026-08-10",
+    materializedThrough: "2026-08-16",
+    occurrenceCount: 14,
+    state: "active",
+  });
+
+  const occ = occurrences(series.id);
+  expect(occ[0]).toMatchObject({
+    day: 1,
+    slot: 1,
+    occurrenceNo: 1,
+    plannedFor: "2026-08-10",
+  });
+  expect(occ[13]).toMatchObject({
+    day: 7,
+    slot: 2,
+    occurrenceNo: 14,
+    plannedFor: "2026-08-16",
+  });
+});
+
+test("réconcilie actual_birth sans faux no-op lorsque l'horizon couvre déjà la naissance", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  let series = seriesRow();
+  expect(series.materializedThrough).toBe("2026-08-12");
+  expect(series.occurrenceCount).toBe(16);
+
+  sql(`
+    update public.litters
+    set actual_birth_date = '2026-08-09'::date, updated_by = ${q(owner)}::uuid
+    where id = ${q(ids.litter)}::uuid;
+  `);
+
+  const birthMat = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.reconcileBirthMat,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-08",
+  });
+  expect(birthMat.error).toBeNull();
+  expect(birthMat.data?.[0]?.outcome).toBe("success");
+  expect(birthMat.data?.[0]?.result?.noop).not.toBe(true);
+
+  series = seriesRow();
+  expect(series).toMatchObject({
+    state: "completed",
+    completionReason: "actual_birth_reached",
+    endsOn: "2026-08-09",
+  });
+
+  const afterBirth = occurrences(series.id);
+  expect(afterBirth.filter((row) => row.plannedFor > "2026-08-09").every((row) => row.status === "not_applicable")).toBe(true);
+  expect(afterBirth.filter((row) => row.plannedFor <= "2026-08-09").every((row) => row.status === "planned")).toBe(true);
+  expect(Number(sql(`select count(*) from public.litter_care_tasks where litter_plan_series_id=${q(series.id)}::uuid and planned_for > '2026-08-09' and status='planned';`))).toBe(0);
 });
 
 test("résolution / report / verrou d'une occurrence et recalcul d'ancrage sans nouvelles occurrences", async () => {

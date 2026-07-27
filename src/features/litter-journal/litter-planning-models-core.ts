@@ -248,7 +248,9 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
     if (recurrenceEndKind === "fixed_end_offset") {
       if (
         !Number.isInteger(item.recurrenceEndsOffsetDays) ||
-        item.recurrenceDayCount !== undefined
+        item.recurrenceDayCount !== undefined ||
+        (item.recurrenceEndsOffsetDays as number) <
+          (recurrenceStartsOffsetDays as number)
       ) {
         return null;
       }

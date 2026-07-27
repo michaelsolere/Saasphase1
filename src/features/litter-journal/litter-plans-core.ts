@@ -118,26 +118,22 @@ export function litterPlanSeriesOccurrenceNo(
   return (recurrenceDayNo - 1) * slotCount + slotNo;
 }
 
-/** Initial materialization through date: starts_on + (horizonDays - 1) * intervalDays. */
+/** Initial civil horizon through date: starts_on + (horizonDays - 1) calendar days. */
 export function litterPlanSeriesInitialThroughDate(
   startsOn: string,
   horizonDays: number,
-  intervalDays: number,
 ): string | null {
   if (
     !DATE.test(startsOn) ||
     !Number.isInteger(horizonDays) ||
     horizonDays < 1 ||
-    horizonDays > 365 ||
-    !Number.isInteger(intervalDays) ||
-    intervalDays < 1 ||
-    intervalDays > 365
+    horizonDays > 365
   ) {
     return null;
   }
   const start = new Date(`${startsOn}T00:00:00.000Z`);
   if (Number.isNaN(start.getTime())) return null;
-  start.setUTCDate(start.getUTCDate() + (horizonDays - 1) * intervalDays);
+  start.setUTCDate(start.getUTCDate() + (horizonDays - 1));
   return start.toISOString().slice(0, 10);
 }
 

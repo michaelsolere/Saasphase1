@@ -3,35 +3,17 @@
 -- Additive only: no canonical library model changes, no backfill of historical tasks.
 
 -- ---------------------------------------------------------------------------
--- 0. Fast IANA timezone validation
--- pg_timezone_names is a slow view; materializing many recurring occurrences
--- otherwise times out under local multi-stack load.
+-- 0. Restore canonical IANA timezone validation (pg_timezone_names membership)
 -- ---------------------------------------------------------------------------
 create or replace function public.is_iana_timezone(p_timezone_name text)
-returns boolean
-language plpgsql
-stable
-security definer
-set search_path = ''
-set row_security = off
-as $fn$
-begin
-  if p_timezone_name is null
-    or btrim(p_timezone_name) = ''
-    or p_timezone_name is distinct from btrim(p_timezone_name)
-  then
-    return false;
-  end if;
-
-  perform timezone(p_timezone_name, statement_timestamp());
-  return true;
-exception
-  when invalid_parameter_value then
-    return false;
-  when others then
-    return false;
-end;
-$fn$;
+returns boolean language sql stable security definer set search_path = '' set row_security = off as $$
+  select p_timezone_name = btrim(p_timezone_name)
+    and exists (
+      select 1
+      from pg_catalog.pg_timezone_names z
+      where z.name = p_timezone_name
+    );
+$$;
 
 create or replace function public.validate_litter_care_task_schedule_timezone()
 returns trigger
@@ -145,6 +127,10 @@ alter table public.litter_planning_model_items
           and recurrence_day_count is null
         )
       )
+      and (
+        recurrence_end_kind <> 'fixed_end_offset'
+        or recurrence_ends_offset_days >= recurrence_starts_offset_days
+      )
     )
   );
 
@@ -161,7 +147,7 @@ comment on column public.litter_planning_model_items.recurrence_ends_offset_days
 comment on column public.litter_planning_model_items.recurrence_day_count is
   'For fixed_recurrence_day_count: number of recurrence days (not slot occurrences).';
 comment on column public.litter_planning_model_items.initial_materialization_horizon_days is
-  'Number of recurrence steps to materialize initially: through = starts_on + (horizon - 1) * interval.';
+  'Civil days covered on first materialization: through = starts_on + (horizon - 1) calendar days.';
 comment on column public.litter_planning_model_items.absolute_max_occurrences is
   'Hard ceiling on total occurrences for the series (1..500).';
 
@@ -210,44 +196,6 @@ create policy litter_planning_model_item_time_slots_select_member
 
 revoke all on table public.litter_planning_model_item_time_slots from anon, authenticated;
 grant select on table public.litter_planning_model_item_time_slots to authenticated;
-
--- Enforce 1..8 slots for recurring items via constraint trigger helper
-create or replace function public.assert_litter_planning_model_item_slot_count()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-set row_security = off
-as $fn$
-declare
-  v_kind text;
-  v_count integer;
-begin
-  select i.item_kind into v_kind
-  from public.litter_planning_model_items i
-  where i.organization_id = coalesce(new.organization_id, old.organization_id)
-    and i.id = coalesce(new.model_item_id, old.model_item_id);
-
-  if v_kind is distinct from 'recurring_task' then
-    raise exception 'time slots are only allowed on recurring_task model items'
-      using errcode = '23514';
-  end if;
-
-  select count(*) into v_count
-  from public.litter_planning_model_item_time_slots s
-  where s.organization_id = coalesce(new.organization_id, old.organization_id)
-    and s.model_item_id = coalesce(new.model_item_id, old.model_item_id);
-
-  if tg_op = 'INSERT' then
-    v_count := v_count; -- already includes new row when AFTER; use BEFORE + count excluding self below
-  end if;
-
-  return coalesce(new, old);
-end;
-$fn$;
-
--- Slot count is validated in assert_litter_planning_model_items / mutate; keep simple.
-drop function if exists public.assert_litter_planning_model_item_slot_count();
 
 -- ---------------------------------------------------------------------------
 -- 3. Extend litter_plan_items with immutable recurrence snapshot columns
@@ -342,6 +290,10 @@ alter table public.litter_plan_items
           and recurrence_day_count is null
         )
       )
+      and (
+        recurrence_end_kind <> 'fixed_end_offset'
+        or recurrence_ends_offset_days >= recurrence_starts_offset_days
+      )
     )
   );
 
@@ -358,7 +310,7 @@ comment on column public.litter_plan_items.recurrence_ends_offset_days is
 comment on column public.litter_plan_items.recurrence_day_count is
   'Immutable snapshot for fixed_recurrence_day_count.';
 comment on column public.litter_plan_items.initial_materialization_horizon_days is
-  'Immutable snapshot of the initial materialization horizon in recurrence steps.';
+  'Immutable snapshot: civil days covered on first materialization (through = starts_on + horizon - 1).';
 comment on column public.litter_plan_items.absolute_max_occurrences is
   'Immutable snapshot of the absolute occurrence ceiling.';
 
@@ -754,6 +706,41 @@ comment on table public.litter_plan_series_state_commands is
 -- ---------------------------------------------------------------------------
 -- 7. Private materialization helper
 -- ---------------------------------------------------------------------------
+create or replace function public.litter_plan_series_needs_actual_birth_reconciliation(
+  p_organization_id uuid,
+  p_series_id uuid,
+  p_end_kind text,
+  p_series_state text,
+  p_ends_on date,
+  p_actual_birth_date date
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+set row_security = off
+as $$
+  select p_end_kind = 'actual_birth'
+    and p_actual_birth_date is not null
+    and (
+      p_series_state not in ('completed', 'cancelled', 'not_applicable')
+      or p_ends_on is distinct from p_actual_birth_date
+      or exists (
+        select 1
+        from public.litter_care_tasks t
+        where t.organization_id = p_organization_id
+          and t.litter_plan_series_id = p_series_id
+          and t.status = 'planned'
+          and t.planned_for > p_actual_birth_date
+      )
+    );
+$$;
+
+revoke all on function public.litter_plan_series_needs_actual_birth_reconciliation(
+  uuid, uuid, text, text, date, date
+) from public;
+
 create or replace function public.materialize_litter_plan_series_occurrences(
   p_series_id uuid,
   p_requested_through date,
@@ -766,7 +753,8 @@ returns table (
   result_materialized_through date,
   result_materialized_occurrence_count integer,
   series_completed boolean,
-  completion_reason text
+  completion_reason text,
+  data_changed boolean
 )
 language plpgsql
 security definer
@@ -800,6 +788,14 @@ declare
   v_task_id uuid;
   v_resolved_at timestamptz := statement_timestamp();
   v_na_count integer := 0;
+  v_data_changed boolean := false;
+  v_series_revision_before integer;
+  v_series_state_before text;
+  v_series_ends_on_before date;
+  v_source text;
+  v_source_date date;
+  v_adjust integer;
+  v_anchor date;
 begin
   -- 1. Lock series
   select * into v_series
@@ -810,6 +806,10 @@ begin
   if not found then
     raise exception 'series_not_found' using errcode = 'P0002';
   end if;
+
+  v_series_revision_before := v_series.revision_no;
+  v_series_state_before := v_series.state;
+  v_series_ends_on_before := v_series.ends_on;
 
   -- 2. Reread revision (already locked row)
   -- 3. Reread litter + plan item + plan
@@ -854,7 +854,43 @@ begin
     raise exception 'invalid_slot_count' using errcode = '23514';
   end if;
 
-  -- 4. Resolve start/end
+  -- 4. Resolve start/end (activate pending anchor when litter anchor becomes available)
+  if v_item.anchor_date_snapshot is null then
+    select r.resolution_source, r.source_date, r.adjustment_days, r.anchor_date
+    into v_source, v_source_date, v_adjust, v_anchor
+    from public.resolve_litter_plan_anchor(
+      v_item.anchor_type,
+      v_litter.estimated_ovulation_date,
+      v_litter.expected_birth_date,
+      v_litter.mating_date,
+      v_litter.actual_birth_date
+    ) r;
+
+    if v_anchor is null then
+      raise exception 'anchor_unavailable' using errcode = 'P0001';
+    end if;
+
+    update public.litter_plan_items i
+    set anchor_resolution_source = v_source,
+        anchor_source_date_snapshot = v_source_date,
+        anchor_adjustment_days = v_adjust,
+        anchor_date_snapshot = v_anchor,
+        materialization_state = 'materialized',
+        materialized_at = coalesce(i.materialized_at, v_resolved_at),
+        revision_no = i.revision_no + 1,
+        updated_by = p_actor
+    where i.id = v_item.id
+    returning * into v_item;
+
+    update public.litter_plans p
+    set revision = p.revision + 1,
+        updated_by = p_actor
+    where p.id = v_plan.id
+    returning * into v_plan;
+
+    v_data_changed := true;
+  end if;
+
   if v_item.anchor_date_snapshot is null then
     raise exception 'anchor_unavailable' using errcode = 'P0001';
   end if;
@@ -870,6 +906,12 @@ begin
     v_ends_on := v_litter.actual_birth_date;
   else
     raise exception 'invalid_end_kind' using errcode = '23514';
+  end if;
+
+  if v_starts_on is distinct from v_series.starts_on
+    or v_ends_on is distinct from v_series.ends_on
+  then
+    v_data_changed := true;
   end if;
 
   update public.litter_plan_series
@@ -902,6 +944,9 @@ begin
       where id = v_existing.id;
       v_na_count := v_na_count + 1;
     end loop;
+    if v_na_count > 0 then
+      v_data_changed := true;
+    end if;
   end if;
 
   -- 5-8. Finite list bound by requested_through, ends_on, absolute_max
@@ -912,7 +957,14 @@ begin
 
   if v_series.materialized_through is not null
     and v_through <= v_series.materialized_through
-    and not (v_series.end_kind = 'actual_birth' and v_litter.actual_birth_date is not null and v_na_count > 0)
+    and not public.litter_plan_series_needs_actual_birth_reconciliation(
+      v_series.organization_id,
+      v_series.id,
+      v_series.end_kind,
+      v_series.state,
+      v_series.ends_on,
+      v_litter.actual_birth_date
+    )
   then
     -- already covered; still may complete below
     inserted_count := 0;
@@ -1010,6 +1062,7 @@ begin
               raise exception 'schedule_out_of_range' using errcode = '22008';
           end;
           v_inserted := v_inserted + 1;
+          v_data_changed := true;
         end if;
       end loop;
 
@@ -1059,6 +1112,9 @@ begin
     skipped_identical_count := v_skipped;
     result_materialized_through := v_series.materialized_through;
     result_materialized_occurrence_count := v_series.materialized_occurrence_count;
+    if v_inserted > 0 or v_skipped > 0 then
+      v_data_changed := true;
+    end if;
   end if;
 
   -- Complete when end/max prevents further extension
@@ -1098,11 +1154,22 @@ begin
     set state = 'completed',
         completion_reason = v_completion,
         updated_by = p_actor
-    where id = v_series.id;
+    where id = v_series.id
+    returning * into v_series;
+    v_data_changed := true;
+  end if;
+
+  if v_data_changed and v_series.revision_no = v_series_revision_before then
+    update public.litter_plan_series
+    set revision_no = public.litter_plan_series.revision_no + 1,
+        updated_by = p_actor
+    where id = v_series.id
+    returning * into v_series;
   end if;
 
   series_completed := v_completed;
   completion_reason := v_completion;
+  data_changed := v_data_changed;
   return next;
 end;
 $fn$;
@@ -1362,6 +1429,8 @@ begin
           or jsonb_typeof(v_item->'recurrenceEndsOffsetDays') <> 'number'
           or (v_item->>'recurrenceEndsOffsetDays') !~ '^-?(0|[1-9][0-9]{0,9})$'
           or (v_item->>'recurrenceEndsOffsetDays')::numeric not between -2147483648 and 2147483647
+          or (v_item->>'recurrenceEndsOffsetDays')::integer
+            < (v_item->>'recurrenceStartsOffsetDays')::integer
         ) then
           return false;
         end if;
@@ -2051,7 +2120,7 @@ begin
 
       -- Anchor present: materialize initial horizon; do NOT insert a single point task
       v_horizon_through := v_starts_on
-        + ((v_item.initial_materialization_horizon_days - 1) * v_item.recurrence_interval_days);
+        + (v_item.initial_materialization_horizon_days - 1);
 
       select * into v_mat
       from public.materialize_litter_plan_series_occurrences(
@@ -2191,6 +2260,8 @@ declare
   v_payload jsonb;
   v_mat record;
   v_command_id uuid := gen_random_uuid();
+  v_actual_birth date;
+  v_needs_reconcile boolean;
 begin
   outcome := 'error';
   reason := null;
@@ -2323,9 +2394,25 @@ begin
     return next; return;
   end if;
 
-  -- No-op if already covered (do not bump revision)
+  select l.actual_birth_date into v_actual_birth
+  from public.litters l
+  where l.organization_id = v_org
+    and l.id = v_series.litter_id
+  for share;
+
+  v_needs_reconcile := public.litter_plan_series_needs_actual_birth_reconciliation(
+    v_org,
+    v_series.id,
+    v_series.end_kind,
+    v_series.state,
+    v_series.ends_on,
+    v_actual_birth
+  );
+
+  -- No-op if already covered (do not bump revision) unless actual_birth reconciliation is required
   if v_series.materialized_through is not null
     and p_requested_through <= v_series.materialized_through
+    and not v_needs_reconcile
   then
     result := jsonb_build_object(
       'noop', true,
@@ -2386,11 +2473,6 @@ begin
 
   select * into v_series from public.litter_plan_series s where s.id = p_series_id for update;
 
-  update public.litter_plan_series
-  set revision_no = public.litter_plan_series.revision_no + 1, updated_by = v_user
-  where id = v_series.id
-  returning * into v_series;
-
   result := jsonb_build_object(
     'insertedCount', v_mat.inserted_count,
     'skippedIdenticalCount', v_mat.skipped_identical_count,
@@ -2398,7 +2480,8 @@ begin
     'materializedOccurrenceCount', v_series.materialized_occurrence_count,
     'seriesState', v_series.state,
     'seriesCompleted', v_mat.series_completed,
-    'completionReason', v_mat.completion_reason
+    'completionReason', v_mat.completion_reason,
+    'dataChanged', coalesce(v_mat.data_changed, false)
   );
 
   insert into public.litter_plan_series_materialization_commands (

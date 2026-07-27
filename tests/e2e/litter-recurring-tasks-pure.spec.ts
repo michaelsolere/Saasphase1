@@ -124,9 +124,52 @@ test("numbers series occurrences deterministically for two daily slots", () => {
 });
 
 test("computes initial horizon through date from start offset scenario", () => {
-  // expected_birth 2026-08-10, start D-5 → 2026-08-05, horizon 8 → through D+2 = 2026-08-12
-  expect(litterPlanSeriesInitialThroughDate("2026-08-05", 8, 1)).toBe(
+  // expected_birth 2026-08-10, start D-5 → 2026-08-05, horizon 8 civil days → through 2026-08-12
+  expect(litterPlanSeriesInitialThroughDate("2026-08-05", 8)).toBe(
     "2026-08-12",
   );
-  expect(litterPlanSeriesInitialThroughDate("2026-08-05", 0, 1)).toBeNull();
+  expect(litterPlanSeriesInitialThroughDate("2026-08-05", 0)).toBeNull();
+});
+
+test("horizon covers civil days not cadence steps", () => {
+  const startsOn = "2026-08-01";
+  const intervalDays = 3;
+  const horizonDays = 7;
+  const through = litterPlanSeriesInitialThroughDate(startsOn, horizonDays);
+  expect(through).toBe("2026-08-07");
+
+  const candidateDates: string[] = [];
+  const start = new Date(`${startsOn}T00:00:00.000Z`);
+  for (let dayNo = 1; ; dayNo += 1) {
+    const date = new Date(start);
+    date.setUTCDate(date.getUTCDate() + (dayNo - 1) * intervalDays);
+    const iso = date.toISOString().slice(0, 10);
+    if (iso > through!) break;
+    candidateDates.push(iso);
+  }
+  expect(candidateDates).toEqual(["2026-08-01", "2026-08-04", "2026-08-07"]);
+});
+
+test("rejects fixed end offset before recurrence start offset", () => {
+  expect(
+    parseLitterPlanningModelItems([
+      {
+        organizationTemplateId: templateId,
+        itemKind: "recurring_task",
+        priority: "normal",
+        anchorType: "expected_birth",
+        recurrenceKind: "daily_interval",
+        recurrenceIntervalDays: 1,
+        recurrenceStartsOffsetDays: 10,
+        recurrenceEndKind: "fixed_end_offset",
+        recurrenceEndsOffsetDays: 5,
+        initialMaterializationHorizonDays: 7,
+        absoluteMaxOccurrences: 30,
+        timeSlots: ["08:00"],
+        displayOrder: 0,
+        isRequired: true,
+        isSelectedByDefault: true,
+      },
+    ]),
+  ).toBeNull();
 });
