@@ -14,9 +14,9 @@ import { listLitterCareTaskTemplatesForOrganization } from "@/features/litter-jo
 import {
   createLitterPlanningModelEditorDraftFromModel,
   isLitterPlanningModelImported,
+  parseLitterPlanningModelEditorDraftPayload,
   templateOptionFromSummary,
   validateLitterPlanningModelEditorDraft,
-  type LitterPlanningModelEditorDraft,
 } from "@/features/settings/litter-planning-model-editor-draft";
 import { formatLitterPlanningModelOrganizationOrigin } from "@/features/settings/litter-planning-model-labels";
 
@@ -247,6 +247,9 @@ function editorMutationErrorMessage(
   code: string,
   operation: "créer" | "modifier" | "dupliquer",
 ) {
+  if (code === "imported_model_immutable") {
+    return "Un modèle importé ne peut pas être modifié directement. Créez une copie personnalisée.";
+  }
   if (code === "stale_revision") {
     return "Ce modèle a été modifié ailleurs. Rechargez la version actuelle avant d’enregistrer à nouveau.";
   }
@@ -257,19 +260,6 @@ function editorMutationErrorMessage(
     return "Cette demande ne peut pas être rejouée. Rechargez la page avant de recommencer.";
   }
   return `Impossible de ${operation} ce modèle pour le moment.`;
-}
-
-function parseEditorDraftPayload(raw: unknown): LitterPlanningModelEditorDraft | null {
-  if (!raw || typeof raw !== "object") return null;
-  const draft = raw as LitterPlanningModelEditorDraft;
-  if (
-    typeof draft.title !== "string" ||
-    typeof draft.description !== "string" ||
-    !Array.isArray(draft.items)
-  ) {
-    return null;
-  }
-  return draft;
 }
 
 async function loadEditorTemplates(organizationId: string) {
@@ -293,7 +283,7 @@ export async function createLitterPlanningModelAction(
   } catch {
     return { status: "error", message: "Le formulaire transmis est invalide." };
   }
-  const draft = parseEditorDraftPayload(parsedJson);
+  const draft = parseLitterPlanningModelEditorDraftPayload(parsedJson);
   if (!draft) {
     return { status: "error", message: "Le formulaire transmis est invalide." };
   }
@@ -306,7 +296,12 @@ export async function createLitterPlanningModelAction(
     };
   }
 
-  const validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  let validation;
+  try {
+    validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  } catch {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
   if (!validation.ok) {
     return {
       status: "error",
@@ -379,7 +374,7 @@ export async function replaceLitterPlanningModelAction(
   } catch {
     return { status: "error", message: "Le formulaire transmis est invalide." };
   }
-  const draft = parseEditorDraftPayload(parsedJson);
+  const draft = parseLitterPlanningModelEditorDraftPayload(parsedJson);
   if (!draft) {
     return { status: "error", message: "Le formulaire transmis est invalide." };
   }
@@ -392,15 +387,20 @@ export async function replaceLitterPlanningModelAction(
     };
   }
 
-  const validation = validateLitterPlanningModelEditorDraft(
-    {
-      ...draft,
-      mode: "edit",
-      libraryModelCode: existing.model.libraryModelCode,
-      libraryModelVersion: existing.model.libraryModelVersion,
-    },
-    templates,
-  );
+  let validation;
+  try {
+    validation = validateLitterPlanningModelEditorDraft(
+      {
+        ...draft,
+        mode: "edit",
+        libraryModelCode: existing.model.libraryModelCode,
+        libraryModelVersion: existing.model.libraryModelVersion,
+      },
+      templates,
+    );
+  } catch {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
   if (!validation.ok) {
     return {
       status: "error",
@@ -478,7 +478,12 @@ export async function duplicateLitterPlanningModelAction(
       existing.model.libraryModelVersion,
     ),
   });
-  const validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  let validation;
+  try {
+    validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  } catch {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
   if (!validation.ok) {
     return {
       status: "error",

@@ -101,6 +101,7 @@ export type LitterPlanningModelErrorCode =
   | "forbidden"
   | "not_found"
   | "stale_revision"
+  | "imported_model_immutable"
   | "conflict"
   | "database_error";
 export type LitterPlanningModelResult =
@@ -404,8 +405,26 @@ function mapMutation(row: Database["public"]["Functions"]["create_litter_plannin
   const revision = row.revision;
   const isActive = row.is_active;
   if (row.outcome === "success" && modelId && typeof revision === "number" && Number.isInteger(revision) && revision > 0 && typeof isActive === "boolean") return { outcome: "success", modelId, revision, isActive, replayed: row.replayed };
-  const code: LitterPlanningModelErrorCode = row.reason === "not_authenticated" ? "unauthenticated" : row.reason === "membership_required" ? "forbidden" : row.reason === "model_not_found" ? "not_found" : row.reason === "stale_revision" ? "stale_revision" : row.reason === "client_command_conflict" ? "conflict" : "invalid_input";
-  return failure(code, "La modification du modèle n’a pas pu être effectuée.");
+  const code: LitterPlanningModelErrorCode =
+    row.reason === "not_authenticated"
+      ? "unauthenticated"
+      : row.reason === "membership_required"
+        ? "forbidden"
+        : row.reason === "model_not_found"
+          ? "not_found"
+          : row.reason === "stale_revision"
+            ? "stale_revision"
+            : row.reason === "imported_model_immutable"
+              ? "imported_model_immutable"
+              : row.reason === "client_command_conflict"
+                ? "conflict"
+                : "invalid_input";
+  return failure(
+    code,
+    code === "imported_model_immutable"
+      ? "Un modèle importé ne peut pas être modifié directement. Créez une copie personnalisée."
+      : "La modification du modèle n’a pas pu être effectuée.",
+  );
 }
 
 function itemsJson(items: LitterPlanningModelItemInput[]): Json {

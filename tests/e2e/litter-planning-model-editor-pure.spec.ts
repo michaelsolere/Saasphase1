@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   applyLitterPlanningModelEditorRequired,
+  buildLitterPlanningModelCopyTitle,
   canEditLitterPlanningModelDirectly,
   convertLitterPlanningModelEditorItemKind,
   createEmptyLitterPlanningModelEditorDraft,
@@ -10,10 +11,13 @@ import {
   duplicateLitterPlanningModelEditorItem,
   isElementaryTemplateCompatibleWithModel,
   isLitterPlanningModelImported,
+  itemHasComplexConfiguration,
   listPreferredAddableElementaryTemplates,
   moveLitterPlanningModelEditorItem,
   normalizeLitterPlanningModelEditorItemOrders,
+  parseLitterPlanningModelEditorDraftPayload,
   validateLitterPlanningModelEditorDraft,
+  type LitterPlanningModelEditorDraft,
   type LitterPlanningModelEditorTemplateOption,
 } from "../../src/features/settings/litter-planning-model-editor-draft";
 import {
@@ -105,6 +109,26 @@ function sampleModel(overrides?: Partial<LitterPlanningModel>): LitterPlanningMo
   };
 }
 
+function validDraft(): LitterPlanningModelEditorDraft {
+  const item = createEmptyLitterPlanningModelEditorItem(templateA, 0, "task");
+  return {
+    mode: "create",
+    modelId: null,
+    expectedRevision: null,
+    title: "Modèle valide",
+    description: "Description",
+    species: "dog",
+    breed: "Golden Retriever",
+    isActive: false,
+    sourceModelId: null,
+    sourceTitle: null,
+    sourceOriginLabel: null,
+    libraryModelCode: null,
+    libraryModelVersion: null,
+    items: [item],
+  };
+}
+
 test("initialisation d’un modèle vide", () => {
   const draft = createEmptyLitterPlanningModelEditorDraft();
   expect(draft.mode).toBe("create");
@@ -156,6 +180,25 @@ test("conservation exacte d’un suivi récurrent dupliqué", () => {
     timeSlots: ["08:00", "20:00"],
   });
   expect(parseLitterPlanningModelItems(validation.payload.items)).not.toBeNull();
+});
+
+test("titre des copies borné et déterministe", () => {
+  expect(buildLitterPlanningModelCopyTitle("Court")).toBe("Copie de Court");
+  expect(buildLitterPlanningModelCopyTitle("  Espaces  ")).toBe("Copie de Espaces");
+  expect(buildLitterPlanningModelCopyTitle("Copie de Déjà préfixé")).toBe(
+    "Copie de Copie de Déjà préfixé",
+  );
+
+  const source255 = "A".repeat(255);
+  const copyFrom255 = buildLitterPlanningModelCopyTitle(source255);
+  expect(copyFrom255.startsWith("Copie de ")).toBe(true);
+  expect(copyFrom255.length).toBe(255);
+  expect(copyFrom255).toBe(`Copie de ${"A".repeat(246)}`);
+  expect(buildLitterPlanningModelCopyTitle(source255)).toBe(copyFrom255);
+  expect(buildLitterPlanningModelCopyTitle("").length).toBeGreaterThan(0);
+  expect(buildLitterPlanningModelCopyTitle("x".repeat(1000)).length).toBeLessThanOrEqual(
+    255,
+  );
 });
 
 test("normalisation de l’ordre", () => {
@@ -290,6 +333,37 @@ test("exclusion des champs d’un ancien type après conversion", () => {
   expect(validation.payload.items[0]).toHaveProperty("pointOffsetDays");
 });
 
+test("détection des configurations complexes de récurrence", () => {
+  const base = createEmptyLitterPlanningModelEditorItem(
+    templateA,
+    0,
+    "recurring_task",
+  );
+  expect(itemHasComplexConfiguration(base)).toBe(false);
+
+  expect(
+    itemHasComplexConfiguration({ ...base, timeSlots: ["20:00"] }),
+  ).toBe(true);
+  expect(
+    itemHasComplexConfiguration({
+      ...base,
+      recurrenceStartsOffsetDays: "-5",
+    }),
+  ).toBe(true);
+  expect(
+    itemHasComplexConfiguration({
+      ...base,
+      recurrenceEndsOffsetDays: "2",
+    }),
+  ).toBe(true);
+  expect(
+    itemHasComplexConfiguration({
+      ...base,
+      timeSlots: ["08:00", "20:00"],
+    }),
+  ).toBe(true);
+});
+
 test("incompatibilité espèce/race", () => {
   expect(
     isElementaryTemplateCompatibleWithModel({
@@ -365,4 +439,54 @@ test("duplication d’élément et message d’indépendance éditeur", () => {
   expect(LITTER_PLANNING_MODEL_EDITOR_INDEPENDENCE_MESSAGE).toContain(
     "ne modifie aucun planning déjà créé",
   );
+});
+
+test("parseur structurel du brouillon — payloads malformés et valide", () => {
+  const base = validDraft();
+  expect(parseLitterPlanningModelEditorDraftPayload(base)).toEqual(base);
+
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({ ...base, breed: null }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({ ...base, breed: 42 }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({ ...base, species: [] }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({ ...base, items: [null] }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({
+      ...base,
+      items: [{ ...base.items[0], timeSlots: "08:00" }],
+    }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({
+      ...base,
+      items: [{ ...base.items[0], timeSlots: [800] }],
+    }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({
+      ...base,
+      items: [{ ...base.items[0], pointLocalTime: { hour: "08:00" } }],
+    }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({
+      ...base,
+      items: [{ ...base.items[0], displayOrder: 1.5 }],
+    }),
+  ).toBeNull();
+  expect(
+    parseLitterPlanningModelEditorDraftPayload({
+      ...base,
+      items: Array.from({ length: 101 }, (_, index) =>
+        createEmptyLitterPlanningModelEditorItem(templateA, index, "task"),
+      ),
+    }),
+  ).toBeNull();
 });

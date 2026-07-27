@@ -104,8 +104,187 @@ export type LitterPlanningModelEditorValidationResult =
 const LOCAL_TIME = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 const INTEGER = /^-?(0|[1-9]\d*)$/;
 const POSITIVE_INTEGER = /^(0|[1-9]\d*)$/;
+const COPY_TITLE_PREFIX = "Copie de ";
+const MAX_MODEL_TITLE_LENGTH = 255;
+const MAX_EDITOR_ITEMS = 100;
+const MAX_TIME_SLOTS = 8;
+
+const EDITOR_MODES = ["create", "edit", "duplicate"] as const;
+const EDITOR_SPECIES = ["", "dog", "cat"] as const;
 
 let draftKeyCounter = 0;
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function isStringOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isBooleanValue(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Number.isSafeInteger(value) &&
+    value > 0
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
+function isClosedString<T extends readonly string[]>(
+  value: unknown,
+  allowed: T,
+): value is T[number] {
+  return typeof value === "string" && (allowed as readonly string[]).includes(value);
+}
+
+function parseEditorItemDraft(
+  value: unknown,
+): LitterPlanningModelEditorItemDraft | null {
+  if (!isPlainObject(value)) return null;
+  if (
+    !isStringValue(value.key) ||
+    !isStringValue(value.organizationTemplateId) ||
+    !isClosedString(value.itemKind, LITTER_PLANNING_MODEL_ITEM_KINDS) ||
+    !isClosedString(value.priority, LITTER_PLANNING_MODEL_PRIORITIES) ||
+    !isClosedString(value.anchorType, LITTER_PLANNING_MODEL_ANCHORS) ||
+    !isStringValue(value.pointOffsetDays) ||
+    !isStringValue(value.pointLocalTime) ||
+    !isStringValue(value.windowStartsOffsetDays) ||
+    !isStringValue(value.windowStartsLocalTime) ||
+    !isStringValue(value.windowEndsOffsetDays) ||
+    !isStringValue(value.windowEndsLocalTime) ||
+    !isClosedString(value.recurrenceKind, LITTER_PLANNING_MODEL_RECURRENCE_KINDS) ||
+    !isStringValue(value.recurrenceIntervalDays) ||
+    !isStringValue(value.recurrenceStartsOffsetDays) ||
+    !isClosedString(
+      value.recurrenceEndKind,
+      LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS,
+    ) ||
+    !isStringValue(value.recurrenceEndsOffsetDays) ||
+    !isStringValue(value.recurrenceDayCount) ||
+    !isStringValue(value.initialMaterializationHorizonDays) ||
+    !isStringValue(value.absoluteMaxOccurrences) ||
+    !Array.isArray(value.timeSlots) ||
+    value.timeSlots.length > MAX_TIME_SLOTS ||
+    !value.timeSlots.every(isStringValue) ||
+    !isNonNegativeInteger(value.displayOrder) ||
+    !isBooleanValue(value.isRequired) ||
+    !isBooleanValue(value.isSelectedByDefault)
+  ) {
+    return null;
+  }
+
+  return {
+    key: value.key,
+    organizationTemplateId: value.organizationTemplateId,
+    itemKind: value.itemKind,
+    priority: value.priority,
+    anchorType: value.anchorType,
+    pointOffsetDays: value.pointOffsetDays,
+    pointLocalTime: value.pointLocalTime,
+    windowStartsOffsetDays: value.windowStartsOffsetDays,
+    windowStartsLocalTime: value.windowStartsLocalTime,
+    windowEndsOffsetDays: value.windowEndsOffsetDays,
+    windowEndsLocalTime: value.windowEndsLocalTime,
+    recurrenceKind: value.recurrenceKind,
+    recurrenceIntervalDays: value.recurrenceIntervalDays,
+    recurrenceStartsOffsetDays: value.recurrenceStartsOffsetDays,
+    recurrenceEndKind: value.recurrenceEndKind,
+    recurrenceEndsOffsetDays: value.recurrenceEndsOffsetDays,
+    recurrenceDayCount: value.recurrenceDayCount,
+    initialMaterializationHorizonDays: value.initialMaterializationHorizonDays,
+    absoluteMaxOccurrences: value.absoluteMaxOccurrences,
+    timeSlots: [...value.timeSlots],
+    displayOrder: value.displayOrder,
+    isRequired: value.isRequired,
+    isSelectedByDefault: value.isSelectedByDefault,
+  };
+}
+
+export function parseLitterPlanningModelEditorDraftPayload(
+  raw: unknown,
+): LitterPlanningModelEditorDraft | null {
+  try {
+    if (!isPlainObject(raw)) return null;
+    if (
+      !isClosedString(raw.mode, EDITOR_MODES) ||
+      !(raw.modelId === null || isStringValue(raw.modelId)) ||
+      !(raw.expectedRevision === null || isPositiveInteger(raw.expectedRevision)) ||
+      !isStringValue(raw.title) ||
+      !isStringValue(raw.description) ||
+      !isClosedString(raw.species, EDITOR_SPECIES) ||
+      !isStringValue(raw.breed) ||
+      !isBooleanValue(raw.isActive) ||
+      !isStringOrNull(raw.sourceModelId) ||
+      !isStringOrNull(raw.sourceTitle) ||
+      !isStringOrNull(raw.sourceOriginLabel) ||
+      !isStringOrNull(raw.libraryModelCode) ||
+      !(
+        raw.libraryModelVersion === null ||
+        isPositiveInteger(raw.libraryModelVersion)
+      ) ||
+      !Array.isArray(raw.items) ||
+      raw.items.length > MAX_EDITOR_ITEMS
+    ) {
+      return null;
+    }
+
+    const items: LitterPlanningModelEditorItemDraft[] = [];
+    for (const entry of raw.items) {
+      const item = parseEditorItemDraft(entry);
+      if (!item) return null;
+      items.push(item);
+    }
+
+    return {
+      mode: raw.mode,
+      modelId: raw.modelId,
+      expectedRevision: raw.expectedRevision,
+      title: raw.title,
+      description: raw.description,
+      species: raw.species,
+      breed: raw.breed,
+      isActive: raw.isActive,
+      sourceModelId: raw.sourceModelId,
+      sourceTitle: raw.sourceTitle,
+      sourceOriginLabel: raw.sourceOriginLabel,
+      libraryModelCode: raw.libraryModelCode,
+      libraryModelVersion: raw.libraryModelVersion,
+      items,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function buildLitterPlanningModelCopyTitle(sourceTitle: string): string {
+  const trimmed = sourceTitle.trim();
+  const maxSourceLength = MAX_MODEL_TITLE_LENGTH - COPY_TITLE_PREFIX.length;
+  const source =
+    trimmed.length > maxSourceLength
+      ? trimmed.slice(0, maxSourceLength)
+      : trimmed;
+  const title = `${COPY_TITLE_PREFIX}${source}`;
+  return title.length > 0 ? title.slice(0, MAX_MODEL_TITLE_LENGTH) : COPY_TITLE_PREFIX.trimEnd();
+}
 
 function nextDraftKey(prefix = "item") {
   draftKeyCounter += 1;
@@ -270,7 +449,9 @@ export function createLitterPlanningModelEditorDraftFromModel(
     mode,
     modelId: isDuplicate ? null : model.id,
     expectedRevision: isDuplicate ? null : model.revision,
-    title: isDuplicate ? `Copie de ${model.title}` : model.title,
+    title: isDuplicate
+      ? buildLitterPlanningModelCopyTitle(model.title)
+      : model.title,
     description: model.description ?? "",
     species: model.species ?? "",
     breed: model.breed ?? "",
@@ -372,12 +553,15 @@ export function itemHasComplexConfiguration(
   }
   if (item.itemKind === "recurring_task") {
     return (
-      item.timeSlots.length > 1 ||
+      item.timeSlots.length !== 1 ||
+      item.timeSlots[0] !== "08:00" ||
+      item.recurrenceStartsOffsetDays !== "0" ||
       item.recurrenceIntervalDays !== "1" ||
       item.recurrenceEndKind !== "fixed_recurrence_day_count" ||
       item.recurrenceDayCount !== "7" ||
+      item.initialMaterializationHorizonDays !== "7" ||
       item.absoluteMaxOccurrences !== "30" ||
-      item.initialMaterializationHorizonDays !== "7"
+      Boolean(item.recurrenceEndsOffsetDays.trim())
     );
   }
   return (
