@@ -641,7 +641,7 @@ test("administre la bibliothèque des modèles de planning", async ({ page }) =>
     ).toHaveCount(0);
     await expect(
       page.getByText(
-        "Votre rôle permet de consulter ces modèles, mais pas de les importer ni de les activer ou désactiver.",
+        "Votre rôle permet de consulter ces modèles, mais pas de les créer, dupliquer, importer ni activer ou désactiver.",
       ),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Désactiver" })).toHaveCount(

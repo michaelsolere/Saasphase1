@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { LITTER_PLANNING_MODELS_INDEPENDENCE_MESSAGE } from "@/features/settings/litter-planning-model-labels";
 import {
+  duplicateLitterPlanningModelAction,
   importLitterPlanningModelLibraryModelsAction,
   setLitterPlanningModelActiveAction,
 } from "@/features/settings/litter-planning-models-actions";
@@ -114,8 +115,10 @@ export default async function LitterPlanningModelsPage() {
     return <UnavailableState />;
   }
 
+  const organizationId = membership.data.organization_id;
+
   const page = await loadLitterPlanningModelsSettingsPage(
-    membership.data.organization_id,
+    organizationId,
     supabase,
   );
   if (page.outcome === "error") return <UnavailableState />;
@@ -123,7 +126,7 @@ export default async function LitterPlanningModelsPage() {
   const importAction =
     page.canManage && page.library.outcome === "success"
       ? importLitterPlanningModelLibraryModelsAction.bind(null, {
-          organizationId: membership.data.organization_id,
+          organizationId,
           clientCommandId: randomUUID(),
         })
       : null;
@@ -137,6 +140,11 @@ export default async function LitterPlanningModelsPage() {
             expectedRevision: model.revision,
             clientCommandId: randomUUID(),
             isActive: !model.isActive,
+          }),
+          duplicateAction: duplicateLitterPlanningModelAction.bind(null, {
+            organizationId,
+            sourceModelId: model.id,
+            clientCommandId: randomUUID(),
           }),
         }))
       : [];

@@ -3,7 +3,22 @@
 import { revalidatePath } from "next/cache";
 
 import { importLitterPlanningModelLibraryModels } from "@/features/litter-journal/litter-planning-model-library";
-import { setLitterPlanningModelActive } from "@/features/litter-journal/litter-planning-models";
+import {
+  createLitterPlanningModel,
+  getLitterPlanningModel,
+  replaceLitterPlanningModel,
+  setLitterPlanningModelActive,
+  type LitterPlanningModelItemInput,
+} from "@/features/litter-journal/litter-planning-models";
+import { listLitterCareTaskTemplatesForOrganization } from "@/features/litter-journal/litter-care-tasks";
+import {
+  createLitterPlanningModelEditorDraftFromModel,
+  isLitterPlanningModelImported,
+  templateOptionFromSummary,
+  validateLitterPlanningModelEditorDraft,
+  type LitterPlanningModelEditorDraft,
+} from "@/features/settings/litter-planning-model-editor-draft";
+import { formatLitterPlanningModelOrganizationOrigin } from "@/features/settings/litter-planning-model-labels";
 
 const settingsPath = "/settings/litter-planning-models";
 const postgresIntegerMax = 2_147_483_647;
@@ -29,6 +44,32 @@ export type SetLitterPlanningModelActiveSubmission = {
   expectedRevision: number;
   clientCommandId: string;
   isActive: boolean;
+};
+
+export type LitterPlanningModelEditorActionState = {
+  status: "idle" | "success" | "error";
+  message?: string;
+  code?: string;
+  modelId?: string;
+  revision?: number;
+};
+
+export type CreateLitterPlanningModelSubmission = {
+  organizationId: string;
+  clientCommandId: string;
+};
+
+export type ReplaceLitterPlanningModelSubmission = {
+  organizationId: string;
+  modelId: string;
+  expectedRevision: number;
+  clientCommandId: string;
+};
+
+export type DuplicateLitterPlanningModelSubmission = {
+  organizationId: string;
+  sourceModelId: string;
+  clientCommandId: string;
 };
 
 function value(formData: FormData, name: string) {
@@ -199,5 +240,282 @@ export async function setLitterPlanningModelActiveAction(
     message: submission.isActive
       ? "Le modèle a été réactivé. Aucun planning de portée n’a été modifié."
       : "Le modèle a été désactivé. Aucun planning de portée n’a été modifié.",
+  };
+}
+
+function editorMutationErrorMessage(
+  code: string,
+  operation: "créer" | "modifier" | "dupliquer",
+) {
+  if (code === "stale_revision") {
+    return "Ce modèle a été modifié ailleurs. Rechargez la version actuelle avant d’enregistrer à nouveau.";
+  }
+  if (code === "forbidden" || code === "unauthenticated" || code === "not_found") {
+    return `Vous n’avez pas les droits nécessaires pour ${operation} ce modèle.`;
+  }
+  if (code === "conflict") {
+    return "Cette demande ne peut pas être rejouée. Rechargez la page avant de recommencer.";
+  }
+  return `Impossible de ${operation} ce modèle pour le moment.`;
+}
+
+function parseEditorDraftPayload(raw: unknown): LitterPlanningModelEditorDraft | null {
+  if (!raw || typeof raw !== "object") return null;
+  const draft = raw as LitterPlanningModelEditorDraft;
+  if (
+    typeof draft.title !== "string" ||
+    typeof draft.description !== "string" ||
+    !Array.isArray(draft.items)
+  ) {
+    return null;
+  }
+  return draft;
+}
+
+async function loadEditorTemplates(organizationId: string) {
+  const templates = await listLitterCareTaskTemplatesForOrganization({
+    organizationId,
+  });
+  if (templates.outcome !== "success") return null;
+  return templates.templates.map(templateOptionFromSummary);
+}
+
+export async function createLitterPlanningModelAction(
+  submission: CreateLitterPlanningModelSubmission,
+  _previousState: LitterPlanningModelEditorActionState,
+  formData: FormData,
+): Promise<LitterPlanningModelEditorActionState> {
+  void _previousState;
+  const rawDraft = value(formData, "draft_json");
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawDraft);
+  } catch {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
+  const draft = parseEditorDraftPayload(parsedJson);
+  if (!draft) {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
+
+  const templates = await loadEditorTemplates(submission.organizationId);
+  if (!templates) {
+    return {
+      status: "error",
+      message: "Impossible de charger les jalons élémentaires pour le moment.",
+    };
+  }
+
+  const validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  if (!validation.ok) {
+    return {
+      status: "error",
+      message:
+        validation.errors[0]?.message ??
+        "Le modèle contient des erreurs à corriger.",
+    };
+  }
+
+  const result = await createLitterPlanningModel(
+    submission.organizationId,
+    submission.clientCommandId,
+    {
+      title: validation.payload.title,
+      description: validation.payload.description,
+      species: validation.payload.species,
+      breed: validation.payload.breed,
+      isActive: false,
+      items: validation.payload.items,
+    },
+  );
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      code: result.error.code,
+      message: editorMutationErrorMessage(result.error.code, "créer"),
+    };
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath(`${settingsPath}/${result.modelId}`);
+  return {
+    status: "success",
+    modelId: result.modelId,
+    revision: result.revision,
+    message:
+      "Le modèle personnalisé a été créé inactif. Activez-le lorsqu’il sera prêt pour une prochaine portée.",
+  };
+}
+
+export async function replaceLitterPlanningModelAction(
+  submission: ReplaceLitterPlanningModelSubmission,
+  _previousState: LitterPlanningModelEditorActionState,
+  formData: FormData,
+): Promise<LitterPlanningModelEditorActionState> {
+  void _previousState;
+  const existing = await getLitterPlanningModel(submission.modelId);
+  if (existing.outcome === "error" || !("model" in existing)) {
+    return {
+      status: "error",
+      code: existing.outcome === "error" ? existing.error.code : "not_found",
+      message: editorMutationErrorMessage(
+        existing.outcome === "error" ? existing.error.code : "not_found",
+        "modifier",
+      ),
+    };
+  }
+  if (isLitterPlanningModelImported(existing.model)) {
+    return {
+      status: "error",
+      message:
+        "Un modèle importé ne peut pas être modifié directement. Créez une copie personnalisée.",
+    };
+  }
+
+  const rawDraft = value(formData, "draft_json");
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(rawDraft);
+  } catch {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
+  const draft = parseEditorDraftPayload(parsedJson);
+  if (!draft) {
+    return { status: "error", message: "Le formulaire transmis est invalide." };
+  }
+
+  const templates = await loadEditorTemplates(submission.organizationId);
+  if (!templates) {
+    return {
+      status: "error",
+      message: "Impossible de charger les jalons élémentaires pour le moment.",
+    };
+  }
+
+  const validation = validateLitterPlanningModelEditorDraft(
+    {
+      ...draft,
+      mode: "edit",
+      libraryModelCode: existing.model.libraryModelCode,
+      libraryModelVersion: existing.model.libraryModelVersion,
+    },
+    templates,
+  );
+  if (!validation.ok) {
+    return {
+      status: "error",
+      message:
+        validation.errors[0]?.message ??
+        "Le modèle contient des erreurs à corriger.",
+    };
+  }
+
+  const result = await replaceLitterPlanningModel(
+    submission.modelId,
+    submission.clientCommandId,
+    submission.expectedRevision,
+    {
+      title: validation.payload.title,
+      description: validation.payload.description,
+      species: validation.payload.species,
+      breed: validation.payload.breed,
+      items: validation.payload.items as LitterPlanningModelItemInput[],
+    },
+  );
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      code: result.error.code,
+      message: editorMutationErrorMessage(result.error.code, "modifier"),
+      modelId: submission.modelId,
+    };
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath(`${settingsPath}/${submission.modelId}`);
+  revalidatePath(`${settingsPath}/${submission.modelId}/edit`);
+  return {
+    status: "success",
+    modelId: result.modelId,
+    revision: result.revision,
+    message:
+      "Le modèle a été enregistré. Aucun planning de portée déjà créé n’a été modifié.",
+  };
+}
+
+export async function duplicateLitterPlanningModelAction(
+  submission: DuplicateLitterPlanningModelSubmission,
+  _previousState: LitterPlanningModelEditorActionState,
+  _formData: FormData,
+): Promise<LitterPlanningModelEditorActionState> {
+  void _previousState;
+  void _formData;
+
+  const existing = await getLitterPlanningModel(submission.sourceModelId);
+  if (existing.outcome === "error" || !("model" in existing)) {
+    return {
+      status: "error",
+      code: existing.outcome === "error" ? existing.error.code : "not_found",
+      message: editorMutationErrorMessage(
+        existing.outcome === "error" ? existing.error.code : "not_found",
+        "dupliquer",
+      ),
+    };
+  }
+
+  const templates = await loadEditorTemplates(submission.organizationId);
+  if (!templates) {
+    return {
+      status: "error",
+      message: "Impossible de charger les jalons élémentaires pour le moment.",
+    };
+  }
+
+  const draft = createLitterPlanningModelEditorDraftFromModel(existing.model, {
+    mode: "duplicate",
+    sourceOriginLabel: formatLitterPlanningModelOrganizationOrigin(
+      existing.model.libraryModelCode,
+      existing.model.libraryModelVersion,
+    ),
+  });
+  const validation = validateLitterPlanningModelEditorDraft(draft, templates);
+  if (!validation.ok) {
+    return {
+      status: "error",
+      message:
+        validation.errors[0]?.message ??
+        "La copie n’a pas pu être préparée à partir de ce modèle.",
+    };
+  }
+
+  const result = await createLitterPlanningModel(
+    submission.organizationId,
+    submission.clientCommandId,
+    {
+      title: validation.payload.title,
+      description: validation.payload.description,
+      species: validation.payload.species,
+      breed: validation.payload.breed,
+      isActive: false,
+      items: validation.payload.items,
+    },
+  );
+  if (result.outcome === "error") {
+    return {
+      status: "error",
+      code: result.error.code,
+      message: editorMutationErrorMessage(result.error.code, "dupliquer"),
+    };
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath(`${settingsPath}/${result.modelId}`);
+  revalidatePath(`${settingsPath}/${result.modelId}/edit`);
+  return {
+    status: "success",
+    modelId: result.modelId,
+    revision: result.revision,
+    message:
+      "La copie personnalisée a été créée inactive. Vous pouvez maintenant l’adapter.",
   };
 }
