@@ -550,6 +550,130 @@ test("maps known SQL error reasons to stable error codes, including invalid_inpu
   }
 });
 
+test("maps an unexpected outcome value to database_error even with a known reason", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult({
+    outcome: "unexpected",
+    reason: "invalid_input",
+    litter_plan_id: null,
+    plan_revision: null,
+    litter_plan_item_id: null,
+    task_id: null,
+    series_id: null,
+    materialized_occurrence_count: null,
+    replayed: null,
+    result: null,
+  });
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("maps an empty outcome string to database_error", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult({
+    outcome: "",
+    reason: "invalid_input",
+    litter_plan_id: null,
+    plan_revision: null,
+    litter_plan_item_id: null,
+    task_id: null,
+    series_id: null,
+    materialized_occurrence_count: 0,
+    replayed: false,
+    result: {},
+  });
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("rejects a success row that still carries an error reason", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult(
+    validSuccessPointRow({ reason: "stale_revision" }),
+  );
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
+test("keeps business error mapping when outcome is exactly error", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult({
+    outcome: "error",
+    reason: "invalid_input",
+    litter_plan_id: null,
+    plan_revision: null,
+    litter_plan_item_id: null,
+    task_id: null,
+    series_id: null,
+    materialized_occurrence_count: 0,
+    replayed: false,
+    result: {},
+  });
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "invalid_input", message: expect.any(String) },
+  });
+});
+
+test("accepts a stale_revision error that exposes litter_plan_id and plan_revision", () => {
+  const result = mapCreateLitterPlanAdHocItemRpcResult({
+    outcome: "error",
+    reason: "stale_revision",
+    litter_plan_id: PLAN_ID,
+    plan_revision: 3,
+    litter_plan_item_id: null,
+    task_id: null,
+    series_id: null,
+    materialized_occurrence_count: 0,
+    replayed: false,
+    result: {},
+  });
+  expect(result).toEqual({
+    outcome: "error",
+    error: { code: "stale_revision", message: expect.any(String) },
+  });
+});
+
+test("rejects an error row that pretends to carry success write fields", () => {
+  expect(
+    mapCreateLitterPlanAdHocItemRpcResult({
+      outcome: "error",
+      reason: "invalid_input",
+      litter_plan_id: null,
+      plan_revision: null,
+      litter_plan_item_id: ITEM_ID,
+      task_id: null,
+      series_id: null,
+      materialized_occurrence_count: 0,
+      replayed: false,
+      result: {},
+    }),
+  ).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+
+  expect(
+    mapCreateLitterPlanAdHocItemRpcResult({
+      outcome: "error",
+      reason: "invalid_input",
+      litter_plan_id: null,
+      plan_revision: null,
+      litter_plan_item_id: null,
+      task_id: null,
+      series_id: null,
+      materialized_occurrence_count: 0,
+      replayed: false,
+      result: { kind: "task", planItemId: ITEM_ID, taskId: TASK_ID },
+    }),
+  ).toEqual({
+    outcome: "error",
+    error: { code: "database_error", message: expect.any(String) },
+  });
+});
+
 test("maps an unknown or unlisted error reason to database_error, not conflict", () => {
   const unknownReason = mapCreateLitterPlanAdHocItemRpcResult({
     outcome: "error",

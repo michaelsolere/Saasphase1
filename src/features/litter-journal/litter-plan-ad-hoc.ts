@@ -512,6 +512,47 @@ export function litterPlanAdHocInitialHorizonDays(args: {
   return Math.max(1, Math.min(30, span));
 }
 
+function isEmptyJsonObject(value: Json): boolean {
+  return isPlainJsonObject(value) && Object.keys(value).length === 0;
+}
+
+/**
+ * Error rows from create_litter_plan_ad_hoc_item:
+ * - defaults: all ids null, count 0, replayed false, result {}
+ * - stale_revision (plan exists): litter_plan_id + plan_revision set, result still {}
+ * - idempotent replay of a stored error: same shape, replayed true
+ * Success-shaped fields on an error row are rejected as structural corruption.
+ */
+function isConsistentAdHocErrorRow(row: CreateLitterPlanAdHocItemRpcRow): boolean {
+  if (row.litter_plan_item_id != null) return false;
+  if (row.task_id != null) return false;
+  if (row.series_id != null) return false;
+  if (
+    typeof row.materialized_occurrence_count === "number" &&
+    row.materialized_occurrence_count > 0
+  ) {
+    return false;
+  }
+  if (row.result != null && !isEmptyJsonObject(row.result)) {
+    return false;
+  }
+  if (row.replayed != null && typeof row.replayed !== "boolean") {
+    return false;
+  }
+
+  const hasPlanId = row.litter_plan_id != null;
+  const hasRevision = row.plan_revision != null;
+  if (hasPlanId || hasRevision) {
+    if (row.reason !== "stale_revision") return false;
+    if (!uuid(row.litter_plan_id)) return false;
+    if (!Number.isInteger(row.plan_revision) || (row.plan_revision as number) <= 0) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /** Strict mapping of the create_litter_plan_ad_hoc_item RPC row into a typed result. */
 export function mapCreateLitterPlanAdHocItemRpcResult(
   row: CreateLitterPlanAdHocItemRpcRow | null | undefined,
@@ -519,8 +560,20 @@ export function mapCreateLitterPlanAdHocItemRpcResult(
   if (!row) {
     return error("database_error");
   }
-  if (row.outcome !== "success") {
+
+  if (row.outcome === "error") {
+    if (!isConsistentAdHocErrorRow(row)) {
+      return error("database_error");
+    }
     return error(reasonCode(row.reason ?? null));
+  }
+
+  if (row.outcome !== "success") {
+    return error("database_error");
+  }
+
+  if (row.reason !== null) {
+    return error("database_error");
   }
 
   const litterPlanId = uuid(row.litter_plan_id);
