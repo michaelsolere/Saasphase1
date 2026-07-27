@@ -72,7 +72,10 @@ function TodayTask({ task, active, quickActions, scheduleActions }: { task: Litt
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            {itemKindLabels[task.itemKind]} · {litterCareTaskCategoryLabels[task.category]}
+            {task.itemKind === "recurring_task"
+              ? `Tâche récurrente · occurrence ${task.occurrenceNo}`
+              : itemKindLabels[task.itemKind]}{" "}
+            · {litterCareTaskCategoryLabels[task.category]}
           </p>
           <h4 className="mt-1 break-words font-semibold">{task.title}</h4>
           <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted">

@@ -2614,9 +2614,9 @@ export type Database = {
         Relationships: []
       }
       litter_plan_items: {
-        Row: { anchor_adjustment_days: number | null; anchor_date_snapshot: string | null; anchor_resolution_source: string | null; anchor_source_date_snapshot: string | null; anchor_type: string; category: string; created_at: string; created_by: string; description: string | null; display_order: number; id: string; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at: string | null; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; revision_no: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
-        Insert: { anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type: string; category: string; created_at?: string; created_by: string; description?: string | null; display_order: number; id?: string; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at?: string | null; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority: string; revision_no?: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Update: { anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type?: string; category?: string; created_at?: string; created_by?: string; description?: string | null; display_order?: number; id?: string; is_required_snapshot?: boolean; is_selected_by_default_snapshot?: boolean; item_kind?: string; litter_id?: string; litter_plan_id?: string; materialization_state?: string; materialized_at?: string | null; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; revision_no?: number; source_model_display_order?: number; source_model_item_id?: string; source_planning_model_id?: string; source_planning_model_revision?: number; target_scope?: string; title?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Row: { absolute_max_occurrences: number | null; anchor_adjustment_days: number | null; anchor_date_snapshot: string | null; anchor_resolution_source: string | null; anchor_source_date_snapshot: string | null; anchor_type: string; category: string; created_at: string; created_by: string; description: string | null; display_order: number; id: string; initial_materialization_horizon_days: number | null; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at: string | null; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; recurrence_day_count: number | null; recurrence_end_kind: string | null; recurrence_ends_offset_days: number | null; recurrence_interval_days: number | null; recurrence_kind: string | null; recurrence_starts_offset_days: number | null; revision_no: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
+        Insert: { absolute_max_occurrences?: number | null; anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type: string; category: string; created_at?: string; created_by: string; description?: string | null; display_order: number; id?: string; initial_materialization_horizon_days?: number | null; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at?: string | null; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; revision_no?: number; source_model_display_order: number; source_model_item_id: string; source_planning_model_id: string; source_planning_model_revision: number; target_scope: string; title: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Update: { absolute_max_occurrences?: number | null; anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type?: string; category?: string; created_at?: string; created_by?: string; description?: string | null; display_order?: number; id?: string; initial_materialization_horizon_days?: number | null; is_required_snapshot?: boolean; is_selected_by_default_snapshot?: boolean; item_kind?: string; litter_id?: string; litter_plan_id?: string; materialization_state?: string; materialized_at?: string | null; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; revision_no?: number; source_model_display_order?: number; source_model_item_id?: string; source_planning_model_id?: string; source_planning_model_revision?: number; target_scope?: string; title?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
         Relationships: []
       }
       litter_plans: {
@@ -2625,10 +2625,29 @@ export type Database = {
         Update: { created_at?: string; created_by?: string; id?: string; litter_id?: string; organization_id?: string; revision?: number; last_recalculated_at?: string | null; last_recalculated_by?: string | null; status?: string; timezone_name?: string; title?: string; updated_at?: string; updated_by?: string }
         Relationships: []
       }
+
+      litter_planning_model_item_time_slots: {
+        Row: { created_at: string; created_by: string; id: string; local_time: string; model_item_id: string; organization_id: string; slot_no: number }
+        Insert: { created_at?: string; created_by: string; id?: string; local_time: string; model_item_id: string; organization_id: string; slot_no: number }
+        Update: { created_at?: string; created_by?: string; id?: string; local_time?: string; model_item_id?: string; organization_id?: string; slot_no?: number }
+        Relationships: []
+      }
+      litter_plan_series: {
+        Row: { absolute_max_occurrences: number; completion_reason: string | null; created_at: string; created_by: string; end_kind: string; ends_on: string | null; id: string; initial_materialization_horizon_days: number; litter_id: string; litter_plan_id: string; litter_plan_item_id: string; materialized_occurrence_count: number; materialized_through: string | null; organization_id: string; recurrence_day_count: number | null; recurrence_interval_days: number; recurrence_kind: string; revision_no: number; starts_on: string | null; state: string; timezone_name: string; updated_at: string; updated_by: string }
+        Insert: { absolute_max_occurrences: number; completion_reason?: string | null; created_at?: string; created_by: string; end_kind: string; ends_on?: string | null; id?: string; initial_materialization_horizon_days: number; litter_id: string; litter_plan_id: string; litter_plan_item_id: string; materialized_occurrence_count?: number; materialized_through?: string | null; organization_id: string; recurrence_day_count?: number | null; recurrence_interval_days: number; recurrence_kind: string; revision_no?: number; starts_on?: string | null; state?: string; timezone_name: string; updated_at?: string; updated_by: string }
+        Update: { absolute_max_occurrences?: number; completion_reason?: string | null; created_at?: string; created_by?: string; end_kind?: string; ends_on?: string | null; id?: string; initial_materialization_horizon_days?: number; litter_id?: string; litter_plan_id?: string; litter_plan_item_id?: string; materialized_occurrence_count?: number; materialized_through?: string | null; organization_id?: string; recurrence_day_count?: number | null; recurrence_interval_days?: number; recurrence_kind?: string; revision_no?: number; starts_on?: string | null; state?: string; timezone_name?: string; updated_at?: string; updated_by?: string }
+        Relationships: []
+      }
+      litter_plan_series_time_slots: {
+        Row: { created_at: string; created_by: string; id: string; local_time: string; organization_id: string; series_id: string; slot_no: number }
+        Insert: { created_at?: string; created_by: string; id?: string; local_time: string; organization_id: string; series_id: string; slot_no: number }
+        Update: { created_at?: string; created_by?: string; id?: string; local_time?: string; organization_id?: string; series_id?: string; slot_no?: number }
+        Relationships: []
+      }
       litter_planning_model_items: {
-        Row: { anchor_type: string; created_at: string; created_by: string; display_order: number; id: string; is_required: boolean; is_selected_by_default: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
-        Insert: { anchor_type: string; created_at?: string; created_by: string; display_order: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Update: { anchor_type?: string; created_at?: string; created_by?: string; display_order?: number; id?: string; is_required?: boolean; is_selected_by_default?: boolean; item_kind?: string; model_id?: string; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Row: { absolute_max_occurrences: number | null; anchor_type: string; created_at: string; created_by: string; display_order: number; id: string; initial_materialization_horizon_days: number | null; is_required: boolean; is_selected_by_default: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; recurrence_day_count: number | null; recurrence_end_kind: string | null; recurrence_ends_offset_days: number | null; recurrence_interval_days: number | null; recurrence_kind: string | null; recurrence_starts_offset_days: number | null; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
+        Insert: { absolute_max_occurrences?: number | null; anchor_type: string; created_at?: string; created_by: string; display_order: number; id?: string; initial_materialization_horizon_days?: number | null; is_required?: boolean; is_selected_by_default?: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
+        Update: { absolute_max_occurrences?: number | null; anchor_type?: string; created_at?: string; created_by?: string; display_order?: number; id?: string; initial_materialization_horizon_days?: number | null; is_required?: boolean; is_selected_by_default?: boolean; item_kind?: string; model_id?: string; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
         Relationships: []
       }
       litter_planning_model_library_import_commands: {
@@ -2833,9 +2852,12 @@ export type Database = {
           is_schedule_locked: boolean
           item_kind: string
           litter_plan_item_id: string | null
+          litter_plan_series_id: string | null
           litter_id: string
           occurrence_no: number
           offset_days: number | null
+          recurrence_day_no: number | null
+          slot_no: number | null
           organization_id: string
           organization_template_id: string | null
           planned_for: string | null
@@ -2881,9 +2903,12 @@ export type Database = {
           is_schedule_locked?: boolean
           item_kind?: string
           litter_plan_item_id?: string | null
+          litter_plan_series_id?: string | null
           litter_id: string
           occurrence_no?: number
           offset_days?: number | null
+          recurrence_day_no?: number | null
+          slot_no?: number | null
           organization_id: string
           organization_template_id?: string | null
           planned_for?: string | null
@@ -2929,9 +2954,12 @@ export type Database = {
           is_schedule_locked?: boolean
           item_kind?: string
           litter_plan_item_id?: string | null
+          litter_plan_series_id?: string | null
           litter_id?: string
           occurrence_no?: number
           offset_days?: number | null
+          recurrence_day_no?: number | null
+          slot_no?: number | null
           organization_id?: string
           organization_template_id?: string | null
           planned_for?: string | null
@@ -6578,6 +6606,47 @@ export type Database = {
           result: Json
           result_plan_revision: number | null
           unchanged_task_count: number
+        }[]
+      }
+
+      materialize_litter_plan_series: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_requested_through: string
+          p_series_id: string
+        }
+        Returns: {
+          inserted_count: number
+          materialized_occurrence_count: number | null
+          materialized_through: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          result: Json
+          revision_no: number | null
+          series_id: string | null
+          series_state: string | null
+          skipped_identical_count: number
+        }[]
+      }
+      set_litter_plan_series_state: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_new_state: string
+          p_reason?: string | null
+          p_series_id: string
+        }
+        Returns: {
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          resolved_occurrence_count: number
+          result: Json
+          revision_no: number | null
+          series_id: string | null
+          series_state: string | null
         }[]
       }
       apply_litter_planning_model: {

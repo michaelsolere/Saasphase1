@@ -41,6 +41,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/litter-growth-table-model.spec.ts",
   "tests/e2e/litter-plan-timeline-projection.spec.ts",
   "tests/e2e/litter-plan-anchor-recalculation-outcome.spec.ts",
+  "tests/e2e/litter-recurring-tasks-pure.spec.ts",
   "tests/e2e/litter-reservation-document-batch-action.spec.ts",
   "tests/e2e/litter-weighing-policy-preview.spec.ts",
   "tests/e2e/litter-weighing-schedule-history-adapter.spec.ts",

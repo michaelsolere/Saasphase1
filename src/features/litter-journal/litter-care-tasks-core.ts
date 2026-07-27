@@ -166,9 +166,19 @@ export type LitterCareTaskSummary = {
   litterId: string;
   source: "manual" | "system_template" | "organization_template";
   litterPlanItemId: string | null;
+  litterPlanSeriesId: string | null;
   organizationTemplateId: string | null;
   systemTemplateCode: string | null;
   occurrenceNo: number;
+  recurrenceDayNo: number | null;
+  slotNo: number | null;
+  seriesState:
+    | "active"
+    | "suspended"
+    | "completed"
+    | "cancelled"
+    | "not_applicable"
+    | null;
   category: LitterCareTaskCategory;
   targetScope: LitterCareTaskTargetScope;
   title: string;
@@ -1052,15 +1062,20 @@ function mapTemplateMutationResult(
 
 function mapTask(
   row: Database["public"]["Tables"]["litter_care_tasks"]["Row"],
+  seriesState: LitterCareTaskSummary["seriesState"] = null,
 ): LitterCareTaskSummary {
   return {
     id: row.id,
     litterId: row.litter_id,
     source: row.source as LitterCareTaskSummary["source"],
     litterPlanItemId: row.litter_plan_item_id,
+    litterPlanSeriesId: row.litter_plan_series_id,
     organizationTemplateId: row.organization_template_id,
     systemTemplateCode: row.system_template_code,
     occurrenceNo: row.occurrence_no,
+    recurrenceDayNo: row.recurrence_day_no,
+    slotNo: row.slot_no,
+    seriesState,
     category: row.category as LitterCareTaskCategory,
     targetScope: row.target_scope as LitterCareTaskTargetScope,
     title: row.title,
@@ -1095,6 +1110,38 @@ function mapTask(
     resolutionNote: row.resolution_note,
     createdAt: row.created_at,
   };
+}
+
+async function loadLitterPlanSeriesStates(
+  supabase: Supabase,
+  organizationId: string,
+  seriesIds: string[],
+): Promise<
+  | { states: Record<string, LitterCareTaskSummary["seriesState"]> }
+  | ErrorResult
+> {
+  const uniqueIds = [...new Set(seriesIds)];
+  if (uniqueIds.length === 0) return { states: {} };
+  const series = await supabase
+    .from("litter_plan_series")
+    .select("id, state")
+    .eq("organization_id", organizationId)
+    .in("id", uniqueIds);
+  if (series.error) {
+    return databaseFailure("litter_plan_series_list_failed", series.error);
+  }
+  const states: Record<string, LitterCareTaskSummary["seriesState"]> = {};
+  for (const row of series.data ?? []) {
+    states[row.id] =
+      row.state === "active" ||
+      row.state === "suspended" ||
+      row.state === "completed" ||
+      row.state === "cancelled" ||
+      row.state === "not_applicable"
+        ? row.state
+        : null;
+  }
+  return { states };
 }
 
 export function getLitterCareTaskWindowState(
@@ -1700,7 +1747,20 @@ export async function listLitterCareTasksForLitterCore(
     return databaseFailure("litter_care_tasks_list_failed", tasks.error);
   }
 
-  const mapped = (tasks.data ?? []).map(mapTask);
+  const seriesStateById = await loadLitterPlanSeriesStates(
+    supabase,
+    authorization.litter.organization_id,
+    (tasks.data ?? [])
+      .map((task) => task.litter_plan_series_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  if ("outcome" in seriesStateById) return seriesStateById;
+
+  const mapped = (tasks.data ?? []).map((row) =>
+    mapTask(row, row.litter_plan_series_id
+      ? seriesStateById.states[row.litter_plan_series_id] ?? null
+      : null),
+  );
   mapped.sort((left, right) => {
     if (left.status === "planned" && right.status !== "planned") return -1;
     if (left.status !== "planned" && right.status === "planned") return 1;
@@ -1782,11 +1842,26 @@ export async function listLitterCareTasksForOrganizationCore(
     .eq("organization_id", organizationId)
     .eq("status", "planned");
   if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
+  const seriesStateById = await loadLitterPlanSeriesStates(
+    supabase,
+    organizationId,
+    (tasks.data ?? [])
+      .map((task) => task.litter_plan_series_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  if ("outcome" in seriesStateById) return seriesStateById;
   const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
   const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
   if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
   const mapped = (tasks.data ?? [])
-    .map(mapTask)
+    .map((row) =>
+      mapTask(
+        row,
+        row.litter_plan_series_id
+          ? seriesStateById.states[row.litter_plan_series_id] ?? null
+          : null,
+      ),
+    )
     .filter((task) => Boolean(litters.litterNames[task.litterId]));
   mapped.sort(
     (left, right) =>
@@ -1832,12 +1907,28 @@ export async function listOrganizationLitterCareTodayTasksCore(
     .or(`status.eq.planned,resolved_at.gte.${resolvedSince}`);
   if (tasks.error) return databaseFailure("breeding_calendar_tasks_read_failed", tasks.error);
 
+  const seriesStateById = await loadLitterPlanSeriesStates(
+    supabase,
+    organizationId,
+    (tasks.data ?? [])
+      .map((task) => task.litter_plan_series_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  if ("outcome" in seriesStateById) return seriesStateById;
+
   const litterIds = [...new Set((tasks.data ?? []).map((task) => task.litter_id))];
   const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
   if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
 
   const mapped = (tasks.data ?? [])
-    .map(mapTask)
+    .map((row) =>
+      mapTask(
+        row,
+        row.litter_plan_series_id
+          ? seriesStateById.states[row.litter_plan_series_id] ?? null
+          : null,
+      ),
+    )
     .filter((task) => Boolean(litters.litterNames[task.litterId]));
   mapped.sort(
     (left, right) =>
