@@ -1,6 +1,6 @@
 "use client";
 
-import { LockKeyhole, Plus } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { useActionState, useCallback, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
@@ -25,13 +25,12 @@ import {
   ScheduleTaskDialog,
   type LitterCareTaskScheduleActionBinding,
 } from "./litter-care-task-schedule-dialog";
+import { LITTER_PLAN_AD_HOC_TASKS_PANEL_HINT } from "./litter-plan-ad-hoc-programmer";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
 import type {
-  LitterCareTaskCategory,
   LitterCareTaskResolutionStatus,
   LitterCareTaskSummary,
-  LitterCareTaskTargetScope,
 } from "./litter-care-tasks";
 
 const sourceLabels: Record<LitterCareTaskSummary["source"], string> = {
@@ -180,16 +179,6 @@ function ActionMessage({ state }: { state: LitterCareTaskActionState }) {
   );
 }
 
-function CreateSubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Ajout..." : "Ajouter la tâche"}
-    </Button>
-  );
-}
-
 function ResolveSubmitButton() {
   const { pending } = useFormStatus();
 
@@ -197,165 +186,6 @@ function ResolveSubmitButton() {
     <Button type="submit" disabled={pending}>
       {pending ? "Traitement..." : "Valider le résultat"}
     </Button>
-  );
-}
-
-function AddTaskDialog({
-  action,
-  onSuccess,
-}: {
-  action: TaskAction;
-  onSuccess: (message: string) => void;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [plannedFor, setPlannedFor] = useState("");
-  const [category, setCategory] =
-    useState<LitterCareTaskCategory>("preparation");
-  const [targetScope, setTargetScope] =
-    useState<LitterCareTaskTargetScope>("litter");
-  const submitAction = useCallback(
-    async (previousState: LitterCareTaskActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.status === "success" && nextState.message) {
-        setOpen(false);
-        onSuccess(nextState.message);
-        router.refresh();
-      }
-      return nextState;
-    },
-    [action, onSuccess, router],
-  );
-  const [state, formAction] = useActionState(submitAction, initialState);
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button">
-          <Plus aria-hidden="true" />
-          Ajouter une tâche
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Ajouter une tâche de suivi</DialogTitle>
-          <DialogDescription>
-            Ajoutez une tâche ponctuelle propre à cette portée.
-          </DialogDescription>
-        </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          <div>
-            <label className={labelClass} htmlFor="litter-care-task-title">
-              Titre
-            </label>
-            <input
-              id="litter-care-task-title"
-              className={inputClass}
-              name="title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              maxLength={255}
-              required
-            />
-          </div>
-          <div>
-            <label
-              className={labelClass}
-              htmlFor="litter-care-task-description"
-            >
-              Description (facultative)
-            </label>
-            <textarea
-              id="litter-care-task-description"
-              className={inputClass}
-              name="description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={4}
-              maxLength={5000}
-            />
-          </div>
-          <div>
-            <label
-              className={labelClass}
-              htmlFor="litter-care-task-planned-for"
-            >
-              Date prévue
-            </label>
-            <input
-              id="litter-care-task-planned-for"
-              className={inputClass}
-              name="planned_for"
-              type="date"
-              value={plannedFor}
-              onChange={(event) => setPlannedFor(event.target.value)}
-              required
-            />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label
-                className={labelClass}
-                htmlFor="litter-care-task-category"
-              >
-                Catégorie
-              </label>
-              <select
-                id="litter-care-task-category"
-                className={inputClass}
-                name="category"
-                value={category}
-                onChange={(event) =>
-                  setCategory(event.target.value as LitterCareTaskCategory)
-                }
-                required
-              >
-                {Object.entries(categoryLabels).map(([option, label]) => (
-                  <option key={option} value={option}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label
-                className={labelClass}
-                htmlFor="litter-care-task-target"
-              >
-                Cible
-              </label>
-              <select
-                id="litter-care-task-target"
-                className={inputClass}
-                name="target_scope"
-                value={targetScope}
-                onChange={(event) =>
-                  setTargetScope(event.target.value as LitterCareTaskTargetScope)
-                }
-                required
-              >
-                {Object.entries(targetLabels).map(([option, label]) => (
-                  <option key={option} value={option}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <ActionMessage state={state} />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Annuler
-              </Button>
-            </DialogClose>
-            <CreateSubmitButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -660,24 +490,20 @@ function TaskHistory({ tasks }: { tasks: LitterCareTaskSummary[] }) {
 
 export function LitterCareTasksPanel({
   tasks,
-  role,
-  createAction,
-  createClientCommandId,
+  role: _role,
   resolutionActions,
   scheduleActions,
   loadError = false,
 }: {
   tasks: LitterCareTaskSummary[];
   role: "owner" | "admin" | "member" | "viewer" | null;
-  createAction: TaskAction | null;
-  createClientCommandId: string;
   resolutionActions: LitterCareTaskResolutionAction[];
   scheduleActions: LitterCareTaskScheduleActionBinding[];
   loadError?: boolean;
 }) {
+  void _role;
   const [today, setToday] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
-  const canWrite = role === "owner" || role === "admin" || role === "member";
 
   useEffect(() => {
     const updateAfterMount = window.setTimeout(() => {
@@ -701,19 +527,15 @@ export function LitterCareTasksPanel({
 
   return (
     <section id="litter-care-tasks" className="rounded-2xl border bg-surface p-5 sm:p-6">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-        <div>
-          <h2 className="text-lg font-semibold">Tâches de suivi</h2>
-          <p className="mt-1 text-sm leading-6 text-muted">
-            Tâches prévues et historique de suivi de cette portée.
+      <div>
+        <h2 className="text-lg font-semibold">Tâches de suivi</h2>
+        <p className="mt-1 text-sm leading-6 text-muted">
+          Tâches prévues et historique de suivi de cette portée.
+        </p>
+        {!loadError ? (
+          <p className="mt-2 text-xs text-muted">
+            {LITTER_PLAN_AD_HOC_TASKS_PANEL_HINT}
           </p>
-        </div>
-        {!loadError && canWrite && createAction ? (
-          <AddTaskDialog
-            key={createClientCommandId}
-            action={createAction}
-            onSuccess={setConfirmation}
-          />
         ) : null}
       </div>
       {confirmation ? (

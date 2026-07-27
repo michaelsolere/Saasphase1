@@ -27,6 +27,7 @@ import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-acti
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type { LitterPlanTimelineScheduleTarget } from "./litter-plan-timeline-panel";
 import type { InteractiveLitterPlanTimeline } from "./litter-plan-timeline-interaction";
+import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-programmer-actions";
 import { LitterPlanningModelApplyPanel } from "./litter-planning-model-apply-panel";
 import type { ApplyLitterPlanningModelActionState } from "./litter-planning-model-apply-actions";
 import type { LitterPlanningModelApplicationPanelDto } from "./litter-planning-model-apply";
@@ -211,8 +212,6 @@ export function LitterJournalDashboard({
   litterCareTaskGenerationRole,
   litterCareTaskGenerationAction,
   litterCareTaskGenerationLoadError,
-  createLitterCareTaskAction,
-  createLitterCareTaskClientCommandId,
   litterCareTaskResolutionActions,
   litterCareTodayQuickActions,
   litterCareTodayScheduleActions,
@@ -227,6 +226,9 @@ export function LitterJournalDashboard({
   litterPlanTimelineMovePointActions,
   litterPlanTimelineMoveWindowActions,
   litterPlanTimelineScheduleTargets,
+  litterPlanAdHocProgrammerAction,
+  litterPlanAdHocProgrammerInstanceKey,
+  litterPlanAdHocProgrammerBusinessDate,
   litterPlanLoadError,
   litterPlanSeries,
   litterPlanSeriesRole,
@@ -286,11 +288,6 @@ export function LitterJournalDashboard({
     formData: FormData,
   ) => Promise<GenerateLitterCareTasksActionState>) | null;
   litterCareTaskGenerationLoadError: boolean;
-  createLitterCareTaskAction: ((
-    previousState: LitterCareTaskActionState,
-    formData: FormData,
-  ) => Promise<LitterCareTaskActionState>) | null;
-  createLitterCareTaskClientCommandId: string;
   litterCareTaskResolutionActions: LitterCareTaskResolutionAction[];
   litterCareTodayQuickActions: LitterCareTodayQuickActions[];
   litterCareTodayScheduleActions: LitterCareTaskScheduleActionBinding[];
@@ -323,6 +320,12 @@ export function LitterJournalDashboard({
     ) => Promise<LitterCareTaskActionState>
   >;
   litterPlanTimelineScheduleTargets: Record<string, LitterPlanTimelineScheduleTarget>;
+  litterPlanAdHocProgrammerAction: ((
+    previousState: LitterPlanAdHocProgrammerActionState,
+    formData: FormData,
+  ) => Promise<LitterPlanAdHocProgrammerActionState>) | null;
+  litterPlanAdHocProgrammerInstanceKey: string;
+  litterPlanAdHocProgrammerBusinessDate: string;
   litterPlanLoadError: boolean;
   litterPlanSeries: LitterPlanSeriesSummary[];
   litterPlanSeriesRole: "owner" | "admin" | "member" | "viewer" | null;
@@ -485,6 +488,9 @@ export function LitterJournalDashboard({
         movePointActions={litterPlanTimelineMovePointActions}
         moveWindowActions={litterPlanTimelineMoveWindowActions}
         scheduleTargets={litterPlanTimelineScheduleTargets}
+        programmerAction={litterPlanAdHocProgrammerAction}
+        programmerInstanceKey={litterPlanAdHocProgrammerInstanceKey}
+        programmerBusinessDate={litterPlanAdHocProgrammerBusinessDate}
       />
       <WhelpingPanel
         displayMode="journal"
@@ -544,8 +550,6 @@ export function LitterJournalDashboard({
       <LitterCareTasksPanel
         tasks={litterCareTasks}
         role={litterCareTaskRole}
-        createAction={createLitterCareTaskAction}
-        createClientCommandId={createLitterCareTaskClientCommandId}
         resolutionActions={litterCareTaskResolutionActions}
         scheduleActions={litterCareTaskScheduleActions}
         loadError={litterCareTasksLoadError}
