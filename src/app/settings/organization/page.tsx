@@ -645,6 +645,44 @@ export default async function OrganizationSettingsPage({
         ) : null}
       </header>
 
+      <section
+        aria-labelledby="organization-related-settings-heading"
+        className="mt-8 rounded-2xl border bg-surface px-5 py-5"
+      >
+        <h2
+          id="organization-related-settings-heading"
+          className="text-lg font-semibold"
+        >
+          Paramètres liés aux portées
+        </h2>
+        <ul className="mt-3 space-y-3 text-sm leading-6 text-muted">
+          <li>
+            <Link
+              href="/settings/litter-planning-models"
+              className="font-medium text-accent hover:underline"
+            >
+              Modèles de planning des portées
+            </Link>
+            <span className="mt-1 block">
+              Importez des modèles recommandés et choisissez ceux disponibles
+              pour les prochaines portées.
+            </span>
+          </li>
+          <li>
+            <Link
+              href="/settings/litter-care-task-templates"
+              className="font-medium text-accent hover:underline"
+            >
+              Jalons de suivi des portées
+            </Link>
+            <span className="mt-1 block">
+              Les jalons de suivi sont les éléments réutilisables assemblés par
+              les modèles de planning.
+            </span>
+          </li>
+        </ul>
+      </section>
+
       <div className="mt-8 space-y-4">
         <StatusMessage
           value={query.identity_status}

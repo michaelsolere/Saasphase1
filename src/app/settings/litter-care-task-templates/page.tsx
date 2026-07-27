@@ -38,6 +38,12 @@ function PageHeader() {
         >
           Paramètres de l’organisation
         </Link>
+        <Link
+          href="/settings/litter-planning-models"
+          className="text-sm font-medium text-muted hover:text-foreground hover:underline"
+        >
+          Modèles de planning des portées
+        </Link>
       </div>
       <header className="mt-8 border-b pb-7">
         <p className="text-sm font-semibold uppercase tracking-wide text-accent">
@@ -54,6 +60,20 @@ function PageHeader() {
           Importer, activer ou modifier un modèle ne crée et ne modifie aucune
           tâche existante.
         </p>
+        <aside className="mt-5 max-w-3xl rounded-2xl border bg-surface px-4 py-4 text-sm leading-6 text-muted">
+          <p>
+            Les jalons de suivi sont les éléments réutilisables. Les modèles de
+            planning assemblent plusieurs jalons, tâches, périodes et suivis.
+          </p>
+          <p className="mt-2">
+            <Link
+              href="/settings/litter-planning-models"
+              className="font-medium text-accent hover:underline"
+            >
+              Ouvrir les modèles de planning des portées
+            </Link>
+          </p>
+        </aside>
       </header>
     </>
   );
