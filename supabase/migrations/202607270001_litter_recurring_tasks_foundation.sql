@@ -410,7 +410,7 @@ comment on column public.litter_plan_series.starts_on is
 comment on column public.litter_plan_series.ends_on is
   'Last civil day allowed for occurrences when known (fixed_end_offset or actual_birth).';
 comment on column public.litter_plan_series.materialized_through is
-  'Last recurrence day already covered by materialization.';
+  'Last civil date through which the series has been fully evaluated (coverage horizon, not last occurrence date).';
 comment on column public.litter_plan_series.state is
   'Series lifecycle: active|suspended|completed|cancelled|not_applicable. Distinct from occurrence status.';
 
@@ -725,6 +725,7 @@ as $$
     and p_actual_birth_date is not null
     and (
       p_series_state not in ('completed', 'cancelled', 'not_applicable')
+      or p_series_state = 'suspended'
       or p_ends_on is distinct from p_actual_birth_date
       or exists (
         select 1
@@ -741,11 +742,34 @@ revoke all on function public.litter_plan_series_needs_actual_birth_reconciliati
   uuid, uuid, text, text, date, date
 ) from public;
 
+create or replace function public.acquire_litter_plan_mutation_lock(
+  p_organization_id uuid,
+  p_litter_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+set row_security = off
+as $fn$
+begin
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(
+      'litter_plan_mutation:' || p_organization_id::text || ':' || p_litter_id::text,
+      0
+    )
+  );
+end;
+$fn$;
+
+revoke all on function public.acquire_litter_plan_mutation_lock(uuid, uuid) from public;
+
 create or replace function public.materialize_litter_plan_series_occurrences(
   p_series_id uuid,
   p_requested_through date,
   p_actor uuid,
-  p_command_id uuid default null
+  p_command_id uuid default null,
+  p_reconciliation_only boolean default false
 )
 returns table (
   inserted_count integer,
@@ -767,12 +791,11 @@ declare
   v_litter public.litters%rowtype;
   v_plan public.litter_plans%rowtype;
   v_template public.litter_care_task_templates%rowtype;
-  v_slot record;
   v_slots time[] := '{}'::time[];
   v_slot_count integer;
   v_starts_on date;
   v_ends_on date;
-  v_through date;
+  v_effective_through date;
   v_day_no integer;
   v_occurrence_date date;
   v_occurrence_no integer;
@@ -785,39 +808,25 @@ declare
   v_max_day_from_count integer;
   v_completed boolean := false;
   v_completion text := null;
-  v_task_id uuid;
   v_resolved_at timestamptz := statement_timestamp();
   v_na_count integer := 0;
   v_data_changed boolean := false;
   v_series_revision_before integer;
-  v_series_state_before text;
-  v_series_ends_on_before date;
   v_source text;
   v_source_date date;
   v_adjust integer;
   v_anchor date;
+  v_allow_inserts boolean;
+  v_new_occurrence_count integer;
+  v_needs_reconcile boolean;
 begin
-  -- 1. Lock series
   select * into v_series
   from public.litter_plan_series s
-  where s.id = p_series_id
-  for update;
+  where s.id = p_series_id;
 
   if not found then
     raise exception 'series_not_found' using errcode = 'P0002';
   end if;
-
-  v_series_revision_before := v_series.revision_no;
-  v_series_state_before := v_series.state;
-  v_series_ends_on_before := v_series.ends_on;
-
-  -- 2. Reread revision (already locked row)
-  -- 3. Reread litter + plan item + plan
-  select * into v_item
-  from public.litter_plan_items i
-  where i.organization_id = v_series.organization_id
-    and i.id = v_series.litter_plan_item_id
-  for update;
 
   select * into v_litter
   from public.litters l
@@ -831,12 +840,41 @@ begin
     and p.id = v_series.litter_plan_id
   for update;
 
+  select * into v_item
+  from public.litter_plan_items i
+  where i.organization_id = v_series.organization_id
+    and i.id = v_series.litter_plan_item_id
+  for update;
+
   select * into v_template
   from public.litter_care_task_templates t
   where t.organization_id = v_item.organization_id
     and t.id = v_item.organization_template_id;
 
-  if v_series.state <> 'active' then
+  select * into v_series
+  from public.litter_plan_series s
+  where s.id = p_series_id
+  for update;
+
+  v_series_revision_before := v_series.revision_no;
+
+  v_needs_reconcile := public.litter_plan_series_needs_actual_birth_reconciliation(
+    v_series.organization_id,
+    v_series.id,
+    v_series.end_kind,
+    v_series.state,
+    v_series.ends_on,
+    v_litter.actual_birth_date
+  );
+
+  if p_reconciliation_only then
+    if v_series.state not in ('active', 'suspended', 'completed') then
+      raise exception 'series_not_active' using errcode = 'P0001';
+    end if;
+    if not v_needs_reconcile then
+      raise exception 'series_not_active' using errcode = 'P0001';
+    end if;
+  elsif v_series.state <> 'active' then
     raise exception 'series_not_active' using errcode = 'P0001';
   end if;
 
@@ -854,7 +892,6 @@ begin
     raise exception 'invalid_slot_count' using errcode = '23514';
   end if;
 
-  -- 4. Resolve start/end (activate pending anchor when litter anchor becomes available)
   if v_item.anchor_date_snapshot is null then
     select r.resolution_source, r.source_date, r.adjustment_days, r.anchor_date
     into v_source, v_source_date, v_adjust, v_anchor
@@ -908,20 +945,23 @@ begin
     raise exception 'invalid_end_kind' using errcode = '23514';
   end if;
 
-  if v_starts_on is distinct from v_series.starts_on
-    or v_ends_on is distinct from v_series.ends_on
-  then
-    v_data_changed := true;
-  end if;
-
   update public.litter_plan_series
   set starts_on = v_starts_on,
       ends_on = v_ends_on,
       updated_by = p_actor
   where id = v_series.id
+    and (
+      starts_on is distinct from v_starts_on
+      or ends_on is distinct from v_ends_on
+    )
   returning * into v_series;
 
-  -- When actual_birth becomes known, mark planned tasks after birth as not_applicable
+  if found then
+    v_data_changed := true;
+  else
+    select * into v_series from public.litter_plan_series s where s.id = p_series_id;
+  end if;
+
   if v_series.end_kind = 'actual_birth' and v_litter.actual_birth_date is not null then
     for v_existing in
       select *
@@ -949,33 +989,28 @@ begin
     end if;
   end if;
 
-  -- 5-8. Finite list bound by requested_through, ends_on, absolute_max
-  v_through := p_requested_through;
-  if v_ends_on is not null and v_through > v_ends_on then
-    v_through := v_ends_on;
+  v_effective_through := p_requested_through;
+  if v_ends_on is not null and v_effective_through > v_ends_on then
+    v_effective_through := v_ends_on;
   end if;
 
-  if v_series.materialized_through is not null
-    and v_through <= v_series.materialized_through
-    and not public.litter_plan_series_needs_actual_birth_reconciliation(
-      v_series.organization_id,
-      v_series.id,
-      v_series.end_kind,
-      v_series.state,
-      v_series.ends_on,
-      v_litter.actual_birth_date
+  v_allow_inserts := v_series.state = 'active' and not p_reconciliation_only;
+
+  inserted_count := 0;
+  skipped_identical_count := 0;
+  result_materialized_through := v_series.materialized_through;
+  result_materialized_occurrence_count := v_series.materialized_occurrence_count;
+
+  if v_allow_inserts
+    and (
+      v_series.materialized_through is null
+      or v_effective_through > v_series.materialized_through
     )
   then
-    -- already covered; still may complete below
-    inserted_count := 0;
-    skipped_identical_count := 0;
-    result_materialized_through := v_series.materialized_through;
-    result_materialized_occurrence_count := v_series.materialized_occurrence_count;
-  else
     v_day_no := 1;
     loop
       v_occurrence_date := v_starts_on + ((v_day_no - 1) * v_series.recurrence_interval_days);
-      exit when v_occurrence_date > v_through;
+      exit when v_occurrence_date > v_effective_through;
       exit when v_ends_on is not null and v_occurrence_date > v_ends_on;
 
       if v_series.end_kind = 'fixed_recurrence_day_count'
@@ -986,7 +1021,6 @@ begin
 
       for v_slot_no in 1..v_slot_count loop
         v_local_time := v_slots[v_slot_no];
-        -- 9. Deterministic occurrence_no
         v_occurrence_no := ((v_day_no - 1) * v_slot_count) + v_slot_no;
 
         if v_occurrence_no > v_series.absolute_max_occurrences then
@@ -1005,8 +1039,6 @@ begin
           and t.slot_no = v_slot_no;
 
         if found then
-          -- 11. Never modify existing; 12. refuse inconsistent identity collisions only.
-          -- Manual/locked/terminal date changes must not block rematerialization of missing days.
           if v_existing.occurrence_no is distinct from v_occurrence_no
             or v_existing.litter_plan_item_id is distinct from v_item.id
             or v_existing.item_kind is distinct from 'recurring_task'
@@ -1015,7 +1047,6 @@ begin
           end if;
           v_skipped := v_skipped + 1;
         else
-          -- Also refuse if the deterministic occurrence_no is already used by another identity.
           if exists (
             select 1
             from public.litter_care_tasks t
@@ -1038,8 +1069,6 @@ begin
             exit;
           end if;
 
-          -- 10. Insert only missing. creation_command_id is unique per org — never reuse the
-          -- parent client command id across occurrences.
           begin
             insert into public.litter_care_tasks (
               organization_id, litter_id, litter_plan_item_id, litter_plan_series_id,
@@ -1068,56 +1097,49 @@ begin
 
       exit when v_completed;
       v_day_no := v_day_no + 1;
-      -- safety against unbounded loops
       exit when v_day_no > 5000;
     end loop;
 
-    select count(*) into result_materialized_occurrence_count
-    from public.litter_care_tasks t
-    where t.organization_id = v_series.organization_id
-      and t.litter_plan_series_id = v_series.id;
-
-    select max(t.planned_for) into result_materialized_through
-    from public.litter_care_tasks t
-    where t.organization_id = v_series.organization_id
-      and t.litter_plan_series_id = v_series.id
-      and t.status <> 'not_applicable';
-
-    if result_materialized_through is null then
-      result_materialized_through := v_series.materialized_through;
-    end if;
-
-    -- Prefer the last intended recurrence day covered (including NA after birth)
-    if v_through is not null then
-      -- materialized_through tracks last recurrence day attempted/covered
-      if v_series.materialized_through is null or v_through > v_series.materialized_through then
-        -- compute last day actually inserted or already present up to through
-        select max(v_starts_on + ((t.recurrence_day_no - 1) * v_series.recurrence_interval_days))
-        into result_materialized_through
-        from public.litter_care_tasks t
-        where t.organization_id = v_series.organization_id
-          and t.litter_plan_series_id = v_series.id
-          and v_starts_on + ((t.recurrence_day_no - 1) * v_series.recurrence_interval_days) <= v_through;
-      end if;
-    end if;
-
-    update public.litter_plan_series
-    set materialized_through = coalesce(result_materialized_through, materialized_through),
-        materialized_occurrence_count = result_materialized_occurrence_count,
-        updated_by = p_actor
-    where id = v_series.id
-    returning * into v_series;
-
     inserted_count := v_inserted;
     skipped_identical_count := v_skipped;
-    result_materialized_through := v_series.materialized_through;
-    result_materialized_occurrence_count := v_series.materialized_occurrence_count;
-    if v_inserted > 0 or v_skipped > 0 then
+  end if;
+
+  select count(*) into v_new_occurrence_count
+  from public.litter_care_tasks t
+  where t.organization_id = v_series.organization_id
+    and t.litter_plan_series_id = v_series.id;
+
+  if v_effective_through is distinct from v_series.materialized_through then
+    update public.litter_plan_series
+    set materialized_through = v_effective_through,
+        updated_by = p_actor
+    where id = v_series.id
+      and materialized_through is distinct from v_effective_through
+    returning * into v_series;
+    if found then
       v_data_changed := true;
+    else
+      select * into v_series from public.litter_plan_series s where s.id = p_series_id;
     end if;
   end if;
 
-  -- Complete when end/max prevents further extension
+  if v_new_occurrence_count is distinct from v_series.materialized_occurrence_count then
+    update public.litter_plan_series
+    set materialized_occurrence_count = v_new_occurrence_count,
+        updated_by = p_actor
+    where id = v_series.id
+      and materialized_occurrence_count is distinct from v_new_occurrence_count
+    returning * into v_series;
+    if found then
+      v_data_changed := true;
+    else
+      select * into v_series from public.litter_plan_series s where s.id = p_series_id;
+    end if;
+  end if;
+
+  result_materialized_through := v_series.materialized_through;
+  result_materialized_occurrence_count := v_series.materialized_occurrence_count;
+
   if v_series.end_kind = 'actual_birth' and v_litter.actual_birth_date is not null then
     v_completed := true;
     v_completion := 'actual_birth_reached';
@@ -1149,14 +1171,38 @@ begin
     v_completion := 'recurrence_day_count_reached';
   end if;
 
-  if v_completed and v_series.state = 'active' then
+  if v_completed and v_series.state in ('active', 'suspended') then
     update public.litter_plan_series
     set state = 'completed',
         completion_reason = v_completion,
         updated_by = p_actor
     where id = v_series.id
+      and (
+        state is distinct from 'completed'
+        or completion_reason is distinct from v_completion
+      )
     returning * into v_series;
-    v_data_changed := true;
+    if found then
+      v_data_changed := true;
+    else
+      select * into v_series from public.litter_plan_series s where s.id = p_series_id;
+    end if;
+  elsif v_completed
+    and v_series.state = 'completed'
+    and v_series.end_kind = 'actual_birth'
+    and v_series.completion_reason is distinct from v_completion
+  then
+    update public.litter_plan_series
+    set completion_reason = v_completion,
+        updated_by = p_actor
+    where id = v_series.id
+      and completion_reason is distinct from v_completion
+    returning * into v_series;
+    if found then
+      v_data_changed := true;
+    else
+      select * into v_series from public.litter_plan_series s where s.id = p_series_id;
+    end if;
   end if;
 
   if v_data_changed and v_series.revision_no = v_series_revision_before then
@@ -1174,10 +1220,10 @@ begin
 end;
 $fn$;
 
-revoke all on function public.materialize_litter_plan_series_occurrences(uuid, date, uuid, uuid) from public;
+revoke all on function public.materialize_litter_plan_series_occurrences(uuid, date, uuid, uuid, boolean) from public;
 
-comment on function public.materialize_litter_plan_series_occurrences(uuid, date, uuid, uuid) is
-  'Private helper: lock series, resolve bounds, insert missing occurrences only, never mutate existing rows.';
+comment on function public.materialize_litter_plan_series_occurrences(uuid, date, uuid, uuid, boolean) is
+  'Private helper: lock litter→plan→item→series, resolve bounds, insert missing occurrences when active, reconcile actual_birth without inserts when requested.';
 
 -- ---------------------------------------------------------------------------
 -- 8. Extend assert_litter_planning_model_items + mutate_litter_planning_model
@@ -1792,6 +1838,8 @@ begin
     return;
   end if;
 
+  perform public.acquire_litter_plan_mutation_lock(v_org, p_litter_id);
+
   select * into v_litter
   from public.litters l
   where l.organization_id = v_org
@@ -2124,7 +2172,7 @@ begin
 
       select * into v_mat
       from public.materialize_litter_plan_series_occurrences(
-        v_series_id, v_horizon_through, v_user, p_client_command_id
+        v_series_id, v_horizon_through, v_user, p_client_command_id, false
       );
 
       select s.materialized_occurrence_count into v_occ_count
@@ -2262,6 +2310,17 @@ declare
   v_command_id uuid := gen_random_uuid();
   v_actual_birth date;
   v_needs_reconcile boolean;
+  v_reconcile_only boolean := false;
+  v_litter public.litters%rowtype;
+  v_plan public.litter_plans%rowtype;
+  v_item public.litter_plan_items%rowtype;
+  v_effective_through date;
+  v_prev_revision integer;
+  v_prev_through date;
+  v_prev_count integer;
+  v_prev_state text;
+  v_prev_completion text;
+  v_prev_ends_on date;
 begin
   outcome := 'error';
   reason := null;
@@ -2353,6 +2412,31 @@ begin
 
   select * into v_series
   from public.litter_plan_series s
+  where s.organization_id = v_org and s.id = p_series_id;
+  if not found then
+    reason := 'not_found';
+    return next; return;
+  end if;
+
+  perform public.acquire_litter_plan_mutation_lock(v_org, v_series.litter_id);
+
+  select * into v_litter
+  from public.litters l
+  where l.organization_id = v_org and l.id = v_series.litter_id
+  for update;
+
+  select * into v_plan
+  from public.litter_plans p
+  where p.organization_id = v_org and p.id = v_series.litter_plan_id
+  for update;
+
+  select * into v_item
+  from public.litter_plan_items i
+  where i.organization_id = v_org and i.id = v_series.litter_plan_item_id
+  for update;
+
+  select * into v_series
+  from public.litter_plan_series s
   where s.organization_id = v_org and s.id = p_series_id
   for update;
   if not found then
@@ -2377,7 +2461,20 @@ begin
     return next; return;
   end if;
 
-  if v_series.state <> 'active' then
+  select l.actual_birth_date into v_actual_birth
+  from public.litters l
+  where l.organization_id = v_org and l.id = v_series.litter_id;
+
+  v_needs_reconcile := public.litter_plan_series_needs_actual_birth_reconciliation(
+    v_org,
+    v_series.id,
+    v_series.end_kind,
+    v_series.state,
+    v_series.ends_on,
+    v_actual_birth
+  );
+
+  if v_series.state in ('cancelled', 'not_applicable') then
     insert into public.litter_plan_series_materialization_commands (
       id, organization_id, litter_id, litter_plan_id, series_id, client_command_id, payload,
       expected_revision_no, requested_through, outcome, reason, result,
@@ -2394,24 +2491,38 @@ begin
     return next; return;
   end if;
 
-  select l.actual_birth_date into v_actual_birth
-  from public.litters l
-  where l.organization_id = v_org
-    and l.id = v_series.litter_id
-  for share;
+  if v_series.state <> 'active' then
+    if not v_needs_reconcile then
+      insert into public.litter_plan_series_materialization_commands (
+        id, organization_id, litter_id, litter_plan_id, series_id, client_command_id, payload,
+        expected_revision_no, requested_through, outcome, reason, result,
+        previous_revision_no, result_revision_no, created_by
+      ) values (
+        v_command_id, v_org, v_series.litter_id, v_series.litter_plan_id, v_series.id,
+        p_client_command_id, v_payload, p_expected_revision_no, p_requested_through,
+        'error', 'series_not_active', jsonb_build_object('state', v_series.state),
+        v_series.revision_no, v_series.revision_no, v_user
+      );
+      reason := 'series_not_active';
+      revision_no := v_series.revision_no;
+      series_state := v_series.state;
+      return next; return;
+    end if;
+    v_reconcile_only := true;
+  end if;
 
-  v_needs_reconcile := public.litter_plan_series_needs_actual_birth_reconciliation(
-    v_org,
-    v_series.id,
-    v_series.end_kind,
-    v_series.state,
-    v_series.ends_on,
-    v_actual_birth
-  );
+  v_effective_through := p_requested_through;
+  if v_series.ends_on is not null and v_effective_through > v_series.ends_on then
+    v_effective_through := v_series.ends_on;
+  elsif v_series.end_kind = 'actual_birth' and v_actual_birth is not null
+    and v_effective_through > v_actual_birth
+  then
+    v_effective_through := v_actual_birth;
+  end if;
 
-  -- No-op if already covered (do not bump revision) unless actual_birth reconciliation is required
+  -- True no-op: horizon already evaluated and no biological reconciliation pending
   if v_series.materialized_through is not null
-    and p_requested_through <= v_series.materialized_through
+    and v_effective_through <= v_series.materialized_through
     and not v_needs_reconcile
   then
     result := jsonb_build_object(
@@ -2443,10 +2554,17 @@ begin
     return next; return;
   end if;
 
+  v_prev_revision := v_series.revision_no;
+  v_prev_through := v_series.materialized_through;
+  v_prev_count := v_series.materialized_occurrence_count;
+  v_prev_state := v_series.state;
+  v_prev_completion := v_series.completion_reason;
+  v_prev_ends_on := v_series.ends_on;
+
   begin
     select * into v_mat
     from public.materialize_litter_plan_series_occurrences(
-      v_series.id, p_requested_through, v_user, p_client_command_id
+      v_series.id, p_requested_through, v_user, p_client_command_id, v_reconcile_only
     );
   exception
     when others then
@@ -2471,7 +2589,7 @@ begin
       return next; return;
   end;
 
-  select * into v_series from public.litter_plan_series s where s.id = p_series_id for update;
+  select * into v_series from public.litter_plan_series s where s.id = p_series_id;
 
   result := jsonb_build_object(
     'insertedCount', v_mat.inserted_count,
@@ -2481,8 +2599,20 @@ begin
     'seriesState', v_series.state,
     'seriesCompleted', v_mat.series_completed,
     'completionReason', v_mat.completion_reason,
-    'dataChanged', coalesce(v_mat.data_changed, false)
+    'dataChanged', coalesce(v_mat.data_changed, false),
+    'previousMaterializedThrough', v_prev_through,
+    'previousMaterializedOccurrenceCount', v_prev_count,
+    'previousSeriesState', v_prev_state,
+    'previousCompletionReason', v_prev_completion
   );
+
+  if v_needs_reconcile or v_reconcile_only then
+    result := result || jsonb_build_object(
+      'biologicalReconciliation', true,
+      'previousEndsOn', v_prev_ends_on,
+      'resultEndsOn', v_series.ends_on
+    );
+  end if;
 
   insert into public.litter_plan_series_materialization_commands (
     id, organization_id, litter_id, litter_plan_id, series_id, client_command_id, payload,
@@ -2493,10 +2623,10 @@ begin
   ) values (
     v_command_id, v_org, v_series.litter_id, v_series.litter_plan_id, v_series.id,
     p_client_command_id, v_payload, p_expected_revision_no, p_requested_through,
-    'success', result, p_expected_revision_no, v_series.revision_no,
+    'success', result, v_prev_revision, v_series.revision_no,
     v_mat.inserted_count, v_mat.skipped_identical_count,
-    null, v_series.materialized_through,
-    null, v_series.materialized_occurrence_count, v_user
+    v_prev_through, v_series.materialized_through,
+    v_prev_count, v_series.materialized_occurrence_count, v_user
   );
 
   outcome := 'success';
@@ -2554,6 +2684,9 @@ declare
   v_task public.litter_care_tasks%rowtype;
   v_resolution_status text;
   v_now timestamptz := statement_timestamp();
+  v_litter public.litters%rowtype;
+  v_plan public.litter_plans%rowtype;
+  v_item public.litter_plan_items%rowtype;
 begin
   outcome := 'error';
   reason := null;
@@ -2638,6 +2771,31 @@ begin
     result := v_command.result;
     return next; return;
   end if;
+
+  select * into v_series
+  from public.litter_plan_series s
+  where s.organization_id = v_org and s.id = p_series_id;
+  if not found then
+    reason := 'not_found';
+    return next; return;
+  end if;
+
+  perform public.acquire_litter_plan_mutation_lock(v_org, v_series.litter_id);
+
+  select * into v_litter
+  from public.litters l
+  where l.organization_id = v_org and l.id = v_series.litter_id
+  for update;
+
+  select * into v_plan
+  from public.litter_plans p
+  where p.organization_id = v_org and p.id = v_series.litter_plan_id
+  for update;
+
+  select * into v_item
+  from public.litter_plan_items i
+  where i.organization_id = v_org and i.id = v_series.litter_plan_item_id
+  for update;
 
   select * into v_series
   from public.litter_plan_series s
@@ -2965,6 +3123,8 @@ begin
     return next; return;
   end if;
 
+  perform public.acquire_litter_plan_mutation_lock(v_org, p_litter_id);
+
   select * into v_litter
   from public.litters l
   where l.organization_id = v_org and l.id = p_litter_id and l.deleted_at is null
@@ -3030,14 +3190,14 @@ begin
     where pi.organization_id = v_org and pi.litter_plan_id = v_plan.id
     order by pi.id for update;
 
+    perform s.id from public.litter_plan_series s
+    where s.organization_id = v_org and s.litter_plan_id = v_plan.id
+    order by s.id for update;
+
     perform t.id from public.litter_care_tasks t
     where t.organization_id = v_org and t.litter_id = p_litter_id
       and t.litter_plan_item_id is not null
     order by t.id for update;
-
-    perform s.id from public.litter_plan_series s
-    where s.organization_id = v_org and s.litter_plan_id = v_plan.id
-    order by s.id for update;
 
     for v_item in
       select * from public.litter_plan_items pi

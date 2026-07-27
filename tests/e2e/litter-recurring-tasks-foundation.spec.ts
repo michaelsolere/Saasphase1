@@ -69,7 +69,22 @@ const ids = {
   pendingApply: `${prefix}0000000000b1`,
   pendingMat: `${prefix}0000000000b2`,
   reconcileBirthMat: `${prefix}0000000000b3`,
+  intervalModelCmd: `${prefix}0000000000c0`,
+  intervalApply: `${prefix}0000000000c1`,
+  intervalExt8: `${prefix}0000000000c2`,
+  intervalExt8Replay: `${prefix}0000000000c3`,
+  intervalExt10: `${prefix}0000000000c4`,
+  suspendBirthMat: `${prefix}0000000000c5`,
+  completedRepairMat: `${prefix}0000000000c6`,
+  concurMatRecalcMat: `${prefix}0000000000d0`,
+  concurMatRecalcRecalc: `${prefix}0000000000d1`,
+  concurCancelRecalcCancel: `${prefix}0000000000d2`,
+  concurCancelRecalcRecalc: `${prefix}0000000000d3`,
+  concurMatStateMat: `${prefix}0000000000d4`,
+  concurMatStateSuspend: `${prefix}0000000000d5`,
 } as const;
+
+const CONCURRENT_RPC_TIMEOUT_MS = 15_000;
 
 const credentials = {
   viewer: ["recurring-viewer@saasphase1.invalid", "RecurringE2E-2026!"] as const,
@@ -1156,4 +1171,242 @@ test("isolement inter-org, membership inactive, viewer lecture seule et DML dire
   expect(insertMatCmd.error).not.toBeNull();
 
   expect(occurrences(series.id)).toHaveLength(16);
+});
+
+test("étend l'horizon civil sans occurrence intermédiaire puis no-op et création au 10 août", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.intervalModelCmd, {
+    recurrenceIntervalDays: 3,
+    recurrenceStartsOffsetDays: -9,
+    initialMaterializationHorizonDays: 7,
+    timeSlots: ["08:00", "20:00"],
+  });
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.intervalApply);
+  const series = seriesRow();
+  expect(series.startsOn).toBe("2026-08-01");
+  expect(series.materializedThrough).toBe("2026-08-07");
+  const occ = occurrences(series.id);
+  expect(occ).toHaveLength(6);
+  expect([...new Set(occ.map((row) => row.plannedFor))].sort()).toEqual([
+    "2026-08-01",
+    "2026-08-04",
+    "2026-08-07",
+  ]);
+
+  const revisionBefore = series.revision;
+  const extend8 = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.intervalExt8,
+    p_expected_revision_no: revisionBefore,
+    p_requested_through: "2026-08-08",
+  });
+  expect(extend8.error).toBeNull();
+  expect(extend8.data?.[0]).toMatchObject({
+    outcome: "success",
+    inserted_count: 0,
+    materialized_through: "2026-08-08",
+  });
+  expect(seriesRow().revision).toBe(revisionBefore + 1);
+  expect(occurrences(series.id)).toHaveLength(6);
+
+  const replay8 = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.intervalExt8Replay,
+    p_expected_revision_no: seriesRow().revision,
+    p_requested_through: "2026-08-08",
+  });
+  expect(replay8.error).toBeNull();
+  expect(replay8.data?.[0]?.result?.noop).toBe(true);
+  expect(seriesRow().revision).toBe(revisionBefore + 1);
+
+  const extend10 = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.intervalExt10,
+    p_expected_revision_no: seriesRow().revision,
+    p_requested_through: "2026-08-10",
+  });
+  expect(extend10.error).toBeNull();
+  expect(extend10.data?.[0]?.inserted_count).toBe(2);
+  expect(seriesRow().materializedThrough).toBe("2026-08-10");
+  expect(occurrences(series.id).filter((row) => row.plannedFor === "2026-08-10")).toHaveLength(2);
+});
+
+test("réconcilie une série suspendue puis completed après naissance sans nouvelle occurrence", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  let series = seriesRow();
+  await ownerClient.rpc("set_litter_plan_series_state", {
+    p_series_id: series.id,
+    p_client_command_id: ids.suspendCmd,
+    p_expected_revision_no: series.revision,
+    p_new_state: "suspended",
+    p_reason: "pause",
+  });
+  series = seriesRow();
+  expect(series.state).toBe("suspended");
+  const countBefore = occurrences(series.id).length;
+
+  sql(`
+    update public.litters
+    set actual_birth_date = '2026-08-09'::date, updated_by = ${q(owner)}::uuid
+    where id = ${q(ids.litter)}::uuid;
+  `);
+
+  const mat = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.suspendBirthMat,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-08",
+  });
+  expect(mat.error).toBeNull();
+  expect(mat.data?.[0]?.inserted_count).toBe(0);
+  series = seriesRow();
+  expect(series).toMatchObject({
+    state: "completed",
+    completionReason: "actual_birth_reached",
+    endsOn: "2026-08-09",
+  });
+  expect(occurrences(series.id)).toHaveLength(countBefore);
+});
+
+test("répare une série completed avec occurrences futures sans création", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  let series = seriesRow();
+  await ownerClient.rpc("set_litter_plan_series_state", {
+    p_series_id: series.id,
+    p_client_command_id: ids.completeCmd,
+    p_expected_revision_no: series.revision,
+    p_new_state: "completed",
+    p_reason: "manual",
+  });
+  series = seriesRow();
+  expect(series.state).toBe("completed");
+  const countBefore = occurrences(series.id).length;
+
+  sql(`
+    update public.litters
+    set actual_birth_date = '2026-08-09'::date, updated_by = ${q(owner)}::uuid
+    where id = ${q(ids.litter)}::uuid;
+  `);
+
+  const mat = await ownerClient.rpc("materialize_litter_plan_series", {
+    p_series_id: series.id,
+    p_client_command_id: ids.completedRepairMat,
+    p_expected_revision_no: series.revision,
+    p_requested_through: "2026-08-08",
+  });
+  expect(mat.error).toBeNull();
+  expect(mat.data?.[0]?.inserted_count).toBe(0);
+  series = seriesRow();
+  expect(series.state).toBe("completed");
+  expect(series.endsOn).toBe("2026-08-09");
+  expect(occurrences(series.id)).toHaveLength(countBefore);
+  expect(
+    occurrences(series.id).filter((row) => row.plannedFor > "2026-08-09").every((row) => row.status === "not_applicable"),
+  ).toBe(true);
+});
+
+async function raceWithTimeout<T>(label: string, racers: Promise<T>[]) {
+  return Promise.race([
+    Promise.all(racers),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} exceeded ${CONCURRENT_RPC_TIMEOUT_MS}ms`)), CONCURRENT_RPC_TIMEOUT_MS);
+    }),
+  ]);
+}
+
+test("concurrence matérialisation vs recalcul sans deadlock", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  const series = seriesRow();
+  const litterUpdatedAt = sql(`select updated_at::text from public.litters where id=${q(ids.litter)}::uuid;`);
+
+  const results = await raceWithTimeout("mat vs recalc", [
+    ownerClient.rpc("materialize_litter_plan_series", {
+      p_series_id: series.id,
+      p_client_command_id: ids.concurMatRecalcMat,
+      p_expected_revision_no: series.revision,
+      p_requested_through: "2026-08-14",
+    }),
+    ownerClient.rpc("update_litter_gestation_anchors_and_recalculate_plan", {
+      p_litter_id: ids.litter,
+      p_client_command_id: ids.concurMatRecalcRecalc,
+      p_expected_litter_updated_at: litterUpdatedAt,
+      p_expected_plan_revision: series.planRevision,
+      p_estimated_ovulation_date: "2026-06-24",
+      p_expected_birth_date: "2026-08-11",
+    }),
+  ]);
+
+  expect(results.every((result) => result.error === null)).toBe(true);
+  const outcomes = results.map((result) => result.data?.[0]?.outcome);
+  expect(outcomes.filter((value) => value === "success").length).toBeGreaterThanOrEqual(1);
+  expect(new Set(occurrences(series.id).map((row) => `${row.day}-${row.slot}`)).size).toBe(
+    occurrences(series.id).length,
+  );
+});
+
+test("concurrence annulation de série vs recalcul sans deadlock", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  const series = seriesRow();
+  const litterUpdatedAt = sql(`select updated_at::text from public.litters where id=${q(ids.litter)}::uuid;`);
+
+  const results = await raceWithTimeout("cancel vs recalc", [
+    ownerClient.rpc("set_litter_plan_series_state", {
+      p_series_id: series.id,
+      p_client_command_id: ids.concurCancelRecalcCancel,
+      p_expected_revision_no: series.revision,
+      p_new_state: "cancelled",
+      p_reason: "stop",
+    }),
+    ownerClient.rpc("update_litter_gestation_anchors_and_recalculate_plan", {
+      p_litter_id: ids.litter,
+      p_client_command_id: ids.concurCancelRecalcRecalc,
+      p_expected_litter_updated_at: litterUpdatedAt,
+      p_expected_plan_revision: series.planRevision,
+      p_estimated_ovulation_date: "2026-06-24",
+      p_expected_birth_date: "2026-08-11",
+    }),
+  ]);
+
+  expect(results.every((result) => result.error === null)).toBe(true);
+});
+
+test("concurrence matérialisation vs changement d'état sans deadlock", async () => {
+  seedBaseActorsAndLitter();
+  const ownerClient = await createAuthenticatedSupabaseClient();
+  const created = await createTemperatureModel(ownerClient, ids.modelCommand);
+  await applyModel(ownerClient, ids.litter, created.model_id!, ids.applyCommand);
+  const series = seriesRow();
+
+  const results = await raceWithTimeout("mat vs state", [
+    ownerClient.rpc("materialize_litter_plan_series", {
+      p_series_id: series.id,
+      p_client_command_id: ids.concurMatStateMat,
+      p_expected_revision_no: series.revision,
+      p_requested_through: "2026-08-14",
+    }),
+    ownerClient.rpc("set_litter_plan_series_state", {
+      p_series_id: series.id,
+      p_client_command_id: ids.concurMatStateSuspend,
+      p_expected_revision_no: series.revision,
+      p_new_state: "suspended",
+      p_reason: "pause",
+    }),
+  ]);
+
+  expect(results.every((result) => result.error === null)).toBe(true);
+  const stale = results.filter((result) => result.data?.[0]?.reason === "stale_revision");
+  expect(stale.length).toBeLessThanOrEqual(1);
 });
