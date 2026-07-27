@@ -34,6 +34,7 @@ import {
   LITTER_PLANNING_MODEL_APPLY_INDEPENDENCE_MESSAGE,
   LITTER_PLANNING_MODEL_APPLY_NO_PLAN_MESSAGE,
   LITTER_PLANNING_MODEL_APPLY_SETTINGS_HREF,
+  buildLitterPlanningModelApplyPublicKey,
   projectLitterPlanningModelItemPreview,
   resolveLitterPlanningModelApplyOrigin,
   resolveLitterPlanningModelApplyTimezone,
@@ -736,8 +737,12 @@ export async function loadLitterPlanningModelApplicationPanel(
 
   const cards: LitterPlanningModelApplicationCardDto[] = [];
   const bindings: LitterPlanningModelApplicationBinding[] = [];
+  const panelInstanceKey = crypto.randomUUID();
   draftCards.forEach((draft, index) => {
-    const publicKey = `model-${index + 1}`;
+    const publicKey = buildLitterPlanningModelApplyPublicKey(
+      panelInstanceKey,
+      index + 1,
+    );
     const card = { ...draft.card, publicKey };
     cards.push(card);
     if (card.canApply) {

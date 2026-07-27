@@ -446,6 +446,7 @@ function ModelCard({
         <div className="shrink-0">
           {model.canApply && action ? (
             <ModelApplyDialog
+              key={model.publicKey}
               model={model}
               action={action}
               onSuccess={onSuccess}

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   buildInitialLitterPlanningModelSelection,
+  buildLitterPlanningModelApplyPublicKey,
   canApplyLitterPlanningModel,
   canViewLitterPlanningModelApplication,
   collectAppliedPlanningModelSnapshots,
@@ -73,6 +74,23 @@ test("compatibilité espèce et race", () => {
       litterBreed: "Golden Retriever",
     }),
   ).toBe(false);
+});
+
+test("clés publiques opaques isolées par chargement", () => {
+  const loadA = "11111111-1111-4111-8111-111111111111";
+  const loadB = "22222222-2222-4222-8222-222222222222";
+  expect(buildLitterPlanningModelApplyPublicKey(loadA, 1)).toBe(
+    `planning-model-${loadA}-1`,
+  );
+  expect(buildLitterPlanningModelApplyPublicKey(loadA, 2)).toBe(
+    `planning-model-${loadA}-2`,
+  );
+  expect(buildLitterPlanningModelApplyPublicKey(loadA, 1)).not.toBe(
+    buildLitterPlanningModelApplyPublicKey(loadB, 1),
+  );
+  expect(buildLitterPlanningModelApplyPublicKey(loadA, 1)).not.toContain(
+    "Golden",
+  );
 });
 
 test("détecte un modèle déjà appliqué et compte une application partielle", () => {

@@ -43,6 +43,7 @@ const ids = {
   itemRecurring: `${prefix}30`,
   itemPending: `${prefix}31`,
   itemSecond: `${prefix}32`,
+  itemSecondOptional: `${prefix}36`,
   itemInactive: `${prefix}33`,
   itemIncompatible: `${prefix}34`,
   itemAuto: `${prefix}35`,
@@ -289,6 +290,7 @@ function createFixtures() {
       (${q(ids.itemRecurring)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelPrimary)}::uuid, ${q(ids.templateRecurring)}::uuid, 'recurring_task', 'important', 'expected_birth', null, null, null, 'daily_interval', 1, -5, 'actual_birth', 3, 30, 3, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
       (${q(ids.itemPending)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelPrimary)}::uuid, ${q(ids.templatePending)}::uuid, 'task', 'normal', 'actual_birth', 2, null, null, null, null, null, null, null, null, 4, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
       (${q(ids.itemSecond)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelSecond)}::uuid, ${q(ids.templateMilestone)}::uuid, 'milestone', 'normal', 'first_mating', 10, null, null, null, null, null, null, null, null, 0, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
+      (${q(ids.itemSecondOptional)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelSecond)}::uuid, ${q(ids.templateWindow)}::uuid, 'window', 'normal', 'first_mating', null, 8, 11, null, null, null, null, null, null, 1, false, false, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
       (${q(ids.itemInactive)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelInactive)}::uuid, ${q(ids.templateMilestone)}::uuid, 'milestone', 'normal', 'first_mating', 1, null, null, null, null, null, null, null, null, 0, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
       (${q(ids.itemIncompatible)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelIncompatible)}::uuid, ${q(ids.templateMilestone)}::uuid, 'milestone', 'normal', 'first_mating', 1, null, null, null, null, null, null, null, null, 0, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid),
       (${q(ids.itemAuto)}::uuid, ${q(ids.organization)}::uuid, ${q(ids.modelAuto)}::uuid, ${q(ids.templateMilestone)}::uuid, 'milestone', 'normal', 'first_mating', 1, null, null, null, null, null, null, null, null, 0, true, true, ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid);
@@ -342,6 +344,13 @@ function countsAfterApply() {
         'tasks', (select count(*) from public.litter_care_tasks where litter_id = ${q(ids.litter)}::uuid),
         'series', (select count(*) from public.litter_plan_series where litter_id = ${q(ids.litter)}::uuid),
         'occurrences', (select count(*) from public.litter_care_tasks where litter_id = ${q(ids.litter)}::uuid and litter_plan_series_id is not null),
+        'secondModelItems', (select count(*) from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid and source_planning_model_id = ${q(ids.modelSecond)}::uuid),
+        'secondModelSuccessCommands', (
+          select count(*) from public.litter_plan_application_commands
+          where litter_id = ${q(ids.litter)}::uuid
+            and planning_model_id = ${q(ids.modelSecond)}::uuid
+            and outcome = 'success'
+        ),
         'modelItemsPrimary', (select count(*) from public.litter_planning_model_items where model_id = ${q(ids.modelPrimary)}::uuid),
         'modelRevisionPrimary', (select revision from public.litter_planning_models where id = ${q(ids.modelPrimary)}::uuid),
         'orders', (
@@ -350,6 +359,10 @@ function countsAfterApply() {
         ),
         'sources', (
           select coalesce(json_agg(source_planning_model_id::text order by display_order), '[]'::json)
+          from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid
+        ),
+        'sourceItemIds', (
+          select coalesce(json_agg(source_model_item_id::text order by display_order), '[]'::json)
           from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid
         ),
         'matingDate', (select mating_date::text from public.litters where id = ${q(ids.litter)}::uuid),
@@ -467,31 +480,58 @@ test("LITTER-PLANNING-MODEL-APPLY-UI-01 — programmer une portée depuis un mod
   expect(already.data?.[0]?.reason).toBe("model_already_applied");
   expect(countsAfterApply().items).toBe(4);
 
-  const doubleA = await owner.rpc("apply_litter_planning_model", {
-    p_litter_id: ids.litter,
-    p_planning_model_id: ids.modelSecond,
-    p_client_command_id: ids.applyCommandDoubleB,
-    p_expected_model_revision: 1,
-    p_expected_plan_revision: 1,
-    p_selected_model_item_ids: [ids.itemSecond],
-    p_timezone_name: "Europe/Paris",
-  });
-  const doubleB = await owner.rpc("apply_litter_planning_model", {
-    p_litter_id: ids.litter,
-    p_planning_model_id: ids.modelSecond,
-    p_client_command_id: ids.applyCommandDoubleB,
-    p_expected_model_revision: 1,
-    p_expected_plan_revision: 1,
-    p_selected_model_item_ids: [ids.itemSecond],
-    p_timezone_name: "Europe/Paris",
-  });
-  expect(doubleA.data?.[0]?.outcome).toBe("success");
-  expect(doubleB.data?.[0]?.outcome).toBe("success");
-  expect(doubleB.data?.[0]?.replayed).toBe(true);
+  await expect(
+    modelCard(page, `${fixtureNamePrefix} modèle principal`),
+  ).toContainText("Déjà appliqué", { timeout: 30_000 });
+  await expect(
+    modelCard(page, `${fixtureNamePrefix} modèle principal`).getByRole(
+      "button",
+      { name: "Appliquer ce modèle" },
+    ),
+  ).toHaveCount(0);
+  const secondCard = modelCard(page, `${fixtureNamePrefix} modèle second`);
+  await expect(secondCard).toContainText("Disponible");
+  await expect(
+    secondCard.getByRole("button", { name: "Appliquer ce modèle" }),
+  ).toBeVisible();
+
+  await secondCard.getByRole("button", { name: "Appliquer ce modèle" }).click();
+  const secondDialog = page.getByRole("dialog");
+  await expect(secondDialog).toBeVisible();
+  await expect(secondDialog).toContainText("1 élément sélectionné");
+  const secondRequired = secondDialog.locator("input[type='checkbox']").nth(0);
+  await expect(secondRequired).toBeChecked();
+  await expect(secondRequired).toBeDisabled();
+  const secondOptional = secondDialog.locator("input[type='checkbox']").nth(1);
+  await expect(secondOptional).not.toBeChecked();
+  await expect(secondOptional).toBeEnabled();
+  await expect(secondDialog.locator("input[type='checkbox']")).toHaveCount(2);
+
+  await secondDialog.getByRole("button", { name: "Continuer" }).click();
+  await expect(secondDialog).toContainText(
+    "Ce modèle ne pourra pas être appliqué une seconde fois",
+  );
+  const beforeSecond = countsAfterApply();
+  expect(beforeSecond.planRevision).toBe(1);
+  expect(beforeSecond.items).toBe(4);
+  await secondDialog
+    .getByRole("button", { name: "Appliquer le modèle" })
+    .dblclick();
+  await expect(
+    modelCard(page, `${fixtureNamePrefix} modèle second`),
+  ).toContainText("Déjà appliqué", { timeout: 30_000 });
+  await expect(
+    modelCard(page, `${fixtureNamePrefix} modèle second`).getByRole("button", {
+      name: "Appliquer ce modèle",
+    }),
+  ).toHaveCount(0);
+
   const afterSecond = countsAfterApply();
   expect(afterSecond.plans).toBe(1);
   expect(afterSecond.planRevision).toBe(2);
   expect(afterSecond.items).toBe(5);
+  expect(afterSecond.secondModelItems).toBe(1);
+  expect(afterSecond.secondModelSuccessCommands).toBe(1);
   expect(afterSecond.orders).toEqual([0, 1, 2, 3, 4]);
   expect(afterSecond.sources).toEqual([
     ids.modelPrimary,
@@ -500,6 +540,16 @@ test("LITTER-PLANNING-MODEL-APPLY-UI-01 — programmer une portée depuis un mod
     ids.modelPrimary,
     ids.modelSecond,
   ]);
+  expect(afterSecond.sourceItemIds).toEqual([
+    ids.itemMilestone,
+    ids.itemTask,
+    ids.itemRecurring,
+    ids.itemPending,
+    ids.itemSecond,
+  ]);
+  expect(afterSecond.tasks).toBe((beforeSecond.tasks as number) + 1);
+  expect(afterSecond.series).toBe(beforeSecond.series);
+  expect(afterSecond.occurrences).toBe(beforeSecond.occurrences);
 
   const stalePlan = await owner.rpc("apply_litter_planning_model", {
     p_litter_id: ids.litter,

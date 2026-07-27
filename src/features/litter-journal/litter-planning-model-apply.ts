@@ -750,3 +750,19 @@ export function assignLitterPlanningModelPublicIndexes<T extends { displayOrder:
     publicIndex: index + 1,
   }));
 }
+
+/** Opaque card key for one panel load. Never embeds model UUIDs or titles. */
+export function buildLitterPlanningModelApplyPublicKey(
+  panelInstanceKey: string,
+  publicCardIndex: number,
+): string {
+  if (
+    typeof panelInstanceKey !== "string" ||
+    panelInstanceKey.trim().length === 0 ||
+    !Number.isInteger(publicCardIndex) ||
+    publicCardIndex < 1
+  ) {
+    throw new Error("Invalid litter planning model apply public key input.");
+  }
+  return `planning-model-${panelInstanceKey}-${publicCardIndex}`;
+}
