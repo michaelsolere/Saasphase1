@@ -350,10 +350,11 @@ export function LitterCareTaskGenerationPanel({
     <section className="rounded-2xl border bg-surface p-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div>
-          <h2 className="text-lg font-semibold">Jalons issus des modèles</h2>
+          <h2 className="text-lg font-semibold">Ajouter des jalons isolés</h2>
           <p className="mt-1 text-sm leading-6 text-muted">
-            Consultez le plan préparé pour cette portée et créez seulement les
-            tâches utiles.
+            Les modèles complets assemblent plusieurs jalons, périodes et
+            suivis. Les jalons isolés permettent d’ajouter ponctuellement un
+            seul repère.
           </p>
         </div>
         {!loadError && canWrite && action && readyEntries.length > 0 ? (
