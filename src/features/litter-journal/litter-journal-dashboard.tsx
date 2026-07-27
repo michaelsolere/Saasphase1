@@ -26,6 +26,9 @@ import { LitterCareTodayPanel } from "./litter-care-today-panel";
 import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type { LitterPlanTimeline } from "./litter-plan-timeline";
+import { LitterPlanningModelApplyPanel } from "./litter-planning-model-apply-panel";
+import type { ApplyLitterPlanningModelActionState } from "./litter-planning-model-apply-actions";
+import type { LitterPlanningModelApplicationPanelDto } from "./litter-planning-model-apply";
 import {
   LitterPlanSeriesPanel,
   type LitterPlanSeriesPanelActions,
@@ -216,6 +219,9 @@ export function LitterJournalDashboard({
   litterCareTasksLoadError,
   litterCareTodayDate,
   litterCareTodayLocalTime,
+  litterPlanningModelApplicationPanel,
+  litterPlanningModelApplyActions,
+  litterPlanningModelApplicationLoadError,
   litterPlanTimeline,
   litterPlanLoadError,
   litterPlanSeries,
@@ -288,6 +294,15 @@ export function LitterJournalDashboard({
   litterCareTasksLoadError: boolean;
   litterCareTodayDate: string;
   litterCareTodayLocalTime: string;
+  litterPlanningModelApplicationPanel: LitterPlanningModelApplicationPanelDto | null;
+  litterPlanningModelApplyActions: Record<
+    string,
+    (
+      previousState: ApplyLitterPlanningModelActionState,
+      formData: FormData,
+    ) => Promise<ApplyLitterPlanningModelActionState>
+  >;
+  litterPlanningModelApplicationLoadError: boolean;
   litterPlanTimeline: LitterPlanTimeline | null;
   litterPlanLoadError: boolean;
   litterPlanSeries: LitterPlanSeriesSummary[];
@@ -440,6 +455,11 @@ export function LitterJournalDashboard({
         <ContextCard litter={litter} details={details} />
         <SummaryCard litter={litter} />
       </div>
+      <LitterPlanningModelApplyPanel
+        panel={litterPlanningModelApplicationPanel}
+        actionsByPublicKey={litterPlanningModelApplyActions}
+        loadError={litterPlanningModelApplicationLoadError}
+      />
       <LitterPlanTimelinePanel timeline={litterPlanTimeline} unavailable={litterPlanLoadError} />
       <WhelpingPanel
         displayMode="journal"

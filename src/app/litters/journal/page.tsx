@@ -29,6 +29,8 @@ import {
 } from "@/features/litter-journal/litter-plan-series-actions";
 import type { LitterPlanSeriesPanelActions } from "@/features/litter-journal/litter-plan-series-panel";
 import { projectLitterPlanTimeline } from "@/features/litter-journal/litter-plan-timeline";
+import { applyLitterPlanningModelAction } from "@/features/litter-journal/litter-planning-model-apply-actions";
+import { loadLitterPlanningModelApplicationPanel } from "@/features/litter-journal/litter-planning-model-application";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import {
   formatLitterJournalBusinessDate,
@@ -119,6 +121,9 @@ export default async function LitterJournalPage({
     ReturnType<typeof planLitterCareTaskGeneration>
   > | null = null;
   let activeLitterPlan: Awaited<ReturnType<typeof getActiveLitterPlanForLitter>> | null = null;
+  let litterPlanningModelApplication: Awaited<
+    ReturnType<typeof loadLitterPlanningModelApplicationPanel>
+  > | null = null;
   let litterPlanSeries: Awaited<
     ReturnType<typeof listLitterPlanSeriesSummariesForLitter>
   > | null = null;
@@ -138,12 +143,13 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, activePlanResult, seriesResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
+    const [maternalResult, tasksResult, generationPlanResult, activePlanResult, planningModelApplicationResult, seriesResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
         getActiveLitterPlanForLitter(litterId, supabase),
+        loadLitterPlanningModelApplicationPanel(litterId, supabase),
         listLitterPlanSeriesSummariesForLitter(litterId, supabase),
         loadWhelpingWorkspace(litterId, supabase),
         listLitterWeightHistory({
@@ -165,6 +171,10 @@ export default async function LitterJournalPage({
         : null;
     activeLitterPlan =
       activePlanResult.status === "fulfilled" ? activePlanResult.value : null;
+    litterPlanningModelApplication =
+      planningModelApplicationResult.status === "fulfilled"
+        ? planningModelApplicationResult.value
+        : null;
     litterPlanSeries =
       seriesResult.status === "fulfilled" ? seriesResult.value : null;
     whelpingWorkspace =
@@ -197,6 +207,16 @@ export default async function LitterJournalPage({
     litterCareTasksLoaded
       ? projectLitterPlanTimeline(activeLitterPlan, litterCareTasksLoaded.tasks)
       : null;
+  const litterPlanningModelApplicationLoaded =
+    litterPlanningModelApplication?.outcome === "success"
+      ? litterPlanningModelApplication
+      : null;
+  const litterPlanningModelApplyActions = Object.fromEntries(
+    (litterPlanningModelApplicationLoaded?.bindings ?? []).map((binding) => [
+      binding.publicKey,
+      applyLitterPlanningModelAction.bind(null, binding.intention),
+    ]),
+  );
   const litterPlanSeriesLoaded =
     litterPlanSeries?.outcome === "success" ? litterPlanSeries : null;
   const litterPlanSeriesCanWrite =
@@ -437,6 +457,13 @@ export default async function LitterJournalPage({
             litterCareTasksLoadError={litterCareTasksLoaded === null}
             litterCareTodayDate={litterJournalTodayDate}
             litterCareTodayLocalTime={litterJournalTodayLocalTime}
+            litterPlanningModelApplicationPanel={
+              litterPlanningModelApplicationLoaded?.panel ?? null
+            }
+            litterPlanningModelApplyActions={litterPlanningModelApplyActions}
+            litterPlanningModelApplicationLoadError={
+              litterPlanningModelApplicationLoaded === null
+            }
             litterPlanTimeline={litterPlanTimeline}
             litterPlanLoadError={litterPlanLoadError}
             litterPlanSeries={litterPlanSeriesLoaded?.series ?? []}
