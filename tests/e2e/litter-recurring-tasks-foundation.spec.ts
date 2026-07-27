@@ -878,12 +878,18 @@ test("active une série pending_anchor après naissance réelle via matérialisa
     where id = ${q(ids.litter)}::uuid;
   `);
   const ownerClient = await createAuthenticatedSupabaseClient();
-  const created = await createTemperatureModel(ownerClient, ids.pendingAnchorModelCmd, {
-    anchorType: "actual_birth",
-    recurrenceStartsOffsetDays: 0,
-    initialMaterializationHorizonDays: 7,
-    timeSlots: ["08:00", "20:00"],
-  });
+  const created = await createTemperatureModel(
+    ownerClient,
+    ids.pendingAnchorModelCmd,
+    {
+      anchorType: "actual_birth",
+      recurrenceStartsOffsetDays: 0,
+      recurrenceEndKind: "fixed_recurrence_day_count",
+      recurrenceDayCount: 7,
+      initialMaterializationHorizonDays: 7,
+      timeSlots: ["08:00", "20:00"],
+    },
+  );
   await applyModel(ownerClient, ids.litter, created.model_id!, ids.pendingApply);
 
   const pendingItem = JSON.parse(
@@ -942,9 +948,11 @@ test("active une série pending_anchor après naissance réelle via matérialisa
   series = seriesRow();
   expect(series).toMatchObject({
     startsOn: "2026-08-10",
+    endsOn: "2026-08-16",
     materializedThrough: "2026-08-16",
     occurrenceCount: 14,
-    state: "active",
+    state: "completed",
+    completionReason: "recurrence_day_count_reached",
   });
 
   const occ = occurrences(series.id);

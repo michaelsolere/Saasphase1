@@ -1229,14 +1229,14 @@ begin
   result_materialized_occurrence_count := v_series.materialized_occurrence_count;
 
   if v_completed and v_series.state in ('active', 'suspended') then
-    update public.litter_plan_series
+    update public.litter_plan_series as s
     set state = 'completed',
         completion_reason = v_completion,
         updated_by = p_actor
-    where id = v_series.id
+    where s.id = v_series.id
       and (
-        state is distinct from 'completed'
-        or completion_reason is distinct from v_completion
+        s.state is distinct from 'completed'
+        or s.completion_reason is distinct from v_completion
       )
     returning * into v_series;
     if found then
@@ -1249,11 +1249,11 @@ begin
     and v_series.end_kind = 'actual_birth'
     and v_series.completion_reason is distinct from v_completion
   then
-    update public.litter_plan_series
+    update public.litter_plan_series as s
     set completion_reason = v_completion,
         updated_by = p_actor
-    where id = v_series.id
-      and completion_reason is distinct from v_completion
+    where s.id = v_series.id
+      and s.completion_reason is distinct from v_completion
     returning * into v_series;
     if found then
       v_data_changed := true;

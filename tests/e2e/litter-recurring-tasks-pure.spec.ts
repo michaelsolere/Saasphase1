@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { expect, test } from "@playwright/test";
 
 import { parseLitterPlanningModelItems } from "../../src/features/litter-journal/litter-planning-models-core";
@@ -148,6 +151,26 @@ test("horizon covers civil days not cadence steps", () => {
     candidateDates.push(iso);
   }
   expect(candidateDates).toEqual(["2026-08-01", "2026-08-04", "2026-08-07"]);
+});
+
+test("materialize helper qualifies completion_reason in terminal updates", () => {
+  const migrationPath = resolve(
+    process.cwd(),
+    "supabase/migrations/202607270001_litter_recurring_tasks_foundation.sql",
+  );
+  const migration = readFileSync(migrationPath, "utf8");
+  const match = migration.match(
+    /create or replace function public\.materialize_litter_plan_series_occurrences\([\s\S]*?\$fn\$;/,
+  );
+  expect(match, "materialize_litter_plan_series_occurrences definition").not.toBeNull();
+  const body = match![0]!;
+  expect(body).toContain("s.completion_reason is distinct from v_completion");
+  expect(body).not.toMatch(
+    /\bor completion_reason is distinct from v_completion\b/,
+  );
+  expect(body).not.toMatch(
+    /\band completion_reason is distinct from v_completion\b/,
+  );
 });
 
 test("rejects fixed end offset before recurrence start offset", () => {
