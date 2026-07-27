@@ -22,7 +22,12 @@ import {
   listLitterCareTasksForLitter,
   planLitterCareTaskGeneration,
 } from "@/features/litter-journal/litter-care-tasks";
-import { getActiveLitterPlanForLitter } from "@/features/litter-journal/litter-plans";
+import { getActiveLitterPlanForLitter, listLitterPlanSeriesSummariesForLitter } from "@/features/litter-journal/litter-plans";
+import {
+  materializeLitterPlanSeriesAction,
+  setLitterPlanSeriesStateAction,
+} from "@/features/litter-journal/litter-plan-series-actions";
+import type { LitterPlanSeriesPanelActions } from "@/features/litter-journal/litter-plan-series-panel";
 import { projectLitterPlanTimeline } from "@/features/litter-journal/litter-plan-timeline";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
 import {
@@ -114,6 +119,9 @@ export default async function LitterJournalPage({
     ReturnType<typeof planLitterCareTaskGeneration>
   > | null = null;
   let activeLitterPlan: Awaited<ReturnType<typeof getActiveLitterPlanForLitter>> | null = null;
+  let litterPlanSeries: Awaited<
+    ReturnType<typeof listLitterPlanSeriesSummariesForLitter>
+  > | null = null;
   let whelpingWorkspace: Awaited<
     ReturnType<typeof loadWhelpingWorkspace>
   > | null = null;
@@ -130,12 +138,13 @@ export default async function LitterJournalPage({
 
   if (journal?.selectedLitter?.id) {
     const litterId = journal.selectedLitter.id;
-    const [maternalResult, tasksResult, generationPlanResult, activePlanResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
+    const [maternalResult, tasksResult, generationPlanResult, activePlanResult, seriesResult, whelpingResult, weightsResult, adjustmentHistoryResult] =
       await Promise.allSettled([
         listMaternalObservationsForLitter({ litterId }),
         listLitterCareTasksForLitter({ litterId }),
         planLitterCareTaskGeneration({ litterId }),
         getActiveLitterPlanForLitter(litterId, supabase),
+        listLitterPlanSeriesSummariesForLitter(litterId, supabase),
         loadWhelpingWorkspace(litterId, supabase),
         listLitterWeightHistory({
           litterId,
@@ -156,6 +165,8 @@ export default async function LitterJournalPage({
         : null;
     activeLitterPlan =
       activePlanResult.status === "fulfilled" ? activePlanResult.value : null;
+    litterPlanSeries =
+      seriesResult.status === "fulfilled" ? seriesResult.value : null;
     whelpingWorkspace =
       whelpingResult.status === "fulfilled" ? whelpingResult.value : null;
     litterWeightHistory =
@@ -186,6 +197,53 @@ export default async function LitterJournalPage({
     litterCareTasksLoaded
       ? projectLitterPlanTimeline(activeLitterPlan, litterCareTasksLoaded.tasks)
       : null;
+  const litterPlanSeriesLoaded =
+    litterPlanSeries?.outcome === "success" ? litterPlanSeries : null;
+  const litterPlanSeriesCanWrite =
+    litterPlanSeriesLoaded?.role === "owner" ||
+    litterPlanSeriesLoaded?.role === "admin" ||
+    litterPlanSeriesLoaded?.role === "member";
+  const litterPlanSeriesActions: LitterPlanSeriesPanelActions[] =
+    litterPlanSeriesCanWrite
+      ? (litterPlanSeriesLoaded?.series ?? []).map((series) => {
+          const base = {
+            seriesId: series.id,
+            expectedRevisionNo: series.revisionNo,
+          };
+          return {
+            seriesId: series.id,
+            suspendAction: setLitterPlanSeriesStateAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+              newState: "suspended",
+            }),
+            resumeAction: setLitterPlanSeriesStateAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+              newState: "active",
+            }),
+            materializeAction: materializeLitterPlanSeriesAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+            }),
+            completeAction: setLitterPlanSeriesStateAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+              newState: "completed",
+            }),
+            cancelAction: setLitterPlanSeriesStateAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+              newState: "cancelled",
+            }),
+            notApplicableAction: setLitterPlanSeriesStateAction.bind(null, {
+              ...base,
+              clientCommandId: crypto.randomUUID(),
+              newState: "not_applicable",
+            }),
+          };
+        })
+      : [];
   const litterCareTaskGenerationPlanLoaded =
     litterCareTaskGenerationPlan?.outcome === "success"
       ? litterCareTaskGenerationPlan
@@ -381,6 +439,10 @@ export default async function LitterJournalPage({
             litterCareTodayLocalTime={litterJournalTodayLocalTime}
             litterPlanTimeline={litterPlanTimeline}
             litterPlanLoadError={litterPlanLoadError}
+            litterPlanSeries={litterPlanSeriesLoaded?.series ?? []}
+            litterPlanSeriesRole={litterPlanSeriesLoaded?.role ?? null}
+            litterPlanSeriesActions={litterPlanSeriesActions}
+            litterPlanSeriesLoadError={litterPlanSeriesLoaded === null}
             whelpingSession={whelpingWorkspaceLoaded?.session ?? null}
             whelpingEvents={whelpingWorkspaceLoaded?.events ?? []}
             whelpingBirths={whelpingWorkspaceLoaded?.births ?? []}

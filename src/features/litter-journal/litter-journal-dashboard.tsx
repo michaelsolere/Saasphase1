@@ -26,6 +26,11 @@ import { LitterCareTodayPanel } from "./litter-care-today-panel";
 import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type { LitterPlanTimeline } from "./litter-plan-timeline";
+import {
+  LitterPlanSeriesPanel,
+  type LitterPlanSeriesPanelActions,
+} from "./litter-plan-series-panel";
+import type { LitterPlanSeriesSummary } from "./litter-plan-series-summary";
 import { MaternalObservationsPanel } from "./maternal-observations-panel";
 import type { MaternalObservationPanelItem } from "./maternal-temperature-chart-model";
 import type { MaternalObservationActionState } from "./maternal-observations-actions";
@@ -213,6 +218,10 @@ export function LitterJournalDashboard({
   litterCareTodayLocalTime,
   litterPlanTimeline,
   litterPlanLoadError,
+  litterPlanSeries,
+  litterPlanSeriesRole,
+  litterPlanSeriesActions,
+  litterPlanSeriesLoadError,
   whelpingSession,
   whelpingEvents,
   whelpingBirths,
@@ -281,6 +290,10 @@ export function LitterJournalDashboard({
   litterCareTodayLocalTime: string;
   litterPlanTimeline: LitterPlanTimeline | null;
   litterPlanLoadError: boolean;
+  litterPlanSeries: LitterPlanSeriesSummary[];
+  litterPlanSeriesRole: "owner" | "admin" | "member" | "viewer" | null;
+  litterPlanSeriesActions: LitterPlanSeriesPanelActions[];
+  litterPlanSeriesLoadError: boolean;
   whelpingSession: WhelpingSessionSummary | null;
   whelpingEvents: WhelpingEventSummary[];
   whelpingBirths: WhelpingBirthSummary[];
@@ -476,6 +489,12 @@ export function LitterJournalDashboard({
         role={litterCareTaskGenerationRole}
         action={litterCareTaskGenerationAction}
         loadError={litterCareTaskGenerationLoadError}
+      />
+      <LitterPlanSeriesPanel
+        series={litterPlanSeries}
+        role={litterPlanSeriesRole}
+        actions={litterPlanSeriesActions}
+        loadError={litterPlanSeriesLoadError}
       />
       <LitterCareTasksPanel
         tasks={litterCareTasks}
