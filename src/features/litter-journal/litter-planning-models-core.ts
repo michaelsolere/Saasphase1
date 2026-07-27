@@ -11,6 +11,13 @@ export const LITTER_PLANNING_MODEL_ITEM_KINDS = [
   "milestone",
   "task",
   "window",
+  "recurring_task",
+] as const;
+export const LITTER_PLANNING_MODEL_RECURRENCE_KINDS = ["daily_interval"] as const;
+export const LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS = [
+  "fixed_end_offset",
+  "fixed_recurrence_day_count",
+  "actual_birth",
 ] as const;
 export const LITTER_PLANNING_MODEL_PRIORITIES = [
   "normal",
@@ -31,6 +38,10 @@ export type LitterPlanningModelPriority =
   (typeof LITTER_PLANNING_MODEL_PRIORITIES)[number];
 export type LitterPlanningModelAnchor =
   (typeof LITTER_PLANNING_MODEL_ANCHORS)[number];
+export type LitterPlanningModelRecurrenceKind =
+  (typeof LITTER_PLANNING_MODEL_RECURRENCE_KINDS)[number];
+export type LitterPlanningModelRecurrenceEndKind =
+  (typeof LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS)[number];
 
 export type LitterPlanningModelItemInput = {
   organizationTemplateId: string;
@@ -43,6 +54,15 @@ export type LitterPlanningModelItemInput = {
   windowStartsLocalTime?: string;
   windowEndsOffsetDays?: number;
   windowEndsLocalTime?: string;
+  recurrenceKind?: LitterPlanningModelRecurrenceKind;
+  recurrenceIntervalDays?: number;
+  recurrenceStartsOffsetDays?: number;
+  recurrenceEndKind?: LitterPlanningModelRecurrenceEndKind;
+  recurrenceEndsOffsetDays?: number;
+  recurrenceDayCount?: number;
+  initialMaterializationHorizonDays?: number;
+  absoluteMaxOccurrences?: number;
+  timeSlots?: string[];
   displayOrder: number;
   isRequired: boolean;
   isSelectedByDefault: boolean;
@@ -147,10 +167,13 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
     windowEndsLocalTime === null ||
     (item.isRequired && !item.isSelectedByDefault)
   ) return null;
+
   if (item.itemKind === "window") {
     if (
       pointOffsetDays !== undefined ||
       pointLocalTime !== undefined ||
+      item.recurrenceKind !== undefined ||
+      item.timeSlots !== undefined ||
       !Number.isInteger(windowStartsOffsetDays) ||
       !Number.isInteger(windowEndsOffsetDays) ||
       (windowStartsOffsetDays as number) > (windowEndsOffsetDays as number) ||
@@ -159,12 +182,126 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
         windowEndsLocalTime !== undefined &&
         windowStartsLocalTime > windowEndsLocalTime)
     ) return null;
-  } else if (
+    return {
+      organizationTemplateId,
+      itemKind: "window",
+      priority: item.priority as LitterPlanningModelPriority,
+      anchorType: item.anchorType as LitterPlanningModelAnchor,
+      ...(windowStartsOffsetDays === undefined ? {} : { windowStartsOffsetDays: windowStartsOffsetDays as number }),
+      ...(windowStartsLocalTime === undefined ? {} : { windowStartsLocalTime }),
+      ...(windowEndsOffsetDays === undefined ? {} : { windowEndsOffsetDays: windowEndsOffsetDays as number }),
+      ...(windowEndsLocalTime === undefined ? {} : { windowEndsLocalTime }),
+      displayOrder: displayOrder as number,
+      isRequired: item.isRequired,
+      isSelectedByDefault: item.isSelectedByDefault,
+    };
+  }
+
+  if (item.itemKind === "recurring_task") {
+    const recurrenceKind = item.recurrenceKind;
+    const recurrenceEndKind = item.recurrenceEndKind;
+    const recurrenceIntervalDays = item.recurrenceIntervalDays;
+    const recurrenceStartsOffsetDays = item.recurrenceStartsOffsetDays;
+    const initialMaterializationHorizonDays = item.initialMaterializationHorizonDays;
+    const absoluteMaxOccurrences = item.absoluteMaxOccurrences;
+    const timeSlotsRaw = item.timeSlots;
+    if (
+      pointOffsetDays !== undefined ||
+      pointLocalTime !== undefined ||
+      windowStartsOffsetDays !== undefined ||
+      windowStartsLocalTime !== undefined ||
+      windowEndsOffsetDays !== undefined ||
+      windowEndsLocalTime !== undefined ||
+      !LITTER_PLANNING_MODEL_RECURRENCE_KINDS.includes(
+        recurrenceKind as LitterPlanningModelRecurrenceKind,
+      ) ||
+      !LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS.includes(
+        recurrenceEndKind as LitterPlanningModelRecurrenceEndKind,
+      ) ||
+      !Number.isInteger(recurrenceIntervalDays) ||
+      (recurrenceIntervalDays as number) < 1 ||
+      (recurrenceIntervalDays as number) > 365 ||
+      !Number.isInteger(recurrenceStartsOffsetDays) ||
+      !Number.isInteger(initialMaterializationHorizonDays) ||
+      (initialMaterializationHorizonDays as number) < 1 ||
+      (initialMaterializationHorizonDays as number) > 365 ||
+      !Number.isInteger(absoluteMaxOccurrences) ||
+      (absoluteMaxOccurrences as number) < 1 ||
+      (absoluteMaxOccurrences as number) > 500 ||
+      !Array.isArray(timeSlotsRaw) ||
+      timeSlotsRaw.length < 1 ||
+      timeSlotsRaw.length > 8
+    ) {
+      return null;
+    }
+
+    const timeSlots: string[] = [];
+    let previousTime: string | null = null;
+    for (const slot of timeSlotsRaw) {
+      const normalized = normalizeLocalTime(slot);
+      if (!normalized) return null;
+      if (previousTime !== null && normalized <= previousTime) return null;
+      timeSlots.push(normalized);
+      previousTime = normalized;
+    }
+
+    if (recurrenceEndKind === "fixed_end_offset") {
+      if (
+        !Number.isInteger(item.recurrenceEndsOffsetDays) ||
+        item.recurrenceDayCount !== undefined
+      ) {
+        return null;
+      }
+    } else if (recurrenceEndKind === "fixed_recurrence_day_count") {
+      if (
+        !Number.isInteger(item.recurrenceDayCount) ||
+        (item.recurrenceDayCount as number) < 1 ||
+        (item.recurrenceDayCount as number) > 500 ||
+        item.recurrenceEndsOffsetDays !== undefined ||
+        (item.recurrenceDayCount as number) * timeSlots.length >
+          (absoluteMaxOccurrences as number)
+      ) {
+        return null;
+      }
+    } else if (
+      item.recurrenceEndsOffsetDays !== undefined ||
+      item.recurrenceDayCount !== undefined
+    ) {
+      return null;
+    }
+
+    return {
+      organizationTemplateId,
+      itemKind: "recurring_task",
+      priority: item.priority as LitterPlanningModelPriority,
+      anchorType: item.anchorType as LitterPlanningModelAnchor,
+      recurrenceKind: recurrenceKind as LitterPlanningModelRecurrenceKind,
+      recurrenceIntervalDays: recurrenceIntervalDays as number,
+      recurrenceStartsOffsetDays: recurrenceStartsOffsetDays as number,
+      recurrenceEndKind: recurrenceEndKind as LitterPlanningModelRecurrenceEndKind,
+      ...(item.recurrenceEndsOffsetDays === undefined
+        ? {}
+        : { recurrenceEndsOffsetDays: item.recurrenceEndsOffsetDays as number }),
+      ...(item.recurrenceDayCount === undefined
+        ? {}
+        : { recurrenceDayCount: item.recurrenceDayCount as number }),
+      initialMaterializationHorizonDays: initialMaterializationHorizonDays as number,
+      absoluteMaxOccurrences: absoluteMaxOccurrences as number,
+      timeSlots,
+      displayOrder: displayOrder as number,
+      isRequired: item.isRequired,
+      isSelectedByDefault: item.isSelectedByDefault,
+    };
+  }
+
+  if (
     !Number.isInteger(pointOffsetDays) ||
     windowStartsOffsetDays !== undefined ||
     windowStartsLocalTime !== undefined ||
     windowEndsOffsetDays !== undefined ||
-    windowEndsLocalTime !== undefined
+    windowEndsLocalTime !== undefined ||
+    item.recurrenceKind !== undefined ||
+    item.timeSlots !== undefined
   ) return null;
   return {
     organizationTemplateId,
@@ -173,10 +310,6 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
     anchorType: item.anchorType as LitterPlanningModelAnchor,
     ...(pointOffsetDays === undefined ? {} : { pointOffsetDays: pointOffsetDays as number }),
     ...(pointLocalTime === undefined ? {} : { pointLocalTime }),
-    ...(windowStartsOffsetDays === undefined ? {} : { windowStartsOffsetDays: windowStartsOffsetDays as number }),
-    ...(windowStartsLocalTime === undefined ? {} : { windowStartsLocalTime }),
-    ...(windowEndsOffsetDays === undefined ? {} : { windowEndsOffsetDays: windowEndsOffsetDays as number }),
-    ...(windowEndsLocalTime === undefined ? {} : { windowEndsLocalTime }),
     displayOrder: displayOrder as number,
     isRequired: item.isRequired,
     isSelectedByDefault: item.isSelectedByDefault,
@@ -193,6 +326,13 @@ function normalizeItems(items: unknown) {
     orders.add(item.displayOrder);
   }
   return normalized as LitterPlanningModelItemInput[];
+}
+
+/** Pure validation for planning model items (SQL-equivalent shape checks). */
+export function parseLitterPlanningModelItems(
+  items: unknown,
+): LitterPlanningModelItemInput[] | null {
+  return normalizeItems(items);
 }
 
 function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
@@ -225,8 +365,35 @@ function mapModel(row: ModelRow): Omit<LitterPlanningModel, "items"> | null {
   };
 }
 
-function mapItem(row: ItemRow): LitterPlanningModelItem | null {
-  const input = normalizeItem({ organizationTemplateId: row.organization_template_id, itemKind: row.item_kind, priority: row.priority, anchorType: row.anchor_type, pointOffsetDays: row.point_offset_days ?? undefined, pointLocalTime: row.point_local_time ?? undefined, windowStartsOffsetDays: row.window_starts_offset_days ?? undefined, windowStartsLocalTime: row.window_starts_local_time ?? undefined, windowEndsOffsetDays: row.window_ends_offset_days ?? undefined, windowEndsLocalTime: row.window_ends_local_time ?? undefined, displayOrder: row.display_order, isRequired: row.is_required, isSelectedByDefault: row.is_selected_by_default });
+function mapItem(
+  row: ItemRow,
+  timeSlots?: string[],
+): LitterPlanningModelItem | null {
+  const input = normalizeItem({
+    organizationTemplateId: row.organization_template_id,
+    itemKind: row.item_kind,
+    priority: row.priority,
+    anchorType: row.anchor_type,
+    pointOffsetDays: row.point_offset_days ?? undefined,
+    pointLocalTime: row.point_local_time ?? undefined,
+    windowStartsOffsetDays: row.window_starts_offset_days ?? undefined,
+    windowStartsLocalTime: row.window_starts_local_time ?? undefined,
+    windowEndsOffsetDays: row.window_ends_offset_days ?? undefined,
+    windowEndsLocalTime: row.window_ends_local_time ?? undefined,
+    recurrenceKind: row.recurrence_kind ?? undefined,
+    recurrenceIntervalDays: row.recurrence_interval_days ?? undefined,
+    recurrenceStartsOffsetDays: row.recurrence_starts_offset_days ?? undefined,
+    recurrenceEndKind: row.recurrence_end_kind ?? undefined,
+    recurrenceEndsOffsetDays: row.recurrence_ends_offset_days ?? undefined,
+    recurrenceDayCount: row.recurrence_day_count ?? undefined,
+    initialMaterializationHorizonDays:
+      row.initial_materialization_horizon_days ?? undefined,
+    absoluteMaxOccurrences: row.absolute_max_occurrences ?? undefined,
+    timeSlots: timeSlots,
+    displayOrder: row.display_order,
+    isRequired: row.is_required,
+    isSelectedByDefault: row.is_selected_by_default,
+  });
   return input && normalizeUuid(row.id) ? { id: row.id, ...input } : null;
 }
 
@@ -267,8 +434,26 @@ export async function getLitterPlanningModelCore(modelId: string, supabase: Supa
   if (!("role" in listed)) return listed;
   const items = await supabase.from("litter_planning_model_items").select("*").eq("organization_id", model.data.organization_id).eq("model_id", normalizedModelId).order("display_order");
   if (items.error) return failure("database_error", "La lecture du modèle est indisponible.");
+  const itemIds = (items.data ?? []).map((item) => item.id);
+  const slotsByItem = new Map<string, string[]>();
+  if (itemIds.length > 0) {
+    const slots = await supabase
+      .from("litter_planning_model_item_time_slots")
+      .select("model_item_id, slot_no, local_time")
+      .eq("organization_id", model.data.organization_id)
+      .in("model_item_id", itemIds)
+      .order("slot_no");
+    if (slots.error) return failure("database_error", "La lecture du modèle est indisponible.");
+    for (const slot of slots.data ?? []) {
+      const list = slotsByItem.get(slot.model_item_id) ?? [];
+      list.push(slot.local_time);
+      slotsByItem.set(slot.model_item_id, list);
+    }
+  }
   const mappedModel = mapModel(model.data);
-  const mappedItems = (items.data ?? []).map(mapItem);
+  const mappedItems = (items.data ?? []).map((row) =>
+    mapItem(row, slotsByItem.get(row.id)),
+  );
   return mappedModel && mappedItems.every(Boolean) ? { outcome: "success" as const, role: listed.role, model: { ...mappedModel, items: mappedItems as LitterPlanningModelItem[] } } : failure("database_error", "Les données du modèle sont invalides.");
 }
 

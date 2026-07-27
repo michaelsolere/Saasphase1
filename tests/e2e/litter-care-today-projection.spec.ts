@@ -8,7 +8,7 @@ import {
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 
 const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary => ({
-  id: "task", litterId: "litter", source: "organization_template", litterPlanItemId: null,
+  id: "task", litterId: "litter", source: "organization_template", litterPlanItemId: null, litterPlanSeriesId: null, recurrenceDayNo: null, slotNo: null, seriesState: null,
   organizationTemplateId: null, systemTemplateCode: null, occurrenceNo: 1, category: "other",
   targetScope: "litter", title: "Tâche", description: null, anchorType: null, anchorDate: null,
   offsetDays: null, itemKind: "task", priority: "normal", suggestedFor: null,

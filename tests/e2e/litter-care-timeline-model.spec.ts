@@ -58,7 +58,7 @@ function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSum
     id: "task-1",
     litterId: "litter-1",
     source: "manual",
-    litterPlanItemId: null,
+    litterPlanItemId: null, litterPlanSeriesId: null, recurrenceDayNo: null, slotNo: null, seriesState: null,
     organizationTemplateId: null,
     systemTemplateCode: null,
     occurrenceNo: 1,

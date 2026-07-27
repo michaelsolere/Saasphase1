@@ -174,7 +174,10 @@ export function LitterCareCalendarCard({
       )}
       <span className="mt-0.5 block text-muted">
         {windowSegment && !agenda ? `${windowSegment} · ` : ""}
-        {kindLabels[item.kind]} · {litterCareTaskCategoryLabels[item.task.category]}
+        {item.kind === "recurring_task"
+          ? `Tâche récurrente · occurrence ${item.task.occurrenceNo}`
+          : kindLabels[item.kind]}{" "}
+        · {litterCareTaskCategoryLabels[item.task.category]}
       </span>
       {fullWindow ? <span className="block text-muted">{fullWindow}</span> : null}
       {!fullWindow && item.time ? (

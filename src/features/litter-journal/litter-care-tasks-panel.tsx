@@ -507,6 +507,16 @@ function ResolveTaskDialog({
 function TaskMetadata({ task }: { task: LitterCareTaskSummary }) {
   return (
     <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted">
+      <span>
+        {task.itemKind === "recurring_task"
+          ? `Tâche récurrente · occurrence ${task.occurrenceNo}`
+          : task.itemKind === "milestone"
+            ? "Jalon"
+            : task.itemKind === "window"
+              ? "Fenêtre"
+              : "Tâche"}
+      </span>
+      <span aria-hidden="true">·</span>
       <span>{categoryLabels[task.category]}</span>
       <span aria-hidden="true">·</span>
       <span>{targetLabels[task.targetScope]}</span>

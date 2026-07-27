@@ -13,7 +13,7 @@ import type { LitterCareTaskSummary } from "../../src/features/litter-journal/li
 
 function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSummary {
   return {
-    id: "task-1", litterId: "litter-1", source: "manual", litterPlanItemId: null, organizationTemplateId: null, systemTemplateCode: null, occurrenceNo: 1,
+    id: "task-1", litterId: "litter-1", source: "manual", litterPlanItemId: null, litterPlanSeriesId: null, recurrenceDayNo: null, slotNo: null, seriesState: null, organizationTemplateId: null, systemTemplateCode: null, occurrenceNo: 1,
     category: "veterinary", targetScope: "litter", title: "Élément calendrier", description: null, anchorType: null, anchorDate: null, offsetDays: null,
     itemKind: "task", priority: "normal", suggestedFor: null, suggestedLocalTime: null, plannedFor: "2024-01-15", scheduledLocalTime: null, scheduleTimezoneName: "Europe/Paris",
     suggestedStartsOn: null, suggestedStartsLocalTime: null, suggestedEndsOn: null, suggestedEndsLocalTime: null,

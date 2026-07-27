@@ -12,7 +12,7 @@ const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary 
   id: "task",
   litterId: "litter",
   source: "organization_template",
-  litterPlanItemId: null,
+  litterPlanItemId: null, litterPlanSeriesId: null, recurrenceDayNo: null, slotNo: null, seriesState: null,
   organizationTemplateId: null,
   systemTemplateCode: null,
   occurrenceNo: 1,
