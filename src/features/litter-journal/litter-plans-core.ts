@@ -2,9 +2,39 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "@/types/database.types";
 
+import {
+  LITTER_CARE_TASK_CATEGORIES,
+  LITTER_CARE_TASK_TARGET_SCOPES,
+  type LitterCareTaskCategory,
+  type LitterCareTaskTargetScope,
+} from "./litter-care-tasks-core";
+import type {
+  LitterPlanSeriesEndKind,
+  LitterPlanSeriesState,
+  LitterPlanSeriesSummariesResult,
+  LitterPlanSeriesSummary,
+} from "./litter-plan-series-summary";
+
+export type { LitterPlanSeriesState } from "./litter-plan-series-summary";
+
 type Supabase = SupabaseClient<Database>;
 type Plan = Database["public"]["Tables"]["litter_plans"]["Row"];
 type Item = Database["public"]["Tables"]["litter_plan_items"]["Row"];
+type OrganizationRole = "owner" | "admin" | "member" | "viewer";
+type SeriesRow = Database["public"]["Tables"]["litter_plan_series"]["Row"];
+type SeriesSlotRow =
+  Database["public"]["Tables"]["litter_plan_series_time_slots"]["Row"];
+type CareTaskRow = Pick<
+  Database["public"]["Tables"]["litter_care_tasks"]["Row"],
+  | "litter_plan_series_id"
+  | "status"
+  | "planned_for"
+  | "scheduled_local_time"
+>;
+type PlanItemMeta = Pick<
+  Item,
+  "id" | "title" | "category" | "target_scope" | "display_order"
+>;
 
 export type LitterPlanErrorCode =
   | "invalid_input"
@@ -17,6 +47,8 @@ export type LitterPlanErrorCode =
   | "already_applied"
   | "stale_revision"
   | "conflict"
+  | "anchor_unavailable"
+  | "series_not_active"
   | "database_error";
 export type LitterPlanResult =
   | {
@@ -29,13 +61,6 @@ export type LitterPlanResult =
   | { outcome: "error"; error: { code: LitterPlanErrorCode; message: string } };
 export type LitterPlanErrorResult = Extract<LitterPlanResult, { outcome: "error" }>;
 export type LitterPlanDetail = { header: Plan; items: Item[] };
-
-export type LitterPlanSeriesState =
-  | "active"
-  | "suspended"
-  | "completed"
-  | "cancelled"
-  | "not_applicable";
 
 export type MaterializeLitterPlanSeriesResult =
   | {
@@ -94,7 +119,25 @@ function code(reason: string | null): LitterPlanErrorCode {
   if (reason === "stale_revision") return "stale_revision";
   if (reason === "model_already_applied") return "already_applied";
   if (reason === "client_command_conflict") return "conflict";
+  if (reason === "anchor_unavailable") return "anchor_unavailable";
+  if (reason === "series_not_active") return "series_not_active";
   return "invalid_input";
+}
+
+function seriesFailureMessage(
+  reason: string | null,
+  fallback: string,
+): string {
+  if (reason === "anchor_unavailable") {
+    return "Le suivi ne peut pas encore être programmé : la date d’ancrage n’est pas renseignée.";
+  }
+  if (reason === "stale_revision") {
+    return "Ce suivi a été modifié ailleurs. Rechargez le Journal pour continuer.";
+  }
+  if (reason === "series_not_active") {
+    return "Ce suivi n’est plus actif et ne peut pas être prolongé.";
+  }
+  return fallback;
 }
 
 /** Deterministic occurrence number: day 1/slot 1 → 1, day 1/slot 2 → 2, day 2/slot 1 → 3, … */
@@ -276,9 +319,10 @@ export async function materializeLitterPlanSeries(
     !Number.isInteger(revisionNo) ||
     !seriesState
   ) {
+    const reason = row?.reason ?? null;
     return seriesError(
-      code(row?.reason ?? null),
-      "La matérialisation de la série a échoué.",
+      code(reason),
+      seriesFailureMessage(reason, "La matérialisation de la série a échoué."),
     );
   }
   return {
@@ -353,9 +397,10 @@ export async function setLitterPlanSeriesState(
     !Number.isInteger(revisionNo) ||
     !seriesState
   ) {
+    const reason = row?.reason ?? null;
     return seriesError(
-      code(row?.reason ?? null),
-      "Le changement d’état de la série a échoué.",
+      code(reason),
+      seriesFailureMessage(reason, "Le changement d’état de la série a échoué."),
     );
   }
   return {
@@ -366,5 +411,335 @@ export async function setLitterPlanSeriesState(
     resolvedOccurrenceCount: row.resolved_occurrence_count ?? 0,
     replayed: row.replayed === true,
     result: row.result,
+  };
+}
+
+function isOrganizationRole(value: unknown): value is OrganizationRole {
+  return (
+    value === "owner" ||
+    value === "admin" ||
+    value === "member" ||
+    value === "viewer"
+  );
+}
+
+function isSeriesState(value: unknown): value is LitterPlanSeriesState {
+  return (
+    value === "active" ||
+    value === "suspended" ||
+    value === "completed" ||
+    value === "cancelled" ||
+    value === "not_applicable"
+  );
+}
+
+function isSeriesEndKind(value: unknown): value is LitterPlanSeriesEndKind {
+  return (
+    value === "fixed_end_offset" ||
+    value === "fixed_recurrence_day_count" ||
+    value === "actual_birth"
+  );
+}
+
+function isCategory(value: unknown): value is LitterCareTaskCategory {
+  return (
+    typeof value === "string" &&
+    LITTER_CARE_TASK_CATEGORIES.includes(value as LitterCareTaskCategory)
+  );
+}
+
+function isTargetScope(value: unknown): value is LitterCareTaskTargetScope {
+  return (
+    typeof value === "string" &&
+    LITTER_CARE_TASK_TARGET_SCOPES.includes(value as LitterCareTaskTargetScope)
+  );
+}
+
+function emptyOccurrenceCounts() {
+  return {
+    total: 0,
+    planned: 0,
+    done: 0,
+    cancelled: 0,
+    notApplicable: 0,
+  };
+}
+
+function mapSeriesSummary(
+  series: SeriesRow,
+  item: PlanItemMeta,
+  slots: SeriesSlotRow[],
+  tasks: CareTaskRow[],
+): LitterPlanSeriesSummary | null {
+  if (
+    !isSeriesState(series.state) ||
+    !isSeriesEndKind(series.end_kind) ||
+    !isCategory(item.category) ||
+    !isTargetScope(item.target_scope) ||
+    !Number.isInteger(series.revision_no) ||
+    series.revision_no <= 0
+  ) {
+    return null;
+  }
+
+  const timeSlots = [...slots]
+    .sort((a, b) => a.slot_no - b.slot_no)
+    .map((slot) =>
+      typeof slot.local_time === "string"
+        ? slot.local_time.slice(0, 5)
+        : "",
+    )
+    .filter(Boolean);
+
+  const counts = emptyOccurrenceCounts();
+  let nextOccurrence: LitterPlanSeriesSummary["nextOccurrence"] = null;
+  for (const task of tasks) {
+    counts.total += 1;
+    if (task.status === "planned") counts.planned += 1;
+    else if (task.status === "done") counts.done += 1;
+    else if (task.status === "cancelled") counts.cancelled += 1;
+    else if (task.status === "not_applicable") counts.notApplicable += 1;
+
+    if (task.status !== "planned" || !task.planned_for) continue;
+    const candidate = {
+      plannedFor: task.planned_for,
+      scheduledLocalTime: task.scheduled_local_time
+        ? task.scheduled_local_time.slice(0, 5)
+        : null,
+    };
+    if (!nextOccurrence) {
+      nextOccurrence = candidate;
+      continue;
+    }
+    const byDate = candidate.plannedFor.localeCompare(nextOccurrence.plannedFor);
+    if (byDate < 0) {
+      nextOccurrence = candidate;
+      continue;
+    }
+    if (byDate === 0) {
+      const left = candidate.scheduledLocalTime ?? "";
+      const right = nextOccurrence.scheduledLocalTime ?? "";
+      if (left && (!right || left < right)) nextOccurrence = candidate;
+    }
+  }
+
+  return {
+    id: series.id,
+    revisionNo: series.revision_no,
+    title: item.title,
+    category: item.category,
+    targetScope: item.target_scope,
+    state: series.state,
+    endKind: series.end_kind,
+    recurrenceIntervalDays: series.recurrence_interval_days,
+    recurrenceDayCount: series.recurrence_day_count,
+    startsOn: series.starts_on,
+    endsOn: series.ends_on,
+    materializedThrough: series.materialized_through,
+    absoluteMaxOccurrences: series.absolute_max_occurrences,
+    initialMaterializationHorizonDays:
+      series.initial_materialization_horizon_days,
+    timeSlots,
+    occurrenceCounts: counts,
+    nextOccurrence,
+    anchorPending: series.starts_on === null,
+  };
+}
+
+export async function listLitterPlanSeriesSummariesForLitter(
+  litterId: string,
+  supabase: Supabase,
+): Promise<LitterPlanSeriesSummariesResult> {
+  const normalized = uuid(litterId);
+  if (!normalized) {
+    return {
+      outcome: "error",
+      error: { code: "invalid_input", message: "La portée est invalide." },
+    };
+  }
+
+  const auth = await supabase.auth.getUser();
+  const userId = auth.data.user?.id ?? null;
+  if (!userId) {
+    return {
+      outcome: "error",
+      error: {
+        code: "unauthenticated",
+        message: "Vous devez être connecté pour continuer.",
+      },
+    };
+  }
+
+  const litter = await supabase
+    .from("litters")
+    .select("id, organization_id")
+    .eq("id", normalized)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (litter.error) {
+    return {
+      outcome: "error",
+      error: {
+        code: "database_error",
+        message: "Les suivis récurrents n’ont pas pu être chargés.",
+      },
+    };
+  }
+  if (!litter.data) {
+    return {
+      outcome: "error",
+      error: {
+        code: "not_found",
+        message: "La portée demandée est introuvable.",
+      },
+    };
+  }
+
+  const membership = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("organization_id", litter.data.organization_id)
+    .eq("profile_id", userId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (membership.error) {
+    return {
+      outcome: "error",
+      error: {
+        code: "database_error",
+        message: "Les suivis récurrents n’ont pas pu être chargés.",
+      },
+    };
+  }
+  if (!membership.data || !isOrganizationRole(membership.data.role)) {
+    return {
+      outcome: "error",
+      error: {
+        code: "not_found",
+        message: "La portée demandée est introuvable.",
+      },
+    };
+  }
+
+  const seriesResult = await supabase
+    .from("litter_plan_series")
+    .select("*")
+    .eq("litter_id", normalized)
+    .order("created_at", { ascending: true });
+  if (seriesResult.error) {
+    return {
+      outcome: "error",
+      error: {
+        code: "database_error",
+        message: "Les suivis récurrents n’ont pas pu être chargés.",
+      },
+    };
+  }
+
+  const seriesRows = seriesResult.data ?? [];
+  if (seriesRows.length === 0) {
+    return {
+      outcome: "success",
+      role: membership.data.role,
+      series: [],
+    };
+  }
+
+  const seriesIds = seriesRows.map((row) => row.id);
+  const itemIds = [...new Set(seriesRows.map((row) => row.litter_plan_item_id))];
+
+  const [slotsResult, itemsResult, tasksResult] = await Promise.all([
+    supabase
+      .from("litter_plan_series_time_slots")
+      .select("series_id, slot_no, local_time")
+      .in("series_id", seriesIds)
+      .order("slot_no", { ascending: true }),
+    supabase
+      .from("litter_plan_items")
+      .select("id, title, category, target_scope, display_order")
+      .in("id", itemIds),
+    supabase
+      .from("litter_care_tasks")
+      .select(
+        "litter_plan_series_id, status, planned_for, scheduled_local_time",
+      )
+      .eq("litter_id", normalized)
+      .in("litter_plan_series_id", seriesIds),
+  ]);
+
+  if (slotsResult.error || itemsResult.error || tasksResult.error) {
+    return {
+      outcome: "error",
+      error: {
+        code: "database_error",
+        message: "Les suivis récurrents n’ont pas pu être chargés.",
+      },
+    };
+  }
+
+  const slotsBySeries = new Map<string, SeriesSlotRow[]>();
+  for (const slot of slotsResult.data ?? []) {
+    const list = slotsBySeries.get(slot.series_id) ?? [];
+    list.push(slot as SeriesSlotRow);
+    slotsBySeries.set(slot.series_id, list);
+  }
+
+  const itemsById = new Map<string, PlanItemMeta>();
+  for (const item of itemsResult.data ?? []) {
+    itemsById.set(item.id, item);
+  }
+
+  const tasksBySeries = new Map<string, CareTaskRow[]>();
+  for (const task of tasksResult.data ?? []) {
+    if (!task.litter_plan_series_id) continue;
+    const list = tasksBySeries.get(task.litter_plan_series_id) ?? [];
+    list.push(task);
+    tasksBySeries.set(task.litter_plan_series_id, list);
+  }
+
+  const summaries: LitterPlanSeriesSummary[] = [];
+  const ordered = [...seriesRows].sort((left, right) => {
+    const leftItem = itemsById.get(left.litter_plan_item_id);
+    const rightItem = itemsById.get(right.litter_plan_item_id);
+    const byOrder =
+      (leftItem?.display_order ?? 0) - (rightItem?.display_order ?? 0);
+    if (byOrder !== 0) return byOrder;
+    return left.id.localeCompare(right.id);
+  });
+
+  for (const row of ordered) {
+    const item = itemsById.get(row.litter_plan_item_id);
+    if (!item) {
+      return {
+        outcome: "error",
+        error: {
+          code: "database_error",
+          message: "Les suivis récurrents n’ont pas pu être chargés.",
+        },
+      };
+    }
+    const summary = mapSeriesSummary(
+      row,
+      item,
+      slotsBySeries.get(row.id) ?? [],
+      tasksBySeries.get(row.id) ?? [],
+    );
+    if (!summary) {
+      return {
+        outcome: "error",
+        error: {
+          code: "database_error",
+          message: "Les suivis récurrents n’ont pas pu être chargés.",
+        },
+      };
+    }
+    summaries.push(summary);
+  }
+
+  return {
+    outcome: "success",
+    role: membership.data.role,
+    series: summaries,
   };
 }
