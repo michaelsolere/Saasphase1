@@ -25,7 +25,7 @@ import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { LitterCareTodayPanel } from "./litter-care-today-panel";
 import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
-import type { LitterPlanTimelineScheduleTarget } from "./litter-plan-timeline-panel";
+import type { LitterPlanTimelineScheduleTarget, LitterPlanTimelineMetadataTarget } from "./litter-plan-timeline-panel";
 import type { InteractiveLitterPlanTimeline } from "./litter-plan-timeline-interaction";
 import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-programmer-actions";
 import { LitterPlanningModelApplyPanel } from "./litter-planning-model-apply-panel";
@@ -225,6 +225,7 @@ export function LitterJournalDashboard({
   litterPlanTimelineMovePointActions,
   litterPlanTimelineMoveWindowActions,
   litterPlanTimelineScheduleTargets,
+  litterPlanTimelineMetadataTargets,
   litterPlanAdHocProgrammerAction,
   litterPlanAdHocProgrammerInstanceKey,
   litterPlanAdHocProgrammerBusinessDate,
@@ -318,6 +319,7 @@ export function LitterJournalDashboard({
     ) => Promise<LitterCareTaskActionState>
   >;
   litterPlanTimelineScheduleTargets: Record<string, LitterPlanTimelineScheduleTarget>;
+  litterPlanTimelineMetadataTargets: Record<string, LitterPlanTimelineMetadataTarget>;
   litterPlanAdHocProgrammerAction: ((
     previousState: LitterPlanAdHocProgrammerActionState,
     formData: FormData,
@@ -486,6 +488,7 @@ export function LitterJournalDashboard({
         movePointActions={litterPlanTimelineMovePointActions}
         moveWindowActions={litterPlanTimelineMoveWindowActions}
         scheduleTargets={litterPlanTimelineScheduleTargets}
+        metadataTargets={litterPlanTimelineMetadataTargets}
         programmerAction={litterPlanAdHocProgrammerAction}
         programmerInstanceKey={litterPlanAdHocProgrammerInstanceKey}
         programmerBusinessDate={litterPlanAdHocProgrammerBusinessDate}

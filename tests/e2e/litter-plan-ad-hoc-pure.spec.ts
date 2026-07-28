@@ -8,8 +8,12 @@ import {
   mapCreateLitterPlanAdHocItemRpcResult,
   normalizeLitterPlanAdHocItemPayload,
   normalizeLitterPlanAdHocTimeSlots,
+  normalizeLitterPlanAdHocMetadataPayload,
+  mapUpdateLitterPlanAdHocMetadataRpcResult,
 } from "../../src/features/litter-journal/litter-plan-ad-hoc";
 import type { Database } from "../../src/types/database.types";
+import { canEditLitterPlanAdHocMetadata } from "../../src/features/litter-journal/litter-plan-ad-hoc-metadata-eligibility";
+import { validateLitterPlanAdHocMetadataForm } from "../../src/features/litter-journal/litter-plan-ad-hoc-metadata-validation";
 
 function baseMilestone(overrides: Record<string, unknown> = {}) {
   return {
@@ -92,6 +96,45 @@ function baseRecurringDayCount(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("normalise strictement les métadonnées ad hoc et refuse les clés supplémentaires", () => {
+  expect(normalizeLitterPlanAdHocMetadataPayload({ version: 1, operation: "update_metadata", title: "  Contrôle  ", description: "  Note  ", category: "other", targetScope: "litter", priority: "important" })).toEqual({ version: 1, operation: "update_metadata", title: "Contrôle", description: "Note", category: "other", targetScope: "litter", priority: "important" });
+  expect(normalizeLitterPlanAdHocMetadataPayload({ version: 1, operation: "update_metadata", title: "Contrôle", description: null, category: "other", targetScope: "litter", priority: "normal", revision: 1 })).toBeNull();
+});
+
+test("mappe strictement le résultat d’édition sans exposer les identifiants", () => {
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, litter_plan_id: "11111111-1111-4111-8111-111111111111", litter_plan_item_id: "22222222-2222-4222-8222-222222222222", task_id: "33333333-3333-4333-8333-333333333333", plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { litterPlanId: "11111111-1111-4111-8111-111111111111", litterPlanItemId: "22222222-2222-4222-8222-222222222222", taskId: "33333333-3333-4333-8333-333333333333", kind: "milestone", planRevision: 3, itemRevision: 2, taskRevision: 1 } })).toMatchObject({ outcome: "success", planRevision: 3, itemRevision: 2, taskRevision: 1 });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { kind: "recurring_task", itemRevision: 2, taskRevision: 1 } }).outcome).toBe("error");
+});
+
+test("préserve stale_revision pour les formes SQL autorisées", () => {
+  const expected = { litterPlanId: "11111111-1111-4111-8111-111111111111", litterPlanItemId: "22222222-2222-4222-8222-222222222222", taskId: "33333333-3333-4333-8333-333333333333" };
+  const base = { outcome: "error", reason: "stale_revision", litter_plan_id: expected.litterPlanId, litter_plan_item_id: expected.litterPlanItemId, plan_revision: 2, item_revision: 3, task_id: null, task_revision: null, replayed: false, result: {} };
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult(base, expected)).toMatchObject({ outcome: "error", error: { code: "stale_revision" } });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ ...base, task_id: expected.taskId, task_revision: 4 }, expected)).toMatchObject({ outcome: "error", error: { code: "stale_revision" } });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ ...base, litter_plan_item_id: "bad" }, expected)).toMatchObject({ outcome: "error", error: { code: "database_error" } });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ ...base, result: { nope: true } }, expected)).toMatchObject({ outcome: "error", error: { code: "database_error" } });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ ...base, task_id: expected.taskId, task_revision: null }, expected)).toMatchObject({ outcome: "error", error: { code: "database_error" } });
+});
+
+test("applique l’éligibilité stricte de l’édition de métadonnées", () => {
+  const base = { role: "member" as const, originKind: "ad_hoc", itemKind: "milestone", materializationState: "materialized", hasModelSource: false, hasSeries: false, taskStatus: "planned", taskSource: "manual", taskKind: "milestone", itemKindMatches: true, projectionsMatch: true };
+  expect(canEditLitterPlanAdHocMetadata(base)).toBe(true);
+  expect(canEditLitterPlanAdHocMetadata({ ...base, role: "viewer" })).toBe(false);
+  expect(canEditLitterPlanAdHocMetadata({ ...base, hasModelSource: true })).toBe(false);
+  expect(canEditLitterPlanAdHocMetadata({ ...base, hasSeries: true })).toBe(false);
+  expect(canEditLitterPlanAdHocMetadata({ ...base, taskStatus: "done" })).toBe(false);
+  expect(canEditLitterPlanAdHocMetadata({ ...base, projectionsMatch: false })).toBe(false);
+});
+
+test("associe chaque erreur de métadonnées à son champ", () => {
+  const valid = { title: "Contrôle", description: "", category: "other", targetScope: "litter", priority: "normal" };
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, title: " " })).toEqual({ title: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, description: "x".repeat(5001) })).toEqual({ description: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, category: "bad" })).toEqual({ category: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, targetScope: "bad" })).toEqual({ targetScope: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, priority: "bad" })).toEqual({ priority: expect.any(String) });
+});
 
 test("accepts a strictly valid payload for each of the four kinds", () => {
   expect(normalizeLitterPlanAdHocItemPayload(baseMilestone())).toMatchObject({

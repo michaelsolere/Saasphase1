@@ -22,6 +22,8 @@ import type { LitterCareTaskScheduleView } from "./litter-care-task-schedule-vie
 import { litterCareTaskCategoryLabels } from "./litter-care-task-labels";
 import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-programmer-actions";
 import { LitterPlanAdHocProgrammerDialog } from "./litter-plan-ad-hoc-programmer-dialog";
+import { LitterPlanAdHocMetadataDialog, type LitterPlanAdHocMetadataView } from "./litter-plan-ad-hoc-metadata-dialog";
+import type { LitterPlanAdHocMetadataActionState } from "./litter-plan-ad-hoc-metadata-actions";
 import {
   buildLitterPlanAdHocProgrammerDisplayTimeline,
   formatLitterPlanAdHocProgrammerPreparedLine,
@@ -58,6 +60,8 @@ type ProgrammerAction = (
   previousState: LitterPlanAdHocProgrammerActionState,
   formData: FormData,
 ) => Promise<LitterPlanAdHocProgrammerActionState>;
+type MetadataAction = (previousState: LitterPlanAdHocMetadataActionState, formData: FormData) => Promise<LitterPlanAdHocMetadataActionState>;
+export type LitterPlanTimelineMetadataTarget = { view: LitterPlanAdHocMetadataView; action: MetadataAction };
 
 export type LitterPlanTimelineScheduleTarget = {
   view: LitterCareTaskScheduleView;
@@ -70,6 +74,7 @@ export type LitterPlanTimelinePanelProps = {
   movePointActions?: Record<string, TimelineAction>;
   moveWindowActions?: Record<string, TimelineAction>;
   scheduleTargets?: Record<string, LitterPlanTimelineScheduleTarget>;
+  metadataTargets?: Record<string, LitterPlanTimelineMetadataTarget>;
   programmerAction?: ProgrammerAction | null;
   programmerInstanceKey?: string | null;
   programmerBusinessDate?: string | null;
@@ -164,6 +169,7 @@ export function LitterPlanTimelinePanel({
   movePointActions = {},
   moveWindowActions = {},
   scheduleTargets = {},
+  metadataTargets = {},
   programmerAction = null,
   programmerInstanceKey = null,
   programmerBusinessDate = null,
@@ -615,6 +621,7 @@ export function LitterPlanTimelinePanel({
           : "-translate-x-1/2";
     const interactive = !previewItem && item.interactionMode === "point_move";
     const scheduleTarget = scheduleTargets[item.publicKey];
+    const metadataTarget = metadataTargets[item.publicKey];
     const showPrecise =
       !previewItem &&
       scheduleTarget &&
@@ -713,6 +720,7 @@ export function LitterPlanTimelinePanel({
               />
             </div>
           ) : null}
+          {metadataTarget ? <div className="mt-2"><LitterPlanAdHocMetadataDialog view={metadataTarget.view} action={metadataTarget.action} onSuccess={setScheduleMessage} /></div> : null}
         </div>
       </li>
     );
@@ -728,6 +736,7 @@ export function LitterPlanTimelinePanel({
     const interactive =
       !previewItem && item.interactionMode === "window_move_and_resize";
     const scheduleTarget = scheduleTargets[item.publicKey];
+    const metadataTarget = metadataTargets[item.publicKey];
     const showPrecise =
       !previewItem &&
       scheduleTarget &&
@@ -860,6 +869,7 @@ export function LitterPlanTimelinePanel({
               />
             </div>
           ) : null}
+          {metadataTarget ? <div className="mt-2"><LitterPlanAdHocMetadataDialog view={metadataTarget.view} action={metadataTarget.action} onSuccess={setScheduleMessage} /></div> : null}
         </div>
         {interactive && !disabledKeys.has(item.publicKey) ? (
           <>

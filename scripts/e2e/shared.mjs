@@ -171,6 +171,7 @@ export function readStatusEnv() {
   }
 
   return {
+    NEXT_PUBLIC_SUPABASE_URL: env.API_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: env.ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: env.SERVICE_ROLE_KEY,
   };

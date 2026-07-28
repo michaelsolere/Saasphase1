@@ -4,6 +4,8 @@ import { resolvePlaywrightRunMode } from "./scripts/e2e/test-suite.mjs";
 
 const { managedRunner } = resolvePlaywrightRunMode();
 const nextDevDir = process.env.NEXT_DEV_DIR ?? ".supabase-e2e/next";
+const nextServerNodeOptions =
+  process.env.E2E_NEXT_NODE_OPTIONS ?? "--max-old-space-size=1536";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -26,7 +28,7 @@ export default defineConfig({
         command: "node_modules/.bin/next dev -H 127.0.0.1 -p 3100",
         env: {
           NEXT_DEV_DIR: nextDevDir,
-          NODE_OPTIONS: process.env.NODE_OPTIONS ?? "--max-old-space-size=1536",
+          NODE_OPTIONS: nextServerNodeOptions,
         },
         url: "http://127.0.0.1:3100",
         reuseExistingServer: process.env.E2E_REUSE_EXISTING_SERVER === "1",

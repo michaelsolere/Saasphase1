@@ -6676,6 +6676,29 @@ export type Database = {
           task_id: string | null
         }[]
       }
+      update_litter_plan_ad_hoc_item_metadata: {
+        Args: {
+          p_client_command_id: string
+          p_expected_item_revision: number
+          p_expected_plan_revision: number
+          p_expected_task_revision: number
+          p_litter_id: string
+          p_litter_plan_item_id: string
+          p_metadata: Json
+        }
+        Returns: {
+          item_revision: number | null
+          litter_plan_id: string | null
+          litter_plan_item_id: string | null
+          outcome: string
+          plan_revision: number | null
+          reason: string | null
+          replayed: boolean
+          result: Json
+          task_id: string | null
+          task_revision: number | null
+        }[]
+      }
       apply_litter_planning_model: {
         Args: { p_client_command_id: string; p_expected_model_revision: number; p_expected_plan_revision: number | null; p_litter_id: string; p_planning_model_id: string; p_selected_model_item_ids: string[] | null; p_timezone_name: string }
         Returns: { litter_plan_id: string | null; outcome: string; reason: string | null; replayed: boolean; result: Json; revision: number | null }[]
