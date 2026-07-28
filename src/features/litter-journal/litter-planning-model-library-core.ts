@@ -6,9 +6,13 @@ import {
   LITTER_PLANNING_MODEL_ANCHORS,
   LITTER_PLANNING_MODEL_ITEM_KINDS,
   LITTER_PLANNING_MODEL_PRIORITIES,
+  LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS,
+  LITTER_PLANNING_MODEL_RECURRENCE_KINDS,
   type LitterPlanningModelAnchor,
   type LitterPlanningModelItemKind,
   type LitterPlanningModelPriority,
+  type LitterPlanningModelRecurrenceEndKind,
+  type LitterPlanningModelRecurrenceKind,
 } from "./litter-planning-models-core";
 
 type Supabase = SupabaseClient<Database>;
@@ -18,6 +22,8 @@ type LibraryModelRow =
   Database["public"]["Tables"]["litter_planning_model_library_models"]["Row"];
 type LibraryItemRow =
   Database["public"]["Tables"]["litter_planning_model_library_items"]["Row"];
+type LibraryItemTimeSlotRow =
+  Database["public"]["Tables"]["litter_planning_model_library_item_time_slots"]["Row"];
 
 export type LitterPlanningModelLibrarySelection = {
   code: string;
@@ -36,6 +42,15 @@ export type LitterPlanningModelLibraryItemSummary = {
   windowStartsLocalTime?: string | null;
   windowEndsOffsetDays?: number;
   windowEndsLocalTime?: string | null;
+  recurrenceKind?: LitterPlanningModelRecurrenceKind;
+  recurrenceIntervalDays?: number;
+  recurrenceStartsOffsetDays?: number;
+  recurrenceEndKind?: LitterPlanningModelRecurrenceEndKind;
+  recurrenceEndsOffsetDays?: number;
+  recurrenceDayCount?: number;
+  initialMaterializationHorizonDays?: number;
+  absoluteMaxOccurrences?: number;
+  timeSlots: string[];
   displayOrder: number;
   isRequired: boolean;
   isSelectedByDefault: boolean;
@@ -186,6 +201,30 @@ function isAnchorType(value: unknown): value is LitterPlanningModelAnchor {
     typeof value === "string" &&
     LITTER_PLANNING_MODEL_ANCHORS.includes(value as LitterPlanningModelAnchor)
   );
+}
+
+function isRecurrenceKind(value: unknown): value is LitterPlanningModelRecurrenceKind {
+  return typeof value === "string" && LITTER_PLANNING_MODEL_RECURRENCE_KINDS.includes(value as LitterPlanningModelRecurrenceKind);
+}
+
+function isRecurrenceEndKind(value: unknown): value is LitterPlanningModelRecurrenceEndKind {
+  return typeof value === "string" && LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS.includes(value as LitterPlanningModelRecurrenceEndKind);
+}
+
+const LOCAL_TIME = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+
+function normalizeSlots(rows: LibraryItemTimeSlotRow[] | undefined) {
+  if (!rows || rows.length < 1 || rows.length > 8) return null;
+  const slots: string[] = [];
+  const times = new Set<string>();
+  let previousNo = 0;
+  for (const row of rows) {
+    if (!isPositivePostgresInteger(row.slot_no) || row.slot_no <= previousNo || typeof row.local_time !== "string" || !LOCAL_TIME.test(row.local_time) || times.has(row.local_time)) return null;
+    previousNo = row.slot_no;
+    times.add(row.local_time);
+    slots.push(row.local_time);
+  }
+  return slots;
 }
 
 function isPostgresInteger(value: unknown): value is number {
@@ -355,6 +394,7 @@ function mapElementaryLibraryImportResults(value: Json) {
 
 function mapLibraryItem(
   row: LibraryItemRow,
+  slotRows?: LibraryItemTimeSlotRow[],
 ): LitterPlanningModelLibraryItemSummary | null {
   if (
     typeof row.library_template_code !== "string" ||
@@ -373,6 +413,38 @@ function mapLibraryItem(
   ) {
     return null;
   }
+
+  if (row.item_kind === "recurring_task") {
+    const slots = normalizeSlots(slotRows);
+    if (
+      !slots ||
+      row.point_offset_days !== null || row.point_local_time !== null ||
+      row.window_starts_offset_days !== null || row.window_starts_local_time !== null ||
+      row.window_ends_offset_days !== null || row.window_ends_local_time !== null ||
+      !isRecurrenceKind(row.recurrence_kind) ||
+      !isPostgresInteger(row.recurrence_interval_days) || row.recurrence_interval_days < 1 || row.recurrence_interval_days > 365 ||
+      !isPostgresInteger(row.recurrence_starts_offset_days) ||
+      !isRecurrenceEndKind(row.recurrence_end_kind) ||
+      !isPostgresInteger(row.initial_materialization_horizon_days) || row.initial_materialization_horizon_days < 1 || row.initial_materialization_horizon_days > 365 ||
+      !isPostgresInteger(row.absolute_max_occurrences) || row.absolute_max_occurrences < 1 || row.absolute_max_occurrences > 500 ||
+      (row.recurrence_end_kind === "fixed_end_offset" && (!isPostgresInteger(row.recurrence_ends_offset_days) || row.recurrence_day_count !== null || row.recurrence_ends_offset_days < row.recurrence_starts_offset_days)) ||
+      (row.recurrence_end_kind === "fixed_recurrence_day_count" && (row.recurrence_ends_offset_days !== null || !isPostgresInteger(row.recurrence_day_count) || row.recurrence_day_count < 1 || row.recurrence_day_count > 500)) ||
+      (row.recurrence_end_kind === "actual_birth" && (row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null))
+    ) return null;
+    return {
+      libraryTemplateCode: row.library_template_code, libraryTemplateVersion: row.library_template_version,
+      itemKind: row.item_kind, priority: row.priority, anchorType: row.anchor_type,
+      recurrenceKind: row.recurrence_kind, recurrenceIntervalDays: row.recurrence_interval_days,
+      recurrenceStartsOffsetDays: row.recurrence_starts_offset_days, recurrenceEndKind: row.recurrence_end_kind,
+      ...(row.recurrence_ends_offset_days === null ? {} : { recurrenceEndsOffsetDays: row.recurrence_ends_offset_days }),
+      ...(row.recurrence_day_count === null ? {} : { recurrenceDayCount: row.recurrence_day_count }),
+      initialMaterializationHorizonDays: row.initial_materialization_horizon_days,
+      absoluteMaxOccurrences: row.absolute_max_occurrences, timeSlots: slots,
+      displayOrder: row.display_order, isRequired: row.is_required, isSelectedByDefault: row.is_selected_by_default,
+    };
+  }
+
+  if ((slotRows?.length ?? 0) > 0 || row.recurrence_kind !== null || row.recurrence_interval_days !== null || row.recurrence_starts_offset_days !== null || row.recurrence_end_kind !== null || row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null || row.initial_materialization_horizon_days !== null || row.absolute_max_occurrences !== null) return null;
 
   if (row.item_kind === "window") {
     if (
@@ -419,6 +491,7 @@ function mapLibraryItem(
     ...(row.window_ends_local_time == null
       ? {}
       : { windowEndsLocalTime: row.window_ends_local_time }),
+    timeSlots: [],
     displayOrder: row.display_order,
     isRequired: row.is_required,
     isSelectedByDefault: row.is_selected_by_default,
@@ -516,6 +589,18 @@ export async function listLitterPlanningModelLibraryCore(
     );
   }
 
+  const itemIds = (libraryItems.data ?? []).map((item) => item.id);
+  const librarySlots = itemIds.length === 0
+    ? { data: [] as LibraryItemTimeSlotRow[], error: null }
+    : await supabase.from("litter_planning_model_library_item_time_slots").select("*").in("library_model_item_id", itemIds).order("slot_no");
+  if (librarySlots.error) return databaseFailure("litter_planning_model_library_item_slots_list_failed", librarySlots.error);
+  const slotsByItem = new Map<string, LibraryItemTimeSlotRow[]>();
+  for (const slot of librarySlots.data ?? []) {
+    const bucket = slotsByItem.get(slot.library_model_item_id) ?? [];
+    bucket.push(slot);
+    slotsByItem.set(slot.library_model_item_id, bucket);
+  }
+
   const availableModelKeys = new Set(
     (libraryModels.data ?? []).map((model) => `${model.code}:${model.version}`),
   );
@@ -524,7 +609,7 @@ export async function listLitterPlanningModelLibraryCore(
   for (const row of libraryItems.data ?? []) {
     const modelKey = `${row.library_model_code}:${row.library_model_version}`;
     if (!availableModelKeys.has(modelKey)) continue;
-    const mapped = mapLibraryItem(row);
+    const mapped = mapLibraryItem(row, slotsByItem.get(row.id));
     if (!mapped) {
       return databaseFailure("litter_planning_model_library_item_invalid", row);
     }

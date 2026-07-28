@@ -2735,6 +2735,14 @@ export type Database = {
           point_local_time: string | null
           point_offset_days: number | null
           priority: string
+          recurrence_day_count: number | null
+          recurrence_end_kind: string | null
+          recurrence_ends_offset_days: number | null
+          recurrence_interval_days: number | null
+          recurrence_kind: string | null
+          recurrence_starts_offset_days: number | null
+          initial_materialization_horizon_days: number | null
+          absolute_max_occurrences: number | null
           window_ends_local_time: string | null
           window_ends_offset_days: number | null
           window_starts_local_time: string | null
@@ -2755,6 +2763,14 @@ export type Database = {
           point_local_time?: string | null
           point_offset_days?: number | null
           priority?: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          initial_materialization_horizon_days?: number | null
+          absolute_max_occurrences?: number | null
           window_ends_local_time?: string | null
           window_ends_offset_days?: number | null
           window_starts_local_time?: string | null
@@ -2775,6 +2791,14 @@ export type Database = {
           point_local_time?: string | null
           point_offset_days?: number | null
           priority?: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          initial_materialization_horizon_days?: number | null
+          absolute_max_occurrences?: number | null
           window_ends_local_time?: string | null
           window_ends_offset_days?: number | null
           window_starts_local_time?: string | null
@@ -2794,6 +2818,38 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "litter_care_task_library_templates"
             referencedColumns: ["code", "version"]
+          },
+        ]
+      }
+      litter_planning_model_library_item_time_slots: {
+        Row: {
+          created_at: string
+          id: string
+          library_model_item_id: string
+          local_time: string
+          slot_no: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          library_model_item_id: string
+          local_time: string
+          slot_no: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          library_model_item_id?: string
+          local_time?: string
+          slot_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_library_item_time_slots_library_model_item_id_fkey"
+            columns: ["library_model_item_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_model_library_items"
+            referencedColumns: ["id"]
           },
         ]
       }

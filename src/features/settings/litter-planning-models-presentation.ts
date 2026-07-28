@@ -147,6 +147,21 @@ function scheduleFromLibraryItem(item: LitterPlanningModelLibraryItemSummary): {
     };
   }
 
+  if (item.itemKind === "recurring_task") {
+    return {
+      scheduleLabel: formatLitterPlanningModelRecurrence({
+        intervalDays: item.recurrenceIntervalDays ?? 1,
+        timeSlots: item.timeSlots,
+        endKind: (item.recurrenceEndKind ?? "actual_birth") as LitterPlanningModelRecurrenceEndKind,
+        startsOffsetDays: item.recurrenceStartsOffsetDays ?? 0,
+        endsOffsetDays: item.recurrenceEndsOffsetDays,
+        recurrenceDayCount: item.recurrenceDayCount,
+        anchorType: item.anchorType,
+      }),
+      timeLabel: formatLitterPlanningModelTimeSlots(item.timeSlots),
+    };
+  }
+
   return {
     scheduleLabel: formatLitterPlanningModelPointOffset(
       item.anchorType,

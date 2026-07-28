@@ -93,12 +93,12 @@ const standardLibraryItems: LitterPlanningModelLibraryItemSummary[] = [
   { libraryTemplateCode: "dog-temperature-monitoring-period", libraryTemplateVersion: 1, itemKind: "window", priority: "important", anchorType: "expected_birth", windowStartsOffsetDays: -5, windowEndsOffsetDays: 0, displayOrder: 11, isRequired: false, isSelectedByDefault: true },
   { libraryTemplateCode: "dog-prepare-whelping-journal", libraryTemplateVersion: 1, itemKind: "task", priority: "normal", anchorType: "expected_birth", pointOffsetDays: -2, displayOrder: 12, isRequired: false, isSelectedByDefault: true },
   { libraryTemplateCode: "dog-whelping-vigilance-window", libraryTemplateVersion: 1, itemKind: "window", priority: "important", anchorType: "expected_birth", windowStartsOffsetDays: -1, windowEndsOffsetDays: 2, displayOrder: 13, isRequired: false, isSelectedByDefault: true },
-];
+].map((item) => ({ ...item, timeSlots: [] }));
 
 const herpesExtraItems: LitterPlanningModelLibraryItemSummary[] = [
   { libraryTemplateCode: "dog-herpesvirose-injection-1", libraryTemplateVersion: 1, itemKind: "window", priority: "important", anchorType: "first_mating", windowStartsOffsetDays: 7, windowEndsOffsetDays: 10, displayOrder: 14, isRequired: false, isSelectedByDefault: true },
   { libraryTemplateCode: "dog-herpesvirose-injection-2", libraryTemplateVersion: 1, itemKind: "window", priority: "important", anchorType: "expected_birth", windowStartsOffsetDays: -14, windowEndsOffsetDays: -7, displayOrder: 15, isRequired: false, isSelectedByDefault: true },
-];
+].map((item) => ({ ...item, timeSlots: [] }));
 
 const trackedModelIds = new Set<string>();
 const trackedTemplateIds = new Set<string>();
