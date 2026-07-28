@@ -44,6 +44,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/litter-plan-ad-hoc-programmer-pure.spec.ts",
   "tests/e2e/litter-plan-timeline-direct-manipulation-pure.spec.ts",
   "tests/e2e/litter-plan-anchor-recalculation-outcome.spec.ts",
+  "tests/e2e/litter-planning-model-library-recurrence-pure.spec.ts",
   "tests/e2e/litter-planning-models-ui-pure.spec.ts",
   "tests/e2e/litter-planning-model-editor-pure.spec.ts",
   "tests/e2e/litter-planning-model-apply-ui-pure.spec.ts",

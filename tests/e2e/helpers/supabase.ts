@@ -25,6 +25,10 @@ type E2eProjectId = keyof typeof E2E_STACKS;
 
 export const E2E_OWNER_EMAIL = "e2e-owner@saasphase1.invalid";
 export const E2E_OWNER_PASSWORD = "LocalE2EOwner-2026!";
+export const E2E_MEMBER_EMAIL = "e2e-member@saasphase1.invalid";
+export const E2E_MEMBER_PASSWORD = "LocalE2EMember-2026!";
+export const E2E_VIEWER_EMAIL = "e2e-viewer@saasphase1.invalid";
+export const E2E_VIEWER_PASSWORD = "LocalE2EViewer-2026!";
 
 type SupabaseResult<T> = {
   data: T | null;

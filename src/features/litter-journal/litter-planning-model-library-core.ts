@@ -20,9 +20,9 @@ type OrganizationRole = "owner" | "admin" | "member" | "viewer";
 
 type LibraryModelRow =
   Database["public"]["Tables"]["litter_planning_model_library_models"]["Row"];
-type LibraryItemRow =
+export type LibraryItemRow =
   Database["public"]["Tables"]["litter_planning_model_library_items"]["Row"];
-type LibraryItemTimeSlotRow =
+export type LibraryItemTimeSlotRow =
   Database["public"]["Tables"]["litter_planning_model_library_item_time_slots"]["Row"];
 
 export type LitterPlanningModelLibrarySelection = {
@@ -392,7 +392,7 @@ function mapElementaryLibraryImportResults(value: Json) {
   return elementaryTemplates;
 }
 
-function mapLibraryItem(
+export function mapLibraryItem(
   row: LibraryItemRow,
   slotRows?: LibraryItemTimeSlotRow[],
 ): LitterPlanningModelLibraryItemSummary | null {

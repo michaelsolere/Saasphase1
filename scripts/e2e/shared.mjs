@@ -237,6 +237,139 @@ set
   email = 'contact-e2e@saasphase1.invalid',
   updated_at = now()
 where id = '20000000-0000-4000-8000-000000000001';
+
+insert into auth.users (
+  id,
+  instance_id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmation_token,
+  recovery_token,
+  email_change_token_new,
+  email_change,
+  phone_change,
+  phone_change_token,
+  email_change_token_current,
+  reauthentication_token,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  created_at,
+  updated_at
+)
+values
+  (
+    '10000000-0000-4000-8000-000000000002',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'e2e-member@saasphase1.invalid',
+    extensions.crypt('LocalE2EMember-2026!', extensions.gen_salt('bf')),
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"display_name":"Member E2E"}'::jsonb,
+    now(),
+    now()
+  ),
+  (
+    '10000000-0000-4000-8000-000000000003',
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'e2e-viewer@saasphase1.invalid',
+    extensions.crypt('LocalE2EViewer-2026!', extensions.gen_salt('bf')),
+    now(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '{"provider":"email","providers":["email"]}'::jsonb,
+    '{"display_name":"Viewer E2E"}'::jsonb,
+    now(),
+    now()
+  );
+
+insert into auth.identities (
+  id,
+  provider_id,
+  user_id,
+  identity_data,
+  provider,
+  created_at,
+  updated_at
+)
+values
+  (
+    '11000000-0000-4000-8000-000000000002',
+    'e2e-member@saasphase1.invalid',
+    '10000000-0000-4000-8000-000000000002',
+    jsonb_build_object(
+      'sub', '10000000-0000-4000-8000-000000000002',
+      'email', 'e2e-member@saasphase1.invalid',
+      'email_verified', true,
+      'phone_verified', false
+    ),
+    'email',
+    now(),
+    now()
+  ),
+  (
+    '11000000-0000-4000-8000-000000000003',
+    'e2e-viewer@saasphase1.invalid',
+    '10000000-0000-4000-8000-000000000003',
+    jsonb_build_object(
+      'sub', '10000000-0000-4000-8000-000000000003',
+      'email', 'e2e-viewer@saasphase1.invalid',
+      'email_verified', true,
+      'phone_verified', false
+    ),
+    'email',
+    now(),
+    now()
+  );
+
+insert into public.memberships (
+  id,
+  organization_id,
+  profile_id,
+  role,
+  status,
+  created_by,
+  updated_by
+)
+values
+  (
+    '30000000-0000-4000-8000-000000000002',
+    '20000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000002',
+    'member',
+    'active',
+    '10000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001'
+  ),
+  (
+    '30000000-0000-4000-8000-000000000003',
+    '20000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000003',
+    'viewer',
+    'active',
+    '10000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000000001'
+  );
 `,
   );
 }
