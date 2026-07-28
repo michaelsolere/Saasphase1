@@ -232,6 +232,7 @@ async function main() {
     const allowedSpecs = new Set([
       "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts",
       "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
+      "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
     ]);
     const permitted = playwrightArgs.every((arg) => allowedSpecs.has(arg) || /^--(workers=1|retries=0)$/.test(arg));
     if (mode !== "reuse" || target.length !== 1 || !allowedSpecs.has(target[0]) || !permitted) {

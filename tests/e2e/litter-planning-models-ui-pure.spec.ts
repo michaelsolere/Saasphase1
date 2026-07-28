@@ -69,6 +69,18 @@ test("formulation des suivis récurrents", () => {
   ).toBe(
     "Deux fois par jour · 08 h 00 et 20 h 00 à partir de 5 jours avant la mise-bas estimée jusqu’à la mise-bas réelle",
   );
+  expect(
+    formatLitterPlanningModelRecurrence({
+      intervalDays: 1,
+      timeSlots: ["08:00", "20:00"],
+      endKind: "fixed_recurrence_day_count",
+      startsOffsetDays: -5,
+      recurrenceDayCount: 5,
+      anchorType: "expected_birth",
+    }),
+  ).toBe(
+    "Deux fois par jour · 08 h 00 et 20 h 00 à partir de 5 jours avant la mise-bas estimée pendant 5 jours de suivi",
+  );
 });
 
 test("distinction importé / non importé / nouvelle version", () => {
