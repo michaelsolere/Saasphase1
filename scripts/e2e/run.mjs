@@ -38,10 +38,11 @@ import { createManagedPlaywrightEnvironment } from "./test-suite.mjs";
 const tsconfigPath = resolve(repoRoot, "tsconfig.json");
 const originalTsconfig = readFileSync(tsconfigPath, "utf8");
 const runnerLockPath = resolve(repoRoot, ".e2e-runner.lock");
-const runnerFlags = new Set(["--reuse", "--stop"]);
+const runnerFlags = new Set(["--reuse", "--stop", "--preserve-demo"]);
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 const mode = rawArgs.includes("--stop") ? "stop" : rawArgs.includes("--reuse") ? "reuse" : "ephemeral";
+const preserveDemo = rawArgs.includes("--preserve-demo");
 const playwrightArgs = rawArgs.filter((arg) => !runnerFlags.has(arg));
 
 async function assertE2ePortsFree() {
@@ -212,7 +213,16 @@ function reportTerminalResult(outcome) {
 async function main() {
   assertSafeE2eConfig();
   assertDockerAvailable();
-  assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
+  if (preserveDemo) {
+    if (mode !== "reuse" || playwrightArgs.length !== 1 || playwrightArgs[0] !== "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts") {
+      throw new Error("--preserve-demo is limited to the metadata E2E spec in reuse mode.");
+    }
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== "http://127.0.0.1:55321") {
+      throw new Error("--preserve-demo requires the isolated E2E Supabase URL.");
+    }
+  } else {
+    assertNoActiveDemoManifests(`E2E runner mode ${mode}`);
+  }
   releaseRunnerLock = acquireRunnerLock(runnerLockPath);
 
   try {

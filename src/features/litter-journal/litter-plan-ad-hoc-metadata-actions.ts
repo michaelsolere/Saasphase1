@@ -11,7 +11,7 @@ import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedu
 import { validateLitterPlanAdHocMetadataForm } from "./litter-plan-ad-hoc-metadata-validation";
 
 export type LitterPlanAdHocMetadataIntention = {
-  litterId: string; litterPlanItemId: string; clientCommandId: string;
+  litterId: string; litterPlanId: string; litterPlanItemId: string; taskId: string; clientCommandId: string;
   expectedPlanRevision: number; expectedItemRevision: number; expectedTaskRevision: number;
 };
 export type LitterPlanAdHocMetadataActionState = { status: "idle" | "success" | "error"; message?: string; code?: LitterPlanAdHocErrorCode; requiresRefresh?: boolean; fieldErrors?: Partial<Record<"title" | "description" | "category" | "targetScope" | "priority", string>> };
