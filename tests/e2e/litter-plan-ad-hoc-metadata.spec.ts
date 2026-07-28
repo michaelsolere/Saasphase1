@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -30,6 +30,9 @@ const ownerMembership = `${prefix}03`;
 const viewerId = `${prefix}04`;
 const viewerIdentity = `${prefix}05`;
 const viewerMembership = `${prefix}06`;
+const memberId = `${prefix}12`;
+const memberIdentity = `${prefix}13`;
+const memberMembership = `${prefix}14`;
 const foreignId = `${prefix}07`;
 const foreignIdentity = `${prefix}08`;
 const foreignMembership = `${prefix}09`;
@@ -100,6 +103,12 @@ function remainingCounts() {
     'commands',(select count(*) from public.litter_plan_ad_hoc_commands where litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
     'tasks',(select count(*) from public.litter_care_tasks where litter_id::text like ${q(like)}),
     'series',(select count(*) from public.litter_plan_series where litter_id::text like ${q(like)}),
+    'series_slots',(select count(*) from public.litter_plan_series_time_slots where series_id in (select id from public.litter_plan_series where litter_id::text like ${q(like)})),
+    'schedule_changes',(select count(*) from public.litter_care_task_schedule_changes where litter_id::text like ${q(like)}),
+    'schedule_commands',(select count(*) from public.litter_care_task_schedule_commands where litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
+    'series_materialization_commands',(select count(*) from public.litter_plan_series_materialization_commands where litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
+    'series_state_commands',(select count(*) from public.litter_plan_series_state_commands where litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
+    'model_items',(select count(*) from public.litter_planning_model_items where model_id=${q(model)}::uuid),
     'items',(select count(*) from public.litter_plan_items where litter_id::text like ${q(like)}),
     'plans',(select count(*) from public.litter_plans where litter_id::text like ${q(like)}),
     'models',(select count(*) from public.litter_planning_models where id=${q(model)}::uuid),
@@ -132,10 +141,12 @@ function seedActors() {
       (${q(mainOrg)}::uuid,'e7280001 main','e7280001-main'),
       (${q(foreignOrg)}::uuid,'e7280001 foreign','e7280001-foreign');
     ${authUserSql(viewerId, viewerIdentity, 'e7280001-viewer@saasphase1.invalid', 'E7280001-Viewer!')}
+    ${authUserSql(memberId, memberIdentity, 'e7280001-member@saasphase1.invalid', 'E7280001-Member!')}
     ${authUserSql(foreignId, foreignIdentity, 'e7280001-foreign@saasphase1.invalid', 'E7280001-Foreign!')}
     insert into public.memberships (id,organization_id,profile_id,role,status,created_by,updated_by) values
       (${q(ownerMembership)}::uuid,${q(mainOrg)}::uuid,${q(ownerId)}::uuid,'owner','active',${q(ownerId)}::uuid,${q(ownerId)}::uuid),
       (${q(viewerMembership)}::uuid,${q(mainOrg)}::uuid,${q(viewerId)}::uuid,'viewer','active',${q(ownerId)}::uuid,${q(ownerId)}::uuid),
+      (${q(memberMembership)}::uuid,${q(mainOrg)}::uuid,${q(memberId)}::uuid,'member','active',${q(ownerId)}::uuid,${q(ownerId)}::uuid),
       (${q(foreignMembership)}::uuid,${q(foreignOrg)}::uuid,${q(foreignId)}::uuid,'owner','active',${q(foreignId)}::uuid,${q(foreignId)}::uuid);
     insert into public.animals (id,organization_id,call_name,species,breed,sex,status,ownership_status,created_by,updated_by)
       values (${q(mother)}::uuid,${q(mainOrg)}::uuid,'e7280001 mère','dog','Golden Retriever','female','breeding','owned',${q(ownerId)}::uuid,${q(ownerId)}::uuid);
@@ -192,9 +203,48 @@ async function create(owner: Supabase, command: string, kind: "milestone" | "win
   return { planId: result.litterPlanId, itemId: result.litterPlanItemId, taskId, kind: kind === "recurring_task" ? "task" : kind } as Item;
 }
 
-test("LITTER-AD-HOC-METADATA-EDIT-01 — RPC, idempotence, concurrence et cleanup", async () => {
+async function login(page: Page, email: string, password: string) {
+  await page.context().clearCookies();
+  await page.goto("/login", { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Mot de passe").fill(password);
+  await page.getByRole("button", { name: "Se connecter" }).click();
+  await page.waitForURL((url) => !/\/login$/.test(url.pathname), { timeout: 45_000 });
+}
+
+async function gotoJournal(page: Page) {
+  await page.goto(`/litters/journal?litter=${litter}`, { waitUntil: "commit", timeout: 90_000 });
+  await expect(page.getByRole("heading", { name: "Planning de la portée", exact: true })).toBeVisible({ timeout: 60_000 });
+}
+
+function timelineCard(page: Page, title: string) {
+  return page.locator("[data-timeline-item]").filter({ has: page.getByText(title, { exact: true }) });
+}
+
+async function openMetadata(page: Page, title: string) {
+  const card = timelineCard(page, title);
+  await expect(card).toHaveCount(1);
+  await card.scrollIntoViewIfNeeded();
+  const trigger = card.getByRole("button", { name: "Modifier les informations" });
+  await expect(trigger).toHaveCount(1);
+  await expect(trigger).toBeVisible();
+  await expect(trigger).toBeEnabled();
+  await trigger.click({ trial: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Modifier les informations", { exact: true })).toBeVisible({ timeout: 15_000 });
+  return dialog;
+}
+
+test("LITTER-AD-HOC-METADATA-EDIT-01 — RPC, idempotence, concurrence, Journal et cleanup", async ({ page }) => {
   const demoBefore = growthCounts();
   let demoAfter: unknown;
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.stack ?? error.message));
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("requestfailed", (request) => failedRequests.push(`${request.method()} ${request.url()} — ${request.failure()?.errorText ?? "échec"}`));
   try {
     cleanup();
     seedActors();
@@ -287,11 +337,20 @@ test("LITTER-AD-HOC-METADATA-EDIT-01 — RPC, idempotence, concurrence et cleanu
 
     await test.step("non-éligibilité, rôles, isolation et JSON invalide n'écrivent pas", async () => {
       for (const [target, command] of [[modelItem, commands.modelEdit], [recurring, commands.recurringEdit], [terminal, commands.terminalEdit], [divergent, commands.divergentEdit]] as const) {
+        const before = snapshot(target);
+        const commandsBefore = Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_id=${q(litter)}::uuid;`));
         const result = await updateLitterPlanAdHocItemMetadata(input(target, command), owner);
-        expect(result.outcome).toBe("error");
+        expect(result).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+        expect(snapshot(target)).toEqual(before);
+        expect(Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_id=${q(litter)}::uuid;`))).toBe(commandsBefore);
       }
-      expect((await updateLitterPlanAdHocItemMetadata(input(milestone.first, commands.viewer), viewer)).outcome).toBe("error");
-      expect((await updateLitterPlanAdHocItemMetadata(input(milestone.first, commands.foreign), foreign)).outcome).toBe("error");
+      for (const [client, command] of [[viewer, commands.viewer], [foreign, commands.foreign]] as const) {
+        const before = snapshot(milestone.first);
+        const commandsBefore = Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_id=${q(litter)}::uuid;`));
+        expect(await updateLitterPlanAdHocItemMetadata(input(milestone.first, command), client)).toMatchObject({ outcome: "error", error: { code: "forbidden" } });
+        expect(snapshot(milestone.first)).toEqual(before);
+        expect(Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_id=${q(litter)}::uuid;`))).toBe(commandsBefore);
+      }
       const rev = revisions(milestone.first.itemId);
       for (const bad of [{ ...metadata("bad"), title: 4 }, { ...metadata("bad"), extra: true }]) {
         const raw = await owner.rpc("update_litter_plan_ad_hoc_item_metadata", { p_litter_id: litter, p_litter_plan_item_id: milestone.first.itemId, p_client_command_id: bad.extra ? commands.extra : commands.invalid, p_expected_plan_revision: rev.plan, p_expected_item_revision: rev.item, p_expected_task_revision: rev.task, p_metadata: bad as unknown as Json });
@@ -300,10 +359,152 @@ test("LITTER-AD-HOC-METADATA-EDIT-01 — RPC, idempotence, concurrence et cleanu
       const malformed = mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "error", reason: "stale_revision", litter_plan_id: null, litter_plan_item_id: null, task_id: null, plan_revision: null, item_revision: null, task_revision: null, replayed: false, result: {} });
       expect(malformed).toMatchObject({ outcome: "error", error: { code: "database_error" } });
     });
+
+    const uiMilestone = await create(owner, `${prefix}73`, "milestone", revisions(milestone.first.itemId).plan);
+    const uiWindow = await create(owner, `${prefix}74`, "window", revisions(uiMilestone.itemId).plan);
+    sql(`
+      update public.litter_plan_items set title='Jalon UI éditable', description='Description UI initiale' where id=${q(uiMilestone.itemId)}::uuid;
+      update public.litter_care_tasks set title='Jalon UI éditable', description='Description UI initiale' where id=${q(uiMilestone.taskId)}::uuid;
+      update public.litter_plan_items set title='Période UI éditable', description='Période initiale' where id=${q(uiWindow.itemId)}::uuid;
+      update public.litter_care_tasks set title='Période UI éditable', description='Période initiale' where id=${q(uiWindow.taskId)}::uuid;
+      update public.litter_plan_items set title='Élément modèle non éditable' where id=${q(modelItem.itemId)}::uuid;
+      update public.litter_care_tasks set title='Élément modèle non éditable' where id=${q(modelItem.taskId)}::uuid;
+      update public.litter_plan_items set title='Série non éditable' where id=${q(recurring.itemId)}::uuid;
+      update public.litter_care_tasks set title='Série non éditable' where litter_plan_item_id=${q(recurring.itemId)}::uuid;
+      update public.litter_plan_items set title='Élément terminal non éditable' where id=${q(terminal.itemId)}::uuid;
+      update public.litter_care_tasks set title='Élément terminal non éditable' where id=${q(terminal.taskId)}::uuid;
+      update public.litter_plan_items set title='Élément divergent non éditable' where id=${q(divergent.itemId)}::uuid;
+    `);
+
+    await test.step("Journal: visibilité par rôle et éligibilité", async () => {
+      await login(page, "e2e-owner@saasphase1.invalid", "LocalE2EOwner-2026!");
+      await gotoJournal(page);
+      await expect(timelineCard(page, "Jalon UI éditable").getByRole("button", { name: "Modifier les informations" })).toBeVisible();
+      await expect(timelineCard(page, "Période UI éditable").getByRole("button", { name: "Modifier les informations" })).toBeVisible();
+      await expect(timelineCard(page, "Élément modèle non éditable").getByRole("button", { name: "Modifier les informations" })).toHaveCount(0);
+      await expect(timelineCard(page, "Série non éditable").getByRole("button", { name: "Modifier les informations" })).toHaveCount(0);
+      await expect(timelineCard(page, "Élément terminal non éditable").getByRole("button", { name: "Modifier les informations" })).toHaveCount(0);
+      await expect(timelineCard(page, "Élément divergent non éditable").getByRole("button", { name: "Modifier les informations" })).toHaveCount(0);
+      await login(page, "e7280001-member@saasphase1.invalid", "E7280001-Member!");
+      await gotoJournal(page);
+      await expect(timelineCard(page, "Jalon UI éditable").getByRole("button", { name: "Modifier les informations" })).toBeVisible();
+      await login(page, "e7280001-viewer@saasphase1.invalid", "E7280001-Viewer!");
+      await gotoJournal(page);
+      await expect(page.getByRole("button", { name: "Modifier les informations" })).toHaveCount(0);
+    });
+
+    await test.step("Journal: préremplissage, validation, mutation et double soumission", async () => {
+      await login(page, "e2e-owner@saasphase1.invalid", "LocalE2EOwner-2026!");
+      await gotoJournal(page);
+      const dialog = await openMetadata(page, "Jalon UI éditable");
+      await expect(dialog.getByText("Type : Jalon")).toBeVisible();
+      await expect(dialog.getByLabel("Titre")).toHaveValue("Jalon UI éditable");
+      await expect(dialog.getByLabel("Description")).toHaveValue("Description UI initiale");
+      await expect(dialog.getByLabel("Catégorie")).toHaveValue("preparation");
+      await expect(dialog.getByLabel("Cible")).toHaveValue("litter");
+      await expect(dialog.getByLabel("Priorité")).toHaveValue("normal");
+      await dialog.getByLabel("Titre").fill("");
+      await dialog.getByRole("button", { name: "Enregistrer" }).click();
+      const title = dialog.getByLabel("Titre");
+      await expect(title).toHaveAttribute("aria-invalid", "true");
+      const describedBy = await title.getAttribute("aria-describedby");
+      expect(describedBy).toBeTruthy();
+      await expect(dialog.locator(`#${describedBy}`)).toBeVisible();
+      await dialog.getByRole("button", { name: "Annuler" }).click();
+      const reopened = await openMetadata(page, "Jalon UI éditable");
+      await expect(reopened.getByRole("alert")).toHaveCount(0);
+      await expect(reopened.getByLabel("Titre")).toHaveValue("Jalon UI éditable");
+      const before = snapshot(uiMilestone); const rev = revisions(uiMilestone.itemId);
+      const commandCountBefore = Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_plan_item_id=${q(uiMilestone.itemId)}::uuid;`));
+      await reopened.getByLabel("Titre").fill("Jalon UI enregistré");
+      await reopened.getByLabel("Description").fill("Description UI corrigée");
+      await reopened.getByLabel("Catégorie").selectOption("veterinary");
+      await reopened.getByLabel("Cible").selectOption("mother");
+      await reopened.getByLabel("Priorité").selectOption("important");
+      const save = reopened.getByRole("button", { name: "Enregistrer" });
+      await Promise.all([save.click(), save.click()]);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      expect(revisions(uiMilestone.itemId)).toEqual({ plan: rev.plan + 1, item: rev.item + 1, task: rev.task + 1 });
+      const after = snapshot(uiMilestone);
+      expect(after.item.title).toBe("Jalon UI enregistré");
+      expect(after.task.title).toBe("Jalon UI enregistré");
+      expect(Number(sql(`select count(*) from public.litter_plan_ad_hoc_commands where litter_plan_item_id=${q(uiMilestone.itemId)}::uuid;`))).toBe(commandCountBefore + 1);
+      for (const field of ["title", "description", "category", "target_scope", "priority"]) expect(after.item[field]).toEqual(after.task[field]);
+      for (const field of ["planned_for", "scheduled_local_time", "status", "is_schedule_locked", "schedule_timezone_name"]) expect(after.task[field]).toEqual(before.task[field]);
+      await expect(page.getByText("Jalon UI enregistré").first()).toBeVisible();
+      const confirmation = page.getByRole("status").filter({ hasText: "Informations mises à jour." });
+      await expect(confirmation).toHaveCount(1);
+      await expect(confirmation).toBeVisible({ timeout: 10_000 });
+      const period = await openMetadata(page, "Période UI éditable");
+      await expect(period.getByText("Type : Période")).toBeVisible();
+      await period.getByRole("button", { name: "Annuler" }).click();
+    });
+
+    await test.step("Journal: conflit obsolète, confidentialité et mobile", async () => {
+      const triggerHtml = await timelineCard(page, "Jalon UI enregistré")
+        .getByRole("button", { name: "Modifier les informations" })
+        .evaluate((element) => element.outerHTML);
+      const dialog = await openMetadata(page, "Jalon UI enregistré");
+      await dialog.getByLabel("Titre").fill("Valeur conservée lors du conflit");
+      const current = revisions(uiMilestone.itemId);
+      expect((await updateLitterPlanAdHocItemMetadata(input(uiMilestone, `${prefix}72`, current, metadata("Mutation concurrente")), owner)).outcome).toBe("success");
+      await dialog.getByRole("button", { name: "Enregistrer" }).click();
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel("Titre")).toHaveValue("Valeur conservée lors du conflit");
+      await expect(dialog.getByText(/Journal a été modifié/)).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Recharger le Journal" })).toBeEnabled();
+      await expect(dialog.getByRole("button", { name: "Enregistrer" })).toHaveCount(0);
+      const privateSurfaces = [
+        await dialog.evaluate((element) => element.outerHTML),
+        triggerHtml,
+        await dialog.locator("input, textarea, select").evaluateAll((elements) =>
+          elements.map((element) => element.outerHTML).join("\n"),
+        ),
+        page.url(),
+      ];
+      for (const surface of privateSurfaces) {
+        for (const forbidden of [
+          uiMilestone.planId,
+          uiMilestone.itemId,
+          uiMilestone.taskId,
+          "clientCommandId",
+          "litterPlanId",
+          "litterPlanItemId",
+          "taskId",
+          "expectedPlanRevision",
+          "expectedItemRevision",
+          "expectedTaskRevision",
+        ]) {
+          expect(surface).not.toContain(forbidden);
+        }
+      }
+      await page.setViewportSize({ width: 375, height: 812 });
+      await expect(dialog.getByRole("button", { name: "Recharger le Journal" })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+      await dialog.getByRole("button", { name: "Recharger le Journal" }).click();
+      await expect(page.getByText("Mutation concurrente").first()).toBeVisible({ timeout: 60_000 });
+      await expect(
+        page.getByRole("button", {
+          name: "Programmer",
+          exact: true,
+        }),
+      ).toBeVisible();
+      const preciseTrigger = timelineCard(page, "Mutation concurrente").getByRole(
+        "button",
+        { name: "Ajuster précisément", exact: true },
+      );
+      await expect(preciseTrigger).toBeVisible();
+      await preciseTrigger.click();
+      const preciseDialog = page.getByRole("dialog");
+      await expect(preciseDialog).toBeVisible();
+      await preciseDialog.getByRole("button", { name: "Annuler", exact: true }).click();
+      await expect(preciseDialog).toHaveCount(0);
+    });
   } finally {
     cleanup();
     for (const [table, count] of Object.entries(remainingCounts())) expect(count, `${table} e7280001 fixtures`).toBe(0);
     demoAfter = growthCounts();
     expect(demoAfter).toEqual(demoBefore);
+    expect({ pageErrors, consoleErrors, failedRequests }).toEqual({ pageErrors: [], consoleErrors: [], failedRequests: [] });
   }
 });

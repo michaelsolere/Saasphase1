@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useId, useState } from "react";
+import { useActionState, useCallback, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,22 +19,41 @@ const kindLabel = (kind: LitterPlanAdHocMetadataView["kind"]) => kind === "miles
 export function LitterPlanAdHocMetadataDialog({ view, action, onSuccess }: { view: LitterPlanAdHocMetadataView; action: Action; onSuccess: (message: string) => void }) {
   const [open, setOpen] = useState(false);
   const [session, setSession] = useState(0);
-  const close = (next: boolean) => { if (!next) setSession((value) => value + 1); setOpen(next); };
+  const close = useCallback((next: boolean) => { if (!next) setSession((value) => value + 1); setOpen(next); }, []);
+  const handleSuccess = useCallback((message: string) => {
+    close(false);
+    onSuccess(message);
+  }, [close, onSuccess]);
   return <Dialog open={open} onOpenChange={close}>
     <DialogTrigger asChild><Button type="button" size="sm" variant="outline">Modifier les informations</Button></DialogTrigger>
     <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
       <DialogHeader><DialogTitle>Modifier les informations</DialogTitle><DialogDescription>Le calendrier, le verrouillage et le statut restent inchangés.</DialogDescription></DialogHeader>
-      {open ? <LitterPlanAdHocMetadataForm key={session} view={view} action={action} onSuccess={(message) => { close(false); onSuccess(message); }} /> : null}
+      {open ? <LitterPlanAdHocMetadataForm key={session} view={view} action={action} onSuccess={handleSuccess} /> : null}
     </DialogContent>
   </Dialog>;
 }
 
 function LitterPlanAdHocMetadataForm({ view, action, onSuccess }: { view: LitterPlanAdHocMetadataView; action: Action; onSuccess: (message: string) => void }) {
-  const router = useRouter(); const prefix = `metadata-${useId().replace(/:/g, "")}`;
-  const [state, submit, pending] = useActionState(action, initialState);
-  useEffect(() => { if (state.status === "success") queueMicrotask(() => { onSuccess(state.message ?? "Informations mises à jour."); router.refresh(); }); }, [state, onSuccess, router]);
+  const router = useRouter();
+  const prefix = `metadata-${useId().replace(/:/g, "")}`;
+  const submitAction = useCallback(
+    async (
+      previousState: LitterPlanAdHocMetadataActionState,
+      formData: FormData,
+    ) => {
+      const nextState = await action(previousState, formData);
+
+      if (nextState.status === "success") {
+        onSuccess(nextState.message ?? "Informations mises à jour.");
+      }
+
+      return nextState;
+    },
+    [action, onSuccess],
+  );
+  const [state, submit, pending] = useActionState(submitAction, initialState);
   const errors = state.fieldErrors ?? {}; const stale = state.requiresRefresh === true;
-  return <form action={submit} className="space-y-4">
+  return <form action={submit} noValidate className="space-y-4">
     <p className="text-sm"><span className="font-semibold">Type :</span> {kindLabel(view.kind)}</p>
     <TextField id={`${prefix}-title`} name="title" label="Titre" value={view.title} error={errors.title} />
     <TextAreaField id={`${prefix}-description`} name="description" label="Description" value={view.description ?? ""} error={errors.description} />

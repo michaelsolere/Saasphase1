@@ -296,6 +296,10 @@ export default async function LitterJournalPage({
         ];
       }),
   );
+  const activePlanDetail =
+    activeLitterPlan && !("outcome" in activeLitterPlan)
+      ? activeLitterPlan
+      : null;
   const litterPlanTimelineMetadataTargets: Record<string, LitterPlanTimelineMetadataTarget> = Object.fromEntries(
     (interactiveLitterPlanBuild?.bindings ?? []).flatMap((binding) => {
       const litterId = journal?.selectedLitter?.id;
@@ -370,10 +374,6 @@ export default async function LitterJournalPage({
     litterCareTasksLoaded?.role === "admin" ||
     litterCareTasksLoaded?.role === "member";
   const programmerInstanceKey = crypto.randomUUID();
-  const activePlanDetail =
-    activeLitterPlan && !("outcome" in activeLitterPlan)
-      ? activeLitterPlan
-      : null;
   const activePlanMissing =
     activeLitterPlan !== null &&
     "outcome" in activeLitterPlan &&
