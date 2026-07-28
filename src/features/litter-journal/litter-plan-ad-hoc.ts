@@ -676,7 +676,7 @@ export async function createLitterPlanAdHocItem(
   const rpc = await supabase.rpc("create_litter_plan_ad_hoc_item", {
     p_litter_id: litterId,
     p_client_command_id: clientCommandId,
-    p_expected_plan_revision: expectedPlanRevision,
+    p_expected_plan_revision: expectedPlanRevision as never,
     p_timezone_name: zone,
     p_item: payload as unknown as Json,
   });
@@ -708,6 +708,10 @@ export type UpdateLitterPlanAdHocMetadataInput = {
 };
 
 export type UpdateLitterPlanAdHocMetadataResult = LitterPlanAdHocResult<{
+  litterPlanId: string;
+  litterPlanItemId: string;
+  taskId: string;
+  kind: "milestone" | "task" | "window";
   planRevision: number;
   itemRevision: number;
   taskRevision: number;
@@ -727,18 +731,23 @@ export function normalizeLitterPlanAdHocMetadataPayload(
 }
 
 type UpdateMetadataRpcRow = {
-  outcome: string; reason: string | null; plan_revision: number | null;
+  outcome: string; reason: string | null; litter_plan_id: string | null; litter_plan_item_id: string | null; task_id: string | null; plan_revision: number | null;
   item_revision: number | null; task_revision: number | null; replayed: boolean | null;
   result: Json;
 };
 
-export function mapUpdateLitterPlanAdHocMetadataRpcResult(row: UpdateMetadataRpcRow | null | undefined): UpdateLitterPlanAdHocMetadataResult {
+export function mapUpdateLitterPlanAdHocMetadataRpcResult(row: UpdateMetadataRpcRow | null | undefined, expected?: Pick<UpdateLitterPlanAdHocMetadataInput, "litterPlanItemId">): UpdateLitterPlanAdHocMetadataResult {
   if (!row) return error("database_error");
-  if (row.outcome === "error") return error(reasonCode(row.reason));
+  if (row.outcome === "error") {
+    if (row.result === null || !isPlainJsonObject(row.result) || Object.keys(row.result).length !== 0 || row.task_id !== null || row.litter_plan_item_id !== null || row.item_revision !== null || row.task_revision !== null) return error("database_error");
+    return error(reasonCode(row.reason));
+  }
   if (row.outcome !== "success" || row.reason !== null || typeof row.replayed !== "boolean" || !Number.isInteger(row.plan_revision) || (row.plan_revision as number) < 1 || !Number.isInteger(row.item_revision) || (row.item_revision as number) < 1 || !Number.isInteger(row.task_revision) || (row.task_revision as number) < 0 || !isPlainJsonObject(row.result)) return error("database_error");
-  if (row.result.kind !== "milestone" && row.result.kind !== "task" && row.result.kind !== "window") return error("database_error");
-  if (row.result.itemRevision !== row.item_revision || row.result.taskRevision !== row.task_revision) return error("database_error");
-  return { outcome: "success", planRevision: row.plan_revision as number, itemRevision: row.item_revision as number, taskRevision: row.task_revision as number, replayed: row.replayed };
+  const result = row.result as { [key: string]: Json | undefined };
+  const planId=uuid(row.litter_plan_id), itemId=uuid(row.litter_plan_item_id), taskId=uuid(row.task_id);
+  const keys=["litterPlanId","litterPlanItemId","taskId","kind","planRevision","itemRevision","taskRevision"];
+  if (!planId || !itemId || !taskId || Object.keys(result).length!==keys.length || !keys.every((key)=>key in result) || result.litterPlanId!==planId || result.litterPlanItemId!==itemId || result.taskId!==taskId || result.planRevision!==row.plan_revision || result.itemRevision!==row.item_revision || result.taskRevision!==row.task_revision || (result.kind!=="milestone" && result.kind!=="task" && result.kind!=="window") || (expected && itemId!==uuid(expected.litterPlanItemId))) return error("database_error");
+  return { outcome: "success", litterPlanId: planId, litterPlanItemId: itemId, taskId, kind: result.kind, planRevision: row.plan_revision as number, itemRevision: row.item_revision as number, taskRevision: row.task_revision as number, replayed: row.replayed };
 }
 
 export async function updateLitterPlanAdHocItemMetadata(input: UpdateLitterPlanAdHocMetadataInput, supabase: Supabase): Promise<UpdateLitterPlanAdHocMetadataResult> {
@@ -751,5 +760,5 @@ export async function updateLitterPlanAdHocItemMetadata(input: UpdateLitterPlanA
     p_expected_task_revision: input.expectedTaskRevision, p_metadata: metadata as unknown as Json,
   } as never);
   if (rpc.error) return error("database_error");
-  return mapUpdateLitterPlanAdHocMetadataRpcResult((rpc.data?.[0] as UpdateMetadataRpcRow | undefined) ?? null);
+  return mapUpdateLitterPlanAdHocMetadataRpcResult((rpc.data?.[0] as UpdateMetadataRpcRow | undefined) ?? null, input);
 }

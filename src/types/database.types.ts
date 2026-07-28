@@ -1107,6 +1107,63 @@ export type Database = {
           },
         ]
       }
+      default_gestation_planning_model_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          new_planning_model_id: string | null
+          organization_id: string
+          outcome: string
+          previous_planning_model_id: string | null
+          reason: string | null
+          requested_library_model_code: string | null
+          requested_library_model_version: number | null
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          new_planning_model_id?: string | null
+          organization_id: string
+          outcome: string
+          previous_planning_model_id?: string | null
+          reason?: string | null
+          requested_library_model_code?: string | null
+          requested_library_model_version?: number | null
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          new_planning_model_id?: string | null
+          organization_id?: string
+          outcome?: string
+          previous_planning_model_id?: string | null
+          reason?: string | null
+          requested_library_model_code?: string | null
+          requested_library_model_version?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "default_gestation_planning_model_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "default_gestation_planning_model_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_signed_returns: {
         Row: {
           created_at: string
@@ -2448,6 +2505,284 @@ export type Database = {
           },
         ]
       }
+      litter_care_task_schedule_changes: {
+        Row: {
+          after_snapshot: Json
+          before_snapshot: Json
+          change_type: string
+          changed_at: string
+          changed_by: string
+          command_id: string
+          expected_revision_no: number
+          id: string
+          litter_id: string
+          locked_override_confirmed: boolean
+          organization_id: string
+          previous_is_schedule_locked: boolean
+          previous_planned_for: string | null
+          previous_retained_ends_local_time: string | null
+          previous_retained_ends_on: string | null
+          previous_retained_starts_local_time: string | null
+          previous_retained_starts_on: string | null
+          previous_revision_no: number
+          previous_schedule_source: string
+          previous_scheduled_local_time: string | null
+          previous_suggested_ends_local_time: string | null
+          previous_suggested_ends_on: string | null
+          previous_suggested_for: string | null
+          previous_suggested_local_time: string | null
+          previous_suggested_starts_local_time: string | null
+          previous_suggested_starts_on: string | null
+          previous_timezone_name: string | null
+          reason: string | null
+          result_is_schedule_locked: boolean
+          result_planned_for: string | null
+          result_retained_ends_local_time: string | null
+          result_retained_ends_on: string | null
+          result_retained_starts_local_time: string | null
+          result_retained_starts_on: string | null
+          result_revision_no: number
+          result_schedule_source: string
+          result_scheduled_local_time: string | null
+          result_suggested_ends_local_time: string | null
+          result_suggested_ends_on: string | null
+          result_suggested_for: string | null
+          result_suggested_local_time: string | null
+          result_suggested_starts_local_time: string | null
+          result_suggested_starts_on: string | null
+          result_timezone_name: string | null
+          task_id: string
+        }
+        Insert: {
+          after_snapshot: Json
+          before_snapshot: Json
+          change_type: string
+          changed_at?: string
+          changed_by: string
+          command_id: string
+          expected_revision_no: number
+          id?: string
+          litter_id: string
+          locked_override_confirmed?: boolean
+          organization_id: string
+          previous_is_schedule_locked: boolean
+          previous_planned_for?: string | null
+          previous_retained_ends_local_time?: string | null
+          previous_retained_ends_on?: string | null
+          previous_retained_starts_local_time?: string | null
+          previous_retained_starts_on?: string | null
+          previous_revision_no: number
+          previous_schedule_source: string
+          previous_scheduled_local_time?: string | null
+          previous_suggested_ends_local_time?: string | null
+          previous_suggested_ends_on?: string | null
+          previous_suggested_for?: string | null
+          previous_suggested_local_time?: string | null
+          previous_suggested_starts_local_time?: string | null
+          previous_suggested_starts_on?: string | null
+          previous_timezone_name?: string | null
+          reason?: string | null
+          result_is_schedule_locked: boolean
+          result_planned_for?: string | null
+          result_retained_ends_local_time?: string | null
+          result_retained_ends_on?: string | null
+          result_retained_starts_local_time?: string | null
+          result_retained_starts_on?: string | null
+          result_revision_no: number
+          result_schedule_source: string
+          result_scheduled_local_time?: string | null
+          result_suggested_ends_local_time?: string | null
+          result_suggested_ends_on?: string | null
+          result_suggested_for?: string | null
+          result_suggested_local_time?: string | null
+          result_suggested_starts_local_time?: string | null
+          result_suggested_starts_on?: string | null
+          result_timezone_name?: string | null
+          task_id: string
+        }
+        Update: {
+          after_snapshot?: Json
+          before_snapshot?: Json
+          change_type?: string
+          changed_at?: string
+          changed_by?: string
+          command_id?: string
+          expected_revision_no?: number
+          id?: string
+          litter_id?: string
+          locked_override_confirmed?: boolean
+          organization_id?: string
+          previous_is_schedule_locked?: boolean
+          previous_planned_for?: string | null
+          previous_retained_ends_local_time?: string | null
+          previous_retained_ends_on?: string | null
+          previous_retained_starts_local_time?: string | null
+          previous_retained_starts_on?: string | null
+          previous_revision_no?: number
+          previous_schedule_source?: string
+          previous_scheduled_local_time?: string | null
+          previous_suggested_ends_local_time?: string | null
+          previous_suggested_ends_on?: string | null
+          previous_suggested_for?: string | null
+          previous_suggested_local_time?: string | null
+          previous_suggested_starts_local_time?: string | null
+          previous_suggested_starts_on?: string | null
+          previous_timezone_name?: string | null
+          reason?: string | null
+          result_is_schedule_locked?: boolean
+          result_planned_for?: string | null
+          result_retained_ends_local_time?: string | null
+          result_retained_ends_on?: string | null
+          result_retained_starts_local_time?: string | null
+          result_retained_starts_on?: string | null
+          result_revision_no?: number
+          result_schedule_source?: string
+          result_scheduled_local_time?: string | null
+          result_suggested_ends_local_time?: string | null
+          result_suggested_ends_on?: string | null
+          result_suggested_for?: string | null
+          result_suggested_local_time?: string | null
+          result_suggested_starts_local_time?: string | null
+          result_suggested_starts_on?: string | null
+          result_timezone_name?: string | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_command_organization_fk"
+            columns: ["organization_id", "command_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_schedule_commands"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_changes_task_organization_fk"
+            columns: ["organization_id", "task_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_tasks"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      litter_care_task_schedule_commands: {
+        Row: {
+          anchor_recalculation_command_id: string | null
+          client_command_id: string
+          command_type: string
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason: string | null
+          result: Json
+          task_id: string
+        }
+        Insert: {
+          anchor_recalculation_command_id?: string | null
+          client_command_id: string
+          command_type: string
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason?: string | null
+          result: Json
+          task_id: string
+        }
+        Update: {
+          anchor_recalculation_command_id?: string | null
+          client_command_id?: string
+          command_type?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          reason?: string | null
+          result?: Json
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_anchor_recalc_fk"
+            columns: ["organization_id", "anchor_recalculation_command_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_anchor_recalculation_commands"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_task_schedule_commands_task_organization_fk"
+            columns: ["organization_id", "task_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_tasks"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       litter_care_task_template_commands: {
         Row: {
           client_command_id: string
@@ -2601,60 +2936,1456 @@ export type Database = {
           },
         ]
       }
-      litter_planning_model_commands: {
-        Row: { client_command_id: string; created_at: string; created_by: string; id: string; model_id: string; operation: string; organization_id: string; outcome: string; payload: Json; reason: string | null; result_is_active: boolean | null; result_revision: number | null }
-        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; model_id: string; operation: string; organization_id: string; outcome: string; payload: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
-        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; model_id?: string; operation?: string; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result_is_active?: boolean | null; result_revision?: number | null }
-        Relationships: []
+      litter_care_tasks: {
+        Row: {
+          anchor_date: string | null
+          anchor_type: string | null
+          category: string
+          created_at: string
+          created_by: string | null
+          creation_command_id: string
+          description: string | null
+          id: string
+          is_schedule_locked: boolean
+          item_kind: string
+          litter_id: string
+          litter_plan_item_id: string | null
+          litter_plan_series_id: string | null
+          occurrence_no: number
+          offset_days: number | null
+          organization_id: string
+          organization_template_id: string | null
+          planned_for: string | null
+          priority: string
+          recurrence_day_no: number | null
+          resolution_command_id: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          resolved_timezone_name: string | null
+          retained_ends_local_time: string | null
+          retained_ends_on: string | null
+          retained_starts_local_time: string | null
+          retained_starts_on: string | null
+          revision_no: number
+          schedule_locked_at: string | null
+          schedule_locked_by: string | null
+          schedule_source: string
+          schedule_timezone_name: string | null
+          scheduled_local_time: string | null
+          slot_no: number | null
+          source: string
+          status: string
+          suggested_ends_local_time: string | null
+          suggested_ends_on: string | null
+          suggested_for: string | null
+          suggested_local_time: string | null
+          suggested_starts_local_time: string | null
+          suggested_starts_on: string | null
+          system_template_code: string | null
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id: string
+          description?: string | null
+          id?: string
+          is_schedule_locked?: boolean
+          item_kind?: string
+          litter_id: string
+          litter_plan_item_id?: string | null
+          litter_plan_series_id?: string | null
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id: string
+          organization_template_id?: string | null
+          planned_for?: string | null
+          priority?: string
+          recurrence_day_no?: number | null
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          retained_ends_local_time?: string | null
+          retained_ends_on?: string | null
+          retained_starts_local_time?: string | null
+          retained_starts_on?: string | null
+          revision_no?: number
+          schedule_locked_at?: string | null
+          schedule_locked_by?: string | null
+          schedule_source?: string
+          schedule_timezone_name?: string | null
+          scheduled_local_time?: string | null
+          slot_no?: number | null
+          source: string
+          status?: string
+          suggested_ends_local_time?: string | null
+          suggested_ends_on?: string | null
+          suggested_for?: string | null
+          suggested_local_time?: string | null
+          suggested_starts_local_time?: string | null
+          suggested_starts_on?: string | null
+          system_template_code?: string | null
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anchor_date?: string | null
+          anchor_type?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          creation_command_id?: string
+          description?: string | null
+          id?: string
+          is_schedule_locked?: boolean
+          item_kind?: string
+          litter_id?: string
+          litter_plan_item_id?: string | null
+          litter_plan_series_id?: string | null
+          occurrence_no?: number
+          offset_days?: number | null
+          organization_id?: string
+          organization_template_id?: string | null
+          planned_for?: string | null
+          priority?: string
+          recurrence_day_no?: number | null
+          resolution_command_id?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          resolved_timezone_name?: string | null
+          retained_ends_local_time?: string | null
+          retained_ends_on?: string | null
+          retained_starts_local_time?: string | null
+          retained_starts_on?: string | null
+          revision_no?: number
+          schedule_locked_at?: string | null
+          schedule_locked_by?: string | null
+          schedule_source?: string
+          schedule_timezone_name?: string | null
+          scheduled_local_time?: string | null
+          slot_no?: number | null
+          source?: string
+          status?: string
+          suggested_ends_local_time?: string | null
+          suggested_ends_on?: string | null
+          suggested_for?: string | null
+          suggested_local_time?: string | null
+          suggested_starts_local_time?: string | null
+          suggested_starts_on?: string | null
+          system_template_code?: string | null
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_care_tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_litter_organization_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_organization_template_organization_fk"
+            columns: ["organization_id", "organization_template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_plan_item_fk"
+            columns: ["organization_id", "litter_id", "litter_plan_item_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_items"
+            referencedColumns: ["organization_id", "litter_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_schedule_locked_by_membership_fk"
+            columns: ["organization_id", "schedule_locked_by"]
+            isOneToOne: false
+            referencedRelation: "memberships"
+            referencedColumns: ["organization_id", "profile_id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_series_fk"
+            columns: ["organization_id", "litter_id", "litter_plan_series_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_series"
+            referencedColumns: ["organization_id", "litter_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_care_tasks_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_groups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string | null
+          expected_period_end: string | null
+          expected_period_start: string | null
+          id: string
+          name: string
+          organization_id: string
+          species: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          expected_period_end?: string | null
+          expected_period_start?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          species?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          description?: string | null
+          expected_period_end?: string | null
+          expected_period_start?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          species?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_groups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_groups_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       litter_plan_ad_hoc_commands: {
-        Row: { client_command_id: string; created_at: string; created_by: string; id: string; litter_id: string; litter_plan_id: string | null; litter_plan_item_id: string | null; materialized_occurrence_count: number; organization_id: string; outcome: string; payload: Json; reason: string | null; result: Json; result_plan_revision: number | null; series_id: string | null; task_id: string | null }
-        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; litter_id: string; litter_plan_id?: string | null; litter_plan_item_id?: string | null; materialized_occurrence_count?: number; organization_id: string; outcome: string; payload: Json; reason?: string | null; result?: Json; result_plan_revision?: number | null; series_id?: string | null; task_id?: string | null }
-        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; litter_id?: string; litter_plan_id?: string | null; litter_plan_item_id?: string | null; materialized_occurrence_count?: number; organization_id?: string; outcome?: string; payload?: Json; reason?: string | null; result?: Json; result_plan_revision?: number | null; series_id?: string | null; task_id?: string | null }
-        Relationships: []
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          litter_plan_id: string | null
+          litter_plan_item_id: string | null
+          materialized_occurrence_count: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason: string | null
+          result: Json
+          result_plan_revision: number | null
+          series_id: string | null
+          task_id: string | null
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          litter_plan_id?: string | null
+          litter_plan_item_id?: string | null
+          materialized_occurrence_count?: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason?: string | null
+          result?: Json
+          result_plan_revision?: number | null
+          series_id?: string | null
+          task_id?: string | null
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          litter_plan_id?: string | null
+          litter_plan_item_id?: string | null
+          materialized_occurrence_count?: number
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          reason?: string | null
+          result?: Json
+          result_plan_revision?: number | null
+          series_id?: string | null
+          task_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_item_fk"
+            columns: ["organization_id", "litter_plan_item_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_items"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_plan_fk"
+            columns: ["organization_id", "litter_plan_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plans"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_series_fk"
+            columns: ["organization_id", "series_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_series"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_ad_hoc_commands_task_fk"
+            columns: ["organization_id", "task_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_tasks"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      litter_plan_anchor_recalculation_commands: {
+        Row: {
+          changed_series_occurrence_count: number
+          changed_task_count: number
+          client_command_id: string
+          created_at: string
+          created_by: string
+          expected_litter_updated_at: string
+          expected_plan_revision: number | null
+          id: string
+          litter_id: string
+          litter_plan_id: string | null
+          moved_automatic_schedule_count: number
+          moved_series_automatic_schedule_count: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          preserved_locked_schedule_count: number
+          preserved_manual_schedule_count: number
+          preserved_series_locked_schedule_count: number
+          preserved_series_manual_schedule_count: number
+          preserved_series_terminal_count: number
+          preserved_terminal_count: number
+          previous_estimated_ovulation_date: string | null
+          previous_expected_birth_date: string | null
+          previous_plan_revision: number | null
+          reason: string | null
+          recalculated_item_count: number
+          recalculated_series_count: number
+          result: Json
+          result_estimated_ovulation_date: string | null
+          result_expected_birth_date: string | null
+          result_plan_revision: number | null
+          unchanged_series_occurrence_count: number
+          unchanged_task_count: number
+        }
+        Insert: {
+          changed_series_occurrence_count?: number
+          changed_task_count?: number
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          expected_litter_updated_at: string
+          expected_plan_revision?: number | null
+          id?: string
+          litter_id: string
+          litter_plan_id?: string | null
+          moved_automatic_schedule_count?: number
+          moved_series_automatic_schedule_count?: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          preserved_locked_schedule_count?: number
+          preserved_manual_schedule_count?: number
+          preserved_series_locked_schedule_count?: number
+          preserved_series_manual_schedule_count?: number
+          preserved_series_terminal_count?: number
+          preserved_terminal_count?: number
+          previous_estimated_ovulation_date?: string | null
+          previous_expected_birth_date?: string | null
+          previous_plan_revision?: number | null
+          reason?: string | null
+          recalculated_item_count?: number
+          recalculated_series_count?: number
+          result?: Json
+          result_estimated_ovulation_date?: string | null
+          result_expected_birth_date?: string | null
+          result_plan_revision?: number | null
+          unchanged_series_occurrence_count?: number
+          unchanged_task_count?: number
+        }
+        Update: {
+          changed_series_occurrence_count?: number
+          changed_task_count?: number
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          expected_litter_updated_at?: string
+          expected_plan_revision?: number | null
+          id?: string
+          litter_id?: string
+          litter_plan_id?: string | null
+          moved_automatic_schedule_count?: number
+          moved_series_automatic_schedule_count?: number
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          preserved_locked_schedule_count?: number
+          preserved_manual_schedule_count?: number
+          preserved_series_locked_schedule_count?: number
+          preserved_series_manual_schedule_count?: number
+          preserved_series_terminal_count?: number
+          preserved_terminal_count?: number
+          previous_estimated_ovulation_date?: string | null
+          previous_expected_birth_date?: string | null
+          previous_plan_revision?: number | null
+          reason?: string | null
+          recalculated_item_count?: number
+          recalculated_series_count?: number
+          result?: Json
+          result_estimated_ovulation_date?: string | null
+          result_expected_birth_date?: string | null
+          result_plan_revision?: number | null
+          unchanged_series_occurrence_count?: number
+          unchanged_task_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_anchor_recalculation_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_anchor_recalculation_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_anchor_recalculation_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_anchor_recalculation_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_anchor_recalculation_commands_plan_fk"
+            columns: ["organization_id", "litter_plan_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plans"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
       }
       litter_plan_application_commands: {
-        Row: { client_command_id: string; created_at: string; created_by: string; id: string; litter_id: string; litter_plan_id: string | null; materialized_count: number; organization_id: string; outcome: string; payload: Json; pending_anchor_count: number; planning_model_id: string; reason: string | null; result: Json; result_plan_revision: number | null; snapshot_count: number }
-        Insert: { client_command_id: string; created_at?: string; created_by: string; id?: string; litter_id: string; litter_plan_id?: string | null; materialized_count?: number; organization_id: string; outcome: string; payload: Json; pending_anchor_count?: number; planning_model_id: string; reason?: string | null; result: Json; result_plan_revision?: number | null; snapshot_count?: number }
-        Update: { client_command_id?: string; created_at?: string; created_by?: string; id?: string; litter_id?: string; litter_plan_id?: string | null; materialized_count?: number; organization_id?: string; outcome?: string; payload?: Json; pending_anchor_count?: number; planning_model_id?: string; reason?: string | null; result?: Json; result_plan_revision?: number | null; snapshot_count?: number }
-        Relationships: []
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          litter_id: string
+          litter_plan_id: string | null
+          materialized_count: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          pending_anchor_count: number
+          planning_model_id: string
+          reason: string | null
+          result: Json
+          result_plan_revision: number | null
+          snapshot_count: number
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          litter_id: string
+          litter_plan_id?: string | null
+          materialized_count?: number
+          organization_id: string
+          outcome: string
+          payload: Json
+          pending_anchor_count?: number
+          planning_model_id: string
+          reason?: string | null
+          result: Json
+          result_plan_revision?: number | null
+          snapshot_count?: number
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          litter_id?: string
+          litter_plan_id?: string | null
+          materialized_count?: number
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          pending_anchor_count?: number
+          planning_model_id?: string
+          reason?: string | null
+          result?: Json
+          result_plan_revision?: number | null
+          snapshot_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_application_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_application_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_application_commands_litter_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_application_commands_model_fk"
+            columns: ["organization_id", "planning_model_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_models"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_application_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_application_commands_plan_fk"
+            columns: ["organization_id", "litter_plan_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plans"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
       }
       litter_plan_items: {
-        Row: { absolute_max_occurrences: number | null; anchor_adjustment_days: number | null; anchor_date_snapshot: string | null; anchor_resolution_source: string | null; anchor_source_date_snapshot: string | null; anchor_type: string | null; category: string; created_at: string; created_by: string; description: string | null; display_order: number; id: string; initial_materialization_horizon_days: number | null; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at: string | null; organization_id: string; organization_template_id: string | null; origin_kind: string; point_local_time: string | null; point_offset_days: number | null; priority: string; recurrence_day_count: number | null; recurrence_end_kind: string | null; recurrence_ends_offset_days: number | null; recurrence_interval_days: number | null; recurrence_kind: string | null; recurrence_starts_offset_days: number | null; revision_no: number; source_model_display_order: number | null; source_model_item_id: string | null; source_planning_model_id: string | null; source_planning_model_revision: number | null; target_scope: string; title: string; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
-        Insert: { absolute_max_occurrences?: number | null; anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type?: string | null; category: string; created_at?: string; created_by: string; description?: string | null; display_order: number; id?: string; initial_materialization_horizon_days?: number | null; is_required_snapshot: boolean; is_selected_by_default_snapshot: boolean; item_kind: string; litter_id: string; litter_plan_id: string; materialization_state: string; materialized_at?: string | null; organization_id: string; organization_template_id?: string | null; origin_kind?: string; point_local_time?: string | null; point_offset_days?: number | null; priority: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; revision_no?: number; source_model_display_order?: number | null; source_model_item_id?: string | null; source_planning_model_id?: string | null; source_planning_model_revision?: number | null; target_scope: string; title: string; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Update: { absolute_max_occurrences?: number | null; anchor_adjustment_days?: number | null; anchor_date_snapshot?: string | null; anchor_resolution_source?: string | null; anchor_source_date_snapshot?: string | null; anchor_type?: string | null; category?: string; created_at?: string; created_by?: string; description?: string | null; display_order?: number; id?: string; initial_materialization_horizon_days?: number | null; is_required_snapshot?: boolean; is_selected_by_default_snapshot?: boolean; item_kind?: string; litter_id?: string; litter_plan_id?: string; materialization_state?: string; materialized_at?: string | null; organization_id?: string; organization_template_id?: string | null; origin_kind?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; revision_no?: number; source_model_display_order?: number | null; source_model_item_id?: string | null; source_planning_model_id?: string | null; source_planning_model_revision?: number | null; target_scope?: string; title?: string; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Relationships: []
-      }
-      litter_plans: {
-        Row: { created_at: string; created_by: string; id: string; litter_id: string; organization_id: string; revision: number; last_recalculated_at: string | null; last_recalculated_by: string | null; status: string; timezone_name: string; title: string; updated_at: string; updated_by: string }
-        Insert: { created_at?: string; created_by: string; id?: string; litter_id: string; organization_id: string; revision?: number; last_recalculated_at?: string | null; last_recalculated_by?: string | null; status?: string; timezone_name: string; title: string; updated_at?: string; updated_by: string }
-        Update: { created_at?: string; created_by?: string; id?: string; litter_id?: string; organization_id?: string; revision?: number; last_recalculated_at?: string | null; last_recalculated_by?: string | null; status?: string; timezone_name?: string; title?: string; updated_at?: string; updated_by?: string }
-        Relationships: []
-      }
-
-      litter_planning_model_item_time_slots: {
-        Row: { created_at: string; created_by: string; id: string; local_time: string; model_item_id: string; organization_id: string; slot_no: number }
-        Insert: { created_at?: string; created_by: string; id?: string; local_time: string; model_item_id: string; organization_id: string; slot_no: number }
-        Update: { created_at?: string; created_by?: string; id?: string; local_time?: string; model_item_id?: string; organization_id?: string; slot_no?: number }
-        Relationships: []
+        Row: {
+          absolute_max_occurrences: number | null
+          anchor_adjustment_days: number | null
+          anchor_date_snapshot: string | null
+          anchor_resolution_source: string | null
+          anchor_source_date_snapshot: string | null
+          anchor_type: string | null
+          category: string
+          created_at: string
+          created_by: string
+          description: string | null
+          display_order: number
+          id: string
+          initial_materialization_horizon_days: number | null
+          is_required_snapshot: boolean
+          is_selected_by_default_snapshot: boolean
+          item_kind: string
+          litter_id: string
+          litter_plan_id: string
+          materialization_state: string
+          materialized_at: string | null
+          organization_id: string
+          organization_template_id: string | null
+          origin_kind: string
+          point_local_time: string | null
+          point_offset_days: number | null
+          priority: string
+          recurrence_day_count: number | null
+          recurrence_end_kind: string | null
+          recurrence_ends_offset_days: number | null
+          recurrence_interval_days: number | null
+          recurrence_kind: string | null
+          recurrence_starts_offset_days: number | null
+          revision_no: number
+          source_model_display_order: number | null
+          source_model_item_id: string | null
+          source_planning_model_id: string | null
+          source_planning_model_revision: number | null
+          target_scope: string
+          title: string
+          updated_at: string
+          updated_by: string
+          window_ends_local_time: string | null
+          window_ends_offset_days: number | null
+          window_starts_local_time: string | null
+          window_starts_offset_days: number | null
+        }
+        Insert: {
+          absolute_max_occurrences?: number | null
+          anchor_adjustment_days?: number | null
+          anchor_date_snapshot?: string | null
+          anchor_resolution_source?: string | null
+          anchor_source_date_snapshot?: string | null
+          anchor_type?: string | null
+          category: string
+          created_at?: string
+          created_by: string
+          description?: string | null
+          display_order: number
+          id?: string
+          initial_materialization_horizon_days?: number | null
+          is_required_snapshot: boolean
+          is_selected_by_default_snapshot: boolean
+          item_kind: string
+          litter_id: string
+          litter_plan_id: string
+          materialization_state: string
+          materialized_at?: string | null
+          organization_id: string
+          organization_template_id?: string | null
+          origin_kind?: string
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          revision_no?: number
+          source_model_display_order?: number | null
+          source_model_item_id?: string | null
+          source_planning_model_id?: string | null
+          source_planning_model_revision?: number | null
+          target_scope: string
+          title: string
+          updated_at?: string
+          updated_by: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Update: {
+          absolute_max_occurrences?: number | null
+          anchor_adjustment_days?: number | null
+          anchor_date_snapshot?: string | null
+          anchor_resolution_source?: string | null
+          anchor_source_date_snapshot?: string | null
+          anchor_type?: string | null
+          category?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          display_order?: number
+          id?: string
+          initial_materialization_horizon_days?: number | null
+          is_required_snapshot?: boolean
+          is_selected_by_default_snapshot?: boolean
+          item_kind?: string
+          litter_id?: string
+          litter_plan_id?: string
+          materialization_state?: string
+          materialized_at?: string | null
+          organization_id?: string
+          organization_template_id?: string | null
+          origin_kind?: string
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority?: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          revision_no?: number
+          source_model_display_order?: number | null
+          source_model_item_id?: string | null
+          source_planning_model_id?: string | null
+          source_planning_model_revision?: number | null
+          target_scope?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_items_model_fk"
+            columns: ["organization_id", "source_planning_model_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_models"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_items_plan_fk"
+            columns: ["organization_id", "litter_id", "litter_plan_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plans"
+            referencedColumns: ["organization_id", "litter_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_items_template_fk"
+            columns: ["organization_id", "organization_template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_items_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       litter_plan_series: {
-        Row: { absolute_max_occurrences: number; completion_reason: string | null; created_at: string; created_by: string; end_kind: string; ends_on: string | null; id: string; initial_materialization_horizon_days: number; litter_id: string; litter_plan_id: string; litter_plan_item_id: string; materialized_occurrence_count: number; materialized_through: string | null; organization_id: string; recurrence_day_count: number | null; recurrence_interval_days: number; recurrence_kind: string; revision_no: number; starts_on: string | null; state: string; timezone_name: string; updated_at: string; updated_by: string }
-        Insert: { absolute_max_occurrences: number; completion_reason?: string | null; created_at?: string; created_by: string; end_kind: string; ends_on?: string | null; id?: string; initial_materialization_horizon_days: number; litter_id: string; litter_plan_id: string; litter_plan_item_id: string; materialized_occurrence_count?: number; materialized_through?: string | null; organization_id: string; recurrence_day_count?: number | null; recurrence_interval_days: number; recurrence_kind: string; revision_no?: number; starts_on?: string | null; state?: string; timezone_name: string; updated_at?: string; updated_by: string }
-        Update: { absolute_max_occurrences?: number; completion_reason?: string | null; created_at?: string; created_by?: string; end_kind?: string; ends_on?: string | null; id?: string; initial_materialization_horizon_days?: number; litter_id?: string; litter_plan_id?: string; litter_plan_item_id?: string; materialized_occurrence_count?: number; materialized_through?: string | null; organization_id?: string; recurrence_day_count?: number | null; recurrence_interval_days?: number; recurrence_kind?: string; revision_no?: number; starts_on?: string | null; state?: string; timezone_name?: string; updated_at?: string; updated_by?: string }
-        Relationships: []
+        Row: {
+          absolute_max_occurrences: number
+          completion_reason: string | null
+          created_at: string
+          created_by: string
+          end_kind: string
+          ends_on: string | null
+          id: string
+          initial_materialization_horizon_days: number
+          litter_id: string
+          litter_plan_id: string
+          litter_plan_item_id: string
+          materialized_occurrence_count: number
+          materialized_through: string | null
+          organization_id: string
+          recurrence_day_count: number | null
+          recurrence_interval_days: number
+          recurrence_kind: string
+          revision_no: number
+          starts_on: string | null
+          state: string
+          timezone_name: string
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          absolute_max_occurrences: number
+          completion_reason?: string | null
+          created_at?: string
+          created_by: string
+          end_kind: string
+          ends_on?: string | null
+          id?: string
+          initial_materialization_horizon_days: number
+          litter_id: string
+          litter_plan_id: string
+          litter_plan_item_id: string
+          materialized_occurrence_count?: number
+          materialized_through?: string | null
+          organization_id: string
+          recurrence_day_count?: number | null
+          recurrence_interval_days: number
+          recurrence_kind: string
+          revision_no?: number
+          starts_on?: string | null
+          state?: string
+          timezone_name: string
+          updated_at?: string
+          updated_by: string
+        }
+        Update: {
+          absolute_max_occurrences?: number
+          completion_reason?: string | null
+          created_at?: string
+          created_by?: string
+          end_kind?: string
+          ends_on?: string | null
+          id?: string
+          initial_materialization_horizon_days?: number
+          litter_id?: string
+          litter_plan_id?: string
+          litter_plan_item_id?: string
+          materialized_occurrence_count?: number
+          materialized_through?: string | null
+          organization_id?: string
+          recurrence_day_count?: number | null
+          recurrence_interval_days?: number
+          recurrence_kind?: string
+          revision_no?: number
+          starts_on?: string | null
+          state?: string
+          timezone_name?: string
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_series_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_plan_fk"
+            columns: ["organization_id", "litter_id", "litter_plan_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plans"
+            referencedColumns: ["organization_id", "litter_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_plan_item_fk"
+            columns: [
+              "organization_id",
+              "litter_id",
+              "litter_plan_id",
+              "litter_plan_item_id",
+            ]
+            isOneToOne: false
+            referencedRelation: "litter_plan_items"
+            referencedColumns: [
+              "organization_id",
+              "litter_id",
+              "litter_plan_id",
+              "id",
+            ]
+          },
+          {
+            foreignKeyName: "litter_plan_series_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_plan_series_materialization_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          expected_revision_no: number
+          id: string
+          inserted_count: number
+          litter_id: string
+          litter_plan_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          previous_materialized_occurrence_count: number | null
+          previous_materialized_through: string | null
+          previous_revision_no: number | null
+          reason: string | null
+          requested_through: string
+          result: Json
+          result_materialized_occurrence_count: number | null
+          result_materialized_through: string | null
+          result_revision_no: number | null
+          series_id: string
+          skipped_identical_count: number
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          expected_revision_no: number
+          id?: string
+          inserted_count?: number
+          litter_id: string
+          litter_plan_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          previous_materialized_occurrence_count?: number | null
+          previous_materialized_through?: string | null
+          previous_revision_no?: number | null
+          reason?: string | null
+          requested_through: string
+          result?: Json
+          result_materialized_occurrence_count?: number | null
+          result_materialized_through?: string | null
+          result_revision_no?: number | null
+          series_id: string
+          skipped_identical_count?: number
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          expected_revision_no?: number
+          id?: string
+          inserted_count?: number
+          litter_id?: string
+          litter_plan_id?: string
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          previous_materialized_occurrence_count?: number | null
+          previous_materialized_through?: string | null
+          previous_revision_no?: number | null
+          reason?: string | null
+          requested_through?: string
+          result?: Json
+          result_materialized_occurrence_count?: number | null
+          result_materialized_through?: string | null
+          result_revision_no?: number | null
+          series_id?: string
+          skipped_identical_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_series_materialization_command_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_materialization_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_materialization_commands_series_fk"
+            columns: ["organization_id", "series_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_series"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      litter_plan_series_state_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          expected_revision_no: number
+          id: string
+          litter_id: string
+          litter_plan_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          previous_revision_no: number | null
+          previous_state: string
+          reason: string | null
+          reason_text: string | null
+          resolved_occurrence_count: number
+          result: Json
+          result_revision_no: number | null
+          result_state: string | null
+          series_id: string
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          expected_revision_no: number
+          id?: string
+          litter_id: string
+          litter_plan_id: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          previous_revision_no?: number | null
+          previous_state: string
+          reason?: string | null
+          reason_text?: string | null
+          resolved_occurrence_count?: number
+          result?: Json
+          result_revision_no?: number | null
+          result_state?: string | null
+          series_id: string
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          expected_revision_no?: number
+          id?: string
+          litter_id?: string
+          litter_plan_id?: string
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          previous_revision_no?: number | null
+          previous_state?: string
+          reason?: string | null
+          reason_text?: string | null
+          resolved_occurrence_count?: number
+          result?: Json
+          result_revision_no?: number | null
+          result_state?: string | null
+          series_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_series_state_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_state_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_state_commands_series_fk"
+            columns: ["organization_id", "series_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_series"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
       }
       litter_plan_series_time_slots: {
-        Row: { created_at: string; created_by: string; id: string; local_time: string; organization_id: string; series_id: string; slot_no: number }
-        Insert: { created_at?: string; created_by: string; id?: string; local_time: string; organization_id: string; series_id: string; slot_no: number }
-        Update: { created_at?: string; created_by?: string; id?: string; local_time?: string; organization_id?: string; series_id?: string; slot_no?: number }
-        Relationships: []
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          local_time: string
+          organization_id: string
+          series_id: string
+          slot_no: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          local_time: string
+          organization_id: string
+          series_id: string
+          slot_no: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          local_time?: string
+          organization_id?: string
+          series_id?: string
+          slot_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_plan_series_time_slots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_time_slots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plan_series_time_slots_series_fk"
+            columns: ["organization_id", "series_id"]
+            isOneToOne: false
+            referencedRelation: "litter_plan_series"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
+      litter_planning_model_commands: {
+        Row: {
+          client_command_id: string
+          created_at: string
+          created_by: string
+          id: string
+          model_id: string
+          operation: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason: string | null
+          result_is_active: boolean | null
+          result_revision: number | null
+        }
+        Insert: {
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          id?: string
+          model_id: string
+          operation: string
+          organization_id: string
+          outcome: string
+          payload: Json
+          reason?: string | null
+          result_is_active?: boolean | null
+          result_revision?: number | null
+        }
+        Update: {
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          model_id?: string
+          operation?: string
+          organization_id?: string
+          outcome?: string
+          payload?: Json
+          reason?: string | null
+          result_is_active?: boolean | null
+          result_revision?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_commands_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_commands_model_organization_fk"
+            columns: ["organization_id", "model_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_models"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_commands_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      litter_planning_model_item_time_slots: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          local_time: string
+          model_item_id: string
+          organization_id: string
+          slot_no: number
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          local_time: string
+          model_item_id: string
+          organization_id: string
+          slot_no: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          local_time?: string
+          model_item_id?: string
+          organization_id?: string
+          slot_no?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_item_time_slots_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_item_time_slots_item_fk"
+            columns: ["organization_id", "model_item_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_model_items"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_item_time_slots_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       litter_planning_model_items: {
-        Row: { absolute_max_occurrences: number | null; anchor_type: string; created_at: string; created_by: string; display_order: number; id: string; initial_materialization_horizon_days: number | null; is_required: boolean; is_selected_by_default: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time: string | null; point_offset_days: number | null; priority: string; recurrence_day_count: number | null; recurrence_end_kind: string | null; recurrence_ends_offset_days: number | null; recurrence_interval_days: number | null; recurrence_kind: string | null; recurrence_starts_offset_days: number | null; updated_at: string; updated_by: string; window_ends_local_time: string | null; window_ends_offset_days: number | null; window_starts_local_time: string | null; window_starts_offset_days: number | null }
-        Insert: { absolute_max_occurrences?: number | null; anchor_type: string; created_at?: string; created_by: string; display_order: number; id?: string; initial_materialization_horizon_days?: number | null; is_required?: boolean; is_selected_by_default?: boolean; item_kind: string; model_id: string; organization_id: string; organization_template_id: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; updated_at?: string; updated_by: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Update: { absolute_max_occurrences?: number | null; anchor_type?: string; created_at?: string; created_by?: string; display_order?: number; id?: string; initial_materialization_horizon_days?: number | null; is_required?: boolean; is_selected_by_default?: boolean; item_kind?: string; model_id?: string; organization_id?: string; organization_template_id?: string; point_local_time?: string | null; point_offset_days?: number | null; priority?: string; recurrence_day_count?: number | null; recurrence_end_kind?: string | null; recurrence_ends_offset_days?: number | null; recurrence_interval_days?: number | null; recurrence_kind?: string | null; recurrence_starts_offset_days?: number | null; updated_at?: string; updated_by?: string; window_ends_local_time?: string | null; window_ends_offset_days?: number | null; window_starts_local_time?: string | null; window_starts_offset_days?: number | null }
-        Relationships: []
+        Row: {
+          absolute_max_occurrences: number | null
+          anchor_type: string
+          created_at: string
+          created_by: string
+          display_order: number
+          id: string
+          initial_materialization_horizon_days: number | null
+          is_required: boolean
+          is_selected_by_default: boolean
+          item_kind: string
+          model_id: string
+          organization_id: string
+          organization_template_id: string
+          point_local_time: string | null
+          point_offset_days: number | null
+          priority: string
+          recurrence_day_count: number | null
+          recurrence_end_kind: string | null
+          recurrence_ends_offset_days: number | null
+          recurrence_interval_days: number | null
+          recurrence_kind: string | null
+          recurrence_starts_offset_days: number | null
+          updated_at: string
+          updated_by: string
+          window_ends_local_time: string | null
+          window_ends_offset_days: number | null
+          window_starts_local_time: string | null
+          window_starts_offset_days: number | null
+        }
+        Insert: {
+          absolute_max_occurrences?: number | null
+          anchor_type: string
+          created_at?: string
+          created_by: string
+          display_order: number
+          id?: string
+          initial_materialization_horizon_days?: number | null
+          is_required?: boolean
+          is_selected_by_default?: boolean
+          item_kind: string
+          model_id: string
+          organization_id: string
+          organization_template_id: string
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority?: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          updated_at?: string
+          updated_by: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Update: {
+          absolute_max_occurrences?: number | null
+          anchor_type?: string
+          created_at?: string
+          created_by?: string
+          display_order?: number
+          id?: string
+          initial_materialization_horizon_days?: number | null
+          is_required?: boolean
+          is_selected_by_default?: boolean
+          item_kind?: string
+          model_id?: string
+          organization_id?: string
+          organization_template_id?: string
+          point_local_time?: string | null
+          point_offset_days?: number | null
+          priority?: string
+          recurrence_day_count?: number | null
+          recurrence_end_kind?: string | null
+          recurrence_ends_offset_days?: number | null
+          recurrence_interval_days?: number | null
+          recurrence_kind?: string | null
+          recurrence_starts_offset_days?: number | null
+          updated_at?: string
+          updated_by?: string
+          window_ends_local_time?: string | null
+          window_ends_offset_days?: number | null
+          window_starts_local_time?: string | null
+          window_starts_offset_days?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "litter_planning_model_items_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_items_model_organization_fk"
+            columns: ["organization_id", "model_id"]
+            isOneToOne: false
+            referencedRelation: "litter_planning_models"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_items_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_items_template_organization_fk"
+            columns: ["organization_id", "organization_template_id"]
+            isOneToOne: false
+            referencedRelation: "litter_care_task_templates"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_planning_model_items_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       litter_planning_model_library_import_commands: {
         Row: {
@@ -2840,217 +4571,78 @@ export type Database = {
         Relationships: []
       }
       litter_planning_models: {
-        Row: { breed: string | null; created_at: string; created_by: string; description: string | null; id: string; is_active: boolean; library_model_code: string | null; library_model_version: number | null; organization_id: string; revision: number; species: string | null; title: string; updated_at: string; updated_by: string }
-        Insert: { breed?: string | null; created_at?: string; created_by: string; description?: string | null; id?: string; is_active?: boolean; library_model_code?: string | null; library_model_version?: number | null; organization_id: string; revision?: number; species?: string | null; title: string; updated_at?: string; updated_by: string }
-        Update: { breed?: string | null; created_at?: string; created_by?: string; description?: string | null; id?: string; is_active?: boolean; library_model_code?: string | null; library_model_version?: number | null; organization_id?: string; revision?: number; species?: string | null; title?: string; updated_at?: string; updated_by?: string }
-        Relationships: []
-      }
-      litter_care_tasks: {
         Row: {
-          anchor_date: string | null
-          anchor_type: string | null
-          category: string
+          breed: string | null
           created_at: string
-          created_by: string | null
-          creation_command_id: string
+          created_by: string
           description: string | null
           id: string
-          is_schedule_locked: boolean
-          item_kind: string
-          litter_plan_item_id: string | null
-          litter_plan_series_id: string | null
-          litter_id: string
-          occurrence_no: number
-          offset_days: number | null
-          recurrence_day_no: number | null
-          slot_no: number | null
+          is_active: boolean
+          library_model_code: string | null
+          library_model_version: number | null
           organization_id: string
-          organization_template_id: string | null
-          planned_for: string | null
-          priority: string
-          retained_ends_local_time: string | null
-          retained_ends_on: string | null
-          retained_starts_local_time: string | null
-          retained_starts_on: string | null
-          revision_no: number
-          resolution_command_id: string | null
-          resolution_note: string | null
-          resolved_at: string | null
-          resolved_by: string | null
-          resolved_timezone_name: string | null
-          schedule_locked_at: string | null
-          schedule_locked_by: string | null
-          schedule_source: string
-          schedule_timezone_name: string | null
-          scheduled_local_time: string | null
-          source: string
-          status: string
-          system_template_code: string | null
-          suggested_ends_local_time: string | null
-          suggested_ends_on: string | null
-          suggested_for: string | null
-          suggested_local_time: string | null
-          suggested_starts_local_time: string | null
-          suggested_starts_on: string | null
-          target_scope: string
+          revision: number
+          species: string | null
           title: string
           updated_at: string
-          updated_by: string | null
+          updated_by: string
         }
         Insert: {
-          anchor_date?: string | null
-          anchor_type?: string | null
-          category: string
+          breed?: string | null
           created_at?: string
-          created_by?: string | null
-          creation_command_id: string
+          created_by: string
           description?: string | null
           id?: string
-          is_schedule_locked?: boolean
-          item_kind?: string
-          litter_plan_item_id?: string | null
-          litter_plan_series_id?: string | null
-          litter_id: string
-          occurrence_no?: number
-          offset_days?: number | null
-          recurrence_day_no?: number | null
-          slot_no?: number | null
+          is_active?: boolean
+          library_model_code?: string | null
+          library_model_version?: number | null
           organization_id: string
-          organization_template_id?: string | null
-          planned_for?: string | null
-          priority?: string
-          retained_ends_local_time?: string | null
-          retained_ends_on?: string | null
-          retained_starts_local_time?: string | null
-          retained_starts_on?: string | null
-          revision_no?: number
-          resolution_command_id?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          resolved_timezone_name?: string | null
-          schedule_locked_at?: string | null
-          schedule_locked_by?: string | null
-          schedule_source?: string
-          schedule_timezone_name?: string | null
-          scheduled_local_time?: string | null
-          source: string
-          status?: string
-          system_template_code?: string | null
-          suggested_ends_local_time?: string | null
-          suggested_ends_on?: string | null
-          suggested_for?: string | null
-          suggested_local_time?: string | null
-          suggested_starts_local_time?: string | null
-          suggested_starts_on?: string | null
-          target_scope: string
+          revision?: number
+          species?: string | null
           title: string
           updated_at?: string
-          updated_by?: string | null
+          updated_by: string
         }
         Update: {
-          anchor_date?: string | null
-          anchor_type?: string | null
-          category?: string
+          breed?: string | null
           created_at?: string
-          created_by?: string | null
-          creation_command_id?: string
+          created_by?: string
           description?: string | null
           id?: string
-          is_schedule_locked?: boolean
-          item_kind?: string
-          litter_plan_item_id?: string | null
-          litter_plan_series_id?: string | null
-          litter_id?: string
-          occurrence_no?: number
-          offset_days?: number | null
-          recurrence_day_no?: number | null
-          slot_no?: number | null
+          is_active?: boolean
+          library_model_code?: string | null
+          library_model_version?: number | null
           organization_id?: string
-          organization_template_id?: string | null
-          planned_for?: string | null
-          priority?: string
-          retained_ends_local_time?: string | null
-          retained_ends_on?: string | null
-          retained_starts_local_time?: string | null
-          retained_starts_on?: string | null
-          revision_no?: number
-          resolution_command_id?: string | null
-          resolution_note?: string | null
-          resolved_at?: string | null
-          resolved_by?: string | null
-          resolved_timezone_name?: string | null
-          schedule_locked_at?: string | null
-          schedule_locked_by?: string | null
-          schedule_source?: string
-          schedule_timezone_name?: string | null
-          scheduled_local_time?: string | null
-          source?: string
-          status?: string
-          system_template_code?: string | null
-          suggested_ends_local_time?: string | null
-          suggested_ends_on?: string | null
-          suggested_for?: string | null
-          suggested_local_time?: string | null
-          suggested_starts_local_time?: string | null
-          suggested_starts_on?: string | null
-          target_scope?: string
+          revision?: number
+          species?: string | null
           title?: string
           updated_at?: string
-          updated_by?: string | null
+          updated_by?: string
         }
         Relationships: [
           {
-            foreignKeyName: "litter_care_tasks_created_by_fkey"
+            foreignKeyName: "litter_planning_models_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "litter_care_tasks_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
+            foreignKeyName: "litter_planning_models_library_origin_fk"
+            columns: ["library_model_code", "library_model_version"]
             isOneToOne: false
-            referencedRelation: "litter_overview"
-            referencedColumns: ["organization_id", "id"]
+            referencedRelation: "litter_planning_model_library_models"
+            referencedColumns: ["code", "version"]
           },
           {
-            foreignKeyName: "litter_care_tasks_litter_organization_fk"
-            columns: ["organization_id", "litter_id"]
-            isOneToOne: false
-            referencedRelation: "litters"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_organization_id_fkey"
+            foreignKeyName: "litter_planning_models_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "litter_care_tasks_organization_template_organization_fk"
-            columns: ["organization_id", "organization_template_id"]
-            isOneToOne: false
-            referencedRelation: "litter_care_task_templates"
-            referencedColumns: ["organization_id", "id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_schedule_locked_by_membership_fk"
-            columns: ["organization_id", "schedule_locked_by"]
-            isOneToOne: false
-            referencedRelation: "memberships"
-            referencedColumns: ["organization_id", "profile_id"]
-          },
-          {
-            foreignKeyName: "litter_care_tasks_updated_by_fkey"
+            foreignKeyName: "litter_planning_models_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -3058,69 +4650,90 @@ export type Database = {
           },
         ]
       }
-      litter_groups: {
+      litter_plans: {
         Row: {
           created_at: string
-          created_by: string | null
-          deleted_at: string | null
-          description: string | null
-          expected_period_end: string | null
-          expected_period_start: string | null
+          created_by: string
           id: string
-          name: string
+          last_recalculated_at: string | null
+          last_recalculated_by: string | null
+          litter_id: string
           organization_id: string
-          species: string
+          revision: number
           status: string
+          timezone_name: string
+          title: string
           updated_at: string
-          updated_by: string | null
+          updated_by: string
         }
         Insert: {
           created_at?: string
-          created_by?: string | null
-          deleted_at?: string | null
-          description?: string | null
-          expected_period_end?: string | null
-          expected_period_start?: string | null
+          created_by: string
           id?: string
-          name: string
+          last_recalculated_at?: string | null
+          last_recalculated_by?: string | null
+          litter_id: string
           organization_id: string
-          species?: string
+          revision?: number
           status?: string
+          timezone_name: string
+          title: string
           updated_at?: string
-          updated_by?: string | null
+          updated_by: string
         }
         Update: {
           created_at?: string
-          created_by?: string | null
-          deleted_at?: string | null
-          description?: string | null
-          expected_period_end?: string | null
-          expected_period_start?: string | null
+          created_by?: string
           id?: string
-          name?: string
+          last_recalculated_at?: string | null
+          last_recalculated_by?: string | null
+          litter_id?: string
           organization_id?: string
-          species?: string
+          revision?: number
           status?: string
+          timezone_name?: string
+          title?: string
           updated_at?: string
-          updated_by?: string | null
+          updated_by?: string
         }
         Relationships: [
           {
-            foreignKeyName: "litter_groups_created_by_fkey"
+            foreignKeyName: "litter_plans_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "litter_groups_organization_id_fkey"
+            foreignKeyName: "litter_plans_last_recalculated_by_fkey"
+            columns: ["last_recalculated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "litter_plans_litter_org_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litter_overview"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plans_litter_org_fk"
+            columns: ["organization_id", "litter_id"]
+            isOneToOne: false
+            referencedRelation: "litters"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "litter_plans_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "litter_groups_updated_by_fkey"
+            foreignKeyName: "litter_plans_updated_by_fkey"
             columns: ["updated_by"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -4907,6 +6520,127 @@ export type Database = {
           },
         ]
       }
+      reproductive_cycle_mating_gestation_plan_commands: {
+        Row: {
+          apply_client_command_id: string | null
+          client_command_id: string
+          created_at: string
+          created_by: string
+          cycle_id: string
+          estimated_ovulation_date: string | null
+          father_id: string
+          gestation_model_id: string | null
+          gestation_model_title: string | null
+          gestation_planning_outcome: string | null
+          gestation_variant_code: string | null
+          id: string
+          litter_id: string | null
+          litter_name: string | null
+          litter_plan_id: string | null
+          litter_plan_revision: number | null
+          location: string | null
+          materialized_count: number
+          mating_id: string | null
+          mating_outcome: string
+          mating_reason: string | null
+          method: string
+          note: string | null
+          occurred_at: string
+          organization_id: string
+          payload: Json
+          pending_anchor_count: number
+          sequence_no: number | null
+          snapshot_count: number
+          timezone_name: string
+        }
+        Insert: {
+          apply_client_command_id?: string | null
+          client_command_id: string
+          created_at?: string
+          created_by: string
+          cycle_id: string
+          estimated_ovulation_date?: string | null
+          father_id: string
+          gestation_model_id?: string | null
+          gestation_model_title?: string | null
+          gestation_planning_outcome?: string | null
+          gestation_variant_code?: string | null
+          id?: string
+          litter_id?: string | null
+          litter_name?: string | null
+          litter_plan_id?: string | null
+          litter_plan_revision?: number | null
+          location?: string | null
+          materialized_count?: number
+          mating_id?: string | null
+          mating_outcome: string
+          mating_reason?: string | null
+          method: string
+          note?: string | null
+          occurred_at: string
+          organization_id: string
+          payload: Json
+          pending_anchor_count?: number
+          sequence_no?: number | null
+          snapshot_count?: number
+          timezone_name: string
+        }
+        Update: {
+          apply_client_command_id?: string | null
+          client_command_id?: string
+          created_at?: string
+          created_by?: string
+          cycle_id?: string
+          estimated_ovulation_date?: string | null
+          father_id?: string
+          gestation_model_id?: string | null
+          gestation_model_title?: string | null
+          gestation_planning_outcome?: string | null
+          gestation_variant_code?: string | null
+          id?: string
+          litter_id?: string | null
+          litter_name?: string | null
+          litter_plan_id?: string | null
+          litter_plan_revision?: number | null
+          location?: string | null
+          materialized_count?: number
+          mating_id?: string | null
+          mating_outcome?: string
+          mating_reason?: string | null
+          method?: string
+          note?: string | null
+          occurred_at?: string
+          organization_id?: string
+          payload?: Json
+          pending_anchor_count?: number
+          sequence_no?: number | null
+          snapshot_count?: number
+          timezone_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reproductive_cycle_mating_gestation_plan_c_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_mating_gestation_plan_comman_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reproductive_cycle_mating_gestation_plan_commands_cycle_fk"
+            columns: ["organization_id", "cycle_id"]
+            isOneToOne: false
+            referencedRelation: "reproductive_cycles"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       reproductive_cycle_matings: {
         Row: {
           client_command_id: string
@@ -6310,23 +8044,27 @@ export type Database = {
           p_reminder_id: string
         }
         Returns: {
-          acknowledged_at: string | null
-          acknowledged_by: string | null
-          acknowledged_trigger_at: string | null
-          created_at: string | null
-          days_before: number | null
-          local_time: string | null
-          organization_id: string | null
+          acknowledged_at: string
+          acknowledged_by: string
+          acknowledged_trigger_at: string
+          created_at: string
+          days_before: number
+          local_time: string
+          organization_id: string
           outcome: string
-          reason: string | null
-          reminder_id: string | null
+          reason: string
+          reminder_id: string
           replayed: boolean
-          revision_no: number | null
-          source_record_id: string | null
-          source_type: string | null
-          timezone_name: string | null
-          updated_at: string | null
+          revision_no: number
+          source_record_id: string
+          source_type: string
+          timezone_name: string
+          updated_at: string
         }[]
+      }
+      acquire_litter_plan_mutation_lock: {
+        Args: { p_litter_id: string; p_organization_id: string }
+        Returns: undefined
       }
       activate_organization_logo: {
         Args: {
@@ -6342,6 +8080,25 @@ export type Database = {
         Returns: {
           asset_id: string
           outcome: string
+        }[]
+      }
+      apply_litter_planning_model: {
+        Args: {
+          p_client_command_id: string
+          p_expected_model_revision: number
+          p_expected_plan_revision: number
+          p_litter_id: string
+          p_planning_model_id: string
+          p_selected_model_item_ids: string[]
+          p_timezone_name: string
+        }
+        Returns: {
+          litter_plan_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
+          revision: number
         }[]
       }
       archive_document_signed_return: {
@@ -6365,6 +8122,15 @@ export type Database = {
           form_submission_id: string
         }[]
       }
+      assert_litter_planning_model_items: {
+        Args: {
+          p_breed: string
+          p_items: Json
+          p_organization_id: string
+          p_species: string
+        }
+        Returns: boolean
+      }
       build_contact_display_name: {
         Args: {
           fallback?: string
@@ -6372,6 +8138,10 @@ export type Database = {
           first_name: string
           last_name: string
         }
+        Returns: string
+      }
+      calendar_reminder_canonical_trigger_at: {
+        Args: { p_local: string; p_timezone_name: string }
         Returns: string
       }
       cancel_litter_routine_weight: {
@@ -6432,7 +8202,7 @@ export type Database = {
         Args: {
           p_client_command_id: string
           p_ended_at: string
-          p_note?: string | null
+          p_note?: string
           p_session_id: string
         }
         Returns: {
@@ -6450,7 +8220,7 @@ export type Database = {
           p_expected_revision_no: number
           p_grams: number
           p_measurement_id: string
-          p_note: string | null
+          p_note: string
           p_reason: string
         }
         Returns: {
@@ -6465,17 +8235,17 @@ export type Database = {
       correct_whelping_birth: {
         Args: {
           p_birth_id: string
-          p_birth_note: string | null
+          p_birth_note: string
           p_client_command_id: string
           p_expected_revision_no: number
-          p_initial_collar_color: string | null
+          p_initial_collar_color: string
           p_occurred_at: string
           p_reason: string
           p_sex: string
           p_viability: string
-          p_weight_grams: number | null
-          p_weight_measured_at: string | null
-          p_weight_note: string | null
+          p_weight_grams: number
+          p_weight_measured_at: string
+          p_weight_note: string
         }
         Returns: {
           animal_id: string
@@ -6487,6 +8257,34 @@ export type Database = {
           replayed: boolean
           revision_no: number
           weight_measurement_id: string
+        }[]
+      }
+      create_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_days_before: number
+          p_local_time: string
+          p_source_record_id: string
+          p_source_type: string
+          p_timezone_name: string
+        }
+        Returns: {
+          acknowledged_at: string
+          acknowledged_by: string
+          acknowledged_trigger_at: string
+          created_at: string
+          days_before: number
+          local_time: string
+          organization_id: string
+          outcome: string
+          reason: string
+          reminder_id: string
+          replayed: boolean
+          revision_no: number
+          source_record_id: string
+          source_type: string
+          timezone_name: string
+          updated_at: string
         }[]
       }
       create_document_template_draft: {
@@ -6514,34 +8312,6 @@ export type Database = {
           version: number
         }[]
       }
-      create_calendar_reminder: {
-        Args: {
-          p_client_command_id: string
-          p_days_before: number
-          p_local_time: string
-          p_source_record_id: string
-          p_source_type: string
-          p_timezone_name: string
-        }
-        Returns: {
-          acknowledged_at: string | null
-          acknowledged_by: string | null
-          acknowledged_trigger_at: string | null
-          created_at: string | null
-          days_before: number | null
-          local_time: string | null
-          organization_id: string | null
-          outcome: string
-          reason: string | null
-          reminder_id: string | null
-          replayed: boolean
-          revision_no: number | null
-          source_record_id: string | null
-          source_type: string | null
-          timezone_name: string | null
-          updated_at: string | null
-        }[]
-      }
       create_litter_care_task: {
         Args: {
           p_category: string
@@ -6564,10 +8334,10 @@ export type Database = {
       create_litter_care_task_template: {
         Args: {
           p_anchor_type: string
-          p_breed: string | null
+          p_breed: string
           p_category: string
           p_client_command_id: string
-          p_description: string | null
+          p_description: string
           p_offset_days: number
           p_organization_id: string
           p_sort_order: number
@@ -6584,124 +8354,46 @@ export type Database = {
           template_id: string
         }[]
       }
-      create_litter_planning_model: {
-        Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_is_active: boolean; p_items: Json; p_organization_id: string; p_species: string | null; p_title: string }
-        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
-      }
-      update_litter_gestation_anchors_and_recalculate_plan: {
-        Args: {
-          p_client_command_id: string
-          p_estimated_ovulation_date: string | null
-          p_expected_birth_date: string | null
-          p_expected_litter_updated_at: string
-          p_expected_plan_revision: number | null
-          p_litter_id: string
-        }
-        Returns: {
-          changed_task_count: number
-          litter_id: string
-          litter_plan_id: string | null
-          moved_automatic_schedule_count: number
-          outcome: string
-          preserved_locked_schedule_count: number
-          preserved_manual_schedule_count: number
-          preserved_terminal_count: number
-          reason: string | null
-          recalculated_item_count: number
-          replayed: boolean
-          result: Json
-          result_plan_revision: number | null
-          unchanged_task_count: number
-        }[]
-      }
-
-      materialize_litter_plan_series: {
-        Args: {
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_requested_through: string
-          p_series_id: string
-        }
-        Returns: {
-          inserted_count: number
-          materialized_occurrence_count: number | null
-          materialized_through: string | null
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          result: Json
-          revision_no: number | null
-          series_id: string | null
-          series_state: string | null
-          skipped_identical_count: number
-        }[]
-      }
-      set_litter_plan_series_state: {
-        Args: {
-          p_client_command_id: string
-          p_expected_revision_no: number
-          p_new_state: string
-          p_reason?: string | null
-          p_series_id: string
-        }
-        Returns: {
-          outcome: string
-          reason: string | null
-          replayed: boolean
-          resolved_occurrence_count: number
-          result: Json
-          revision_no: number | null
-          series_id: string | null
-          series_state: string | null
-        }[]
-      }
       create_litter_plan_ad_hoc_item: {
         Args: {
           p_client_command_id: string
-          p_expected_plan_revision: number | null
+          p_expected_plan_revision: number
           p_item: Json
           p_litter_id: string
           p_timezone_name: string
         }
         Returns: {
-          litter_plan_id: string | null
-          litter_plan_item_id: string | null
+          litter_plan_id: string
+          litter_plan_item_id: string
           materialized_occurrence_count: number
           outcome: string
-          plan_revision: number | null
-          reason: string | null
+          plan_revision: number
+          reason: string
           replayed: boolean
           result: Json
-          series_id: string | null
-          task_id: string | null
+          series_id: string
+          task_id: string
         }[]
       }
-      update_litter_plan_ad_hoc_item_metadata: {
+      create_litter_planning_model: {
         Args: {
+          p_breed: string
           p_client_command_id: string
-          p_expected_item_revision: number
-          p_expected_plan_revision: number
-          p_expected_task_revision: number
-          p_litter_id: string
-          p_litter_plan_item_id: string
-          p_metadata: Json
+          p_description: string
+          p_is_active: boolean
+          p_items: Json
+          p_organization_id: string
+          p_species: string
+          p_title: string
         }
         Returns: {
-          item_revision: number | null
-          litter_plan_id: string | null
-          litter_plan_item_id: string | null
+          is_active: boolean
+          model_id: string
           outcome: string
-          plan_revision: number | null
-          reason: string | null
+          reason: string
           replayed: boolean
-          result: Json
-          task_id: string | null
-          task_revision: number | null
+          revision: number
         }[]
-      }
-      apply_litter_planning_model: {
-        Args: { p_client_command_id: string; p_expected_model_revision: number; p_expected_plan_revision: number | null; p_litter_id: string; p_planning_model_id: string; p_selected_model_item_ids: string[] | null; p_timezone_name: string }
-        Returns: { litter_plan_id: string | null; outcome: string; reason: string | null; replayed: boolean; result: Json; revision: number | null }[]
       }
       create_or_rotate_organization_calendar_feed: {
         Args: {
@@ -6721,7 +8413,7 @@ export type Database = {
           outcome: string
           reason: string
           revision_no: number
-          revoked_at: string | null
+          revoked_at: string
           token_hint: string
           updated_at: string
         }[]
@@ -6779,7 +8471,7 @@ export type Database = {
       create_reservation_refund: {
         Args: {
           p_amount_cents: number
-          p_notes?: string | null
+          p_notes?: string
           p_paid_at: string
           p_payment_method: string
           p_reservation_id: string
@@ -6804,14 +8496,14 @@ export type Database = {
           p_reminder_id: string
         }
         Returns: {
-          deleted_at: string | null
-          deleted_by: string | null
-          organization_id: string | null
+          deleted_at: string
+          deleted_by: string
+          organization_id: string
           outcome: string
-          reason: string | null
-          reminder_id: string | null
+          reason: string
+          reminder_id: string
           replayed: boolean
-          revision_no: number | null
+          revision_no: number
         }[]
       }
       discard_document_template_draft: {
@@ -6823,6 +8515,45 @@ export type Database = {
         }
         Returns: {
           outcome: string
+        }[]
+      }
+      ensure_organization_litter_planning_library_model: {
+        Args: {
+          p_library_model_code: string
+          p_library_model_version: number
+          p_organization_id: string
+          p_reactivate: boolean
+          p_user_id: string
+        }
+        Returns: {
+          organization_model_id: string
+          outcome: string
+          reason: string
+        }[]
+      }
+      execute_litter_care_task_schedule_command: {
+        Args: {
+          p_client_command_id: string
+          p_command_type: string
+          p_expected_revision_no: number
+          p_planned_for?: string
+          p_reason?: string
+          p_retained_ends_local_time?: string
+          p_retained_ends_on?: string
+          p_retained_starts_local_time?: string
+          p_retained_starts_on?: string
+          p_schedule_timezone_name?: string
+          p_scheduled_local_time?: string
+          p_task_id: string
+        }
+        Returns: {
+          change_id: string
+          litter_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision_no: number
+          task_id: string
         }[]
       }
       generate_litter_care_tasks_from_plan: {
@@ -6876,6 +8607,7 @@ export type Database = {
           result: Json
         }[]
       }
+      is_iana_timezone: { Args: { p_timezone_name: string }; Returns: boolean }
       is_member_of: { Args: { org_id: string }; Returns: boolean }
       is_valid_litter_weighing_schedule_policy: {
         Args: { p_policy: Json }
@@ -6932,6 +8664,23 @@ export type Database = {
           weight_change_type: string
         }[]
       }
+      litter_care_task_schedule_snapshot: {
+        Args: {
+          p_task: Database["public"]["Tables"]["litter_care_tasks"]["Row"]
+        }
+        Returns: Json
+      }
+      litter_plan_series_needs_actual_birth_reconciliation: {
+        Args: {
+          p_actual_birth_date: string
+          p_end_kind: string
+          p_ends_on: string
+          p_organization_id: string
+          p_series_id: string
+          p_series_state: string
+        }
+        Returns: boolean
+      }
       mark_birth_documents_deposit_documents_sent: {
         Args: {
           p_commitment_document_id: string
@@ -6965,11 +8714,73 @@ export type Database = {
           reservation_updated: boolean
         }[]
       }
+      materialize_litter_plan_series: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_requested_through: string
+          p_series_id: string
+        }
+        Returns: {
+          inserted_count: number
+          materialized_occurrence_count: number
+          materialized_through: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          result: Json
+          revision_no: number
+          series_id: string
+          series_state: string
+          skipped_identical_count: number
+        }[]
+      }
+      materialize_litter_plan_series_occurrences: {
+        Args: {
+          p_actor: string
+          p_command_id?: string
+          p_reconciliation_only?: boolean
+          p_requested_through: string
+          p_series_id: string
+        }
+        Returns: {
+          completion_reason: string
+          data_changed: boolean
+          inserted_count: number
+          result_materialized_occurrence_count: number
+          result_materialized_through: string
+          series_completed: boolean
+          skipped_identical_count: number
+        }[]
+      }
+      mutate_litter_planning_model: {
+        Args: {
+          p_breed: string
+          p_client_command_id: string
+          p_description: string
+          p_expected_revision: number
+          p_is_active: boolean
+          p_items: Json
+          p_model_id: string
+          p_operation: string
+          p_organization_id: string
+          p_species: string
+          p_title: string
+        }
+        Returns: {
+          is_active: boolean
+          model_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision: number
+        }[]
+      }
       open_whelping_session: {
         Args: {
           p_client_command_id: string
           p_litter_id: string
-          p_note?: string | null
+          p_note?: string
           p_started_at: string
           p_timezone_name: string
         }
@@ -6984,7 +8795,7 @@ export type Database = {
       }
       publish_document_template_version: {
         Args: {
-          p_expected_template_content: string | null
+          p_expected_template_content: string
           p_expected_template_format: string
           p_expected_updated_at: string
           p_template_id: string
@@ -6993,7 +8804,7 @@ export type Database = {
       }
       publish_reservation_document_variant_version: {
         Args: {
-          p_expected_template_content: string | null
+          p_expected_template_content: string
           p_expected_template_format: string
           p_expected_updated_at: string
           p_organization_id: string
@@ -7006,17 +8817,17 @@ export type Database = {
         Args: {
           p_client_command_id: string
           p_expected_revision_no: number
-          p_reason: string | null
+          p_reason: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
       }
       recalculate_whelping_litter_birth_projections: {
@@ -7037,7 +8848,7 @@ export type Database = {
           p_items: Json
           p_litter_id: string
           p_measured_at: string
-          p_note: string | null
+          p_note: string
           p_timezone_name: string
         }
         Returns: {
@@ -7054,13 +8865,13 @@ export type Database = {
         Args: {
           p_client_command_id: string
           p_litter_id: string
-          p_note: string | null
-          p_numeric_value: number | null
+          p_note: string
+          p_numeric_value: number
           p_observation_type: string
           p_observed_at: string
           p_severity: string
           p_timezone_name: string
-          p_unit: string | null
+          p_unit: string
         }
         Returns: {
           litter_id: string
@@ -7075,6 +8886,29 @@ export type Database = {
         Args: {
           p_client_command_id: string
           p_cycle_id: string
+          p_father_id: string
+          p_litter_name?: string
+          p_location?: string
+          p_method: string
+          p_note?: string
+          p_occurred_at: string
+          p_timezone_name: string
+        }
+        Returns: {
+          cycle_id: string
+          litter_id: string
+          mating_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          sequence_no: number
+        }[]
+      }
+      record_reproductive_cycle_mating_core: {
+        Args: {
+          p_client_command_id: string
+          p_cycle_id: string
+          p_estimated_ovulation_date?: string
           p_father_id: string
           p_litter_name?: string
           p_location?: string
@@ -7124,91 +8958,17 @@ export type Database = {
           snapshot_count: number
         }[]
       }
-      update_calendar_reminder: {
-        Args: {
-          p_client_command_id: string
-          p_days_before: number
-          p_expected_revision_no: number
-          p_local_time: string
-          p_reminder_id: string
-          p_timezone_name: string
-        }
-        Returns: {
-          acknowledged_at: string | null
-          acknowledged_by: string | null
-          acknowledged_trigger_at: string | null
-          created_at: string | null
-          days_before: number | null
-          local_time: string | null
-          organization_id: string | null
-          outcome: string
-          reason: string | null
-          reminder_id: string | null
-          replayed: boolean
-          revision_no: number | null
-          source_record_id: string | null
-          source_type: string | null
-          timezone_name: string | null
-          updated_at: string | null
-        }[]
-      }
-      update_organization_calendar_feed_sources: {
-        Args: {
-          p_expected_revision_no: number
-          p_feed_id: string
-          p_include_adopter_appointment: boolean
-          p_include_litter_care: boolean
-          p_include_reproductive_cycle: boolean
-        }
-        Returns: {
-          created_at: string
-          feed_id: string
-          include_adopter_appointment: boolean
-          include_litter_care: boolean
-          include_reproductive_cycle: boolean
-          organization_id: string
-          outcome: string
-          reason: string
-          revision_no: number
-          revoked_at: string | null
-          token_hint: string
-          updated_at: string
-        }[]
-      }
-      update_reproductive_cycle: {
-        Args: {
-          p_cycle_id: string
-          p_ended_on?: string
-          p_expected_updated_at: string
-          p_notes?: string
-          p_started_on: string
-          p_status: string
-        }
-        Returns: {
-          created_at: string | null
-          cycle_id: string | null
-          ended_on: string | null
-          litter_id: string | null
-          mother_id: string | null
-          notes: string | null
-          outcome: string
-          reason: string | null
-          started_on: string | null
-          status: string | null
-          updated_at: string | null
-        }[]
-      }
       record_whelping_birth: {
         Args: {
           p_client_command_id: string
-          p_initial_collar_color?: string | null
-          p_measured_at?: string | null
-          p_note?: string | null
+          p_initial_collar_color?: string
+          p_measured_at?: string
+          p_note?: string
           p_occurred_at: string
           p_session_id: string
           p_sex: string
           p_viability: string
-          p_weight_grams?: number | null
+          p_weight_grams?: number
         }
         Returns: {
           animal_id: string
@@ -7227,7 +8987,7 @@ export type Database = {
           p_birth_id: string
           p_client_command_id: string
           p_measured_at: string
-          p_note?: string | null
+          p_note?: string
           p_weight_grams: number
         }
         Returns: {
@@ -7243,7 +9003,7 @@ export type Database = {
         Args: {
           p_client_command_id: string
           p_event_type: string
-          p_note?: string | null
+          p_note?: string
           p_occurred_at: string
           p_session_id: string
         }
@@ -7272,92 +9032,108 @@ export type Database = {
           session_id: string
         }[]
       }
+      replace_litter_planning_model: {
+        Args: {
+          p_breed: string
+          p_client_command_id: string
+          p_description: string
+          p_expected_revision: number
+          p_items: Json
+          p_model_id: string
+          p_species: string
+          p_title: string
+        }
+        Returns: {
+          is_active: boolean
+          model_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision: number
+        }[]
+      }
       replace_locked_litter_care_task_point_schedule: {
         Args: {
           p_client_command_id: string
           p_expected_revision_no: number
           p_planned_for: string
-          p_reason: string | null
-          p_schedule_timezone_name: string | null
-          p_scheduled_local_time: string | null
+          p_reason: string
+          p_schedule_timezone_name: string
+          p_scheduled_local_time: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
       }
       replace_locked_litter_care_task_window_schedule: {
         Args: {
           p_client_command_id: string
           p_expected_revision_no: number
-          p_reason: string | null
-          p_retained_ends_local_time: string | null
+          p_reason: string
+          p_retained_ends_local_time: string
           p_retained_ends_on: string
-          p_retained_starts_local_time: string | null
+          p_retained_starts_local_time: string
           p_retained_starts_on: string
-          p_schedule_timezone_name: string | null
+          p_schedule_timezone_name: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
-      }
-      replace_litter_planning_model: {
-        Args: { p_breed: string | null; p_client_command_id: string; p_description: string | null; p_expected_revision: number; p_items: Json; p_model_id: string; p_species: string | null; p_title: string }
-        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
       }
       reschedule_litter_care_task_point: {
         Args: {
           p_client_command_id: string
           p_expected_revision_no: number
           p_planned_for: string
-          p_reason: string | null
-          p_schedule_timezone_name: string | null
-          p_scheduled_local_time: string | null
+          p_reason: string
+          p_schedule_timezone_name: string
+          p_scheduled_local_time: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
       }
       reschedule_litter_care_task_window: {
         Args: {
           p_client_command_id: string
           p_expected_revision_no: number
-          p_reason: string | null
-          p_retained_ends_local_time: string | null
+          p_reason: string
+          p_retained_ends_local_time: string
           p_retained_ends_on: string
-          p_retained_starts_local_time: string | null
+          p_retained_starts_local_time: string
           p_retained_starts_on: string
-          p_schedule_timezone_name: string | null
+          p_schedule_timezone_name: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
       }
       reservation_document_variant_version_is_used: {
@@ -7382,11 +9158,34 @@ export type Database = {
           task_id: string
         }[]
       }
+      resolve_litter_plan_anchor: {
+        Args: {
+          p_actual_birth_date: string
+          p_anchor_type: string
+          p_estimated_ovulation_date: string
+          p_expected_birth_date: string
+          p_mating_date: string
+        }
+        Returns: {
+          adjustment_days: number
+          anchor_date: string
+          resolution_source: string
+          source_date: string
+        }[]
+      }
       resolve_litter_weighing_policy_for_freeze: {
         Args: { p_organization_id: string }
         Returns: {
           policy: Json
           source: string
+        }[]
+      }
+      resolve_reproductive_cycle_mating_writer: {
+        Args: { p_cycle_id: string }
+        Returns: {
+          denial_reason: string
+          membership_role: string
+          organization_id: string
         }[]
       }
       resolve_suspect_form_submission_existing_contact: {
@@ -7422,7 +9221,7 @@ export type Database = {
           outcome: string
           reason: string
           revision_no: number
-          revoked_at: string | null
+          revoked_at: string
           token_hint: string
           updated_at: string
         }[]
@@ -7448,17 +9247,17 @@ export type Database = {
           p_client_command_id: string
           p_expected_revision_no: number
           p_is_locked: boolean
-          p_reason: string | null
+          p_reason: string
           p_task_id: string
         }
         Returns: {
-          change_id: string | null
-          litter_id: string | null
+          change_id: string
+          litter_id: string
           outcome: string
-          reason: string | null
+          reason: string
           replayed: boolean
-          revision_no: number | null
-          task_id: string | null
+          revision_no: number
+          task_id: string
         }[]
       }
       set_litter_care_task_template_active: {
@@ -7477,9 +9276,40 @@ export type Database = {
           template_id: string
         }[]
       }
+      set_litter_plan_series_state: {
+        Args: {
+          p_client_command_id: string
+          p_expected_revision_no: number
+          p_new_state: string
+          p_reason?: string
+          p_series_id: string
+        }
+        Returns: {
+          outcome: string
+          reason: string
+          replayed: boolean
+          resolved_occurrence_count: number
+          result: Json
+          revision_no: number
+          series_id: string
+          series_state: string
+        }[]
+      }
       set_litter_planning_model_active: {
-        Args: { p_client_command_id: string; p_expected_revision: number; p_is_active: boolean; p_model_id: string }
-        Returns: { is_active: boolean | null; model_id: string | null; outcome: string; reason: string | null; replayed: boolean; revision: number | null }[]
+        Args: {
+          p_client_command_id: string
+          p_expected_revision: number
+          p_is_active: boolean
+          p_model_id: string
+        }
+        Returns: {
+          is_active: boolean
+          model_id: string
+          outcome: string
+          reason: string
+          replayed: boolean
+          revision: number
+        }[]
       }
       shares_organization_with: {
         Args: { other_profile_id: string }
@@ -7487,27 +9317,27 @@ export type Database = {
       }
       store_document_pdf_version: {
         Args: {
-          p_animal_id?: string | null
-          p_application_id?: string | null
-          p_contact_id?: string | null
+          p_animal_id?: string
+          p_application_id?: string
+          p_contact_id?: string
           p_document_id: string
           p_document_type: string
           p_file_path: string
           p_file_sha256: string
           p_file_size_bytes: number
-          p_generated_at?: string | null
+          p_generated_at?: string
           p_generated_from_template?: boolean
           p_generation_data?: Json
-          p_litter_group_id?: string | null
-          p_litter_id?: string | null
+          p_litter_group_id?: string
+          p_litter_id?: string
           p_organization_id: string
-          p_payment_id?: string | null
-          p_replaces_document_id: string | null
-          p_reservation_document_variant_version_id?: string | null
-          p_reservation_id?: string | null
+          p_payment_id?: string
+          p_replaces_document_id: string
+          p_reservation_document_variant_version_id?: string
+          p_reservation_id?: string
           p_signature_required?: boolean
-          p_source_template_version?: number | null
-          p_template_id?: string | null
+          p_source_template_version?: number
+          p_template_id?: string
           p_title: string
           p_version: number
         }
@@ -7544,13 +9374,41 @@ export type Database = {
           status: string
         }[]
       }
+      update_calendar_reminder: {
+        Args: {
+          p_client_command_id: string
+          p_days_before: number
+          p_expected_revision_no: number
+          p_local_time: string
+          p_reminder_id: string
+          p_timezone_name: string
+        }
+        Returns: {
+          acknowledged_at: string
+          acknowledged_by: string
+          acknowledged_trigger_at: string
+          created_at: string
+          days_before: number
+          local_time: string
+          organization_id: string
+          outcome: string
+          reason: string
+          reminder_id: string
+          replayed: boolean
+          revision_no: number
+          source_record_id: string
+          source_type: string
+          timezone_name: string
+          updated_at: string
+        }[]
+      }
       update_litter_care_task_template: {
         Args: {
           p_anchor_type: string
-          p_breed: string | null
+          p_breed: string
           p_category: string
           p_client_command_id: string
-          p_description: string | null
+          p_description: string
           p_expected_revision: number
           p_offset_days: number
           p_sort_order: number
@@ -7566,6 +9424,101 @@ export type Database = {
           replayed: boolean
           revision: number
           template_id: string
+        }[]
+      }
+      update_litter_gestation_anchors_and_recalculate_plan: {
+        Args: {
+          p_client_command_id: string
+          p_estimated_ovulation_date: string
+          p_expected_birth_date: string
+          p_expected_litter_updated_at: string
+          p_expected_plan_revision: number
+          p_litter_id: string
+        }
+        Returns: {
+          changed_task_count: number
+          litter_id: string
+          litter_plan_id: string
+          moved_automatic_schedule_count: number
+          outcome: string
+          preserved_locked_schedule_count: number
+          preserved_manual_schedule_count: number
+          preserved_terminal_count: number
+          reason: string
+          recalculated_item_count: number
+          replayed: boolean
+          result: Json
+          result_plan_revision: number
+          unchanged_task_count: number
+        }[]
+      }
+      update_litter_plan_ad_hoc_item_metadata: {
+        Args: {
+          p_client_command_id: string
+          p_expected_item_revision: number
+          p_expected_plan_revision: number
+          p_expected_task_revision: number
+          p_litter_id: string
+          p_litter_plan_item_id: string
+          p_metadata: Json
+        }
+        Returns: {
+          item_revision: number
+          litter_plan_id: string
+          litter_plan_item_id: string
+          outcome: string
+          plan_revision: number
+          reason: string
+          replayed: boolean
+          result: Json
+          task_id: string
+          task_revision: number
+        }[]
+      }
+      update_organization_calendar_feed_sources: {
+        Args: {
+          p_expected_revision_no: number
+          p_feed_id: string
+          p_include_adopter_appointment: boolean
+          p_include_litter_care: boolean
+          p_include_reproductive_cycle: boolean
+        }
+        Returns: {
+          created_at: string
+          feed_id: string
+          include_adopter_appointment: boolean
+          include_litter_care: boolean
+          include_reproductive_cycle: boolean
+          organization_id: string
+          outcome: string
+          reason: string
+          revision_no: number
+          revoked_at: string
+          token_hint: string
+          updated_at: string
+        }[]
+      }
+      update_reproductive_cycle: {
+        Args: {
+          p_cycle_id: string
+          p_ended_on?: string
+          p_expected_updated_at: string
+          p_notes?: string
+          p_started_on: string
+          p_status: string
+        }
+        Returns: {
+          created_at: string
+          cycle_id: string
+          ended_on: string
+          litter_id: string
+          mother_id: string
+          notes: string
+          outcome: string
+          reason: string
+          started_on: string
+          status: string
+          updated_at: string
         }[]
       }
       use_credit: {

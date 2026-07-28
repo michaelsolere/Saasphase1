@@ -19,6 +19,7 @@ import {
 } from "@/features/litter-journal/litter-care-tasks-actions";
 import { createLitterPlanAdHocItemAction } from "@/features/litter-journal/litter-plan-ad-hoc-programmer-actions";
 import { updateLitterPlanAdHocItemMetadataAction } from "@/features/litter-journal/litter-plan-ad-hoc-metadata-actions";
+import { canEditLitterPlanAdHocMetadata } from "@/features/litter-journal/litter-plan-ad-hoc-metadata-eligibility";
 import { canShowLitterPlanAdHocProgrammer } from "@/features/litter-journal/litter-plan-ad-hoc-programmer";
 import {
   listLitterCareTasksForLitter,
@@ -299,7 +300,7 @@ export default async function LitterJournalPage({
     (interactiveLitterPlanBuild?.bindings ?? []).flatMap((binding) => {
       const litterId = journal?.selectedLitter?.id;
       const item = activePlanDetail?.items.find((entry) => entry.id === binding.task.litterPlanItemId);
-      if (!litterId || !item || !activePlanDetail || binding.task.status !== "planned" || item.origin_kind !== "ad_hoc" || item.item_kind === "recurring_task" || !["milestone", "task", "window"].includes(item.item_kind) || item.materialization_state !== "materialized" || item.source_planning_model_id !== null || item.organization_template_id !== null || binding.task.source !== "manual" || binding.task.litterPlanSeriesId !== null) return [];
+      if (!litterId || !item || !activePlanDetail || !canEditLitterPlanAdHocMetadata({ role: litterCareTasksLoaded?.role ?? null, originKind: item.origin_kind, itemKind: item.item_kind, materializationState: item.materialization_state, hasModelSource: item.source_planning_model_id !== null || item.organization_template_id !== null, hasSeries: binding.task.litterPlanSeriesId !== null, taskStatus: binding.task.status, taskSource: binding.task.source, taskKind: binding.task.itemKind, itemKindMatches: binding.task.litterPlanItemId === item.id, projectionsMatch: binding.task.title === item.title && binding.task.description === item.description && binding.task.category === item.category && binding.task.targetScope === item.target_scope && binding.task.priority === item.priority })) return [];
       return [[binding.publicKey, { view: { title: item.title, description: item.description, category: item.category, targetScope: item.target_scope, priority: item.priority, kind: item.item_kind as "milestone" | "task" | "window" }, action: updateLitterPlanAdHocItemMetadataAction.bind(null, { litterId, litterPlanItemId: item.id, clientCommandId: crypto.randomUUID(), expectedPlanRevision: activePlanDetail.header.revision, expectedItemRevision: item.revision_no, expectedTaskRevision: binding.task.revisionNo }) }]];
     }),
   );
