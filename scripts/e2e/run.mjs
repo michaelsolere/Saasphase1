@@ -173,6 +173,20 @@ async function runReuse() {
   }
 }
 
+async function runPreserveDemo() {
+  // Intentionally does not call ensureReusableStack: this path is read-only
+  // with respect to Docker, volumes, the workdir and the database.
+  if (!(await isReusableStackRunning()) || !hasSessionMarker()) {
+    throw new Error("Preserved-demo E2E requires an already running marked saasphase1-e2e stack.");
+  }
+  assertContainers();
+  const supabaseEnv = readStatusEnv();
+  if (supabaseEnv.NEXT_PUBLIC_SUPABASE_URL !== "http://127.0.0.1:55321") {
+    throw new Error("Preserved-demo E2E requires http://127.0.0.1:55321.");
+  }
+  return runPlaywright(supabaseEnv);
+}
+
 function runStop() {
   assertSafeE2eConfig();
   console.log("E2E stop: shutting down saasphase1-e2e and removing its volumes.");
@@ -214,7 +228,9 @@ async function main() {
   assertSafeE2eConfig();
   assertDockerAvailable();
   if (preserveDemo) {
-    if (mode !== "reuse" || playwrightArgs.length !== 1 || playwrightArgs[0] !== "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts") {
+    const target = playwrightArgs.filter((arg) => arg.endsWith(".spec.ts"));
+    const permitted = playwrightArgs.every((arg) => arg === "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts" || /^--(workers=1|retries=0)$/.test(arg));
+    if (mode !== "reuse" || target.length !== 1 || target[0] !== "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts" || !permitted) {
       throw new Error("--preserve-demo is limited to the metadata E2E spec in reuse mode.");
     }
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== "http://127.0.0.1:55321") {
@@ -232,7 +248,7 @@ async function main() {
         return { code: 0 };
       }
       if (mode === "reuse") {
-        return runReuse();
+        return preserveDemo ? runPreserveDemo() : runReuse();
       }
       return runEphemeral();
     });
