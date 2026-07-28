@@ -700,6 +700,8 @@ export type LitterPlanAdHocMetadataPayload = {
 export type UpdateLitterPlanAdHocMetadataInput = {
   litterId: string;
   litterPlanItemId: string;
+  litterPlanId?: string;
+  taskId?: string;
   clientCommandId: string;
   expectedPlanRevision: number;
   expectedItemRevision: number;
@@ -736,10 +738,17 @@ type UpdateMetadataRpcRow = {
   result: Json;
 };
 
-export function mapUpdateLitterPlanAdHocMetadataRpcResult(row: UpdateMetadataRpcRow | null | undefined, expected?: Pick<UpdateLitterPlanAdHocMetadataInput, "litterPlanItemId">): UpdateLitterPlanAdHocMetadataResult {
+export function mapUpdateLitterPlanAdHocMetadataRpcResult(row: UpdateMetadataRpcRow | null | undefined, expected?: Pick<UpdateLitterPlanAdHocMetadataInput, "litterPlanId" | "litterPlanItemId" | "taskId">): UpdateLitterPlanAdHocMetadataResult {
   if (!row) return error("database_error");
   if (row.outcome === "error") {
-    if (row.result === null || !isPlainJsonObject(row.result) || Object.keys(row.result).length !== 0 || row.task_id !== null || row.litter_plan_item_id !== null || row.item_revision !== null || row.task_revision !== null) return error("database_error");
+    if (row.result === null || !isPlainJsonObject(row.result) || Object.keys(row.result).length !== 0) return error("database_error");
+    if (row.reason === "stale_revision") {
+      const planId = uuid(row.litter_plan_id); const itemId = uuid(row.litter_plan_item_id);
+      const taskId = row.task_id === null ? null : uuid(row.task_id);
+      if (!planId || !itemId || (row.task_id !== null && !taskId) || !Number.isInteger(row.plan_revision) || (row.plan_revision as number) < 1 || !Number.isInteger(row.item_revision) || (row.item_revision as number) < 1 || (row.task_id === null ? row.task_revision !== null : !Number.isInteger(row.task_revision) || (row.task_revision as number) < 0) || (expected && (itemId !== uuid(expected.litterPlanItemId) || (expected.litterPlanId && planId !== uuid(expected.litterPlanId)) || (expected.taskId && taskId && taskId !== uuid(expected.taskId))))) return error("database_error");
+      return error("stale_revision");
+    }
+    if (row.litter_plan_id !== null || row.plan_revision !== null || row.litter_plan_item_id !== null || row.item_revision !== null || row.task_id !== null || row.task_revision !== null) return error("database_error");
     return error(reasonCode(row.reason));
   }
   if (row.outcome !== "success" || row.reason !== null || typeof row.replayed !== "boolean" || !Number.isInteger(row.plan_revision) || (row.plan_revision as number) < 1 || !Number.isInteger(row.item_revision) || (row.item_revision as number) < 1 || !Number.isInteger(row.task_revision) || (row.task_revision as number) < 0 || !isPlainJsonObject(row.result)) return error("database_error");
