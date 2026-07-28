@@ -24,6 +24,8 @@ import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-
 import { LitterPlanAdHocProgrammerDialog } from "./litter-plan-ad-hoc-programmer-dialog";
 import {
   buildLitterPlanAdHocProgrammerDisplayTimeline,
+  formatLitterPlanAdHocProgrammerPreparedLine,
+  litterPlanAdHocProgrammerPreviewTypeLabel,
   type LitterPlanAdHocProgrammerPreview,
 } from "./litter-plan-ad-hoc-programmer";
 import type {
@@ -593,8 +595,17 @@ export function LitterPlanTimelinePanel({
     }
   };
 
+  const resolveProgrammerPreview = (item: InteractiveTimelineItem) =>
+    programmerPreview && programmerPreview.publicKey === item.publicKey
+      ? programmerPreview
+      : null;
+
   const renderPoint = (item: InteractiveTimelineGeometryItem) => {
-    const type = kindLabel(item.kind);
+    const previewItem = isProgrammerPreviewItem(item);
+    const matchedPreview = previewItem ? resolveProgrammerPreview(item) : null;
+    const type = matchedPreview
+      ? litterPlanAdHocProgrammerPreviewTypeLabel(matchedPreview)
+      : kindLabel(item.kind);
     const symbol = item.kind === "milestone" ? "●" : "◇";
     const alignment =
       item.startPercent === 0
@@ -602,7 +613,6 @@ export function LitterPlanTimelinePanel({
         : item.startPercent === 100
           ? "-translate-x-full"
           : "-translate-x-1/2";
-    const previewItem = isProgrammerPreviewItem(item);
     const interactive = !previewItem && item.interactionMode === "point_move";
     const scheduleTarget = scheduleTargets[item.publicKey];
     const showPrecise =
@@ -711,6 +721,10 @@ export function LitterPlanTimelinePanel({
   const renderWindow = (item: InteractiveTimelineGeometryItem) => {
     const width = Math.max(item.endPercent - item.startPercent, 1);
     const previewItem = isProgrammerPreviewItem(item);
+    const matchedPreview = previewItem ? resolveProgrammerPreview(item) : null;
+    const type = matchedPreview
+      ? litterPlanAdHocProgrammerPreviewTypeLabel(matchedPreview)
+      : "Fenêtre";
     const interactive =
       !previewItem && item.interactionMode === "window_move_and_resize";
     const scheduleTarget = scheduleTargets[item.publicKey];
@@ -725,13 +739,21 @@ export function LitterPlanTimelinePanel({
       item.displayStartDate,
       item.displayEndDate,
     );
+    const recurringDetails = matchedPreview?.recurringDetails ?? null;
+    const preparedLine = recurringDetails
+      ? formatLitterPlanAdHocProgrammerPreparedLine({
+          total: recurringDetails.totalOccurrences,
+          initialPrepared: recurringDetails.initialPrepared,
+          horizonDays: recurringDetails.horizonDays,
+        })
+      : null;
 
     return (
       <li
         key={item.publicKey}
         className="absolute top-4 h-28"
         style={{ left: `${item.startPercent}%`, width: `${width}%` }}
-        aria-label={`Fenêtre : ${item.title}`}
+        aria-label={`${type} : ${item.title}`}
         data-timeline-window
         data-timeline-item={item.publicKey}
         data-timeline-status={item.statusLabel}
@@ -766,13 +788,22 @@ export function LitterPlanTimelinePanel({
           }`}
         >
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Fenêtre
+            {type}
           </p>
           <p className="mt-1 text-sm font-medium">{item.title}</p>
-          <p className="mt-1 text-xs text-muted">
-            {dateLabel(item.displayStartDate)} → {dateLabel(item.displayEndDate)}
-            {duration ? ` · ${duration} j` : ""}
-          </p>
+          {recurringDetails ? (
+            <ul className="mt-1 space-y-0.5 text-xs text-muted">
+              <li>{recurringDetails.cadenceLabel}</li>
+              <li>Créneaux : {recurringDetails.slotsLabel}</li>
+              <li>{recurringDetails.totalOccurrences} occurrences au total</li>
+              {preparedLine ? <li>{preparedLine}</li> : null}
+            </ul>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              {dateLabel(item.displayStartDate)} → {dateLabel(item.displayEndDate)}
+              {duration ? ` · ${duration} j` : ""}
+            </p>
+          )}
           <StatusBadge item={item} />
           {activePreview?.publicKey === item.publicKey ? (
             <div className="mt-2 space-y-1 text-xs">

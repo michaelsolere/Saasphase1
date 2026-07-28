@@ -546,7 +546,6 @@ export default async function LitterJournalPage({
               false
             }
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
-            litterCareTaskRole={litterCareTasksLoaded?.role ?? null}
             litterCareTaskGenerationEntries={
               litterCareTaskGenerationEntries
             }

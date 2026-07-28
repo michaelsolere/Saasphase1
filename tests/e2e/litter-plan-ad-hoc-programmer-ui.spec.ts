@@ -223,7 +223,8 @@ function counts() {
       'adHocItems', (select count(*) from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid and origin_kind = 'ad_hoc'),
       'tasks', (select count(*) from public.litter_care_tasks where litter_id = ${q(ids.litter)}::uuid),
       'commands', (select count(*) from public.litter_plan_ad_hoc_commands where litter_id = ${q(ids.litter)}::uuid),
-      'series', (select count(*) from public.litter_plan_series where litter_id = ${q(ids.litter)}::uuid)
+      'series', (select count(*) from public.litter_plan_series where litter_id = ${q(ids.litter)}::uuid),
+      'scheduleCommands', (select count(*) from public.litter_care_task_schedule_commands where litter_id = ${q(ids.litter)}::uuid)
     )::text;`),
   ) as Record<string, number>;
 }
@@ -305,6 +306,51 @@ test("LITTER-AD-HOC-PLANNING-UI-01 — programmer depuis la frise", async ({
   expect(beforePreview.commands).toBe(0);
 
   await openProgrammer(page);
+  const dialog = page.getByRole("dialog");
+  const duplicateIds = await dialog.evaluate((node) => {
+    const values = Array.from(node.querySelectorAll("[id]")).map(
+      (element) => element.id,
+    );
+    return {
+      values,
+      unique: new Set(values).size === values.length,
+    };
+  });
+  expect(duplicateIds.unique).toBe(true);
+  await page.locator("label", { hasText: "Description facultative" }).click();
+  await expect(page.getByLabel("Description facultative")).toBeFocused();
+  const dialogDescribedBy = await dialog.getAttribute("aria-describedby");
+  expect(dialogDescribedBy).toBeTruthy();
+  await expect(page.locator(`#${dialogDescribedBy}`)).toContainText(
+    "Ajoutez un élément propre à cette portée",
+  );
+  const descriptionInputId = await page
+    .getByLabel("Description facultative")
+    .getAttribute("id");
+  expect(dialogDescribedBy).not.toBe(descriptionInputId);
+  expect(descriptionInputId).toContain("description-input");
+
+  const forbiddenIds = [
+    ids.litter,
+    ids.mother,
+    ids.model,
+    ids.applyCommand,
+    ids.concurrentCommand,
+    organizationId,
+    ownerId,
+    ownerMembershipId,
+  ];
+  const panelHtml = await dialog.innerHTML();
+  for (const forbidden of forbiddenIds) {
+    expect(panelHtml).not.toContain(forbidden);
+  }
+  const opaqueIds = await dialog.evaluate((node) =>
+    Array.from(node.querySelectorAll("[id]")).map((element) => element.id),
+  );
+  for (const opaqueId of opaqueIds) {
+    expect(opaqueId).not.toMatch(/2026-07|Jalon|Titre|Radiographie/i);
+  }
+
   await chooseKind(page, "Jalon");
   await page.getByLabel("Titre", { exact: true }).fill("Jalon adhoc ui");
   await page.getByLabel("Date", { exact: true }).fill("2026-07-30");
@@ -317,6 +363,61 @@ test("LITTER-AD-HOC-PLANNING-UI-01 — programmer depuis la frise", async ({
   await expect(page.locator("[data-programmer-preview='true']")).toHaveCount(0);
   expect(counts().commands).toBe(0);
   expect(counts().plans).toBe(0);
+
+  await openProgrammer(page);
+  await chooseKind(page, "Période");
+  await page.getByLabel("Titre", { exact: true }).fill("Erreur locale");
+  await page.getByLabel("Date de début", { exact: true }).fill("2026-08-20");
+  await page.getByLabel("Date de fin", { exact: true }).fill("2026-08-10");
+  await page.getByRole("button", { name: "Programmer", exact: true }).click();
+  const endsOnField = page.getByLabel("Date de fin", { exact: true });
+  await expect(endsOnField).toHaveAttribute("aria-invalid", "true");
+  const endsOnDescribedBy = await endsOnField.getAttribute("aria-describedby");
+  expect(endsOnDescribedBy).toBeTruthy();
+  await expect(page.locator(`#${endsOnDescribedBy}`)).toBeVisible();
+  await expect(
+    page.getByText("Vérifiez les bornes de la période."),
+  ).toBeVisible();
+
+  await chooseKind(page, "Suivi récurrent");
+  await page.getByLabel("Titre", { exact: true }).fill("Cadence invalide");
+  await page.getByLabel("Date de début", { exact: true }).fill("2026-08-01");
+  await page.getByLabel("Tous les N jours").fill("1.0");
+  await page.getByLabel("Nombre de dates programmées").fill("3");
+  await page.getByRole("button", { name: "Programmer", exact: true }).click();
+  const intervalField = page.getByLabel("Tous les N jours");
+  await expect(intervalField).toHaveAttribute("aria-invalid", "true");
+  const intervalDescribedBy = await intervalField.getAttribute(
+    "aria-describedby",
+  );
+  expect(intervalDescribedBy).toBeTruthy();
+  await expect(page.locator(`#${intervalDescribedBy}`)).toBeVisible();
+
+  await page.getByLabel("Tous les N jours").fill("1");
+  await page.locator('input[aria-label="Créneau 1"]').fill("08:00");
+  await page.getByRole("button", { name: "Ajouter un créneau" }).click();
+  await page.locator('input[aria-label="Créneau 2"]').fill("08:00");
+  await page.getByRole("button", { name: "Programmer", exact: true }).click();
+  const slotsGroup = page.locator("fieldset").filter({
+    has: page.getByText("Créneaux horaires", { exact: true }),
+  });
+  const slotsDescribedBy = await slotsGroup.getAttribute("aria-describedby");
+  expect(slotsDescribedBy).toBeTruthy();
+  await expect(page.locator(`#${slotsDescribedBy}`)).toBeVisible();
+
+  await page.getByRole("button", { name: "Annuler" }).click();
+  await openProgrammer(page);
+  await expect(page.getByLabel("Titre", { exact: true })).toHaveValue("");
+  await expect(page.getByText("Vérifiez les bornes de la période.")).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("alert").filter({ hasText: /créneau|doublon|cadence|Vérifiez/i }),
+  ).toHaveCount(0);
+  await expect(page.getByText("Erreur locale")).toHaveCount(0);
+  await expect(page.getByText("Cadence invalide")).toHaveCount(0);
+  await expect(page.getByText("Créneaux : 08:00, 08:00")).toHaveCount(0);
+  await page.getByRole("button", { name: "Annuler" }).click();
 
   await openProgrammer(page);
   await chooseKind(page, "Jalon");
@@ -343,7 +444,11 @@ test("LITTER-AD-HOC-PLANNING-UI-01 — programmer depuis la frise", async ({
   await page.getByLabel("Date de début", { exact: true }).fill("2026-08-10");
   await page.getByLabel("Date de fin", { exact: true }).fill("2026-08-17");
   await expect(page.getByText(/Du .* au .* · 8 jours/).first()).toBeVisible();
-  await expect(page.locator("[data-programmer-preview='true']")).toBeVisible();
+  const periodPreview = page.locator("[data-programmer-preview='true']");
+  await expect(periodPreview).toBeVisible();
+  await expect(periodPreview.getByText("Période", { exact: true })).toBeVisible();
+  await expect(periodPreview.getByText("Période adhoc ui")).toBeVisible();
+  await expect(periodPreview.locator("[data-timeline-handle]")).toHaveCount(0);
   await page.getByRole("button", { name: "Programmer", exact: true }).click();
   await expect(page.getByText("La période a été programmée.")).toBeVisible({
     timeout: 60_000,
@@ -367,6 +472,43 @@ test("LITTER-AD-HOC-PLANNING-UI-01 — programmer depuis la frise", async ({
   await page.locator('input[aria-label="Créneau 2"]').fill("08:00");
   await expect(page.getByText(/Créneaux : 08:00, 20:00/)).toBeVisible();
   await expect(page.getByText(/10 occurrences au total/).first()).toBeVisible();
+  const recurringPreview = page.locator("[data-programmer-preview='true']");
+  await expect(recurringPreview).toBeVisible();
+  await expect(
+    recurringPreview.getByText("Suivi récurrent", { exact: true }),
+  ).toBeVisible();
+  await expect(recurringPreview.getByText("Récurrence adhoc ui")).toBeVisible();
+  await expect(recurringPreview.getByText("Tous les jours")).toBeVisible();
+  await expect(
+    recurringPreview.getByText("Créneaux : 08:00, 20:00"),
+  ).toBeVisible();
+  await expect(
+    recurringPreview.getByText("10 occurrences au total"),
+  ).toBeVisible();
+  await expect(
+    recurringPreview.getByText("10 préparées immédiatement"),
+  ).toBeVisible();
+  await expect(
+    recurringPreview.getByText("Aperçu — non enregistré"),
+  ).toBeVisible();
+  await expect(recurringPreview.locator("[data-timeline-handle]")).toHaveCount(
+    0,
+  );
+  const previewHtml = await recurringPreview.innerHTML();
+  const panelPreviewKey = await page
+    .locator("[data-programmer-panel-preview]")
+    .getAttribute("data-programmer-panel-preview");
+  expect(panelPreviewKey).toBeTruthy();
+  expect(panelPreviewKey).not.toMatch(/2026-08-01|Récurrence/);
+  for (const forbidden of [
+    ids.litter,
+    ids.concurrentCommand,
+    organizationId,
+    ownerId,
+  ]) {
+    expect(previewHtml).not.toContain(forbidden);
+    expect(panelPreviewKey!).not.toContain(forbidden);
+  }
   await page.getByRole("button", { name: "Programmer", exact: true }).click();
   await expect(page.getByText(/Le suivi récurrent a été programmé/)).toBeVisible({
     timeout: 60_000,
@@ -514,6 +656,64 @@ test("LITTER-AD-HOC-PLANNING-UI-01 — programmer depuis la frise", async ({
   await expect(
     lockedCard.getByRole("button", { name: "Ajuster précisément" }),
   ).toBeVisible();
+
+  const beforeLockedReplace = counts();
+  const lockedTaskBefore = JSON.parse(
+    sql(`select json_build_object(
+      'planned', planned_for::text,
+      'revision', revision_no
+    )::text from public.litter_care_tasks
+    where litter_id = ${q(ids.litter)}::uuid and title = 'Tâche verrouillée ui';`),
+  ) as { planned: string; revision: number };
+  await lockedCard.getByRole("button", { name: "Ajuster précisément" }).click();
+  const scheduleDialog = page.getByRole("dialog").filter({
+    has: page.getByRole("heading", { name: "Modifier la programmation" }),
+  });
+  await expect(scheduleDialog).toBeVisible();
+  await scheduleDialog.getByLabel("Date retenue", { exact: true }).fill("2026-09-12");
+  await scheduleDialog
+    .getByRole("button", { name: "Remplacer la programmation" })
+    .click();
+  await expect(
+    scheduleDialog.getByText(
+      "La confirmation du remplacement verrouillé est requise.",
+    ),
+  ).toBeVisible();
+  expect(counts().scheduleCommands).toBe(beforeLockedReplace.scheduleCommands);
+  const lockedTaskMid = JSON.parse(
+    sql(`select json_build_object(
+      'planned', planned_for::text,
+      'revision', revision_no
+    )::text from public.litter_care_tasks
+    where litter_id = ${q(ids.litter)}::uuid and title = 'Tâche verrouillée ui';`),
+  ) as { planned: string; revision: number };
+  expect(lockedTaskMid).toEqual(lockedTaskBefore);
+
+  await scheduleDialog
+    .getByLabel(/Je confirme le remplacement de la programmation verrouillée/)
+    .check();
+  await scheduleDialog
+    .getByRole("button", { name: "Remplacer la programmation" })
+    .click();
+  await expect(
+    page.getByText("La programmation verrouillée a été remplacée."),
+  ).toBeVisible({ timeout: 60_000 });
+  await gotoJournal(page);
+  const afterLockedReplace = counts();
+  expect(afterLockedReplace.scheduleCommands).toBe(
+    beforeLockedReplace.scheduleCommands + 1,
+  );
+  const lockedTaskAfter = JSON.parse(
+    sql(`select json_build_object(
+      'planned', planned_for::text,
+      'revision', revision_no,
+      'locked', is_schedule_locked
+    )::text from public.litter_care_tasks
+    where litter_id = ${q(ids.litter)}::uuid and title = 'Tâche verrouillée ui';`),
+  ) as { planned: string; revision: number; locked: boolean };
+  expect(lockedTaskAfter.planned).toBe("2026-09-12");
+  expect(lockedTaskAfter.revision).toBe(lockedTaskBefore.revision + 1);
+  expect(lockedTaskAfter.locked).toBe(true);
 
   await login(page, credentials.member[0], credentials.member[1]);
   await gotoJournal(page);

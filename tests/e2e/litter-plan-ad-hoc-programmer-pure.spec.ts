@@ -6,6 +6,7 @@ import {
 } from "../../src/features/litter-journal/litter-plan-timeline-interaction";
 import {
   buildLitterPlanAdHocProgrammerDisplayTimeline,
+  buildLitterPlanAdHocProgrammerDomIds,
   buildLitterPlanAdHocProgrammerPreview,
   buildLitterPlanAdHocProgrammerPreviewKey,
   buildLitterPlanAdHocProgrammerPublicKey,
@@ -13,13 +14,20 @@ import {
   createInitialLitterPlanAdHocProgrammerFormState,
   estimateLitterPlanAdHocProgrammerOccurrences,
   formatLitterPlanAdHocProgrammerOccurrenceEstimate,
+  formatLitterPlanAdHocProgrammerPreparedLine,
   formatLitterPlanAdHocProgrammerWindowDuration,
   isOpaqueLitterPlanAdHocProgrammerKey,
+  litterPlanAdHocProgrammerDomIdsAreUnique,
   litterPlanAdHocProgrammerErrorMessage,
   litterPlanAdHocProgrammerErrorRequiresRefresh,
   litterPlanAdHocProgrammerKeyContainsForbiddenData,
+  litterPlanAdHocProgrammerPreviewTypeLabel,
   litterPlanAdHocProgrammerRecurringLastDate,
   litterPlanAdHocProgrammerSuccessMessage,
+  nextLitterPlanAdHocProgrammerKind,
+  parseLitterPlanAdHocProgrammerPositiveInteger,
+  previousLitterPlanAdHocProgrammerKind,
+  shouldRemountLitterPlanAdHocProgrammerFormSession,
   validateLitterPlanAdHocProgrammerForm,
   type LitterPlanAdHocProgrammerFormState,
 } from "../../src/features/litter-journal/litter-plan-ad-hoc-programmer";
@@ -331,6 +339,7 @@ test("aperçu point, période, récurrence et domaine étendu", () => {
     instanceKey,
   );
   expect(window?.geometryKind).toBe("window");
+  expect(window?.panelSummary.kindLabel).toBe("Période");
   expect(window?.panelSummary.timingLine).toContain("8 jour");
 
   const recurring = buildLitterPlanAdHocProgrammerPreview(
@@ -345,8 +354,23 @@ test("aperçu point, période, récurrence et domaine étendu", () => {
     }),
     instanceKey,
   );
-  expect(recurring?.title).toBe("Suivi récurrent · aperçu");
+  expect(recurring?.title).toBe("Température");
+  expect(recurring?.panelSummary.kindLabel).toBe("Suivi récurrent");
+  expect(recurring?.recurringDetails?.cadenceLabel).toBe("Tous les jours");
   expect(recurring?.recurringDetails?.slotsLabel).toBe("08:00, 20:00");
+  expect(recurring?.recurringDetails?.totalOccurrences).toBe(14);
+  expect(recurring?.recurringDetails?.initialPrepared).toBe(14);
+  expect(recurring?.recurringDetails?.horizonDays).toBe(7);
+
+  const displayRecurring = buildLitterPlanAdHocProgrammerDisplayTimeline(
+    null,
+    recurring,
+  );
+  expect(displayRecurring?.items[0]?.title).toBe("Température");
+  expect(displayRecurring?.items[0]?.statusLabel).toBe(
+    "Aperçu — non enregistré",
+  );
+  expect(displayRecurring?.items[0]?.interactionMode).toBe("read_only");
 
   const existing: InteractiveLitterPlanTimeline = {
     title: "Planning existant",
@@ -447,4 +471,165 @@ test("messages d’erreur, rafraîchissement et succès", () => {
       materializedOccurrenceCount: 60,
     }),
   ).toContain("60 occurrences ont été préparées.");
+});
+
+test("parser entier partagé client/action", () => {
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("1", 1, 365)).toBe(1);
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("01", 1, 365)).toBe(1);
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("365", 1, 365)).toBe(
+    365,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("1.0", 1, 365)).toBe(
+    null,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("1e2", 1, 365)).toBe(
+    null,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("+1", 1, 365)).toBe(
+    null,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("-1", 1, 365)).toBe(
+    null,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("1,5", 1, 365)).toBe(
+    null,
+  );
+  expect(parseLitterPlanAdHocProgrammerPositiveInteger("", 1, 365)).toBe(null);
+
+  const accepted = validateLitterPlanAdHocProgrammerForm(
+    baseState({
+      kind: "recurring_task",
+      intervalDays: "01",
+      recurrenceDayCount: "07",
+      timeSlots: ["08:00"],
+    }),
+  );
+  expect(accepted.ok).toBe(true);
+  if (accepted.ok && accepted.payload.kind === "recurring_task") {
+    expect(accepted.payload.intervalDays).toBe(1);
+    expect(accepted.payload.recurrenceDayCount).toBe(7);
+  }
+
+  for (const invalid of ["1.0", "1e2", "+1", "-1"]) {
+    const rejected = validateLitterPlanAdHocProgrammerForm(
+      baseState({
+        kind: "recurring_task",
+        intervalDays: invalid,
+      }),
+    );
+    expect(rejected.ok).toBe(false);
+  }
+});
+
+test("identifiants DOM distincts et uniques", () => {
+  const ids = buildLitterPlanAdHocProgrammerDomIds("opaque-prefix");
+  expect(ids.dialogDescription).toBe("opaque-prefix-dialog-description");
+  expect(ids.descriptionInput).toBe("opaque-prefix-description-input");
+  expect(ids.descriptionError).toBe("opaque-prefix-description-error");
+  expect(ids.dialogDescription).not.toBe(ids.descriptionInput);
+  expect(ids.descriptionInput).not.toBe(ids.descriptionError);
+  expect(litterPlanAdHocProgrammerDomIdsAreUnique(ids)).toBe(true);
+  expect(
+    litterPlanAdHocProgrammerKeyContainsForbiddenData(ids.title, [
+      "Radiographie",
+      "2026-07-28",
+    ]),
+  ).toBe(false);
+});
+
+test("navigation circulaire du groupe radio de type", () => {
+  expect(nextLitterPlanAdHocProgrammerKind("milestone")).toBe("task");
+  expect(nextLitterPlanAdHocProgrammerKind("task")).toBe("window");
+  expect(nextLitterPlanAdHocProgrammerKind("window")).toBe("recurring_task");
+  expect(nextLitterPlanAdHocProgrammerKind("recurring_task")).toBe(
+    "milestone",
+  );
+  expect(previousLitterPlanAdHocProgrammerKind("milestone")).toBe(
+    "recurring_task",
+  );
+  expect(previousLitterPlanAdHocProgrammerKind("recurring_task")).toBe(
+    "window",
+  );
+});
+
+test("remise à zéro de session à la fermeture sans commande consommée", () => {
+  expect(
+    shouldRemountLitterPlanAdHocProgrammerFormSession({
+      panelClosed: true,
+      commandConsumed: false,
+    }),
+  ).toBe(true);
+  expect(
+    shouldRemountLitterPlanAdHocProgrammerFormSession({
+      panelClosed: true,
+      commandConsumed: true,
+    }),
+  ).toBe(false);
+  expect(
+    shouldRemountLitterPlanAdHocProgrammerFormSession({
+      panelClosed: false,
+      commandConsumed: false,
+    }),
+  ).toBe(false);
+  const reset = createInitialLitterPlanAdHocProgrammerFormState(businessDate);
+  expect(reset.title).toBe("");
+  expect(reset.kind).toBe("task");
+});
+
+test("libellés d’aperçu frise et ligne préparée", () => {
+  const period = buildLitterPlanAdHocProgrammerPreview(
+    baseState({
+      kind: "window",
+      title: "Surveillance",
+      startsOn: "2026-08-10",
+      endsOn: "2026-08-17",
+    }),
+    instanceKey,
+  );
+  expect(litterPlanAdHocProgrammerPreviewTypeLabel(period!)).toBe("Période");
+
+  const shortRecurring = buildLitterPlanAdHocProgrammerPreview(
+    baseState({
+      kind: "recurring_task",
+      title: "Température courte",
+      recurringStartsOn: "2026-08-01",
+      intervalDays: "1",
+      endKind: "fixed_recurrence_day_count",
+      recurrenceDayCount: "5",
+      timeSlots: ["08:00", "20:00"],
+    }),
+    instanceKey,
+  );
+  expect(litterPlanAdHocProgrammerPreviewTypeLabel(shortRecurring!)).toBe(
+    "Suivi récurrent",
+  );
+  expect(
+    formatLitterPlanAdHocProgrammerPreparedLine({
+      total: shortRecurring!.recurringDetails!.totalOccurrences,
+      initialPrepared: shortRecurring!.recurringDetails!.initialPrepared,
+      horizonDays: shortRecurring!.recurringDetails!.horizonDays,
+    }),
+  ).toBe("10 préparées immédiatement");
+
+  const longRecurring = buildLitterPlanAdHocProgrammerPreview(
+    baseState({
+      kind: "recurring_task",
+      title: "Température longue",
+      recurringStartsOn: "2026-08-01",
+      intervalDays: "1",
+      endKind: "fixed_recurrence_day_count",
+      recurrenceDayCount: "40",
+      timeSlots: ["08:00", "20:00"],
+    }),
+    instanceKey,
+  );
+  expect(
+    formatLitterPlanAdHocProgrammerPreparedLine({
+      total: longRecurring!.recurringDetails!.totalOccurrences,
+      initialPrepared: longRecurring!.recurringDetails!.initialPrepared,
+      horizonDays: longRecurring!.recurringDetails!.horizonDays,
+    }),
+  ).toBe("60 préparées sur les 30 premiers jours");
+  expect(longRecurring?.recurringDetails?.totalOccurrences).toBe(80);
+  expect(longRecurring?.recurringDetails?.horizonDays).toBe(30);
 });

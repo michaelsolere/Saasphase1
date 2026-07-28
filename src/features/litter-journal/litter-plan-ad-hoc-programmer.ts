@@ -151,6 +151,158 @@ export const LITTER_PLAN_AD_HOC_TASKS_PANEL_HINT =
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/;
 const OCCURRENCE_CEILING = 500;
+const POSITIVE_INTEGER_DIGITS = /^\d+$/;
+
+/** Strict positive integer parser shared by form validation, estimate, and Server Action. */
+export function parseLitterPlanAdHocProgrammerPositiveInteger(
+  value: string,
+  min: number,
+  max: number,
+): number | null {
+  if (typeof value !== "string" || !POSITIVE_INTEGER_DIGITS.test(value.trim())) {
+    return null;
+  }
+  const parsed = Number(value.trim());
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < min ||
+    parsed > max
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+export type LitterPlanAdHocProgrammerDomIds = {
+  dialogDescription: string;
+  title: string;
+  titleError: string;
+  descriptionInput: string;
+  descriptionError: string;
+  category: string;
+  target: string;
+  priority: string;
+  scheduledDate: string;
+  scheduledDateError: string;
+  localTime: string;
+  localTimeError: string;
+  startsOn: string;
+  startsOnError: string;
+  startsLocalTime: string;
+  startsLocalTimeError: string;
+  endsOn: string;
+  endsOnError: string;
+  endsLocalTime: string;
+  endsLocalTimeError: string;
+  intervalDays: string;
+  intervalDaysError: string;
+  recurringEndsOn: string;
+  recurringEndsOnError: string;
+  recurrenceDayCount: string;
+  recurrenceDayCountError: string;
+  timeSlotsGroup: string;
+  timeSlotsError: string;
+  occurrences: string;
+  occurrencesError: string;
+};
+
+export function buildLitterPlanAdHocProgrammerDomIds(
+  idPrefix: string,
+): LitterPlanAdHocProgrammerDomIds {
+  return {
+    dialogDescription: `${idPrefix}-dialog-description`,
+    title: `${idPrefix}-title`,
+    titleError: `${idPrefix}-title-error`,
+    descriptionInput: `${idPrefix}-description-input`,
+    descriptionError: `${idPrefix}-description-error`,
+    category: `${idPrefix}-category`,
+    target: `${idPrefix}-target`,
+    priority: `${idPrefix}-priority`,
+    scheduledDate: `${idPrefix}-scheduled-date`,
+    scheduledDateError: `${idPrefix}-scheduled-date-error`,
+    localTime: `${idPrefix}-local-time`,
+    localTimeError: `${idPrefix}-local-time-error`,
+    startsOn: `${idPrefix}-starts-on`,
+    startsOnError: `${idPrefix}-starts-on-error`,
+    startsLocalTime: `${idPrefix}-starts-local-time`,
+    startsLocalTimeError: `${idPrefix}-starts-local-time-error`,
+    endsOn: `${idPrefix}-ends-on`,
+    endsOnError: `${idPrefix}-ends-on-error`,
+    endsLocalTime: `${idPrefix}-ends-local-time`,
+    endsLocalTimeError: `${idPrefix}-ends-local-time-error`,
+    intervalDays: `${idPrefix}-interval-days`,
+    intervalDaysError: `${idPrefix}-interval-days-error`,
+    recurringEndsOn: `${idPrefix}-recurring-ends-on`,
+    recurringEndsOnError: `${idPrefix}-recurring-ends-on-error`,
+    recurrenceDayCount: `${idPrefix}-recurrence-day-count`,
+    recurrenceDayCountError: `${idPrefix}-recurrence-day-count-error`,
+    timeSlotsGroup: `${idPrefix}-time-slots`,
+    timeSlotsError: `${idPrefix}-time-slots-error`,
+    occurrences: `${idPrefix}-occurrences`,
+    occurrencesError: `${idPrefix}-occurrences-error`,
+  };
+}
+
+export function litterPlanAdHocProgrammerDomIdsAreUnique(
+  ids: LitterPlanAdHocProgrammerDomIds,
+): boolean {
+  const values = Object.values(ids);
+  return new Set(values).size === values.length;
+}
+
+export function nextLitterPlanAdHocProgrammerKind(
+  current: LitterPlanAdHocProgrammerKind,
+): LitterPlanAdHocProgrammerKind {
+  const kinds = LITTER_PLAN_AD_HOC_PROGRAMMER_KIND_CHOICES.map(
+    (choice) => choice.kind,
+  );
+  const index = kinds.indexOf(current);
+  return kinds[(index + 1) % kinds.length]!;
+}
+
+export function previousLitterPlanAdHocProgrammerKind(
+  current: LitterPlanAdHocProgrammerKind,
+): LitterPlanAdHocProgrammerKind {
+  const kinds = LITTER_PLAN_AD_HOC_PROGRAMMER_KIND_CHOICES.map(
+    (choice) => choice.kind,
+  );
+  const index = kinds.indexOf(current);
+  return kinds[(index - 1 + kinds.length) % kinds.length]!;
+}
+
+export function formatLitterPlanAdHocProgrammerPreparedLine(args: {
+  total: number;
+  initialPrepared: number;
+  horizonDays: number;
+}): string {
+  if (args.total === args.initialPrepared) {
+    return `${args.initialPrepared} préparées immédiatement`;
+  }
+  return `${args.initialPrepared} préparées sur les ${args.horizonDays} premiers jours`;
+}
+
+/** True when closing the panel must remount the form session (clears useActionState). */
+export function shouldRemountLitterPlanAdHocProgrammerFormSession(args: {
+  panelClosed: boolean;
+  commandConsumed: boolean;
+}): boolean {
+  return args.panelClosed && !args.commandConsumed;
+}
+
+export function litterPlanAdHocProgrammerPreviewTypeLabel(
+  preview: Pick<LitterPlanAdHocProgrammerPreview, "kind">,
+): string {
+  switch (preview.kind) {
+    case "milestone":
+      return "Jalon";
+    case "task":
+      return "Tâche";
+    case "window":
+      return "Période";
+    case "recurring_task":
+      return "Suivi récurrent";
+  }
+}
 
 function isCivilDate(value: string): boolean {
   if (!DATE.test(value)) return false;
@@ -745,12 +897,12 @@ export function validateLitterPlanAdHocProgrammerForm(
     return { ok: true, payload };
   }
 
-  const intervalDays = Number(state.intervalDays);
-  if (
-    !Number.isInteger(intervalDays) ||
-    intervalDays < 1 ||
-    intervalDays > 365
-  ) {
+  const intervalDays = parseLitterPlanAdHocProgrammerPositiveInteger(
+    state.intervalDays,
+    1,
+    365,
+  );
+  if (intervalDays === null) {
     errors.push({
       field: "interval_days",
       message: "La cadence doit être comprise entre 1 et 365 jours.",
@@ -783,8 +935,12 @@ export function validateLitterPlanAdHocProgrammerForm(
       endsOn = state.recurringEndsOn;
     }
   } else {
-    const dayCount = Number(state.recurrenceDayCount);
-    if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 500) {
+    const dayCount = parseLitterPlanAdHocProgrammerPositiveInteger(
+      state.recurrenceDayCount,
+      1,
+      500,
+    );
+    if (dayCount === null) {
       errors.push({
         field: "recurrence_day_count",
         message: "Le nombre de dates programmées est invalide.",
@@ -817,7 +973,7 @@ export function validateLitterPlanAdHocProgrammerForm(
 
   const estimate = estimateLitterPlanAdHocProgrammerOccurrences({
     startsOn: state.recurringStartsOn,
-    intervalDays: Number.isInteger(intervalDays) ? intervalDays : 0,
+    intervalDays: intervalDays ?? 0,
     endKind: state.endKind,
     endsOn,
     recurrenceDayCount,
@@ -844,7 +1000,7 @@ export function validateLitterPlanAdHocProgrammerForm(
     ...buildCommonPayload(state),
     kind: "recurring_task",
     startsOn: state.recurringStartsOn,
-    intervalDays,
+    intervalDays: intervalDays as number,
     endKind: state.endKind,
     endsOn,
     recurrenceDayCount,
@@ -939,13 +1095,12 @@ export function buildLitterPlanAdHocProgrammerPreview(
     };
   }
 
-  const intervalDays = Number(state.intervalDays);
-  if (
-    !isCivilDate(state.recurringStartsOn) ||
-    !Number.isInteger(intervalDays) ||
-    intervalDays < 1 ||
-    intervalDays > 365
-  ) {
+  const intervalDays = parseLitterPlanAdHocProgrammerPositiveInteger(
+    state.intervalDays,
+    1,
+    365,
+  );
+  if (!isCivilDate(state.recurringStartsOn) || intervalDays === null) {
     return null;
   }
 
@@ -960,8 +1115,12 @@ export function buildLitterPlanAdHocProgrammerPreview(
     }
     endsOn = state.recurringEndsOn;
   } else {
-    const dayCount = Number(state.recurrenceDayCount);
-    if (!Number.isInteger(dayCount) || dayCount < 1 || dayCount > 500) {
+    const dayCount = parseLitterPlanAdHocProgrammerPositiveInteger(
+      state.recurrenceDayCount,
+      1,
+      500,
+    );
+    if (dayCount === null) {
       return null;
     }
     recurrenceDayCount = dayCount;
@@ -995,7 +1154,7 @@ export function buildLitterPlanAdHocProgrammerPreview(
   return {
     publicKey,
     kind: "recurring_task",
-    title: "Suivi récurrent · aperçu",
+    title,
     category: state.category,
     startDate: state.recurringStartsOn,
     endDate: estimate.lastDate,

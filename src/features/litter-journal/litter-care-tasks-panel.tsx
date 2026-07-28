@@ -490,18 +490,15 @@ function TaskHistory({ tasks }: { tasks: LitterCareTaskSummary[] }) {
 
 export function LitterCareTasksPanel({
   tasks,
-  role: _role,
   resolutionActions,
   scheduleActions,
   loadError = false,
 }: {
   tasks: LitterCareTaskSummary[];
-  role: "owner" | "admin" | "member" | "viewer" | null;
   resolutionActions: LitterCareTaskResolutionAction[];
   scheduleActions: LitterCareTaskScheduleActionBinding[];
   loadError?: boolean;
 }) {
-  void _role;
   const [today, setToday] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<string | null>(null);
 

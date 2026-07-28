@@ -11,6 +11,7 @@ import {
   litterPlanAdHocProgrammerErrorMessage,
   litterPlanAdHocProgrammerErrorRequiresRefresh,
   litterPlanAdHocProgrammerSuccessMessage,
+  parseLitterPlanAdHocProgrammerPositiveInteger,
   type LitterPlanAdHocProgrammerKind,
 } from "./litter-plan-ad-hoc-programmer";
 import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
@@ -92,13 +93,26 @@ function buildItemFromFormData(formData: FormData): unknown {
   }
 
   const endKind = value(formData, "end_kind");
-  const intervalRaw = value(formData, "interval_days").trim();
-  const intervalDays = /^-?\d+$/.test(intervalRaw) ? Number(intervalRaw) : NaN;
-  const dayCountRaw = value(formData, "recurrence_day_count").trim();
+  const intervalDays = parseLitterPlanAdHocProgrammerPositiveInteger(
+    value(formData, "interval_days"),
+    1,
+    365,
+  );
   const recurrenceDayCount =
-    endKind === "fixed_recurrence_day_count" && /^-?\d+$/.test(dayCountRaw)
-      ? Number(dayCountRaw)
+    endKind === "fixed_recurrence_day_count"
+      ? parseLitterPlanAdHocProgrammerPositiveInteger(
+          value(formData, "recurrence_day_count"),
+          1,
+          500,
+        )
       : null;
+  if (intervalDays === null) return null;
+  if (
+    endKind === "fixed_recurrence_day_count" &&
+    recurrenceDayCount === null
+  ) {
+    return null;
+  }
   const timeSlots = formData
     .getAll("time_slot")
     .filter((entry): entry is string => typeof entry === "string");

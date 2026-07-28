@@ -207,7 +207,6 @@ export function LitterJournalDashboard({
   maternalTemperatureDropPolicy,
   maternalTemperatureDropPolicyUnavailable,
   litterCareTasks,
-  litterCareTaskRole,
   litterCareTaskGenerationEntries,
   litterCareTaskGenerationRole,
   litterCareTaskGenerationAction,
@@ -275,7 +274,6 @@ export function LitterJournalDashboard({
   maternalTemperatureDropPolicy: MaternalTemperatureDropPolicyV1 | null;
   maternalTemperatureDropPolicyUnavailable: boolean;
   litterCareTasks: LitterCareTaskSummary[];
-  litterCareTaskRole: "owner" | "admin" | "member" | "viewer" | null;
   litterCareTaskGenerationEntries: LitterCareTaskGenerationPanelEntry[];
   litterCareTaskGenerationRole:
     | "owner"
@@ -549,7 +547,6 @@ export function LitterJournalDashboard({
       />
       <LitterCareTasksPanel
         tasks={litterCareTasks}
-        role={litterCareTaskRole}
         resolutionActions={litterCareTaskResolutionActions}
         scheduleActions={litterCareTaskScheduleActions}
         loadError={litterCareTasksLoadError}
