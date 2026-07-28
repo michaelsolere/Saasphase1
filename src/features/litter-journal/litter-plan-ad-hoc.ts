@@ -676,7 +676,7 @@ export async function createLitterPlanAdHocItem(
   const rpc = await supabase.rpc("create_litter_plan_ad_hoc_item", {
     p_litter_id: litterId,
     p_client_command_id: clientCommandId,
-    p_expected_plan_revision: expectedPlanRevision as never,
+    p_expected_plan_revision: expectedPlanRevision,
     p_timezone_name: zone,
     p_item: payload as unknown as Json,
   });
@@ -758,7 +758,7 @@ export async function updateLitterPlanAdHocItemMetadata(input: UpdateLitterPlanA
     p_litter_id: litterId, p_litter_plan_item_id: itemId, p_client_command_id: commandId,
     p_expected_plan_revision: input.expectedPlanRevision, p_expected_item_revision: input.expectedItemRevision,
     p_expected_task_revision: input.expectedTaskRevision, p_metadata: metadata as unknown as Json,
-  } as never);
+  });
   if (rpc.error) return error("database_error");
   return mapUpdateLitterPlanAdHocMetadataRpcResult((rpc.data?.[0] as UpdateMetadataRpcRow | undefined) ?? null, input);
 }

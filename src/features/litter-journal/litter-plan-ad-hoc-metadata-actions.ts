@@ -8,6 +8,7 @@ import {
   type LitterPlanAdHocErrorCode,
 } from "./litter-plan-ad-hoc";
 import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
+import { validateLitterPlanAdHocMetadataForm } from "./litter-plan-ad-hoc-metadata-validation";
 
 export type LitterPlanAdHocMetadataIntention = {
   litterId: string; litterPlanItemId: string; clientCommandId: string;
@@ -26,8 +27,7 @@ export async function updateLitterPlanAdHocItemMetadataAction(intention: LitterP
     targetScope: read(formData, "target_scope"), priority: read(formData, "priority"),
   });
   if (!metadata) {
-    const title=read(formData,"title").trim(); const description=read(formData,"description");
-    return { status: "error", code: "invalid_input", message: "Corrigez les informations indiquées.", fieldErrors: { ...(title.length < 1 || title.length > 255 ? { title: "Le titre doit contenir entre 1 et 255 caractères." } : {}), ...(description.length > 5000 ? { description: "La description ne doit pas dépasser 5 000 caractères." } : {}), ...(title && description.length <= 5000 ? { category: "La catégorie, la cible ou la priorité est invalide." } : {}) } };
+    return { status: "error", code: "invalid_input", message: "Corrigez les informations indiquées.", fieldErrors: validateLitterPlanAdHocMetadataForm({ title: read(formData,"title"), description: read(formData,"description"), category: read(formData,"category"), targetScope: read(formData,"target_scope"), priority: read(formData,"priority") }) };
   }
   const result = await updateLitterPlanAdHocItemMetadata({ ...intention, metadata }, await createClient());
   if (result.outcome === "error") return {

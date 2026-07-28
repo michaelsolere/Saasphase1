@@ -13,6 +13,7 @@ import {
 } from "../../src/features/litter-journal/litter-plan-ad-hoc";
 import type { Database } from "../../src/types/database.types";
 import { canEditLitterPlanAdHocMetadata } from "../../src/features/litter-journal/litter-plan-ad-hoc-metadata-eligibility";
+import { validateLitterPlanAdHocMetadataForm } from "../../src/features/litter-journal/litter-plan-ad-hoc-metadata-validation";
 
 function baseMilestone(overrides: Record<string, unknown> = {}) {
   return {
@@ -114,6 +115,15 @@ test("applique l’éligibilité stricte de l’édition de métadonnées", () =
   expect(canEditLitterPlanAdHocMetadata({ ...base, hasSeries: true })).toBe(false);
   expect(canEditLitterPlanAdHocMetadata({ ...base, taskStatus: "done" })).toBe(false);
   expect(canEditLitterPlanAdHocMetadata({ ...base, projectionsMatch: false })).toBe(false);
+});
+
+test("associe chaque erreur de métadonnées à son champ", () => {
+  const valid = { title: "Contrôle", description: "", category: "other", targetScope: "litter", priority: "normal" };
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, title: " " })).toEqual({ title: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, description: "x".repeat(5001) })).toEqual({ description: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, category: "bad" })).toEqual({ category: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, targetScope: "bad" })).toEqual({ targetScope: expect.any(String) });
+  expect(validateLitterPlanAdHocMetadataForm({ ...valid, priority: "bad" })).toEqual({ priority: expect.any(String) });
 });
 
 test("accepts a strictly valid payload for each of the four kinds", () => {
