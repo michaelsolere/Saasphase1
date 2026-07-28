@@ -365,6 +365,11 @@ test("statuts suggested/manual, verrouillé, terminal, viewer et pending non man
 
   expect(viewer.items.every((item) => item.interactionMode === "read_only")).toBe(true);
   expect(viewer.bindings).toEqual([]);
+
+  expect(owner.bindings.find((binding) => binding.publicKey === milestone.publicKey)?.canResolve).toBe(true);
+  expect(owner.bindings.find((binding) => binding.publicKey === locked.publicKey)?.canResolve).toBe(true);
+  expect(owner.bindings.find((binding) => binding.publicKey === terminal.publicKey)).toBeUndefined();
+  expect(owner.bindings.find((binding) => binding.publicKey === pending.publicKey)).toBeUndefined();
 });
 
 test("géométrie interactive suit l’aperçu sans muter les entrées", () => {

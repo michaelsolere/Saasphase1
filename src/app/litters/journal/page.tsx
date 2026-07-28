@@ -38,7 +38,7 @@ import {
   moveOrResizeTimelineWindowAction,
   moveTimelinePointAction,
 } from "@/features/litter-journal/litter-plan-timeline-interaction-actions";
-import type { LitterPlanTimelineScheduleTarget, LitterPlanTimelineMetadataTarget } from "@/features/litter-journal/litter-plan-timeline-panel";
+import type { LitterPlanTimelineScheduleTarget, LitterPlanTimelineMetadataTarget, LitterPlanTimelineResolutionTarget } from "@/features/litter-journal/litter-plan-timeline-panel";
 import { applyLitterPlanningModelAction } from "@/features/litter-journal/litter-planning-model-apply-actions";
 import { loadLitterPlanningModelApplicationPanel } from "@/features/litter-journal/litter-planning-model-application";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
@@ -295,6 +295,22 @@ export default async function LitterJournalPage({
           ],
         ];
       }),
+  );
+  const litterPlanTimelineResolutionTargets: Record<
+    string,
+    LitterPlanTimelineResolutionTarget
+  > = Object.fromEntries(
+    (interactiveLitterPlanBuild?.bindings ?? [])
+      .filter((binding) => binding.canResolve)
+      .map((binding) => [
+        binding.publicKey,
+        {
+          action: resolveLitterCareTaskAction.bind(null, {
+            taskId: binding.task.id,
+            clientCommandId: crypto.randomUUID(),
+          }),
+        },
+      ]),
   );
   const activePlanDetail =
     activeLitterPlan && !("outcome" in activeLitterPlan)
@@ -584,6 +600,7 @@ export default async function LitterJournalPage({
             litterPlanTimelineMovePointActions={litterPlanTimelineMovePointActions}
             litterPlanTimelineMoveWindowActions={litterPlanTimelineMoveWindowActions}
             litterPlanTimelineScheduleTargets={litterPlanTimelineScheduleTargets}
+            litterPlanTimelineResolutionTargets={litterPlanTimelineResolutionTargets}
             litterPlanTimelineMetadataTargets={litterPlanTimelineMetadataTargets}
             litterPlanAdHocProgrammerAction={programmerAction}
             litterPlanAdHocProgrammerInstanceKey={programmerInstanceKey}
