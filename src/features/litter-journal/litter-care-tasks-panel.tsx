@@ -1,21 +1,7 @@
 "use client";
 
 import { LockKeyhole } from "lucide-react";
-import { useActionState, useCallback, useEffect, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { useRouter } from "next/navigation";
-
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { useEffect, useState } from "react";
 
 import {
   litterCareTaskCategoryLabels as categoryLabels,
@@ -26,12 +12,10 @@ import {
   type LitterCareTaskScheduleActionBinding,
 } from "./litter-care-task-schedule-dialog";
 import { LITTER_PLAN_AD_HOC_TASKS_PANEL_HINT } from "./litter-plan-ad-hoc-programmer";
+import { LitterCareTaskResolutionDialog } from "./litter-care-task-resolution-dialog";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
-import type {
-  LitterCareTaskResolutionStatus,
-  LitterCareTaskSummary,
-} from "./litter-care-tasks";
+import type { LitterCareTaskSummary } from "./litter-care-tasks";
 
 const sourceLabels: Record<LitterCareTaskSummary["source"], string> = {
   manual: "Ajout manuel",
@@ -46,19 +30,6 @@ const statusLabels: Record<LitterCareTaskSummary["status"], string> = {
   not_applicable: "Non applicable",
 };
 
-const resolutionStatusLabels: Record<
-  LitterCareTaskResolutionStatus,
-  string
-> = {
-  done: "Réalisée",
-  cancelled: "Annulée",
-  not_applicable: "Non applicable",
-};
-
-const inputClass =
-  "mt-2 min-h-10 w-full rounded-xl border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent focus:ring-1 focus:ring-accent";
-const labelClass = "text-sm font-semibold";
-const initialState: LitterCareTaskActionState = { status: "idle" };
 
 type TaskAction = (
   previousState: LitterCareTaskActionState,
@@ -145,195 +116,6 @@ function browserCivilDate() {
     .padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")}`;
 }
 
-function browserTimezone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
-
-function currentLocalDateTime() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function localDateTimeToIso(value: string) {
-  if (!value) return "";
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function ActionMessage({ state }: { state: LitterCareTaskActionState }) {
-  if (state.status === "idle" || !state.message) return null;
-
-  return (
-    <p
-      role={state.status === "error" ? "alert" : "status"}
-      className="rounded-xl border bg-surface px-3 py-2 text-sm text-foreground"
-    >
-      {state.message}
-    </p>
-  );
-}
-
-function ResolveSubmitButton() {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" disabled={pending}>
-      {pending ? "Traitement..." : "Valider le résultat"}
-    </Button>
-  );
-}
-
-function ResolveTaskDialog({
-  task,
-  action,
-  onSuccess,
-}: {
-  task: LitterCareTaskSummary;
-  action: TaskAction;
-  onSuccess: (message: string) => void;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [resolvedAt, setResolvedAt] = useState("");
-  const [status, setStatus] =
-    useState<LitterCareTaskResolutionStatus>("done");
-  const [note, setNote] = useState("");
-  const resolvedAtRef = useRef<HTMLInputElement>(null);
-  const timezoneNameRef = useRef<HTMLInputElement>(null);
-  const submitAction = useCallback(
-    async (previousState: LitterCareTaskActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.status === "success" && nextState.message) {
-        setOpen(false);
-        onSuccess(nextState.message);
-        router.refresh();
-      }
-      return nextState;
-    },
-    [action, onSuccess, router],
-  );
-  const [state, formAction] = useActionState(submitAction, initialState);
-
-  function handleOpenChange(nextOpen: boolean) {
-    if (nextOpen && !open) {
-      setResolvedAt(currentLocalDateTime());
-    }
-
-    setOpen(nextOpen);
-  }
-
-  function prepareSubmission() {
-    if (resolvedAtRef.current) {
-      resolvedAtRef.current.value = localDateTimeToIso(resolvedAt);
-    }
-    if (timezoneNameRef.current) {
-      timezoneNameRef.current.value = browserTimezone();
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
-          Traiter la tâche
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[85vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Traiter la tâche</DialogTitle>
-          <DialogDescription>{task.title}</DialogDescription>
-        </DialogHeader>
-        <form
-          action={formAction}
-          onSubmit={prepareSubmission}
-          className="space-y-4"
-        >
-          <input ref={resolvedAtRef} type="hidden" name="resolved_at" />
-          <input
-            ref={timezoneNameRef}
-            type="hidden"
-            name="timezone_name"
-          />
-          <div>
-            <label
-              className={labelClass}
-              htmlFor="litter-care-task-result"
-            >
-              Résultat
-            </label>
-            <select
-              id="litter-care-task-result"
-              className={inputClass}
-              name="resolution_status"
-              value={status}
-              onChange={(event) =>
-                setStatus(
-                  event.target.value as LitterCareTaskResolutionStatus,
-                )
-              }
-              required
-            >
-              {Object.entries(resolutionStatusLabels).map(([option, label]) => (
-                <option key={option} value={option}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label
-              className={labelClass}
-              htmlFor="litter-care-task-resolved-at"
-            >
-              Date et heure de résolution
-            </label>
-            <input
-              id="litter-care-task-resolved-at"
-              className={inputClass}
-              type="datetime-local"
-              value={resolvedAt}
-              onChange={(event) => setResolvedAt(event.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label
-              className={labelClass}
-              htmlFor="litter-care-task-resolution-note"
-            >
-              Note (facultative)
-            </label>
-            <textarea
-              id="litter-care-task-resolution-note"
-              className={inputClass}
-              name="resolution_note"
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              rows={4}
-              maxLength={5000}
-            />
-          </div>
-          <ActionMessage state={state} />
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button type="button" variant="outline">
-                Annuler
-              </Button>
-            </DialogClose>
-            <ResolveSubmitButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function TaskMetadata({ task }: { task: LitterCareTaskSummary }) {
   return (
     <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted">
@@ -388,7 +170,7 @@ function PlannedTasks({
         <p className="mt-3 text-sm text-muted">Aucune tâche en attente.</p>
       ) : (
         <ul className="mt-3 divide-y divide-border rounded-xl border">
-          {tasks.map((task) => {
+          {tasks.map((task, index) => {
             const resolutionAction = actions.get(task.id);
             const scheduleAction = scheduleActions.get(task.id);
             const dueDate = task.plannedFor ?? task.retainedEndsOn;
@@ -416,10 +198,14 @@ function PlannedTasks({
                     ) : null}
                   </div>
                   {resolutionAction ? (
-                    <ResolveTaskDialog
+                    <LitterCareTaskResolutionDialog
                       key={resolutionAction.clientCommandId}
-                      task={task}
+                      itemTitle={task.title}
                       action={resolutionAction.action}
+                      triggerLabel="Traiter la tâche"
+                      dialogTitle="Traiter la tâche"
+                      objectLabel="tâche"
+                      domIdPrefix={`litter-care-task-${index + 1}`}
                       onSuccess={onSuccess}
                     />
                   ) : null}

@@ -229,9 +229,13 @@ async function main() {
   assertDockerAvailable();
   if (preserveDemo) {
     const target = playwrightArgs.filter((arg) => arg.endsWith(".spec.ts"));
-    const permitted = playwrightArgs.every((arg) => arg === "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts" || /^--(workers=1|retries=0)$/.test(arg));
-    if (mode !== "reuse" || target.length !== 1 || target[0] !== "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts" || !permitted) {
-      throw new Error("--preserve-demo is limited to the metadata E2E spec in reuse mode.");
+    const allowedSpecs = new Set([
+      "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts",
+      "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
+    ]);
+    const permitted = playwrightArgs.every((arg) => allowedSpecs.has(arg) || /^--(workers=1|retries=0)$/.test(arg));
+    if (mode !== "reuse" || target.length !== 1 || !allowedSpecs.has(target[0]) || !permitted) {
+      throw new Error("--preserve-demo is limited to one allowlisted E2E spec in reuse mode.");
     }
     if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_URL !== "http://127.0.0.1:55321") {
       throw new Error("--preserve-demo requires the isolated E2E Supabase URL.");

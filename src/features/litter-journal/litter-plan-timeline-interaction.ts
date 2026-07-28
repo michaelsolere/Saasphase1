@@ -94,6 +94,7 @@ export type InteractiveTimelineBinding = {
   task: LitterCareTaskSummary;
   canMoveGraphically: boolean;
   canOpenPrecisePanel: boolean;
+  canResolve: boolean;
 };
 
 export type InteractiveLitterPlanTimeline = {
@@ -475,14 +476,20 @@ export function buildInteractiveLitterPlanTimeline(input: {
     const canMoveGraphically =
       canOpenPrecisePanel &&
       interaction.interactionMode !== "read_only";
+    const canResolve =
+      Boolean(input.role) &&
+      WRITABLE_ROLES.has(input.role!) &&
+      task.status === "planned" &&
+      !pendingAnchor;
 
-    if (canOpenPrecisePanel || canMoveGraphically) {
+    if (canOpenPrecisePanel || canMoveGraphically || canResolve) {
       bindings.push({
         publicKey,
         kind,
         task,
         canMoveGraphically,
         canOpenPrecisePanel,
+        canResolve,
       });
     }
   }

@@ -25,7 +25,11 @@ import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { LitterCareTodayPanel } from "./litter-care-today-panel";
 import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
-import type { LitterPlanTimelineScheduleTarget, LitterPlanTimelineMetadataTarget } from "./litter-plan-timeline-panel";
+import type {
+  LitterPlanTimelineMetadataTarget,
+  LitterPlanTimelineResolutionTarget,
+  LitterPlanTimelineScheduleTarget,
+} from "./litter-plan-timeline-panel";
 import type { InteractiveLitterPlanTimeline } from "./litter-plan-timeline-interaction";
 import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-programmer-actions";
 import { LitterPlanningModelApplyPanel } from "./litter-planning-model-apply-panel";
@@ -225,6 +229,7 @@ export function LitterJournalDashboard({
   litterPlanTimelineMovePointActions,
   litterPlanTimelineMoveWindowActions,
   litterPlanTimelineScheduleTargets,
+  litterPlanTimelineResolutionTargets,
   litterPlanTimelineMetadataTargets,
   litterPlanAdHocProgrammerAction,
   litterPlanAdHocProgrammerInstanceKey,
@@ -319,6 +324,7 @@ export function LitterJournalDashboard({
     ) => Promise<LitterCareTaskActionState>
   >;
   litterPlanTimelineScheduleTargets: Record<string, LitterPlanTimelineScheduleTarget>;
+  litterPlanTimelineResolutionTargets: Record<string, LitterPlanTimelineResolutionTarget>;
   litterPlanTimelineMetadataTargets: Record<string, LitterPlanTimelineMetadataTarget>;
   litterPlanAdHocProgrammerAction: ((
     previousState: LitterPlanAdHocProgrammerActionState,
@@ -488,6 +494,7 @@ export function LitterJournalDashboard({
         movePointActions={litterPlanTimelineMovePointActions}
         moveWindowActions={litterPlanTimelineMoveWindowActions}
         scheduleTargets={litterPlanTimelineScheduleTargets}
+        resolutionTargets={litterPlanTimelineResolutionTargets}
         metadataTargets={litterPlanTimelineMetadataTargets}
         programmerAction={litterPlanAdHocProgrammerAction}
         programmerInstanceKey={litterPlanAdHocProgrammerInstanceKey}
