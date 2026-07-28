@@ -8,6 +8,8 @@ import {
   mapCreateLitterPlanAdHocItemRpcResult,
   normalizeLitterPlanAdHocItemPayload,
   normalizeLitterPlanAdHocTimeSlots,
+  normalizeLitterPlanAdHocMetadataPayload,
+  mapUpdateLitterPlanAdHocMetadataRpcResult,
 } from "../../src/features/litter-journal/litter-plan-ad-hoc";
 import type { Database } from "../../src/types/database.types";
 
@@ -92,6 +94,16 @@ function baseRecurringDayCount(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test("normalise strictement les métadonnées ad hoc et refuse les clés supplémentaires", () => {
+  expect(normalizeLitterPlanAdHocMetadataPayload({ version: 1, operation: "update_metadata", title: "  Contrôle  ", description: "  Note  ", category: "other", targetScope: "litter", priority: "important" })).toEqual({ version: 1, operation: "update_metadata", title: "Contrôle", description: "Note", category: "other", targetScope: "litter", priority: "important" });
+  expect(normalizeLitterPlanAdHocMetadataPayload({ version: 1, operation: "update_metadata", title: "Contrôle", description: null, category: "other", targetScope: "litter", priority: "normal", revision: 1 })).toBeNull();
+});
+
+test("mappe strictement le résultat d’édition sans exposer les identifiants", () => {
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { kind: "milestone", itemRevision: 2, taskRevision: 1 } })).toMatchObject({ outcome: "success", planRevision: 3, itemRevision: 2, taskRevision: 1 });
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { kind: "recurring_task", itemRevision: 2, taskRevision: 1 } }).outcome).toBe("error");
+});
 
 test("accepts a strictly valid payload for each of the four kinds", () => {
   expect(normalizeLitterPlanAdHocItemPayload(baseMilestone())).toMatchObject({

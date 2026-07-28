@@ -686,3 +686,70 @@ export async function createLitterPlanAdHocItem(
     (rpc.data?.[0] as CreateLitterPlanAdHocItemRpcRow | undefined) ?? null,
   );
 }
+
+export type LitterPlanAdHocMetadataPayload = {
+  version: 1;
+  operation: "update_metadata";
+  title: string;
+  description: string | null;
+  category: LitterCareTaskCategory;
+  targetScope: LitterCareTaskTargetScope;
+  priority: LitterCareTaskPriority;
+};
+
+export type UpdateLitterPlanAdHocMetadataInput = {
+  litterId: string;
+  litterPlanItemId: string;
+  clientCommandId: string;
+  expectedPlanRevision: number;
+  expectedItemRevision: number;
+  expectedTaskRevision: number;
+  metadata: unknown;
+};
+
+export type UpdateLitterPlanAdHocMetadataResult = LitterPlanAdHocResult<{
+  planRevision: number;
+  itemRevision: number;
+  taskRevision: number;
+  replayed: boolean;
+}>;
+
+export function normalizeLitterPlanAdHocMetadataPayload(
+  input: unknown,
+): LitterPlanAdHocMetadataPayload | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  if (!hasExactKeys(record, ["version", "operation", "title", "description", "category", "targetScope", "priority"])) return null;
+  const title = normalizeTitle(record.title);
+  const description = normalizeDescription(record.description);
+  if (record.version !== 1 || record.operation !== "update_metadata" || !title || description === undefined || !isCategory(record.category) || !isTargetScope(record.targetScope) || !isPriority(record.priority)) return null;
+  return { version: 1, operation: "update_metadata", title, description, category: record.category, targetScope: record.targetScope, priority: record.priority };
+}
+
+type UpdateMetadataRpcRow = {
+  outcome: string; reason: string | null; plan_revision: number | null;
+  item_revision: number | null; task_revision: number | null; replayed: boolean | null;
+  result: Json;
+};
+
+export function mapUpdateLitterPlanAdHocMetadataRpcResult(row: UpdateMetadataRpcRow | null | undefined): UpdateLitterPlanAdHocMetadataResult {
+  if (!row) return error("database_error");
+  if (row.outcome === "error") return error(reasonCode(row.reason));
+  if (row.outcome !== "success" || row.reason !== null || typeof row.replayed !== "boolean" || !Number.isInteger(row.plan_revision) || (row.plan_revision as number) < 1 || !Number.isInteger(row.item_revision) || (row.item_revision as number) < 1 || !Number.isInteger(row.task_revision) || (row.task_revision as number) < 0 || !isPlainJsonObject(row.result)) return error("database_error");
+  if (row.result.kind !== "milestone" && row.result.kind !== "task" && row.result.kind !== "window") return error("database_error");
+  if (row.result.itemRevision !== row.item_revision || row.result.taskRevision !== row.task_revision) return error("database_error");
+  return { outcome: "success", planRevision: row.plan_revision as number, itemRevision: row.item_revision as number, taskRevision: row.task_revision as number, replayed: row.replayed };
+}
+
+export async function updateLitterPlanAdHocItemMetadata(input: UpdateLitterPlanAdHocMetadataInput, supabase: Supabase): Promise<UpdateLitterPlanAdHocMetadataResult> {
+  const litterId = uuid(input.litterId); const itemId = uuid(input.litterPlanItemId); const commandId = uuid(input.clientCommandId);
+  const metadata = normalizeLitterPlanAdHocMetadataPayload(input.metadata);
+  if (!litterId || !itemId || !commandId || !metadata || !Number.isInteger(input.expectedPlanRevision) || input.expectedPlanRevision < 1 || !Number.isInteger(input.expectedItemRevision) || input.expectedItemRevision < 1 || !Number.isInteger(input.expectedTaskRevision) || input.expectedTaskRevision < 0) return error("invalid_input");
+  const rpc = await supabase.rpc("update_litter_plan_ad_hoc_item_metadata", {
+    p_litter_id: litterId, p_litter_plan_item_id: itemId, p_client_command_id: commandId,
+    p_expected_plan_revision: input.expectedPlanRevision, p_expected_item_revision: input.expectedItemRevision,
+    p_expected_task_revision: input.expectedTaskRevision, p_metadata: metadata as unknown as Json,
+  } as never);
+  if (rpc.error) return error("database_error");
+  return mapUpdateLitterPlanAdHocMetadataRpcResult((rpc.data?.[0] as UpdateMetadataRpcRow | undefined) ?? null);
+}

@@ -18,6 +18,7 @@ import {
   setLitterCareTaskScheduleLockAction,
 } from "@/features/litter-journal/litter-care-tasks-actions";
 import { createLitterPlanAdHocItemAction } from "@/features/litter-journal/litter-plan-ad-hoc-programmer-actions";
+import { updateLitterPlanAdHocItemMetadataAction } from "@/features/litter-journal/litter-plan-ad-hoc-metadata-actions";
 import { canShowLitterPlanAdHocProgrammer } from "@/features/litter-journal/litter-plan-ad-hoc-programmer";
 import {
   listLitterCareTasksForLitter,
@@ -36,7 +37,7 @@ import {
   moveOrResizeTimelineWindowAction,
   moveTimelinePointAction,
 } from "@/features/litter-journal/litter-plan-timeline-interaction-actions";
-import type { LitterPlanTimelineScheduleTarget } from "@/features/litter-journal/litter-plan-timeline-panel";
+import type { LitterPlanTimelineScheduleTarget, LitterPlanTimelineMetadataTarget } from "@/features/litter-journal/litter-plan-timeline-panel";
 import { applyLitterPlanningModelAction } from "@/features/litter-journal/litter-planning-model-apply-actions";
 import { loadLitterPlanningModelApplicationPanel } from "@/features/litter-journal/litter-planning-model-application";
 import { loadLitterJournal } from "@/features/litter-journal/loader";
@@ -293,6 +294,14 @@ export default async function LitterJournalPage({
           ],
         ];
       }),
+  );
+  const litterPlanTimelineMetadataTargets: Record<string, LitterPlanTimelineMetadataTarget> = Object.fromEntries(
+    (interactiveLitterPlanBuild?.bindings ?? []).flatMap((binding) => {
+      const litterId = journal?.selectedLitter?.id;
+      const item = activePlanDetail?.items.find((entry) => entry.id === binding.task.litterPlanItemId);
+      if (!litterId || !item || !activePlanDetail || binding.task.status !== "planned" || item.origin_kind !== "ad_hoc" || item.item_kind === "recurring_task" || !["milestone", "task", "window"].includes(item.item_kind) || item.materialization_state !== "materialized" || item.source_planning_model_id !== null || item.organization_template_id !== null || binding.task.source !== "manual" || binding.task.litterPlanSeriesId !== null) return [];
+      return [[binding.publicKey, { view: { title: item.title, description: item.description, category: item.category, targetScope: item.target_scope, priority: item.priority, kind: item.item_kind as "milestone" | "task" | "window" }, action: updateLitterPlanAdHocItemMetadataAction.bind(null, { litterId, litterPlanItemId: item.id, clientCommandId: crypto.randomUUID(), expectedPlanRevision: activePlanDetail.header.revision, expectedItemRevision: item.revision_no, expectedTaskRevision: binding.task.revisionNo }) }]];
+    }),
   );
   const litterPlanningModelApplicationLoaded =
     litterPlanningModelApplication?.outcome === "success"
@@ -574,6 +583,7 @@ export default async function LitterJournalPage({
             litterPlanTimelineMovePointActions={litterPlanTimelineMovePointActions}
             litterPlanTimelineMoveWindowActions={litterPlanTimelineMoveWindowActions}
             litterPlanTimelineScheduleTargets={litterPlanTimelineScheduleTargets}
+            litterPlanTimelineMetadataTargets={litterPlanTimelineMetadataTargets}
             litterPlanAdHocProgrammerAction={programmerAction}
             litterPlanAdHocProgrammerInstanceKey={programmerInstanceKey}
             litterPlanAdHocProgrammerBusinessDate={litterJournalTodayDate}
