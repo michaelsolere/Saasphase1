@@ -8,7 +8,6 @@ import {
 import { recordMaternalObservationAction } from "@/features/litter-journal/maternal-observations-actions";
 import { listMaternalObservationsForLitter } from "@/features/litter-journal/maternal-observations";
 import {
-  createLitterCareTaskAction,
   generateLitterCareTasksAction,
   reapplyLitterCareTaskScheduleSuggestionAction,
   replaceLockedLitterCareTaskPointScheduleAction,
@@ -18,6 +17,8 @@ import {
   resolveLitterCareTaskAction,
   setLitterCareTaskScheduleLockAction,
 } from "@/features/litter-journal/litter-care-tasks-actions";
+import { createLitterPlanAdHocItemAction } from "@/features/litter-journal/litter-plan-ad-hoc-programmer-actions";
+import { canShowLitterPlanAdHocProgrammer } from "@/features/litter-journal/litter-plan-ad-hoc-programmer";
 import {
   listLitterCareTasksForLitter,
   planLitterCareTaskGeneration,
@@ -42,6 +43,7 @@ import { loadLitterJournal } from "@/features/litter-journal/loader";
 import {
   formatLitterJournalBusinessDate,
   getLitterJournalBusinessLocalTime,
+  LITTER_JOURNAL_TIME_ZONE,
 } from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
 import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
@@ -357,12 +359,32 @@ export default async function LitterJournalPage({
     litterCareTasksLoaded?.role === "owner" ||
     litterCareTasksLoaded?.role === "admin" ||
     litterCareTasksLoaded?.role === "member";
-  const createTaskClientCommandId = crypto.randomUUID();
-  const createTaskAction =
-    journal?.selectedLitter?.id && litterCareTaskCanWrite
-      ? createLitterCareTaskAction.bind(null, {
+  const programmerInstanceKey = crypto.randomUUID();
+  const activePlanDetail =
+    activeLitterPlan && !("outcome" in activeLitterPlan)
+      ? activeLitterPlan
+      : null;
+  const activePlanMissing =
+    activeLitterPlan !== null &&
+    "outcome" in activeLitterPlan &&
+    activeLitterPlan.error.code === "not_found";
+  const programmerCanShow = canShowLitterPlanAdHocProgrammer({
+    role: litterCareTasksLoaded?.role ?? null,
+    planUnavailable: litterPlanLoadError,
+  });
+  const programmerAction =
+    journal?.selectedLitter?.id &&
+    programmerCanShow &&
+    (activePlanDetail || activePlanMissing)
+      ? createLitterPlanAdHocItemAction.bind(null, {
           litterId: journal.selectedLitter.id,
-          clientCommandId: createTaskClientCommandId,
+          expectedPlanRevision: activePlanDetail
+            ? activePlanDetail.header.revision
+            : null,
+          timezoneName: activePlanDetail
+            ? activePlanDetail.header.timezone_name
+            : LITTER_JOURNAL_TIME_ZONE,
+          clientCommandId: crypto.randomUUID(),
         })
       : null;
   const generationClientCommandId = crypto.randomUUID();
@@ -524,7 +546,6 @@ export default async function LitterJournalPage({
               false
             }
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
-            litterCareTaskRole={litterCareTasksLoaded?.role ?? null}
             litterCareTaskGenerationEntries={
               litterCareTaskGenerationEntries
             }
@@ -535,8 +556,6 @@ export default async function LitterJournalPage({
             litterCareTaskGenerationLoadError={
               litterCareTaskGenerationPlanLoaded === null
             }
-            createLitterCareTaskAction={createTaskAction}
-            createLitterCareTaskClientCommandId={createTaskClientCommandId}
             litterCareTaskResolutionActions={resolutionActions}
             litterCareTodayQuickActions={todayQuickActions}
             litterCareTodayScheduleActions={todayScheduleActions}
@@ -555,6 +574,9 @@ export default async function LitterJournalPage({
             litterPlanTimelineMovePointActions={litterPlanTimelineMovePointActions}
             litterPlanTimelineMoveWindowActions={litterPlanTimelineMoveWindowActions}
             litterPlanTimelineScheduleTargets={litterPlanTimelineScheduleTargets}
+            litterPlanAdHocProgrammerAction={programmerAction}
+            litterPlanAdHocProgrammerInstanceKey={programmerInstanceKey}
+            litterPlanAdHocProgrammerBusinessDate={litterJournalTodayDate}
             litterPlanLoadError={litterPlanLoadError}
             litterPlanSeries={litterPlanSeriesLoaded?.series ?? []}
             litterPlanSeriesRole={litterPlanSeriesLoaded?.role ?? null}

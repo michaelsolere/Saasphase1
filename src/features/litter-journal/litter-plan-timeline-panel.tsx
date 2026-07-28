@@ -20,6 +20,14 @@ import {
 } from "./litter-care-task-schedule-dialog";
 import type { LitterCareTaskScheduleView } from "./litter-care-task-schedule-view";
 import { litterCareTaskCategoryLabels } from "./litter-care-task-labels";
+import type { LitterPlanAdHocProgrammerActionState } from "./litter-plan-ad-hoc-programmer-actions";
+import { LitterPlanAdHocProgrammerDialog } from "./litter-plan-ad-hoc-programmer-dialog";
+import {
+  buildLitterPlanAdHocProgrammerDisplayTimeline,
+  formatLitterPlanAdHocProgrammerPreparedLine,
+  litterPlanAdHocProgrammerPreviewTypeLabel,
+  type LitterPlanAdHocProgrammerPreview,
+} from "./litter-plan-ad-hoc-programmer";
 import type {
   InteractiveLitterPlanTimeline,
 } from "./litter-plan-timeline-interaction";
@@ -46,6 +54,11 @@ type TimelineAction = (
   formData: FormData,
 ) => Promise<LitterCareTaskActionState>;
 
+type ProgrammerAction = (
+  previousState: LitterPlanAdHocProgrammerActionState,
+  formData: FormData,
+) => Promise<LitterPlanAdHocProgrammerActionState>;
+
 export type LitterPlanTimelineScheduleTarget = {
   view: LitterCareTaskScheduleView;
   actions: LitterCareTaskScheduleActionSet;
@@ -57,6 +70,9 @@ export type LitterPlanTimelinePanelProps = {
   movePointActions?: Record<string, TimelineAction>;
   moveWindowActions?: Record<string, TimelineAction>;
   scheduleTargets?: Record<string, LitterPlanTimelineScheduleTarget>;
+  programmerAction?: ProgrammerAction | null;
+  programmerInstanceKey?: string | null;
+  programmerBusinessDate?: string | null;
 };
 
 type DragHandle = TimelineDragHandle;
@@ -148,6 +164,9 @@ export function LitterPlanTimelinePanel({
   movePointActions = {},
   moveWindowActions = {},
   scheduleTargets = {},
+  programmerAction = null,
+  programmerInstanceKey = null,
+  programmerBusinessDate = null,
 }: LitterPlanTimelinePanelProps) {
   const router = useRouter();
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -164,6 +183,24 @@ export function LitterPlanTimelinePanel({
   const [disabledKeys, setDisabledKeys] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [scheduleMessage, setScheduleMessage] = useState<string | null>(null);
+  const [programmerPreview, setProgrammerPreview] =
+    useState<LitterPlanAdHocProgrammerPreview | null>(null);
+  const [programmerMessage, setProgrammerMessage] = useState<string | null>(
+    null,
+  );
+
+  const handleProgrammerPreviewChange = useCallback(
+    (preview: LitterPlanAdHocProgrammerPreview | null) => {
+      setProgrammerPreview(preview);
+    },
+    [],
+  );
+
+  const displayTimeline = useMemo(
+    () =>
+      buildLitterPlanAdHocProgrammerDisplayTimeline(timeline, programmerPreview),
+    [timeline, programmerPreview],
+  );
 
   const overrides = useMemo(() => {
     const map: Record<string, { startDate: string; endDate: string }> = {};
@@ -181,10 +218,13 @@ export function LitterPlanTimelinePanel({
     return map;
   }, [drag, keyboardPreview]);
 
-  const geometry = timeline
-    ? buildInteractiveTimelineGeometry(timeline, overrides)
+  const geometry = displayTimeline
+    ? buildInteractiveTimelineGeometry(displayTimeline, overrides)
     : null;
-  const state = timelinePanelState(timeline, unavailable);
+  const state = timelinePanelState(displayTimeline, unavailable);
+  const showProgrammer =
+    !unavailable &&
+    Boolean(programmerAction && programmerInstanceKey && programmerBusinessDate);
 
   const activePreview = useMemo(() => {
     if (drag) {
@@ -232,6 +272,10 @@ export function LitterPlanTimelinePanel({
       dayDelta: activePreview.dayDelta,
     });
   }, [activePreview, feedback, timeline]);
+
+  const isProgrammerPreviewItem = (item: InteractiveTimelineItem) =>
+    item.statusLabel === "Aperçu — non enregistré" ||
+    item.publicKey.startsWith("programmer-preview-");
 
   const cancelPreview = useCallback(() => {
     dragRef.current = null;
@@ -551,8 +595,17 @@ export function LitterPlanTimelinePanel({
     }
   };
 
+  const resolveProgrammerPreview = (item: InteractiveTimelineItem) =>
+    programmerPreview && programmerPreview.publicKey === item.publicKey
+      ? programmerPreview
+      : null;
+
   const renderPoint = (item: InteractiveTimelineGeometryItem) => {
-    const type = kindLabel(item.kind);
+    const previewItem = isProgrammerPreviewItem(item);
+    const matchedPreview = previewItem ? resolveProgrammerPreview(item) : null;
+    const type = matchedPreview
+      ? litterPlanAdHocProgrammerPreviewTypeLabel(matchedPreview)
+      : kindLabel(item.kind);
     const symbol = item.kind === "milestone" ? "●" : "◇";
     const alignment =
       item.startPercent === 0
@@ -560,9 +613,10 @@ export function LitterPlanTimelinePanel({
         : item.startPercent === 100
           ? "-translate-x-full"
           : "-translate-x-1/2";
-    const interactive = item.interactionMode === "point_move";
+    const interactive = !previewItem && item.interactionMode === "point_move";
     const scheduleTarget = scheduleTargets[item.publicKey];
     const showPrecise =
+      !previewItem &&
       scheduleTarget &&
       item.readOnlyReason !== "viewer" &&
       item.readOnlyReason !== "terminal" &&
@@ -577,11 +631,21 @@ export function LitterPlanTimelinePanel({
         aria-label={`${type} : ${item.title}`}
         data-timeline-item={item.publicKey}
         data-timeline-status={item.statusLabel}
+        data-programmer-preview={previewItem ? "true" : undefined}
       >
-        <span aria-hidden="true" className="block text-center text-lg font-bold">
+        <span
+          aria-hidden="true"
+          className={`block text-center text-lg font-bold ${previewItem ? "opacity-60" : ""}`}
+        >
           {symbol}
         </span>
-        <div className="relative mt-1 rounded border bg-surface px-2 py-1.5 shadow-sm">
+        <div
+          className={`relative mt-1 rounded border px-2 py-1.5 shadow-sm ${
+            previewItem
+              ? "border-dashed border-accent/50 bg-accent/5"
+              : "bg-surface"
+          }`}
+        >
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
             {type}
           </p>
@@ -656,9 +720,16 @@ export function LitterPlanTimelinePanel({
 
   const renderWindow = (item: InteractiveTimelineGeometryItem) => {
     const width = Math.max(item.endPercent - item.startPercent, 1);
-    const interactive = item.interactionMode === "window_move_and_resize";
+    const previewItem = isProgrammerPreviewItem(item);
+    const matchedPreview = previewItem ? resolveProgrammerPreview(item) : null;
+    const type = matchedPreview
+      ? litterPlanAdHocProgrammerPreviewTypeLabel(matchedPreview)
+      : "Fenêtre";
+    const interactive =
+      !previewItem && item.interactionMode === "window_move_and_resize";
     const scheduleTarget = scheduleTargets[item.publicKey];
     const showPrecise =
+      !previewItem &&
       scheduleTarget &&
       item.readOnlyReason !== "viewer" &&
       item.readOnlyReason !== "terminal" &&
@@ -668,49 +739,82 @@ export function LitterPlanTimelinePanel({
       item.displayStartDate,
       item.displayEndDate,
     );
+    const recurringDetails = matchedPreview?.recurringDetails ?? null;
+    const preparedLine = recurringDetails
+      ? formatLitterPlanAdHocProgrammerPreparedLine({
+          total: recurringDetails.totalOccurrences,
+          initialPrepared: recurringDetails.initialPrepared,
+          horizonDays: recurringDetails.horizonDays,
+        })
+      : null;
 
     return (
       <li
         key={item.publicKey}
         className="absolute top-4 h-28"
         style={{ left: `${item.startPercent}%`, width: `${width}%` }}
-        aria-label={`Fenêtre : ${item.title}`}
+        aria-label={`${type} : ${item.title}`}
         data-timeline-window
         data-timeline-item={item.publicKey}
         data-timeline-status={item.statusLabel}
+        data-programmer-preview={previewItem ? "true" : undefined}
         data-start-percent={item.startPercent}
         data-end-percent={item.endPercent}
       >
         <div
-          className="absolute inset-x-0 top-7 h-3 rounded-full bg-accent/30"
+          className={`absolute inset-x-0 top-7 h-3 rounded-full ${
+            previewItem
+              ? "border border-dashed border-accent/60 bg-accent/20"
+              : "bg-accent/30"
+          }`}
           aria-hidden="true"
           data-timeline-window-band
         />
         <span
-          className="absolute left-0 top-6 h-5 border-l-2 border-accent"
           aria-hidden="true"
+          className="absolute left-0 top-6 h-5 w-1 -translate-x-1/2 rounded-full bg-foreground/70"
           data-timeline-window-start
         />
         <span
-          className="absolute right-0 top-6 h-5 border-r-2 border-accent"
           aria-hidden="true"
+          className="absolute right-0 top-6 h-5 w-1 translate-x-1/2 rounded-full bg-foreground/70"
           data-timeline-window-end
         />
-        <div className="absolute -top-2 left-0 min-w-40 rounded-md border border-current bg-background px-3 py-2 text-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide">Fenêtre</p>
-          <p className="mt-1 font-medium">{item.title}</p>
-          <p className="mt-1 text-xs">
-            Du {dateLabel(item.displayStartDate)} au{" "}
-            {dateLabel(item.displayEndDate)}
+        <div
+          className={`absolute left-0 top-12 min-w-[11rem] max-w-[16rem] rounded border px-2 py-1.5 shadow-sm ${
+            previewItem
+              ? "border-dashed border-accent/50 bg-accent/5"
+              : "bg-surface"
+          }`}
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+            {type}
           </p>
+          <p className="mt-1 text-sm font-medium">{item.title}</p>
+          {recurringDetails ? (
+            <ul className="mt-1 space-y-0.5 text-xs text-muted">
+              <li>{recurringDetails.cadenceLabel}</li>
+              <li>Créneaux : {recurringDetails.slotsLabel}</li>
+              <li>{recurringDetails.totalOccurrences} occurrences au total</li>
+              {preparedLine ? <li>{preparedLine}</li> : null}
+            </ul>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              {dateLabel(item.displayStartDate)} → {dateLabel(item.displayEndDate)}
+              {duration ? ` · ${duration} j` : ""}
+            </p>
+          )}
           <StatusBadge item={item} />
           {activePreview?.publicKey === item.publicKey ? (
             <div className="mt-2 space-y-1 text-xs">
               <p>
-                Du {dateLabel(activePreview.startDate)} au{" "}
+                Période actuelle : {dateLabel(item.retainedStartDate)} →{" "}
+                {dateLabel(item.retainedEndDate)}
+              </p>
+              <p>
+                Nouvelle période : {dateLabel(activePreview.startDate)} →{" "}
                 {dateLabel(activePreview.endDate)}
               </p>
-              <p>Durée : {duration ?? "?"} jours</p>
               <p>
                 {formatHandleDisplacementLabel(
                   activePreview.handle,
@@ -764,7 +868,9 @@ export function LitterPlanTimelinePanel({
               disabled={isPending}
               cursorClass="left-0 top-5 -translate-x-1/2 cursor-ew-resize"
               testId="window-start"
-              onPointerDown={(event) => beginDrag(event, item, "window-start")}
+              onPointerDown={(event) =>
+                beginDrag(event, item, "window-start")
+              }
               onKeyDown={(event) =>
                 onHandleKeyDown(event, item, "window-start")
               }
@@ -803,9 +909,24 @@ export function LitterPlanTimelinePanel({
       className="rounded-2xl border bg-surface p-5 sm:p-6"
       aria-labelledby="litter-plan-timeline-title"
     >
-      <h2 id="litter-plan-timeline-title" className="text-lg font-semibold">
-        Planning de la portée
-      </h2>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <h2 id="litter-plan-timeline-title" className="text-lg font-semibold">
+          Planning de la portée
+        </h2>
+        {showProgrammer &&
+        programmerAction &&
+        programmerInstanceKey &&
+        programmerBusinessDate ? (
+          <LitterPlanAdHocProgrammerDialog
+            key={programmerInstanceKey}
+            action={programmerAction}
+            instanceKey={programmerInstanceKey}
+            businessDate={programmerBusinessDate}
+            onPreviewChange={handleProgrammerPreviewChange}
+            onSuccess={setProgrammerMessage}
+          />
+        ) : null}
+      </div>
       <div aria-live="polite" className="sr-only">
         {liveMessage}
       </div>
@@ -814,13 +935,18 @@ export function LitterPlanTimelinePanel({
           {scheduleMessage}
         </p>
       ) : null}
+      {programmerMessage ? (
+        <p role="status" className="mt-2 whitespace-pre-line text-sm">
+          {programmerMessage}
+        </p>
+      ) : null}
       {state === "unavailable" ? (
         <p className="mt-2 text-sm text-muted">
           Planning momentanément indisponible
         </p>
-      ) : state === "available" && timeline ? (
+      ) : state === "available" && displayTimeline ? (
         <>
-          <p className="mt-1 text-sm text-muted">{timeline.title}</p>
+          <p className="mt-1 text-sm text-muted">{displayTimeline.title}</p>
           <div className="mt-5 space-y-5">
             {geometry ? (
               <div className="overflow-x-auto pb-2">
@@ -884,13 +1010,13 @@ export function LitterPlanTimelinePanel({
                 </ul>
               </section>
             ) : null}
-            {timeline.pendingAnchorItems.length > 0 ? (
+            {displayTimeline.pendingAnchorItems.length > 0 ? (
               <section className="rounded-lg border border-dashed p-4">
                 <h3 className="text-sm font-semibold">
                   En attente d’une date de référence
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm">
-                  {timeline.pendingAnchorItems.map((item) => (
+                  {displayTimeline.pendingAnchorItems.map((item) => (
                     <li key={item.publicKey}>
                       <span className="font-medium">
                         {kindLabel(item.kind)}
