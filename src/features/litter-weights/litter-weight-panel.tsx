@@ -231,6 +231,10 @@ function RoutineWeightDialog({
   const [weightDrafts, setWeightDrafts] = useState(() =>
     animals.map((animal) => ({ animalId: animal.id, weightDraft: "" })),
   );
+  const [sessionNoteDraft, setSessionNoteDraft] = useState("");
+  const [individualNoteDrafts, setIndividualNoteDrafts] = useState(() =>
+    animals.map((animal) => ({ animalId: animal.id, noteDraft: "" })),
+  );
   const [clientError, setClientError] = useState<string | null>(null);
   const [showPartialConfirmation, setShowPartialConfirmation] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -251,12 +255,26 @@ function RoutineWeightDialog({
     () => getLitterRoutineWeightEntryProgress(entries),
     [entries],
   );
+  const individualNoteDraftByAnimalId = useMemo(
+    () =>
+      new Map(
+        individualNoteDrafts.map(({ animalId, noteDraft }) => [
+          animalId,
+          noteDraft,
+        ]),
+      ),
+    [individualNoteDrafts],
+  );
   const submitAction = useCallback(
     async (previousState: LitterRoutineWeightsActionState, formData: FormData) => {
       const nextState = await action(previousState, formData);
       if (nextState.status === "success" && nextState.message) {
         setWeightDrafts(
           animals.map((animal) => ({ animalId: animal.id, weightDraft: "" })),
+        );
+        setSessionNoteDraft("");
+        setIndividualNoteDrafts(
+          animals.map((animal) => ({ animalId: animal.id, noteDraft: "" })),
         );
         setClientError(null);
         setShowPartialConfirmation(false);
@@ -332,6 +350,24 @@ function RoutineWeightDialog({
       current.map((draft) =>
         draft.animalId === animalId ? { ...draft, weightDraft } : draft,
       ),
+    );
+    setClientError(null);
+    setShowPartialConfirmation(false);
+  }
+
+  function updateSessionNoteDraft(noteDraft: string) {
+    setSessionNoteDraft(noteDraft);
+    setClientError(null);
+    setShowPartialConfirmation(false);
+  }
+
+  function updateIndividualNoteDraft(animalId: string, noteDraft: string) {
+    setIndividualNoteDrafts((current) =>
+      current.some((draft) => draft.animalId === animalId)
+        ? current.map((draft) =>
+            draft.animalId === animalId ? { ...draft, noteDraft } : draft,
+          )
+        : [...current, { animalId, noteDraft }],
     );
     setClientError(null);
     setShowPartialConfirmation(false);
@@ -417,6 +453,10 @@ function RoutineWeightDialog({
                     name="note"
                     rows={3}
                     maxLength={5000}
+                    value={sessionNoteDraft}
+                    onChange={(event) =>
+                      updateSessionNoteDraft(event.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -489,6 +529,15 @@ function RoutineWeightDialog({
                       className={inputClass}
                       name={`item_note_${index}`}
                       maxLength={5000}
+                      value={
+                        individualNoteDraftByAnimalId.get(entry.animalId) ?? ""
+                      }
+                      onChange={(event) =>
+                        updateIndividualNoteDraft(
+                          entry.animalId,
+                          event.target.value,
+                        )
+                      }
                     />
                   </div>
                 </details>

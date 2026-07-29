@@ -52,6 +52,8 @@ const puppyLabels = [
 ] as const;
 const historicalWeights = [600, 610, 620, 630] as const;
 const submittedWeights = [650, 660, 670] as const;
+const sessionNoteDraft = "Séance express à conserver";
+const invalidIndividualNoteDraft = "Note sans poids à conserver";
 const sql = (value: string) => runE2eSqlSync(value);
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const expectedGrowthComparisonSnapshot = {
@@ -364,6 +366,24 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
     await expect(dialog.getByTestId("routine-weight-progress")).toHaveText(
       "3 poids saisis sur 4",
     );
+    await dialog
+      .getByText("Date, heure et note de séance", { exact: true })
+      .click();
+    const measuredAtInput = dialog.getByLabel("Date et heure de la pesée");
+    const selectedMeasuredAt = await measuredAtInput.inputValue();
+    expect(selectedMeasuredAt).not.toBe("");
+    const sessionNoteInput = dialog.getByLabel("Note commune (facultative)");
+    await sessionNoteInput.fill(sessionNoteDraft);
+    const missingPuppyFieldset = dialog
+      .locator("fieldset")
+      .filter({ hasText: puppyLabels[3] });
+    await missingPuppyFieldset
+      .getByText("Ajouter une note", { exact: true })
+      .click();
+    const missingPuppyNoteInput = missingPuppyFieldset.getByLabel(
+      "Note individuelle (facultative)",
+    );
+    await missingPuppyNoteInput.fill(invalidIndividualNoteDraft);
     await expectNoHorizontalOverflow(page);
 
     await dialog.getByRole("button", { name: "Enregistrer", exact: true }).click();
@@ -378,6 +398,38 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
       commands: 0,
     });
 
+    await dialog
+      .getByRole("button", { name: "Enregistrer 3 poids", exact: true })
+      .click();
+    await expect(dialog.getByRole("alert")).toContainText(
+      "Une note individuelle doit être accompagnée d’un poids.",
+    );
+    expect(organizationWeightCounts()).toEqual({
+      sessions: 1,
+      measurements: 4,
+      commands: 0,
+    });
+    for (const [index, grams] of submittedWeights.entries()) {
+      await expect(weightInputs.nth(index)).toHaveValue(String(grams));
+    }
+    await expect(weightInputs.nth(3)).toHaveValue("");
+    await expect(sessionNoteInput).toHaveValue(sessionNoteDraft);
+    await expect(missingPuppyNoteInput).toHaveValue(invalidIndividualNoteDraft);
+    await expect(measuredAtInput).toHaveValue(selectedMeasuredAt);
+
+    await missingPuppyNoteInput.fill("");
+    await expect(
+      dialog.getByTestId("routine-weight-partial-confirmation"),
+    ).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Enregistrer", exact: true }).click();
+    await expect(
+      dialog.getByTestId("routine-weight-partial-confirmation"),
+    ).toBeVisible();
+    expect(organizationWeightCounts()).toEqual({
+      sessions: 1,
+      measurements: 4,
+      commands: 0,
+    });
     await dialog
       .getByRole("button", { name: "Enregistrer 3 poids", exact: true })
       .click();
@@ -397,6 +449,13 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
     expect(newSessionIds).toHaveLength(1);
     expect(newMeasurementIds).toHaveLength(3);
     expect(generatedRows.commands).toHaveLength(1);
+    expect(
+      sql(`
+        select note
+        from public.litter_weighing_sessions
+        where id=${q(newSessionIds[0]!)}::uuid;
+      `),
+    ).toBe(sessionNoteDraft);
     console.info(
       "LITTER_WEIGHT_QUICK_ENTRY_CREATED",
       JSON.stringify({
