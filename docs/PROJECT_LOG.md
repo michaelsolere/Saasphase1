@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `4969ce94b46f00cb728fb97aa849e4888f029640`.
-- La dernière migration incluse est `202607220003_maternal_temperature_drop_policy`.
+- SHA de base vérifié avant ce lot : `e389a6deaf461afa1675a1813de81809158ffb98`.
+- La dernière migration incluse est `202607290001_maternal_temperature_planning_link`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -723,3 +723,50 @@ L’état reste strictement dans le composant React, sans base, URL, cookie ou
 stockage navigateur. Les `recurring_task` et leurs occurrences restent exclus
 de la frise principale ; leur panneau dédié n’est pas modifié. Ce lot n’ajoute
 aucune migration, RPC, table, dépendance ou écriture métier.
+
+## Lot du 2026-07-29 — Température maternelle et occurrence planifiée
+
+Un item récurrent de modèle peut désormais déclarer explicitement
+`completion_fact_kind = maternal_temperature_observation`, exclusivement pour
+la combinaison `recurring_task` + `maternal_health` + `mother`. Le champ texte
+nullable est porté par les items de bibliothèque globale, les items des
+modèles d’organisation et le snapshot indépendant `litter_plan_items`. Les
+imports, créations, remplacements, duplications et applications de modèle le
+conservent ; les modèles existants et les programmations ad hoc restent à
+`null`.
+
+Lors de l’enregistrement atomique d’une nouvelle observation maternelle de type
+`temperature`, la RPC autoritative cherche uniquement les occurrences
+planifiées issues d’une série active et d’un snapshot explicitement configuré.
+Le jour civil est calculé dans le fuseau de programmation de la tâche. Parmi
+les occurrences du même jour, l’heure locale la plus proche est retenue ; une
+égalité stricte produit `ambiguous` et ne modifie aucune tâche. Aucun titre,
+description, UUID arbitraire ou ordre SQL n’intervient.
+
+Une relation append-only à clés étrangères composites lie au plus une
+observation à une tâche et au plus une tâche à une observation, avec la
+commande exacte de résolution. Elle est lisible par les membres de
+l’organisation, mais aucune écriture directe authentifiée n’est accordée. Un
+registre privé append-only conserve le payload et le résultat exact
+`linked`, `no_candidate`, `ambiguous` ou `not_applicable`. Le rejeu identique
+retourne la même observation et le même rapprochement ; une commande divergente
+est refusée. Un verrou transactionnel par organisation et portée sérialise les
+températures concurrentes.
+
+Lorsqu’une occurrence est retenue, la résolution réutilise
+`resolve_litter_care_task` : statut `done`, heure de l’observation, fuseau de
+l’observation et note explicite de satisfaction depuis le Journal. L’absence
+de candidate, l’ambiguïté, une tâche déjà traitée ou une série inactive
+n’annulent jamais l’observation réelle. Les vues Journal, Aujourd’hui,
+calendrier et fiche Portée utilisent la revalidation centralisée des tâches.
+
+L’éditeur n’affiche l’option **Validation automatique par le Journal** que pour
+une récurrence compatible. Il la retire du brouillon dès qu’un type
+incompatible est choisi, tandis que le serveur et les contraintes SQL restent
+autoritaires. La règle est aussi visible sur la fiche du modèle, dans la
+bibliothèque et dans l’aperçu avant application.
+
+Ce lot ne rapproche pas rétroactivement les observations existantes, ne crée
+aucun fait depuis le planning, n’ajoute aucun modèle canonique ou moteur
+polymorphe et ne couvre ni les pesées, ni les contractions, ni les autres
+observations maternelles.

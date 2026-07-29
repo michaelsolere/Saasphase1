@@ -234,6 +234,7 @@ async function main() {
       "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
       "tests/e2e/litter-plan-timeline-ui.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
+      "tests/e2e/maternal-temperature-planning-link.spec.ts",
     ]);
     const permitted = playwrightArgs.every((arg) => allowedSpecs.has(arg) || /^--(workers=1|retries=0)$/.test(arg));
     if (mode !== "reuse" || target.length !== 1 || !allowedSpecs.has(target[0]) || !permitted) {

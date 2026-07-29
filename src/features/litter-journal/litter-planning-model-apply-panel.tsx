@@ -107,6 +107,10 @@ function ItemDetails({ item }: { item: LitterPlanningModelApplicationItemDto }) 
       </p>
       <p>{item.scheduleLabel}</p>
       {item.timeLabel ? <p>{item.timeLabel}</p> : null}
+      <p>
+        Validation automatique par le Journal :{" "}
+        {item.journalCompletionLabel}
+      </p>
       <p className="font-medium text-foreground">{item.preview.label}</p>
     </div>
   );

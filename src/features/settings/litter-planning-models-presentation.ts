@@ -73,6 +73,7 @@ export type LitterPlanningModelItemPresentation = {
   priorityLabel: string;
   requiredLabel: string;
   selectedByDefaultLabel: string;
+  journalCompletionLabel: string;
 };
 
 export type LitterPlanningModelLibraryCard = {
@@ -230,6 +231,7 @@ function presentItem(input: {
   timeLabel: string | null;
   isRequired: boolean;
   isSelectedByDefault: boolean;
+  completionFactKind: string | null | undefined;
 }): LitterPlanningModelItemPresentation {
   return {
     key: input.key,
@@ -246,6 +248,10 @@ function presentItem(input: {
     selectedByDefaultLabel: input.isSelectedByDefault
       ? "Sélectionné par défaut"
       : "Non sélectionné par défaut",
+    journalCompletionLabel:
+      input.completionFactKind === "maternal_temperature_observation"
+        ? "Température maternelle enregistrée"
+        : "Aucune",
   };
 }
 
@@ -378,6 +384,7 @@ function presentLibraryModel(
       timeLabel,
       isRequired: item.isRequired,
       isSelectedByDefault: item.isSelectedByDefault,
+      completionFactKind: item.completionFactKind,
     });
   });
 
@@ -586,6 +593,7 @@ export async function loadLitterPlanningModelDetail(
       timeLabel,
       isRequired: item.isRequired,
       isSelectedByDefault: item.isSelectedByDefault,
+      completionFactKind: item.completionFactKind,
     });
   });
 

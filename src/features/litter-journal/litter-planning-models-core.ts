@@ -19,6 +19,9 @@ export const LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS = [
   "fixed_recurrence_day_count",
   "actual_birth",
 ] as const;
+export const LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS = [
+  "maternal_temperature_observation",
+] as const;
 export const LITTER_PLANNING_MODEL_PRIORITIES = [
   "normal",
   "important",
@@ -42,6 +45,8 @@ export type LitterPlanningModelRecurrenceKind =
   (typeof LITTER_PLANNING_MODEL_RECURRENCE_KINDS)[number];
 export type LitterPlanningModelRecurrenceEndKind =
   (typeof LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS)[number];
+export type LitterPlanningModelCompletionFactKind =
+  (typeof LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS)[number];
 
 export type LitterPlanningModelItemInput = {
   organizationTemplateId: string;
@@ -63,6 +68,7 @@ export type LitterPlanningModelItemInput = {
   initialMaterializationHorizonDays?: number;
   absoluteMaxOccurrences?: number;
   timeSlots?: string[];
+  completionFactKind?: LitterPlanningModelCompletionFactKind | null;
   displayOrder: number;
   isRequired: boolean;
   isSelectedByDefault: boolean;
@@ -154,6 +160,7 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
   const pointOffsetDays = item.pointOffsetDays;
   const windowStartsOffsetDays = item.windowStartsOffsetDays;
   const windowEndsOffsetDays = item.windowEndsOffsetDays;
+  const completionFactKind = item.completionFactKind ?? null;
   if (
     !organizationTemplateId ||
     !Number.isInteger(displayOrder) ||
@@ -166,7 +173,12 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
     pointLocalTime === null ||
     windowStartsLocalTime === null ||
     windowEndsLocalTime === null ||
-    (item.isRequired && !item.isSelectedByDefault)
+    (item.isRequired && !item.isSelectedByDefault) ||
+    (completionFactKind !== null &&
+      !LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS.includes(
+        completionFactKind as LitterPlanningModelCompletionFactKind,
+      )) ||
+    (completionFactKind !== null && item.itemKind !== "recurring_task")
   ) return null;
 
   if (item.itemKind === "window") {
@@ -291,6 +303,12 @@ function normalizeItem(value: unknown): LitterPlanningModelItemInput | null {
       initialMaterializationHorizonDays: initialMaterializationHorizonDays as number,
       absoluteMaxOccurrences: absoluteMaxOccurrences as number,
       timeSlots,
+      ...(completionFactKind === null
+        ? {}
+        : {
+            completionFactKind:
+              completionFactKind as LitterPlanningModelCompletionFactKind,
+          }),
       displayOrder: displayOrder as number,
       isRequired: item.isRequired,
       isSelectedByDefault: item.isSelectedByDefault,
@@ -393,6 +411,7 @@ function mapItem(
       row.initial_materialization_horizon_days ?? undefined,
     absoluteMaxOccurrences: row.absolute_max_occurrences ?? undefined,
     timeSlots: timeSlots,
+    completionFactKind: row.completion_fact_kind ?? undefined,
     displayOrder: row.display_order,
     isRequired: row.is_required,
     isSelectedByDefault: row.is_selected_by_default,

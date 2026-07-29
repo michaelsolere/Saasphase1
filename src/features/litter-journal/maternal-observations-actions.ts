@@ -1,13 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-
 import {
   recordMaternalObservation,
   type MaternalObservationSeverity,
   type MaternalObservationTemperatureUnit,
   type MaternalObservationType,
 } from "./maternal-observations";
+import { revalidateLitterCareTaskSchedulePaths } from "./litter-care-task-schedule-revalidate";
 
 export type MaternalObservationActionState = {
   status: "idle" | "success" | "error";
@@ -126,9 +125,12 @@ export async function recordMaternalObservationAction(
     return { status: "error", message: errorMessage(result.error.code) };
   }
 
-  revalidatePath("/litters/journal");
+  revalidateLitterCareTaskSchedulePaths(result.litterId);
   return {
     status: "success",
-    message: "L’observation maternelle a été enregistrée.",
+    message:
+      result.matchStatus === "linked"
+        ? "L’observation a été enregistrée et l’action prévue a été marquée comme réalisée."
+        : "L’observation a été enregistrée. Aucune action planifiée n’a été modifiée.",
   };
 }

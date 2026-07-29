@@ -8,6 +8,8 @@ import {
   LITTER_PLANNING_MODEL_PRIORITIES,
   LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS,
   LITTER_PLANNING_MODEL_RECURRENCE_KINDS,
+  LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS,
+  type LitterPlanningModelCompletionFactKind,
   type LitterPlanningModelAnchor,
   type LitterPlanningModelItemKind,
   type LitterPlanningModelPriority,
@@ -51,6 +53,7 @@ export type LitterPlanningModelLibraryItemSummary = {
   initialMaterializationHorizonDays?: number;
   absoluteMaxOccurrences?: number;
   timeSlots: string[];
+  completionFactKind?: LitterPlanningModelCompletionFactKind | null;
   displayOrder: number;
   isRequired: boolean;
   isSelectedByDefault: boolean;
@@ -209,6 +212,17 @@ function isRecurrenceKind(value: unknown): value is LitterPlanningModelRecurrenc
 
 function isRecurrenceEndKind(value: unknown): value is LitterPlanningModelRecurrenceEndKind {
   return typeof value === "string" && LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS.includes(value as LitterPlanningModelRecurrenceEndKind);
+}
+
+function isCompletionFactKind(
+  value: unknown,
+): value is LitterPlanningModelCompletionFactKind {
+  return (
+    typeof value === "string" &&
+    LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS.includes(
+      value as LitterPlanningModelCompletionFactKind,
+    )
+  );
 }
 
 const LOCAL_TIME = /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
@@ -396,6 +410,7 @@ export function mapLibraryItem(
   row: LibraryItemRow,
   slotRows?: LibraryItemTimeSlotRow[],
 ): LitterPlanningModelLibraryItemSummary | null {
+  const completionFactKind = row.completion_fact_kind ?? null;
   if (
     typeof row.library_template_code !== "string" ||
     row.library_template_code.length < 1 ||
@@ -429,7 +444,9 @@ export function mapLibraryItem(
       !isPostgresInteger(row.absolute_max_occurrences) || row.absolute_max_occurrences < 1 || row.absolute_max_occurrences > 500 ||
       (row.recurrence_end_kind === "fixed_end_offset" && (!isPostgresInteger(row.recurrence_ends_offset_days) || row.recurrence_day_count !== null || row.recurrence_ends_offset_days < row.recurrence_starts_offset_days)) ||
       (row.recurrence_end_kind === "fixed_recurrence_day_count" && (row.recurrence_ends_offset_days !== null || !isPostgresInteger(row.recurrence_day_count) || row.recurrence_day_count < 1 || row.recurrence_day_count > 500)) ||
-      (row.recurrence_end_kind === "actual_birth" && (row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null))
+      (row.recurrence_end_kind === "actual_birth" && (row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null)) ||
+      (completionFactKind !== null &&
+        !isCompletionFactKind(completionFactKind))
     ) return null;
     return {
       libraryTemplateCode: row.library_template_code, libraryTemplateVersion: row.library_template_version,
@@ -440,11 +457,12 @@ export function mapLibraryItem(
       ...(row.recurrence_day_count === null ? {} : { recurrenceDayCount: row.recurrence_day_count }),
       initialMaterializationHorizonDays: row.initial_materialization_horizon_days,
       absoluteMaxOccurrences: row.absolute_max_occurrences, timeSlots: slots,
+      completionFactKind,
       displayOrder: row.display_order, isRequired: row.is_required, isSelectedByDefault: row.is_selected_by_default,
     };
   }
 
-  if ((slotRows?.length ?? 0) > 0 || row.recurrence_kind !== null || row.recurrence_interval_days !== null || row.recurrence_starts_offset_days !== null || row.recurrence_end_kind !== null || row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null || row.initial_materialization_horizon_days !== null || row.absolute_max_occurrences !== null) return null;
+  if ((slotRows?.length ?? 0) > 0 || row.recurrence_kind !== null || row.recurrence_interval_days !== null || row.recurrence_starts_offset_days !== null || row.recurrence_end_kind !== null || row.recurrence_ends_offset_days !== null || row.recurrence_day_count !== null || row.initial_materialization_horizon_days !== null || row.absolute_max_occurrences !== null || completionFactKind !== null) return null;
 
   if (row.item_kind === "window") {
     if (
@@ -492,6 +510,7 @@ export function mapLibraryItem(
       ? {}
       : { windowEndsLocalTime: row.window_ends_local_time }),
     timeSlots: [],
+    completionFactKind: null,
     displayOrder: row.display_order,
     isRequired: row.is_required,
     isSelectedByDefault: row.is_selected_by_default,

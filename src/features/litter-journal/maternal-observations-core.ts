@@ -107,6 +107,11 @@ export type RecordMaternalObservationResult =
       observationId: string;
       litterId: string;
       motherId: string;
+      matchStatus:
+        | "linked"
+        | "no_candidate"
+        | "ambiguous"
+        | "not_applicable";
       replayed: boolean;
     }
   | ErrorResult;
@@ -205,6 +210,68 @@ function isTemperatureUnit(
     MATERNAL_OBSERVATION_TEMPERATURE_UNITS.includes(
       value as MaternalObservationTemperatureUnit,
     )
+  );
+}
+
+export type MaternalTemperaturePlanningCandidate = {
+  key: string;
+  scheduledLocalTime: string;
+};
+
+export type MaternalTemperaturePlanningCandidateSelection =
+  | { status: "selected"; candidate: MaternalTemperaturePlanningCandidate }
+  | { status: "no_candidate"; candidate: null }
+  | { status: "ambiguous"; candidate: null };
+
+function localTimeSeconds(value: string) {
+  const match = /^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * 3_600 + Number(match[2]) * 60 + Number(match[3] ?? 0);
+}
+
+/** Pure, stable nearest-slot selection. Inputs are never sorted or mutated. */
+export function selectMaternalTemperaturePlanningCandidate(
+  observedLocalTime: string,
+  candidates: readonly MaternalTemperaturePlanningCandidate[],
+): MaternalTemperaturePlanningCandidateSelection {
+  const observedSeconds = localTimeSeconds(observedLocalTime);
+  if (observedSeconds === null) {
+    return { status: "no_candidate", candidate: null };
+  }
+
+  let selected: MaternalTemperaturePlanningCandidate | null = null;
+  let selectedDistance = Number.POSITIVE_INFINITY;
+  let tied = false;
+  for (const candidate of candidates) {
+    const scheduledSeconds = localTimeSeconds(candidate.scheduledLocalTime);
+    if (scheduledSeconds === null) continue;
+    const distance = Math.abs(observedSeconds - scheduledSeconds);
+    if (distance < selectedDistance) {
+      selected = candidate;
+      selectedDistance = distance;
+      tied = false;
+    } else if (distance === selectedDistance) {
+      tied = true;
+    }
+  }
+
+  if (!selected) return { status: "no_candidate", candidate: null };
+  if (tied) return { status: "ambiguous", candidate: null };
+  return { status: "selected", candidate: selected };
+}
+
+function isMatchStatus(
+  value: unknown,
+): value is
+  | "linked"
+  | "no_candidate"
+  | "ambiguous"
+  | "not_applicable" {
+  return (
+    value === "linked" ||
+    value === "no_candidate" ||
+    value === "ambiguous" ||
+    value === "not_applicable"
   );
 }
 
@@ -427,7 +494,8 @@ export async function recordMaternalObservationCore(
     result.outcome !== "success" ||
     !result.observation_id ||
     !result.litter_id ||
-    !result.mother_id
+    !result.mother_id ||
+    !isMatchStatus(result.match_status)
   ) {
     return recordFailure(result?.reason ?? null);
   }
@@ -437,6 +505,7 @@ export async function recordMaternalObservationCore(
     observationId: result.observation_id,
     litterId: result.litter_id,
     motherId: result.mother_id,
+    matchStatus: result.match_status,
     replayed: result.replayed === true,
   };
 }

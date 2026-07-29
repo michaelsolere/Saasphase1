@@ -99,6 +99,12 @@ function ItemDetailsList({
               </dt>
               <dd className="mt-1 font-medium">{item.selectedByDefaultLabel}</dd>
             </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Validation automatique par le Journal
+              </dt>
+              <dd className="mt-1 font-medium">{item.journalCompletionLabel}</dd>
+            </div>
           </dl>
         </li>
       ))}

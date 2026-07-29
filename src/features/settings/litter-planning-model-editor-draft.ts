@@ -1,5 +1,6 @@
 import {
   LITTER_PLANNING_MODEL_ANCHORS,
+  LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS,
   LITTER_PLANNING_MODEL_ITEM_KINDS,
   LITTER_PLANNING_MODEL_PRIORITIES,
   LITTER_PLANNING_MODEL_RECURRENCE_END_KINDS,
@@ -7,6 +8,7 @@ import {
   parseLitterPlanningModelItems,
   type LitterPlanningModel,
   type LitterPlanningModelAnchor,
+  type LitterPlanningModelCompletionFactKind,
   type LitterPlanningModelItem,
   type LitterPlanningModelItemInput,
   type LitterPlanningModelItemKind,
@@ -56,6 +58,7 @@ export type LitterPlanningModelEditorItemDraft = {
   initialMaterializationHorizonDays: string;
   absoluteMaxOccurrences: string;
   timeSlots: string[];
+  completionFactKind: LitterPlanningModelCompletionFactKind | null;
   displayOrder: number;
   isRequired: boolean;
   isSelectedByDefault: boolean;
@@ -187,7 +190,15 @@ function parseEditorItemDraft(
     !value.timeSlots.every(isStringValue) ||
     !isNonNegativeInteger(value.displayOrder) ||
     !isBooleanValue(value.isRequired) ||
-    !isBooleanValue(value.isSelectedByDefault)
+    !isBooleanValue(value.isSelectedByDefault) ||
+    !(
+      value.completionFactKind === undefined ||
+      value.completionFactKind === null ||
+      isClosedString(
+        value.completionFactKind,
+        LITTER_PLANNING_MODEL_COMPLETION_FACT_KINDS,
+      )
+    )
   ) {
     return null;
   }
@@ -213,6 +224,7 @@ function parseEditorItemDraft(
     initialMaterializationHorizonDays: value.initialMaterializationHorizonDays,
     absoluteMaxOccurrences: value.absoluteMaxOccurrences,
     timeSlots: [...value.timeSlots],
+    completionFactKind: value.completionFactKind ?? null,
     displayOrder: value.displayOrder,
     isRequired: value.isRequired,
     isSelectedByDefault: value.isSelectedByDefault,
@@ -323,6 +335,7 @@ function defaultRecurringFields() {
     initialMaterializationHorizonDays: "7",
     absoluteMaxOccurrences: "30",
     timeSlots: ["08:00"],
+    completionFactKind: null as LitterPlanningModelCompletionFactKind | null,
   };
 }
 
@@ -411,6 +424,7 @@ function itemToDraft(
       item.timeSlots && item.timeSlots.length > 0
         ? [...item.timeSlots]
         : [...recurring.timeSlots],
+    completionFactKind: item.completionFactKind ?? null,
     displayOrder: item.displayOrder,
     isRequired: item.isRequired,
     isSelectedByDefault: item.isSelectedByDefault,
@@ -609,6 +623,7 @@ export function convertLitterPlanningModelEditorItemKind(
         item.itemKind === "milestone" || item.itemKind === "task"
           ? item.pointLocalTime
           : "",
+      completionFactKind: null,
     };
   }
 
@@ -624,6 +639,7 @@ export function convertLitterPlanningModelEditorItemKind(
       windowEndsOffsetDays: start,
       windowStartsLocalTime: "",
       windowEndsLocalTime: "",
+      completionFactKind: null,
     };
   }
 
@@ -635,6 +651,7 @@ export function convertLitterPlanningModelEditorItemKind(
       item.itemKind === "window"
         ? item.windowStartsOffsetDays || "0"
         : item.pointOffsetDays || "0",
+    completionFactKind: null,
   };
 }
 
@@ -911,6 +928,9 @@ function draftItemToPayloadCandidate(
         ? {}
         : { absoluteMaxOccurrences }),
       timeSlots,
+      ...(item.completionFactKind === null
+        ? {}
+        : { completionFactKind: item.completionFactKind }),
       displayOrder: item.displayOrder,
       isRequired: item.isRequired,
       isSelectedByDefault: item.isSelectedByDefault,
@@ -1075,6 +1095,21 @@ export function validateLitterPlanningModelEditorDraft(
       errors.push({
         path: `items.${item.key}.organizationTemplateId`,
         message: `« ${template.title} » est incompatible avec l’espèce ou la race du modèle.`,
+      });
+    }
+
+    if (
+      item.completionFactKind === "maternal_temperature_observation" &&
+      (
+        item.itemKind !== "recurring_task" ||
+        template?.category !== "maternal_health" ||
+        template.targetScope !== "mother"
+      )
+    ) {
+      errors.push({
+        path: `items.${item.key}.completionFactKind`,
+        message:
+          "La validation par température exige un suivi récurrent de santé maternelle ciblant la mère.",
       });
     }
 
