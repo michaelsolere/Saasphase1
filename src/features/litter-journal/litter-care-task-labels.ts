@@ -15,6 +15,7 @@ export const litterCareTaskCategoryLabels: Record<
   offspring_weight: "Poids des petits",
   offspring_health: "Santé des petits",
   offspring_feeding: "Alimentation des petits",
+  deworming: "Vermifuges",
   socialization: "Socialisation",
   veterinary: "Vétérinaire",
   identification: "Identification",

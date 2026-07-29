@@ -899,3 +899,41 @@ RPC, table, colonne, brouillon persistant, autosauvegarde, règle d’éligibili
 calcul médical, alerte, prédiction, modification de cadence, graphique ou
 dépendance. Le dernier poids est descriptif seulement : aucune évolution,
 différence ou recommandation n’est calculée.
+
+## Lot du 2026-07-30 — Soins postnatals essentiels jusqu’à huit semaines
+
+La catégorie autoritative `deworming`, affichée **Vermifuges**, est disponible
+dans les templates élémentaires, les modèles composés, leurs snapshots, les
+séries, les tâches matérialisées et les programmations ad hoc. Les données
+historiques ne sont pas reclassées : le template
+`dog-deworm-mother-before-birth` conserve notamment sa catégorie maternelle et
+ses snapshots existants.
+
+La bibliothèque globale propose désormais le modèle canin facultatif et
+modifiable **Soins postnatals — essentiels jusqu’à 8 semaines**. Il contient
+exactement quatre éléments sélectionnés par défaut mais non obligatoires :
+
+1. contrôle post-partum de la mère à J1 ;
+2. vermifuges des chiots à J14, J28, J42 et J56 ;
+3. démarrage de la transition alimentaire à J21 ;
+4. une seule fenêtre vétérinaire collective de J49 à J56 regroupant examen,
+   identification et vaccination.
+
+L’application complète produit donc quatre éléments de planning et sept
+occurrences concrètes. Elle n’ajoute ni période de lactation, ni progression
+générale du sevrage, ni préparation des départs, ni jalon abstrait des huit
+semaines, ni socialisation. Elle ne prescrit aucun produit, molécule ou dosage,
+ne pose aucun diagnostic et ne valide automatiquement aucun acte depuis un fait
+du Journal.
+
+Les quatre éléments utilisent exclusivement l’ancre `offspring_age`, elle-même
+fondée sur la naissance réelle. Avant la naissance, l’import et l’application
+restent possibles mais les snapshots demeurent en attente d’ancre : aucune date
+n’est inventée depuis la naissance prévue et aucune tâche n’est matérialisée.
+L’import seul ne crée jamais de planning et aucune application automatique
+n’est ajoutée. Le principe reste : le modèle propose, la portée instancie,
+l’éleveur ajuste et le Journal constate.
+
+Les migrations de ce lot ne concernent que le vocabulaire de catégorie et le
+catalogue global. Elles devront être appliquées à la stack personnelle
+uniquement après fusion, avec la sauvegarde et l’instruction séparée prévues.

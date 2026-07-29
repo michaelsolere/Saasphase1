@@ -133,6 +133,7 @@ const TIMELINE_CATEGORY_ORDER: LitterCareTaskCategory[] = [
   "offspring_weight",
   "offspring_health",
   "offspring_feeding",
+  "deworming",
   "socialization",
   "identification",
   "vaccination",

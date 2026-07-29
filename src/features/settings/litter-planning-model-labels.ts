@@ -186,16 +186,21 @@ export function formatLitterPlanningModelRecurrence({
     const days = recurrenceDayCount ?? 0;
     ending = `pendant ${days} ${dayWord(days)} de suivi`;
   } else {
-    ending = `jusqu’à ${formatLitterPlanningModelPointOffset(
-      anchorType,
-      endsOffsetDays ?? startsOffsetDays,
-    ).toLowerCase()}`;
+    ending =
+      anchorType === "offspring_age"
+        ? `jusqu’au ${ordinalDay(endsOffsetDays ?? startsOffsetDays)} jour de vie`
+        : `jusqu’à ${formatLitterPlanningModelPointOffset(
+            anchorType,
+            endsOffsetDays ?? startsOffsetDays,
+          ).toLowerCase()}`;
   }
 
   const start =
     startsOffsetDays === 0
       ? ""
-      : ` à partir de ${formatLitterPlanningModelPointOffset(anchorType, startsOffsetDays).toLowerCase()}`;
+      : anchorType === "offspring_age"
+        ? ` à partir du ${ordinalDay(startsOffsetDays)} jour de vie`
+        : ` à partir de ${formatLitterPlanningModelPointOffset(anchorType, startsOffsetDays).toLowerCase()}`;
 
   return `${frequency}${slots}${start} ${ending}`.replace(/\s+/g, " ").trim();
 }
@@ -227,6 +232,8 @@ export function formatLitterPlanningModelFamilyLabel(familyCode: string): string
       return "Gestation";
     case "dog-pre-whelping":
       return "Pré-mise-bas";
+    case "dog-postnatal":
+      return "Postnatal";
     default:
       return familyCode
         .split("-")
@@ -244,6 +251,8 @@ export function formatLitterPlanningModelVariantLabel(variantCode: string): stri
       return "Variante avec herpèsvirose";
     case "temperature-monitoring":
       return "Surveillance des températures";
+    case "essential-care":
+      return "Soins essentiels";
     default:
       return `Variante ${variantCode}`;
   }

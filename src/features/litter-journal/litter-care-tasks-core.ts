@@ -25,6 +25,7 @@ export const LITTER_CARE_TASK_CATEGORIES = [
   "offspring_weight",
   "offspring_health",
   "offspring_feeding",
+  "deworming",
   "socialization",
   "veterinary",
   "identification",
