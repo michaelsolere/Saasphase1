@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { buildLitterWeightEntryHref } from "./litter-routine-weight-entry";
 import type { LitterWeighingTodayProjection } from "./litter-weighing-today";
 
 function formatCivilDate(value: string) {
@@ -41,12 +42,18 @@ function detail(projection: LitterWeighingTodayProjection) {
 export function LitterWeighingTodayCard({
   projection,
   context,
+  canWrite,
 }: {
   projection: LitterWeighingTodayProjection;
   context: "journal" | "organization";
+  canWrite: boolean;
 }) {
-  const href =
-    context === "journal"
+  const canOpenEntry =
+    canWrite &&
+    (projection.state === "due_today" || projection.state === "overdue");
+  const href = canOpenEntry
+    ? buildLitterWeightEntryHref(projection.litterId)
+    : context === "journal"
       ? "#litter-weights"
       : `/litters/journal?litter=${encodeURIComponent(projection.litterId)}#litter-weights`;
   const description = detail(projection);
@@ -76,7 +83,7 @@ export function LitterWeighingTodayCard({
             href={href}
             className="text-sm font-semibold text-accent hover:underline"
           >
-            Ouvrir les pesées
+            {canOpenEntry ? "Saisir la pesée" : "Ouvrir les pesées"}
           </Link>
         </div>
       </div>

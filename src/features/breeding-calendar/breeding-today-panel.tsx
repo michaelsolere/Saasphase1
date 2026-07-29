@@ -204,6 +204,7 @@ function TodaySection({
   weighings,
   litterNames,
   active,
+  canWriteWeighings,
   quickActionsByTaskId,
   scheduleActionsByTaskId,
 }: {
@@ -212,6 +213,7 @@ function TodaySection({
   weighings: readonly LitterWeighingTodayProjection[];
   litterNames: Record<string, string>;
   active: boolean;
+  canWriteWeighings: boolean;
   quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>;
   scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding>;
 }) {
@@ -239,6 +241,7 @@ function TodaySection({
             key={`${projection.litterId}:${projection.state}:${projection.scheduledOn ?? "extra"}`}
             projection={projection}
             context="organization"
+            canWrite={canWriteWeighings}
           />
         ))}
       </ul>
@@ -405,6 +408,7 @@ export function BreedingTodayPanel({
   reproductiveCycles = [],
   reminders = [],
   canManageReminders = false,
+  canWriteWeighings = false,
   reminderLoadFailed = false,
   quickActions = [],
   scheduleActions = [],
@@ -420,6 +424,7 @@ export function BreedingTodayPanel({
   reproductiveCycles?: readonly ReproductiveCycleBreedingCalendarEvent[];
   reminders?: CalendarReminderSummary[];
   canManageReminders?: boolean;
+  canWriteWeighings?: boolean;
   reminderLoadFailed?: boolean;
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActionBinding[];
@@ -484,6 +489,7 @@ export function BreedingTodayPanel({
                   weighings={dueWeighings}
                   litterNames={litterNames}
                   active
+                  canWriteWeighings={canWriteWeighings}
                   quickActionsByTaskId={quickActionsByTaskId}
                   scheduleActionsByTaskId={scheduleActionsByTaskId}
                 />
@@ -493,6 +499,7 @@ export function BreedingTodayPanel({
                   weighings={overdueWeighings}
                   litterNames={litterNames}
                   active
+                  canWriteWeighings={canWriteWeighings}
                   quickActionsByTaskId={quickActionsByTaskId}
                   scheduleActionsByTaskId={scheduleActionsByTaskId}
                 />
@@ -502,6 +509,7 @@ export function BreedingTodayPanel({
                   weighings={[]}
                   litterNames={litterNames}
                   active
+                  canWriteWeighings={canWriteWeighings}
                   quickActionsByTaskId={quickActionsByTaskId}
                   scheduleActionsByTaskId={scheduleActionsByTaskId}
                 />
@@ -511,6 +519,7 @@ export function BreedingTodayPanel({
                   weighings={handledWeighings}
                   litterNames={litterNames}
                   active={false}
+                  canWriteWeighings={canWriteWeighings}
                   quickActionsByTaskId={quickActionsByTaskId}
                   scheduleActionsByTaskId={scheduleActionsByTaskId}
                 />

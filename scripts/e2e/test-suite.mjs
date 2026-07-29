@@ -60,6 +60,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/litter-weighing-session-comparison.spec.ts",
   "tests/e2e/litter-weighing-session-statistics.spec.ts",
   "tests/e2e/litter-weight-adjustment-actions-core.spec.ts",
+  "tests/e2e/litter-weight-quick-entry-pure.spec.ts",
   "tests/e2e/litter-weights-actions-core.spec.ts",
   "tests/e2e/maternal-temperature-chart-model.spec.ts",
   "tests/e2e/maternal-temperature-planning-link-pure.spec.ts",

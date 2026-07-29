@@ -113,7 +113,7 @@ function TodayTask({ task, active, quickActions, scheduleActions }: { task: Litt
   );
 }
 
-function TodaySection({ title, tasks, weighings, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; weighings: readonly LitterWeighingTodayProjection[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding> }) {
+function TodaySection({ title, tasks, weighings, active, canWriteWeighings, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; weighings: readonly LitterWeighingTodayProjection[]; active: boolean; canWriteWeighings: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding> }) {
   const count = tasks.length + weighings.length;
   if (count === 0) return null;
 
@@ -127,6 +127,7 @@ function TodaySection({ title, tasks, weighings, active, quickActionsByTaskId, s
             key={`${projection.litterId}:${projection.state}:${projection.scheduledOn ?? "extra"}`}
             projection={projection}
             context="journal"
+            canWrite={canWriteWeighings}
           />
         ))}
       </ul>
@@ -141,6 +142,7 @@ export function LitterCareTodayPanel({
   quickActions = [],
   scheduleActions = [],
   weighingProjections = [],
+  canWriteWeighings = false,
   weighingUnavailable = false,
   unavailable = false,
 }: {
@@ -150,6 +152,7 @@ export function LitterCareTodayPanel({
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActionBinding[];
   weighingProjections?: readonly LitterWeighingTodayProjection[];
+  canWriteWeighings?: boolean;
   weighingUnavailable?: boolean;
   unavailable?: boolean;
 }) {
@@ -183,10 +186,10 @@ export function LitterCareTodayPanel({
             <p className="mt-5 text-sm text-muted">Rien à signaler aujourd’hui pour cette portée.</p>
           ) : (
             <div className="mt-5 space-y-6">
-              <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} weighings={dueWeighings} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-              <TodaySection title="En retard" tasks={projection.overdue} weighings={overdueWeighings} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-              <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} weighings={[]} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-              <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} weighings={handledWeighings} active={false} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} weighings={dueWeighings} active canWriteWeighings={canWriteWeighings} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="En retard" tasks={projection.overdue} weighings={overdueWeighings} active canWriteWeighings={canWriteWeighings} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} weighings={[]} active canWriteWeighings={canWriteWeighings} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} weighings={handledWeighings} active={false} canWriteWeighings={canWriteWeighings} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
             </div>
           )}
         </>

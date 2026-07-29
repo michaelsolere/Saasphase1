@@ -241,6 +241,7 @@ export default async function BreedingTodayPage() {
         )}
         reminders={reminders}
         canManageReminders={canWrite}
+        canWriteWeighings={canWrite}
         reminderLoadFailed={reminderLoadFailed}
         weighingProjections={weighingProjections}
         weighingUnavailable={weighingUnavailable}
