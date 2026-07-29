@@ -225,6 +225,8 @@ export function formatLitterPlanningModelFamilyLabel(familyCode: string): string
   switch (familyCode) {
     case "dog-gestation":
       return "Gestation";
+    case "dog-pre-whelping":
+      return "Pré-mise-bas";
     default:
       return familyCode
         .split("-")
@@ -240,6 +242,8 @@ export function formatLitterPlanningModelVariantLabel(variantCode: string): stri
       return "Variante standard";
     case "herpesvirose":
       return "Variante avec herpèsvirose";
+    case "temperature-monitoring":
+      return "Surveillance des températures";
     default:
       return `Variante ${variantCode}`;
   }

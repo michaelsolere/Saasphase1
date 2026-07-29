@@ -41,7 +41,11 @@ const runnerLockPath = resolve(repoRoot, ".e2e-runner.lock");
 const runnerFlags = new Set(["--reuse", "--stop", "--preserve-demo"]);
 
 const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
-const mode = rawArgs.includes("--stop") ? "stop" : rawArgs.includes("--reuse") ? "reuse" : "ephemeral";
+const mode = rawArgs.includes("--stop")
+  ? "stop"
+  : rawArgs.includes("--reuse") || rawArgs.includes("--preserve-demo")
+    ? "reuse"
+    : "ephemeral";
 const preserveDemo = rawArgs.includes("--preserve-demo");
 const playwrightArgs = rawArgs.filter((arg) => !runnerFlags.has(arg));
 
@@ -231,6 +235,7 @@ async function main() {
     const target = playwrightArgs.filter((arg) => arg.endsWith(".spec.ts"));
     const allowedSpecs = new Set([
       "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts",
+      "tests/e2e/dog-pre-whelping-temperature-model.spec.ts",
       "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
       "tests/e2e/litter-plan-timeline-ui.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
