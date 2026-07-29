@@ -123,9 +123,9 @@ function ErrorMessage() {
 export default async function LitterJournalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ litter?: string }>;
+  searchParams: Promise<{ litter?: string; weightEntry?: string }>;
 }) {
-  const { litter: requestedLitterId } = await searchParams;
+  const { litter: requestedLitterId, weightEntry } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -524,6 +524,10 @@ export default async function LitterJournalPage({
           animalIds: eligibleLitterWeightAnimals.map((animal) => animal.id),
         })
       : null;
+  const initialWeightEntryOpen =
+    weightEntry === "1" &&
+    requestedLitterId !== undefined &&
+    requestedLitterId === selectedLitterId;
   const litterWeightAdjustmentHistoryLoaded = litterWeightAdjustmentHistory?.outcome === "success" ? litterWeightAdjustmentHistory : null;
   const routineMeasurements = litterWeightHistoryLoaded?.measurements.filter((measurement) => measurement.type === "routine" && measurement.sessionId !== null) ?? [];
   const measurementAdjustmentActions = litterWeightCanWrite && selectedLitterId
@@ -664,6 +668,7 @@ export default async function LitterJournalPage({
             litterWeightTodayProjections={litterWeightTodayProjections}
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
+            initialWeightEntryOpen={initialWeightEntryOpen}
             litterWeightMeasurementAdjustmentActions={measurementAdjustmentActions}
             litterWeightSessionCancellationActions={sessionCancellationActions}
             litterWeightAdjustmentHistory={litterWeightAdjustmentHistoryLoaded?.entries ?? []}

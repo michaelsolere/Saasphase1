@@ -264,6 +264,7 @@ export function LitterJournalDashboard({
   litterWeightTodayProjections,
   litterWeightRole,
   litterWeightAction,
+  initialWeightEntryOpen,
   litterWeightMeasurementAdjustmentActions,
   litterWeightSessionCancellationActions,
   litterWeightAdjustmentHistory,
@@ -382,6 +383,7 @@ export function LitterJournalDashboard({
     previousState: LitterRoutineWeightsActionState,
     formData: FormData,
   ) => Promise<LitterRoutineWeightsActionState>) | null;
+  initialWeightEntryOpen: boolean;
   litterWeightMeasurementAdjustmentActions: LitterWeightMeasurementAdjustmentAction[];
   litterWeightSessionCancellationActions: LitterWeightSessionCancellationAction[];
   litterWeightAdjustmentHistory: LitterWeightAdjustmentHistoryEntry[];
@@ -483,6 +485,7 @@ export function LitterJournalDashboard({
         todayDate={litterCareTodayDate}
         todayLocalTime={litterCareTodayLocalTime}
         weighingProjections={litterWeightTodayProjections}
+        canWriteWeighings={litterWeightAction !== null}
         weighingUnavailable={litterWeightsLoadError}
         unavailable={litterCareTasksLoadError}
       />
@@ -536,6 +539,7 @@ export function LitterJournalDashboard({
         weighingSchedulePolicy={litterWeightSchedulePolicy}
         role={litterWeightRole}
         action={litterWeightAction}
+        initialWeightEntryOpen={initialWeightEntryOpen}
         measurementAdjustmentActions={litterWeightMeasurementAdjustmentActions}
         sessionCancellationActions={litterWeightSessionCancellationActions}
         adjustmentHistory={litterWeightAdjustmentHistory}

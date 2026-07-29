@@ -866,3 +866,36 @@ relation séance–tâche, série récurrente, modèle canonique, migration, RPC
 table, colonne, création automatique de séance ou validation manuelle. Il ne
 modifie aucune cadence, règle d’éligibilité, courbe, statistique, comparaison,
 interpolation ou interprétation médicale.
+
+## Lot du 2026-07-29 — Saisie mobile express des pesées
+
+Le dialogue **Nouvelle pesée** du Journal propose désormais une saisie compacte
+adaptée au téléphone. Le premier champ de poids reçoit le focus à l’ouverture,
+le clavier numérique est demandé et la touche Entrée passe au chiot suivant ;
+sur le dernier champ, elle conserve la soumission normale. La progression
+affiche en permanence le nombre de poids entiers valides saisis. Chaque ligne
+présente l’identité publique du chiot, ses détails utiles et son dernier poids
+actif déjà chargé, avec repli sur le poids de naissance. La date, l’heure, la
+note de séance et les notes individuelles restent accessibles dans des zones
+repliables sans effacer leur contenu.
+
+Une tentative sans poids valide est arrêtée dans le navigateur et recentre le
+premier champ. Lorsqu’au moins un chiot reste non pesé, une confirmation
+non modale nomme les absents et propose soit de compléter la séance, soit
+d’enregistrer exactement les poids présents. Toute modification d’un poids
+invalide cette confirmation. La séance partielle reste pleinement autorisée :
+ce contrôle est uniquement une aide UX et ne modifie aucune validation métier.
+
+Les cartes de pesée `due_today` et `overdue` des vues **Aujourd’hui** ouvrent
+directement le dialogue pour les rôles autorisés à écrire, au moyen de
+`weightEntry=1`. L’intention n’est consommée que pour la portée explicitement
+sélectionnée, puis le paramètre est retiré avec l’API History en conservant les
+autres paramètres et l’ancre `#litter-weights`. Les cartes `handled_today` et
+les rôles `viewer` restent de simples accès de consultation.
+
+Ce lot conserve intégralement `recordLitterRoutineWeightsActionCore` comme
+unique autorité d’enregistrement. Il n’ajoute ni commande, lecture, migration,
+RPC, table, colonne, brouillon persistant, autosauvegarde, règle d’éligibilité,
+calcul médical, alerte, prédiction, modification de cadence, graphique ou
+dépendance. Le dernier poids est descriptif seulement : aucune évolution,
+différence ou recommandation n’est calculée.
