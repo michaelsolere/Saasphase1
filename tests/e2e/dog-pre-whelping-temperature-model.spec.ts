@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database, Json } from "../../src/types/database.types";
@@ -13,7 +13,7 @@ test.setTimeout(360_000);
 
 type Supabase = SupabaseClient<Database>;
 
-const organizationId = "20000000-0000-4000-8000-000000000001";
+const durableOrganizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const modelCode = "dog-pre-whelping-temperature-monitoring";
 const prefix = "d7290003-0000-4000-8000-";
@@ -21,8 +21,10 @@ const like = `${prefix}%`;
 const expectedBirthDate = "2026-08-03";
 
 const ids = {
-  mother: `${prefix}000000000001`,
-  litter: `${prefix}000000000002`,
+  organization: `${prefix}000000000001`,
+  membership: `${prefix}000000000002`,
+  mother: `${prefix}000000000003`,
+  litter: `${prefix}000000000004`,
   importCommand: `${prefix}000000000010`,
   applyCommand: `${prefix}000000000011`,
   observationCommand: `${prefix}000000000012`,
@@ -48,95 +50,92 @@ function cleanup() {
     begin;
     set local session_replication_role = replica;
 
-    create temporary table cleanup_models (id uuid primary key) on commit drop;
-    create temporary table cleanup_templates (id uuid primary key) on commit drop;
-
-    insert into cleanup_models (id)
-    select model.id
-    from public.litter_planning_models model
-    where model.organization_id = ${q(organizationId)}::uuid
-      and model.library_model_code = ${q(modelCode)}
-      and model.library_model_version = 1;
-
-    insert into cleanup_templates (id)
-    select distinct (entry.value ->> 'templateId')::uuid
-    from public.litter_planning_model_library_import_commands command
-    cross join lateral jsonb_array_elements(command.elementary_result) entry(value)
-    where command.organization_id = ${q(organizationId)}::uuid
-      and command.selection @> jsonb_build_array(
-        jsonb_build_object('code', ${q(modelCode)}, 'version', 1)
-      )
-      and entry.value ->> 'state' = 'imported';
-
     delete from public.maternal_observation_task_links
-    where litter_id::text like ${q(like)} or id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or id::text like ${q(like)};
     delete from public.maternal_observation_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.maternal_observations
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
 
     delete from public.litter_care_task_schedule_changes
-    where litter_id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_care_task_schedule_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.litter_care_tasks
-    where litter_id::text like ${q(like)} or id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or id::text like ${q(like)};
 
     delete from public.litter_plan_series_time_slots slot
     using public.litter_plan_series series
     where slot.series_id = series.id
-      and series.litter_id::text like ${q(like)};
+      and (
+        series.organization_id = ${q(ids.organization)}::uuid
+        or series.litter_id::text like ${q(like)}
+      );
     delete from public.litter_plan_series_materialization_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.litter_plan_series_state_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.litter_plan_anchor_recalculation_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.litter_plan_series
-    where litter_id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plan_application_commands
-    where litter_id::text like ${q(like)}
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
     delete from public.litter_plan_items
-    where litter_id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plans
-    where litter_id::text like ${q(like)};
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
 
-    delete from public.litter_planning_model_item_time_slots slot
-    using public.litter_planning_model_items item, cleanup_models model
-    where slot.model_item_id = item.id
-      and item.model_id = model.id;
-    delete from public.litter_planning_model_commands command
-    using cleanup_models model
-    where command.model_id = model.id;
-    delete from public.litter_planning_model_items item
-    using cleanup_models model
-    where item.model_id = model.id;
-    delete from public.litter_planning_models model
-    using cleanup_models cleanup
-    where model.id = cleanup.id;
+    delete from public.litter_planning_model_item_time_slots
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_planning_model_commands
+    where organization_id = ${q(ids.organization)}::uuid
+       or client_command_id::text like ${q(like)};
+    delete from public.litter_planning_model_items
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_planning_models
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_planning_model_library_import_commands
+    where organization_id = ${q(ids.organization)}::uuid
+       or client_command_id::text like ${q(like)};
+    delete from public.litter_care_task_templates
+    where organization_id = ${q(ids.organization)}::uuid
+       or id::text like ${q(like)};
 
-    delete from public.litter_planning_model_library_import_commands command
-    where command.organization_id = ${q(organizationId)}::uuid
-      and (
-        command.client_command_id::text like ${q(like)}
-        or command.selection @> jsonb_build_array(
-          jsonb_build_object('code', ${q(modelCode)}, 'version', 1)
-        )
-      );
-
-    delete from public.litter_care_task_templates template
-    using cleanup_templates cleanup
-    where template.id = cleanup.id;
-
-    delete from public.litters where id::text like ${q(like)};
-    delete from public.animals where id::text like ${q(like)};
+    delete from public.litters
+    where organization_id = ${q(ids.organization)}::uuid
+       or id::text like ${q(like)};
+    delete from public.animals
+    where organization_id = ${q(ids.organization)}::uuid
+       or id::text like ${q(like)};
+    delete from public.memberships
+    where organization_id = ${q(ids.organization)}::uuid
+       or id::text like ${q(like)};
+    delete from public.organizations
+    where id = ${q(ids.organization)}::uuid
+       or id::text like ${q(like)};
 
     commit;
   `);
@@ -147,89 +146,131 @@ function remainingCounts() {
     select json_build_object(
       'links', (
         select count(*) from public.maternal_observation_task_links
-        where litter_id::text like ${q(like)} or id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
+           or id::text like ${q(like)}
       ),
       'observation_commands', (
         select count(*) from public.maternal_observation_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'observations', (
         select count(*) from public.maternal_observations
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'schedule_changes', (
         select count(*) from public.litter_care_task_schedule_changes
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
       ),
       'schedule_commands', (
         select count(*) from public.litter_care_task_schedule_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'tasks', (
         select count(*) from public.litter_care_tasks
-        where litter_id::text like ${q(like)} or id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
+           or id::text like ${q(like)}
       ),
       'series_slots', (
         select count(*)
         from public.litter_plan_series_time_slots slot
         join public.litter_plan_series series on series.id = slot.series_id
-        where series.litter_id::text like ${q(like)}
+        where series.organization_id = ${q(ids.organization)}::uuid
+           or series.litter_id::text like ${q(like)}
       ),
       'series_materialization_commands', (
         select count(*) from public.litter_plan_series_materialization_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'series_state_commands', (
         select count(*) from public.litter_plan_series_state_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'anchor_commands', (
         select count(*) from public.litter_plan_anchor_recalculation_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'series', (
         select count(*) from public.litter_plan_series
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
       ),
       'application_commands', (
         select count(*) from public.litter_plan_application_commands
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
            or client_command_id::text like ${q(like)}
       ),
       'plan_items', (
         select count(*) from public.litter_plan_items
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
       ),
       'plans', (
         select count(*) from public.litter_plans
-        where litter_id::text like ${q(like)}
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
+      ),
+      'model_slots', (
+        select count(*) from public.litter_planning_model_item_time_slots
+        where organization_id = ${q(ids.organization)}::uuid
+      ),
+      'model_commands', (
+        select count(*) from public.litter_planning_model_commands
+        where organization_id = ${q(ids.organization)}::uuid
+           or client_command_id::text like ${q(like)}
+      ),
+      'model_items', (
+        select count(*) from public.litter_planning_model_items
+        where organization_id = ${q(ids.organization)}::uuid
       ),
       'organization_models', (
         select count(*) from public.litter_planning_models
-        where organization_id = ${q(organizationId)}::uuid
-          and library_model_code = ${q(modelCode)}
+        where organization_id = ${q(ids.organization)}::uuid
       ),
       'import_commands', (
         select count(*) from public.litter_planning_model_library_import_commands
-        where organization_id = ${q(organizationId)}::uuid
-          and (
-            client_command_id::text like ${q(like)}
-            or selection @> jsonb_build_array(
-              jsonb_build_object('code', ${q(modelCode)}, 'version', 1)
-            )
-          )
+        where organization_id = ${q(ids.organization)}::uuid
+           or client_command_id::text like ${q(like)}
+      ),
+      'templates', (
+        select count(*) from public.litter_care_task_templates
+        where organization_id = ${q(ids.organization)}::uuid
+           or id::text like ${q(like)}
       ),
       'litters', (
-        select count(*) from public.litters where id::text like ${q(like)}
+        select count(*) from public.litters
+        where organization_id = ${q(ids.organization)}::uuid
+           or id::text like ${q(like)}
       ),
       'animals', (
-        select count(*) from public.animals where id::text like ${q(like)}
+        select count(*) from public.animals
+        where organization_id = ${q(ids.organization)}::uuid
+           or id::text like ${q(like)}
+      ),
+      'memberships', (
+        select count(*) from public.memberships
+        where organization_id = ${q(ids.organization)}::uuid
+           or id::text like ${q(like)}
+      ),
+      'organizations', (
+        select count(*) from public.organizations
+        where id = ${q(ids.organization)}::uuid
+           or id::text like ${q(like)}
       )
     )::text;
   `);
@@ -241,22 +282,136 @@ function expectCleanupAtZero() {
   }
 }
 
-function elementaryOrganizationSnapshot() {
-  return jsonSql<unknown[]>(`
-    select coalesce(
-      json_agg(
-        to_jsonb(template) - 'created_at' - 'updated_at'
-        order by template.library_template_code, template.id
+async function focusByKeyboard(page: Page, target: Locator) {
+  for (let index = 0; index < 100; index += 1) {
+    if (await target.evaluate((element) => element === document.activeElement)) {
+      return;
+    }
+    await page.keyboard.press("Tab");
+  }
+  throw new Error("Le bouton de détail n'a pas été atteint au clavier");
+}
+
+function durableOrganizationSnapshot() {
+  return jsonSql<Record<string, unknown>>(`
+    select json_build_object(
+      'models', (
+        select coalesce(jsonb_agg(to_jsonb(model) order by model.id), '[]'::jsonb)
+        from public.litter_planning_models model
+        where model.organization_id = ${q(durableOrganizationId)}::uuid
+          and model.library_model_code = ${q(modelCode)}
       ),
-      '[]'::json
-    )::text
-    from public.litter_care_task_templates template
-    where template.organization_id = ${q(organizationId)}::uuid
-      and template.library_template_code in (
-        'dog-temperature-monitoring-period',
-        'dog-prepare-whelping-journal',
-        'dog-whelping-vigilance-window'
-      );
+      'items', (
+        select coalesce(jsonb_agg(to_jsonb(item) order by item.id), '[]'::jsonb)
+        from public.litter_planning_model_items item
+        join public.litter_planning_models model on model.id = item.model_id
+        where model.organization_id = ${q(durableOrganizationId)}::uuid
+          and model.library_model_code = ${q(modelCode)}
+      ),
+      'slots', (
+        select coalesce(jsonb_agg(to_jsonb(slot) order by slot.id), '[]'::jsonb)
+        from public.litter_planning_model_item_time_slots slot
+        join public.litter_planning_model_items item on item.id = slot.model_item_id
+        join public.litter_planning_models model on model.id = item.model_id
+        where model.organization_id = ${q(durableOrganizationId)}::uuid
+          and model.library_model_code = ${q(modelCode)}
+      ),
+      'importCommands', (
+        select coalesce(jsonb_agg(to_jsonb(command) order by command.id), '[]'::jsonb)
+        from public.litter_planning_model_library_import_commands command
+        where command.organization_id = ${q(durableOrganizationId)}::uuid
+          and command.selection @> jsonb_build_array(
+            jsonb_build_object('code', ${q(modelCode)}, 'version', 1)
+          )
+      ),
+      'templates', (
+        select coalesce(jsonb_agg(to_jsonb(template) order by template.id), '[]'::jsonb)
+        from public.litter_care_task_templates template
+        where template.organization_id = ${q(durableOrganizationId)}::uuid
+          and template.library_template_code in (
+            'dog-temperature-monitoring-period',
+            'dog-prepare-whelping-journal',
+            'dog-whelping-vigilance-window'
+          )
+      )
+    )::text;
+  `);
+}
+
+function operationalReadSnapshot() {
+  return jsonSql<Record<string, unknown>>(`
+    select json_build_object(
+      'observations', (
+        select coalesce(jsonb_agg(to_jsonb(observation) order by observation.id), '[]'::jsonb)
+        from public.maternal_observations observation
+        where observation.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      ),
+      'links', (
+        select coalesce(jsonb_agg(to_jsonb(link) order by link.id), '[]'::jsonb)
+        from public.maternal_observation_task_links link
+        where link.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      ),
+      'tasks', (
+        select coalesce(jsonb_agg(to_jsonb(task) order by task.id), '[]'::jsonb)
+        from public.litter_care_tasks task
+        where task.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      ),
+      'observationCommands', (
+        select coalesce(jsonb_agg(to_jsonb(command) order by command.id), '[]'::jsonb)
+        from public.maternal_observation_commands command
+        where command.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      ),
+      'resolutionCommands', (
+        select coalesce(
+          jsonb_agg(
+            jsonb_build_object(
+              'taskId', task.id,
+              'status', task.status,
+              'revision', task.revision_no,
+              'resolutionCommandId', task.resolution_command_id,
+              'resolvedAt', task.resolved_at,
+              'resolutionNote', task.resolution_note
+            )
+            order by task.id
+          ),
+          '[]'::jsonb
+        )
+        from public.litter_care_tasks task
+        where task.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+          and task.resolution_command_id is not null
+      ),
+      'importCommands', (
+        select coalesce(jsonb_agg(to_jsonb(command) order by command.id), '[]'::jsonb)
+        from public.litter_planning_model_library_import_commands command
+        where command.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      ),
+      'applicationCommands', (
+        select coalesce(jsonb_agg(to_jsonb(command) order by command.id), '[]'::jsonb)
+        from public.litter_plan_application_commands command
+        where command.organization_id in (
+          ${q(durableOrganizationId)}::uuid,
+          ${q(ids.organization)}::uuid
+        )
+      )
+    )::text;
   `);
 }
 
@@ -377,6 +532,29 @@ function canonicalModel() {
   `);
 }
 
+function seedOrganization() {
+  sql(`
+    insert into public.organizations (id, name, slug)
+    values (
+      ${q(ids.organization)}::uuid,
+      'Organisation pré-mise-bas d7290003',
+      'dog-pre-whelping-temperature-d7290003'
+    );
+
+    insert into public.memberships (
+      id, organization_id, profile_id, role, status, created_by, updated_by
+    ) values (
+      ${q(ids.membership)}::uuid,
+      ${q(ids.organization)}::uuid,
+      ${q(ownerId)}::uuid,
+      'owner',
+      'active',
+      ${q(ownerId)}::uuid,
+      ${q(ownerId)}::uuid
+    );
+  `);
+}
+
 function seedScope() {
   sql(`
     insert into public.animals (
@@ -384,7 +562,7 @@ function seedScope() {
       ownership_status, created_by, updated_by
     ) values (
       ${q(ids.mother)}::uuid,
-      ${q(organizationId)}::uuid,
+      ${q(ids.organization)}::uuid,
       'Mère pré-mise-bas d7290003',
       'dog',
       'Golden Retriever',
@@ -401,7 +579,7 @@ function seedScope() {
       created_by, updated_by
     ) values (
       ${q(ids.litter)}::uuid,
-      ${q(organizationId)}::uuid,
+      ${q(ids.organization)}::uuid,
       'Portée pré-mise-bas d7290003',
       'dog',
       'Golden Retriever',
@@ -427,7 +605,7 @@ async function login(page: Page) {
 async function importModel(owner: Supabase) {
   const selection = [{ code: modelCode, version: 1 }] as Json;
   const first = await owner.rpc("import_litter_planning_model_library_models", {
-    p_organization_id: organizationId,
+    p_organization_id: ids.organization,
     p_client_command_id: ids.importCommand,
     p_selection: selection,
     p_is_active: true,
@@ -441,7 +619,7 @@ async function importModel(owner: Supabase) {
   });
 
   const replay = await owner.rpc("import_litter_planning_model_library_models", {
-    p_organization_id: organizationId,
+    p_organization_id: ids.organization,
     p_client_command_id: ids.importCommand,
     p_selection: selection,
     p_is_active: true,
@@ -470,6 +648,8 @@ function fixtureManifest() {
   return jsonSql<Record<string, unknown>>(`
     select json_build_object(
       'directIds', json_build_object(
+        'organization', ${q(ids.organization)},
+        'membership', ${q(ids.membership)},
         'mother', ${q(ids.mother)},
         'litter', ${q(ids.litter)},
         'importCommand', ${q(ids.importCommand)},
@@ -479,13 +659,13 @@ function fixtureManifest() {
       'organizationModels', (
         select coalesce(json_agg(id::text order by id), '[]'::json)
         from public.litter_planning_models
-        where organization_id = ${q(organizationId)}::uuid
+        where organization_id = ${q(ids.organization)}::uuid
           and library_model_code = ${q(modelCode)}
       ),
       'organizationTemplates', (
         select coalesce(json_agg(id::text order by id), '[]'::json)
         from public.litter_care_task_templates
-        where organization_id = ${q(organizationId)}::uuid
+        where organization_id = ${q(ids.organization)}::uuid
           and library_template_code in (
             'dog-temperature-monitoring-period',
             'dog-prepare-whelping-journal',
@@ -522,7 +702,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
 }) => {
   cleanup();
   expectCleanupAtZero();
-  const elementaryBefore = elementaryOrganizationSnapshot();
+  const durableBefore = durableOrganizationSnapshot();
   const gestationBefore = gestationSnapshot();
   const growthBefore = growthComparisonSnapshot();
   expect(growthBefore).toEqual({
@@ -548,6 +728,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
 
   let owner: Supabase | null = null;
   try {
+    seedOrganization();
     expect(canonicalModel()).toEqual({
       model: {
         code: modelCode,
@@ -562,7 +743,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
       },
       items: [
         {
-          id: "d7290002-0000-4000-8000-000000000001",
+          id: "ca7a2026-0729-4000-8000-000000000001",
           template: "dog-temperature-monitoring-period",
           templateVersion: 1,
           kind: "recurring_task",
@@ -584,7 +765,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
           slots: ["08:00:00", "20:00:00"],
         },
         {
-          id: "d7290002-0000-4000-8000-000000000002",
+          id: "ca7a2026-0729-4000-8000-000000000002",
           template: "dog-prepare-whelping-journal",
           templateVersion: 1,
           kind: "task",
@@ -606,7 +787,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
           slots: [],
         },
         {
-          id: "d7290002-0000-4000-8000-000000000003",
+          id: "ca7a2026-0729-4000-8000-000000000003",
           template: "dog-whelping-vigilance-window",
           templateVersion: 1,
           kind: "window",
@@ -641,8 +822,17 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
       ),
     ).toBe(2);
 
+    const libraryReadBefore = operationalReadSnapshot();
+    await page.setViewportSize({ width: 375, height: 812 });
     await login(page);
     await page.goto("/settings/litter-planning-models");
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
     const card = page.locator(
       `[data-library-model='${modelCode}:1']`,
     );
@@ -651,10 +841,19 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
     await expect(card).toContainText("Modèle facultatif et modifiable après import");
     await expect(card).toContainText("Pré-mise-bas");
     await expect(card).toContainText("Surveillance des températures");
-    await card
-      .getByRole("button", { name: "Voir le détail des éléments" })
-      .click();
+    const detailsButton = card.getByRole("button", {
+      name: "Voir le détail des éléments",
+    });
+    await focusByKeyboard(page, detailsButton);
+    await expect(detailsButton).toBeFocused();
+    await page.keyboard.press("Enter");
     const details = page.getByRole("dialog");
+    await expect(details).toBeVisible();
+    expect(
+      await details.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
     await expect(details).toContainText("Période de relevés de température");
     await expect(details).toContainText("Préparer le Journal de mise-bas");
     await expect(details).toContainText("Fenêtre probable de mise-bas");
@@ -667,6 +866,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
     );
     await expect(details).toContainText("Température maternelle enregistrée");
     await details.getByRole("button", { name: "Fermer" }).click();
+    expect(operationalReadSnapshot()).toEqual(libraryReadBefore);
 
     owner = await createAuthenticatedSupabaseClient();
     const importedModelId = await importModel(owner);
@@ -675,7 +875,7 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
         sql(`
           select count(*)
           from public.litter_planning_models
-          where organization_id = ${q(organizationId)}::uuid
+          where organization_id = ${q(ids.organization)}::uuid
             and library_model_code = ${q(modelCode)}
             and library_model_version = 1;
         `),
@@ -968,7 +1168,15 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
       unit: "celsius",
     });
 
+    const journalReadBefore = operationalReadSnapshot();
     await page.goto(`/litters/journal?litter=${ids.litter}`);
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
     const taskCard = page
       .locator("#litter-care-tasks li")
       .filter({ hasText: "Période de relevés de température" })
@@ -988,13 +1196,27 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
       "Période de relevés de température",
     );
     await expect(observationCard).toContainText("Occurrence 1");
+    expect(operationalReadSnapshot()).toEqual(journalReadBefore);
 
+    expect(durableOrganizationSnapshot()).toEqual(durableBefore);
     expect(gestationSnapshot()).toEqual(gestationBefore);
     expect(growthComparisonSnapshot()).toEqual(growthBefore);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
 
+    console.log(
+      "DOG_PRE_WHELPING_TEMPERATURE_MODEL_01_UI_PROOFS=" +
+        JSON.stringify({
+          viewport: "375x812",
+          keyboardDetailOpen: true,
+          pageOverflow: false,
+          dialogOverflow: false,
+          libraryReadUnchanged: true,
+          journalReadUnchanged: true,
+          durableOrganizationUnchanged: true,
+        }),
+    );
     console.log(
       `DOG_PRE_WHELPING_TEMPERATURE_MODEL_01_FIXTURE_IDS=${JSON.stringify(
         fixtureManifest(),
@@ -1004,8 +1226,13 @@ test("importe, applique et rapproche le modèle pré-mise-bas sans modifier la g
     if (owner) await owner.auth.signOut();
     cleanup();
     expectCleanupAtZero();
-    expect(elementaryOrganizationSnapshot()).toEqual(elementaryBefore);
+    expect(durableOrganizationSnapshot()).toEqual(durableBefore);
     expect(gestationSnapshot()).toEqual(gestationBefore);
     expect(growthComparisonSnapshot()).toEqual(growthBefore);
+    console.log(
+      `DOG_PRE_WHELPING_TEMPERATURE_MODEL_01_CLEANUP=${JSON.stringify(
+        remainingCounts(),
+      )}`,
+    );
   }
 });

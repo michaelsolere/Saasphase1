@@ -103,7 +103,7 @@ insert into public.litter_planning_model_library_items (
   is_selected_by_default
 ) values
   (
-    'd7290002-0000-4000-8000-000000000001',
+    'ca7a2026-0729-4000-8000-000000000001',
     'dog-pre-whelping-temperature-monitoring',
     1,
     'dog-temperature-monitoring-period',
@@ -131,7 +131,7 @@ insert into public.litter_planning_model_library_items (
     true
   ),
   (
-    'd7290002-0000-4000-8000-000000000002',
+    'ca7a2026-0729-4000-8000-000000000002',
     'dog-pre-whelping-temperature-monitoring',
     1,
     'dog-prepare-whelping-journal',
@@ -159,7 +159,7 @@ insert into public.litter_planning_model_library_items (
     true
   ),
   (
-    'd7290002-0000-4000-8000-000000000003',
+    'ca7a2026-0729-4000-8000-000000000003',
     'dog-pre-whelping-temperature-monitoring',
     1,
     'dog-whelping-vigilance-window',
@@ -194,14 +194,14 @@ insert into public.litter_planning_model_library_item_time_slots (
   local_time
 ) values
   (
-    'd7290002-0000-4000-8000-000000000011',
-    'd7290002-0000-4000-8000-000000000001',
+    'ca7a2026-0729-4000-8000-000000000011',
+    'ca7a2026-0729-4000-8000-000000000001',
     1,
     '08:00'
   ),
   (
-    'd7290002-0000-4000-8000-000000000012',
-    'd7290002-0000-4000-8000-000000000001',
+    'ca7a2026-0729-4000-8000-000000000012',
+    'ca7a2026-0729-4000-8000-000000000001',
     2,
     '20:00'
   );

@@ -12,7 +12,7 @@ import {
 } from "../../src/features/settings/litter-planning-model-labels";
 
 const modelCode = "dog-pre-whelping-temperature-monitoring";
-const itemPrefix = "d7290002-0000-4000-8000-";
+const itemPrefix = "ca7a2026-0729-4000-8000-";
 
 function item(
   id: string,
