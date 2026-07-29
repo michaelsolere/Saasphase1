@@ -571,6 +571,9 @@ export default async function LitterJournalPage({
               maternalObservationsLoaded?.temperatureDropPolicyUnavailable ??
               false
             }
+            maternalObservationTaskLinksUnavailable={
+              maternalObservationsLoaded?.taskLinksUnavailable ?? false
+            }
             litterCareTasks={litterCareTasksLoaded?.tasks ?? []}
             litterCareTaskGenerationEntries={
               litterCareTaskGenerationEntries

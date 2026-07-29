@@ -28,6 +28,10 @@ import {
   type LitterCareTodayQuickActions,
 } from "@/features/litter-journal/litter-care-today-quick-actions";
 import type { LitterCareTaskScheduleActionBinding } from "@/features/litter-journal/litter-care-task-schedule-dialog";
+import {
+  MaternalTemperatureTaskFactSummary,
+  TaskCompletionOriginBadge,
+} from "@/features/litter-journal/maternal-observation-task-link";
 
 export const BREEDING_TODAY_EMPTY_MESSAGE =
   "Aucune action à traiter aujourd’hui pour l’élevage.";
@@ -110,8 +114,9 @@ function litterContextLabel(litterName: string | undefined, litterId: string) {
   return `Portée ${getLitterDisplayName(litterName ?? null, litterId)}`;
 }
 
-function journalHref(litterId: string) {
-  return `/litters/journal?litter=${encodeURIComponent(litterId)}`;
+function journalHref(litterId: string, showMaternalObservation: boolean) {
+  const href = `/litters/journal?litter=${encodeURIComponent(litterId)}`;
+  return showMaternalObservation ? `${href}#maternal-observations` : href;
 }
 
 function TodayTask({
@@ -155,6 +160,19 @@ function TodayTask({
               <span className="font-medium text-foreground">Statut : {statusLabels[task.status]}</span>
             ) : null}
           </div>
+          {!active && task.status === "done" ? (
+            <div className="mt-3">
+              <TaskCompletionOriginBadge origin={task.completionOrigin} />
+            </div>
+          ) : null}
+          {!active && task.completionFact ? (
+            <div className="mt-2">
+              <MaternalTemperatureTaskFactSummary
+                fact={task.completionFact}
+                compact
+              />
+            </div>
+          ) : null}
         </div>
         <div className="flex w-full min-w-0 flex-wrap items-center gap-3">
           {active && quickActions ? (
@@ -165,7 +183,7 @@ function TodayTask({
             />
           ) : null}
           <Link
-            href={journalHref(task.litterId)}
+            href={journalHref(task.litterId, Boolean(task.completionFact))}
             className="text-sm font-semibold text-accent hover:underline"
           >
             Ouvrir le Journal

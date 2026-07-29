@@ -13,6 +13,10 @@ import {
 } from "./litter-care-task-schedule-dialog";
 import { LITTER_PLAN_AD_HOC_TASKS_PANEL_HINT } from "./litter-plan-ad-hoc-programmer";
 import { LitterCareTaskResolutionDialog } from "./litter-care-task-resolution-dialog";
+import {
+  MaternalTemperatureTaskFactSummary,
+  TaskCompletionOriginBadge,
+} from "./maternal-observation-task-link";
 
 import type { LitterCareTaskActionState } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
@@ -258,11 +262,28 @@ function TaskHistory({ tasks }: { tasks: LitterCareTaskSummary[] }) {
                 </span>
               </div>
               <TaskMetadata task={task} />
+              {task.status === "done" ? (
+                <div className="mt-3">
+                  <TaskCompletionOriginBadge origin={task.completionOrigin} />
+                </div>
+              ) : null}
+              {task.completionFact ? (
+                <div className="mt-3">
+                  <MaternalTemperatureTaskFactSummary
+                    fact={task.completionFact}
+                    showNote
+                    href="#maternal-observations"
+                  />
+                </div>
+              ) : null}
               <p className="mt-3 text-sm text-muted">
                 Traitée le {formatResolvedAt(task)}
               </p>
               {task.resolutionNote ? (
                 <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-muted">
+                  <span className="font-medium text-foreground">
+                    Note de résolution :
+                  </span>{" "}
                   {task.resolutionNote}
                 </p>
               ) : null}

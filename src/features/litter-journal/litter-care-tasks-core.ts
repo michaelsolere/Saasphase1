@@ -4,6 +4,15 @@ import type { Database, Json } from "@/types/database.types";
 
 import { resolveExpectedBirthAnchorDate } from "./expected-birth-anchor";
 import { resolveGestationAnchorDate } from "./gestation-anchor";
+import {
+  projectTaskCompletion,
+  type LitterCareTaskCompletionOrigin,
+  type MaternalTemperatureObservationTaskFact,
+} from "./maternal-observation-task-links-core";
+import {
+  loadMaternalObservationTaskLinks,
+  type MaternalObservationTaskLinkReadResult,
+} from "./maternal-observation-task-links-read";
 
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
@@ -211,6 +220,8 @@ export type LitterCareTaskSummary = {
   resolvedTimezoneName: string | null;
   resolvedBy: string | null;
   resolutionNote: string | null;
+  completionOrigin: LitterCareTaskCompletionOrigin | null;
+  completionFact: MaternalTemperatureObservationTaskFact | null;
   createdAt: string;
 };
 
@@ -1108,8 +1119,27 @@ function mapTask(
     resolvedTimezoneName: row.resolved_timezone_name,
     resolvedBy: row.resolved_by,
     resolutionNote: row.resolution_note,
+    ...projectTaskCompletion(
+      row.status as LitterCareTaskSummary["status"],
+      "unavailable",
+      null,
+    ),
     createdAt: row.created_at,
   };
+}
+
+function applyTaskCompletionLinks(
+  tasks: readonly LitterCareTaskSummary[],
+  links: MaternalObservationTaskLinkReadResult,
+) {
+  return tasks.map((task) => ({
+    ...task,
+    ...projectTaskCompletion(
+      task.status,
+      links.availability,
+      links.factByTaskId.get(task.id) ?? null,
+    ),
+  }));
 }
 
 async function loadLitterPlanSeriesStates(
@@ -1756,11 +1786,19 @@ export async function listLitterCareTasksForLitterCore(
   );
   if ("outcome" in seriesStateById) return seriesStateById;
 
-  const mapped = (tasks.data ?? []).map((row) =>
+  let mapped = (tasks.data ?? []).map((row) =>
     mapTask(row, row.litter_plan_series_id
       ? seriesStateById.states[row.litter_plan_series_id] ?? null
       : null),
   );
+  const links = await loadMaternalObservationTaskLinks(supabase, {
+    organizationId: authorization.litter.organization_id,
+    litterId: authorization.litter.id,
+    taskIds: mapped
+      .filter((task) => task.status === "done")
+      .map((task) => task.id),
+  });
+  mapped = applyTaskCompletionLinks(mapped, links);
   mapped.sort((left, right) => {
     if (left.status === "planned" && right.status !== "planned") return -1;
     if (left.status !== "planned" && right.status === "planned") return 1;
@@ -1920,7 +1958,7 @@ export async function listOrganizationLitterCareTodayTasksCore(
   const litters = await loadOrganizationLitterNames(supabase, organizationId, litterIds);
   if (litters.error) return databaseFailure("breeding_calendar_litters_read_failed", litters.error);
 
-  const mapped = (tasks.data ?? [])
+  let mapped = (tasks.data ?? [])
     .map((row) =>
       mapTask(
         row,
@@ -1930,6 +1968,13 @@ export async function listOrganizationLitterCareTodayTasksCore(
       ),
     )
     .filter((task) => Boolean(litters.litterNames[task.litterId]));
+  const links = await loadMaternalObservationTaskLinks(supabase, {
+    organizationId,
+    taskIds: mapped
+      .filter((task) => task.status === "done")
+      .map((task) => task.id),
+  });
+  mapped = applyTaskCompletionLinks(mapped, links);
   mapped.sort(
     (left, right) =>
       (left.plannedFor ?? left.retainedStartsOn ?? "").localeCompare(

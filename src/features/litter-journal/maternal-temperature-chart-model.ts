@@ -3,6 +3,7 @@ import type {
   MaternalObservationTemperatureUnit,
   MaternalObservationType,
 } from "./maternal-observations-core";
+import type { MaternalObservationSatisfiedTask } from "./maternal-observation-task-links-core";
 import type { MaternalTemperatureDropPolicyV1 } from "./maternal-temperature-drop-policy";
 
 export type MaternalObservationPanelItem = {
@@ -14,6 +15,7 @@ export type MaternalObservationPanelItem = {
   unit: MaternalObservationTemperatureUnit | null;
   severity: MaternalObservationSeverity;
   note: string | null;
+  satisfiedTask?: MaternalObservationSatisfiedTask | null;
 };
 
 export type MaternalTemperatureChartPoint = {

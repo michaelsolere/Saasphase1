@@ -5,6 +5,8 @@ import {
   parseMaternalTemperatureDropPolicy,
   type MaternalTemperatureDropPolicyV1,
 } from "./maternal-temperature-drop-policy";
+import type { MaternalObservationSatisfiedTask } from "./maternal-observation-task-links-core";
+import { loadMaternalObservationTaskLinks } from "./maternal-observation-task-links-read";
 
 type Supabase = SupabaseClient<Database>;
 type OrganizationRole = "owner" | "admin" | "member" | "viewer";
@@ -73,6 +75,7 @@ export type MaternalObservationSummary = {
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
+  satisfiedTask: MaternalObservationSatisfiedTask | null;
 };
 
 export type ListMaternalObservationsForLitterInput = {
@@ -86,6 +89,7 @@ export type ListMaternalObservationsForLitterResult =
       observations: MaternalObservationSummary[];
       temperatureDropPolicy: MaternalTemperatureDropPolicyV1 | null;
       temperatureDropPolicyUnavailable: boolean;
+      taskLinksUnavailable: boolean;
     }
   | ErrorResult;
 
@@ -293,6 +297,7 @@ function mapObservation(
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: row.created_by,
+    satisfiedTask: null,
   };
 }
 
@@ -411,6 +416,13 @@ export async function listMaternalObservationsForLitterCore(
     );
   }
 
+  const observationRows = observations.data ?? [];
+  const taskLinks = await loadMaternalObservationTaskLinks(supabase, {
+    organizationId: authorization.litter.organization_id,
+    litterId: authorization.litter.id,
+    observationIds: observationRows.map((observation) => observation.id),
+  });
+
   const persistedPolicy = settings.data?.maternal_temperature_drop_policy;
   const parsedPolicy =
     persistedPolicy === null || persistedPolicy === undefined
@@ -430,10 +442,15 @@ export async function listMaternalObservationsForLitterCore(
   return {
     outcome: "success",
     role: authorization.role,
-    observations: (observations.data ?? []).map(mapObservation),
+    observations: observationRows.map((observation) => ({
+      ...mapObservation(observation),
+      satisfiedTask:
+        taskLinks.satisfiedTaskByObservationId.get(observation.id) ?? null,
+    })),
     temperatureDropPolicy:
       parsedPolicy?.ok === true ? parsedPolicy.policy : null,
     temperatureDropPolicyUnavailable,
+    taskLinksUnavailable: taskLinks.availability === "unavailable",
   };
 }
 

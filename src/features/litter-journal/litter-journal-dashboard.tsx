@@ -210,6 +210,7 @@ export function LitterJournalDashboard({
   maternalObservationsLoadError,
   maternalTemperatureDropPolicy,
   maternalTemperatureDropPolicyUnavailable,
+  maternalObservationTaskLinksUnavailable,
   litterCareTasks,
   litterCareTaskGenerationEntries,
   litterCareTaskGenerationRole,
@@ -279,6 +280,7 @@ export function LitterJournalDashboard({
   maternalObservationsLoadError: boolean;
   maternalTemperatureDropPolicy: MaternalTemperatureDropPolicyV1 | null;
   maternalTemperatureDropPolicyUnavailable: boolean;
+  maternalObservationTaskLinksUnavailable: boolean;
   litterCareTasks: LitterCareTaskSummary[];
   litterCareTaskGenerationEntries: LitterCareTaskGenerationPanelEntry[];
   litterCareTaskGenerationRole:
@@ -398,6 +400,7 @@ export function LitterJournalDashboard({
       unit: observation.unit,
       severity: observation.severity,
       note: observation.note,
+      satisfiedTask: observation.satisfiedTask,
     }));
   const maternalObservationFormInstanceKey =
     `${publicMobileLitterIndex}:${publicMaternalObservations.length}`;
@@ -542,6 +545,7 @@ export function LitterJournalDashboard({
         loadError={maternalObservationsLoadError}
         temperatureDropPolicy={maternalTemperatureDropPolicy}
         temperatureDropPolicyUnavailable={maternalTemperatureDropPolicyUnavailable}
+        taskLinksUnavailable={maternalObservationTaskLinksUnavailable}
       />
       <LitterCareTaskGenerationPanel
         entries={litterCareTaskGenerationEntries}

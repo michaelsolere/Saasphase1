@@ -30,6 +30,7 @@ import {
   type MaternalTemperatureChartModel,
 } from "./maternal-temperature-chart-model";
 import type { MaternalTemperatureDropPolicyV1 } from "./maternal-temperature-drop-policy";
+import { MaternalObservationSatisfiedTaskSummary } from "./maternal-observation-task-link";
 
 const observationTypeLabels: Record<MaternalObservationType, string> = {
   temperature: "Température",
@@ -519,6 +520,11 @@ function ObservationHistory({
             </p>
           ) : null}
           {observation.note ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted">{observation.note}</p> : null}
+          {observation.satisfiedTask ? (
+            <MaternalObservationSatisfiedTaskSummary
+              task={observation.satisfiedTask}
+            />
+          ) : null}
         </li>
       ))}
     </ul>
@@ -679,6 +685,7 @@ export function MaternalObservationsPanel({
   loadError = false,
   temperatureDropPolicy = null,
   temperatureDropPolicyUnavailable = false,
+  taskLinksUnavailable = false,
 }: {
   observations: MaternalObservationPanelItem[];
   role: "owner" | "admin" | "member" | "viewer" | null;
@@ -687,12 +694,14 @@ export function MaternalObservationsPanel({
   loadError?: boolean;
   temperatureDropPolicy?: MaternalTemperatureDropPolicyV1 | null;
   temperatureDropPolicyUnavailable?: boolean;
+  taskLinksUnavailable?: boolean;
 }) {
   const [confirmation, setConfirmation] = useState<string | null>(null);
   const canWrite = role === "owner" || role === "admin" || role === "member";
 
   return (
     <section
+      id="maternal-observations"
       className="rounded-2xl border bg-surface p-5 sm:p-6"
       data-testid="maternal-observations-panel"
     >
@@ -714,6 +723,11 @@ export function MaternalObservationsPanel({
       {confirmation ? (
         <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}
+        </p>
+      ) : null}
+      {!loadError && taskLinksUnavailable ? (
+        <p className="mt-4 text-xs text-muted">
+          Origine du traitement momentanément indisponible
         </p>
       ) : null}
       {loadError ? (
