@@ -396,7 +396,9 @@ test("manipule graphiquement la frise sans écriture pendant l’aperçu", async
     await expect(panel).toContainText("Surveillance de la température");
     await expect(panel).toContainText("Suggestion");
     await expect(panel).toContainText("Verrouillé");
-    await expect(panel).toContainText("Traité");
+    await expect(
+      panel.getByText("Jalon terminal frise", { exact: true }),
+    ).toHaveCount(0);
     await expect(panel).toContainText("En attente d’une date de référence");
     expect(scheduleCommandCount()).toBe(beforeLoadCommands);
     expect(scheduleChangeCount()).toBe(beforeLoadChanges);
