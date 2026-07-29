@@ -665,6 +665,10 @@ export async function loadLitterPlanningModelApplicationPanel(
           : "Non sélectionné par défaut",
         scheduleLabel: labels.scheduleLabel,
         timeLabel: labels.timeLabel,
+        journalCompletionLabel:
+          item.completion_fact_kind === "maternal_temperature_observation"
+            ? "Température maternelle enregistrée"
+            : "Aucune",
         preview,
         estimatedInitialOccurrenceCount: estimateRecurringOccurrences({
           itemKind: item.item_kind,

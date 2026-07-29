@@ -25,6 +25,7 @@ function DetailItemCard({
     ["Priorité", item.priorityLabel],
     ["Obligation", item.requiredLabel],
     ["Sélection", item.selectedByDefaultLabel],
+    ["Validation automatique par le Journal", item.journalCompletionLabel],
   ] as const;
 
   return (

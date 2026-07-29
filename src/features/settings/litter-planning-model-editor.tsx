@@ -127,6 +127,10 @@ function ItemCard({
   onRemove: () => void;
 }) {
   const template = templatesById.get(item.organizationTemplateId);
+  const canUseMaternalTemperatureCompletion =
+    item.itemKind === "recurring_task" &&
+    template?.category === "maternal_health" &&
+    template.targetScope === "mother";
   const prefix = `items.${item.key}`;
   const [confirmKind, setConfirmKind] = useState<LitterPlanningModelItemKind | null>(
     null,
@@ -457,6 +461,45 @@ function ItemCard({
 
       {item.itemKind === "recurring_task" && (
         <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2">
+          {canUseMaternalTemperatureCompletion ? (
+            <div className="sm:col-span-2">
+              <label
+                className={labelClass}
+                htmlFor={`${fieldId}-${item.key}-journal-completion`}
+              >
+                Validation automatique par le Journal
+              </label>
+              <select
+                id={`${fieldId}-${item.key}-journal-completion`}
+                className={inputClass}
+                value={
+                  item.completionFactKind ===
+                  "maternal_temperature_observation"
+                    ? "temperature"
+                    : "none"
+                }
+                onChange={(event) =>
+                  onChange({
+                    ...item,
+                    completionFactKind:
+                      event.target.value === "temperature"
+                        ? "maternal_temperature_observation"
+                        : null,
+                  })
+                }
+              >
+                <option value="none">Aucune</option>
+                <option value="temperature">
+                  Température maternelle enregistrée
+                </option>
+              </select>
+              {fieldError(errors, `${prefix}.completionFactKind`) ? (
+                <p role="alert" className="mt-1 text-sm text-amber-900">
+                  {fieldError(errors, `${prefix}.completionFactKind`)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div>
             <label
               className={labelClass}

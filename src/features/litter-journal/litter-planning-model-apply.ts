@@ -678,6 +678,7 @@ export type LitterPlanningModelApplicationItemDto = {
   selectedByDefaultLabel: string;
   scheduleLabel: string;
   timeLabel: string | null;
+  journalCompletionLabel: string;
   preview: LitterPlanningModelApplyPreview;
   estimatedInitialOccurrenceCount: number | null;
 };
