@@ -799,3 +799,36 @@ et formateurs sont partagés entre les trois présentations.
 Ce lot est strictement en lecture et en présentation : aucune migration, RPC,
 règle de rapprochement, relation générique, résolution supplémentaire ou
 écriture métier n’est ajoutée.
+
+## Lot du 2026-07-29 — Modèle facultatif de surveillance pré-mise-bas
+
+La bibliothèque globale propose désormais le modèle facultatif
+**Surveillance pré-mise-bas — températures**. Il reste indépendant des modèles
+de gestation standard et avec herpèsvirose : l’éleveur doit d’abord décider de
+l’importer dans son organisation, puis l’appliquer explicitement à la portée
+concernée. Un import seul ne crée aucun planning sur une portée.
+
+Le modèle assemble trois éléments existants, dans cet ordre :
+
+1. une récurrence de températures maternelles, chaque jour à 08 h et 20 h,
+   à partir de J−5 avant la mise-bas prévue et jusqu’à la naissance réelle ;
+2. la tâche facultative **Préparer le Journal de mise-bas** à J−2 ;
+3. la période facultative de vigilance de J−1 à J+2.
+
+La récurrence est sélectionnée par défaut et requise dans le modèle importé.
+Son horizon initial est de sept jours, soit quatorze occurrences préparées avec
+les deux créneaux quotidiens, dans la limite absolue de trente occurrences. La
+cadence, les horaires et les autres réglages deviennent modifiables dans la
+copie propre à l’organisation après import.
+
+Chaque température réellement enregistrée dans le Journal reste un fait
+maternel autonome. Le rapprochement automatique s’appuie exclusivement sur
+`completion_fact_kind = maternal_temperature_observation`, jamais sur le titre
+de la tâche. Lorsqu’une occurrence compatible est retenue, elle passe à
+**Réalisée depuis le Journal** et la relation réciproque est visible depuis le
+suivi de la mère, avec la valeur dans l’unité saisie.
+
+Ce modèle sert uniquement à organiser les relevés et la période de vigilance.
+Il ne produit aucune alerte clinique, n’interprète aucune baisse de température
+et ne prédit pas la mise-bas. Sa configuration doit être adaptée au protocole
+de l’élevage et aux recommandations vétérinaires.
