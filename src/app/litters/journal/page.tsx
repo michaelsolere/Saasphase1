@@ -59,6 +59,7 @@ import type {
 } from "@/features/litter-journal/litter-care-task-schedule-dialog";
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks";
 import { toLitterCareTaskScheduleView } from "@/features/litter-journal/litter-care-task-schedule-view";
+import { projectLitterWeighingToday } from "@/features/litter-weights/litter-weighing-today";
 
 export const dynamic = "force-dynamic";
 
@@ -487,6 +488,21 @@ export default async function LitterJournalPage({
   const selectedLitterId = journal?.selectedLitter?.id ?? null;
   const litterWeightHistoryLoaded =
     litterWeightHistory?.outcome === "success" ? litterWeightHistory : null;
+  const litterWeightTodayProjections =
+    journal?.selectedLitter?.id &&
+    litterWeightHistoryLoaded?.weighingSchedule
+      ? projectLitterWeighingToday({
+          todayDate: litterJournalTodayDate,
+          litterId: journal.selectedLitter.id,
+          litterLabel: journal.selectedLitter.name ?? "Portée sans nom",
+          weighingSchedule: litterWeightHistoryLoaded.weighingSchedule,
+          sessions: litterWeightHistoryLoaded.sessions.map((session) => ({
+            measuredAt: session.measuredAt,
+            timezoneName: session.timezoneName,
+            activeRoutineMeasurementCount: session.measurementCount,
+          })),
+        })
+      : [];
   const eligibleLitterWeightAnimals =
     litterWeightHistoryLoaded?.animals.filter(
       (animal) => getRoutineWeightEligibility(animal).eligible,
@@ -645,6 +661,7 @@ export default async function LitterJournalPage({
             litterWeightSchedulePolicy={
               litterWeightHistoryLoaded?.weighingSchedulePolicy ?? null
             }
+            litterWeightTodayProjections={litterWeightTodayProjections}
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
             litterWeightMeasurementAdjustmentActions={measurementAdjustmentActions}

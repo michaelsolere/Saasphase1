@@ -238,6 +238,7 @@ async function main() {
       "tests/e2e/dog-pre-whelping-temperature-model.spec.ts",
       "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
       "tests/e2e/litter-plan-timeline-ui.spec.ts",
+      "tests/e2e/litter-weighing-today.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
       "tests/e2e/maternal-temperature-planning-link.spec.ts",
       "tests/e2e/planning-fact-link-visibility.spec.ts",

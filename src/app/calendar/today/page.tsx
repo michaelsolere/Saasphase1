@@ -29,6 +29,8 @@ import {
   type LitterCareTaskSummary,
 } from "@/features/litter-journal/litter-care-tasks";
 import { toLitterCareTaskScheduleView } from "@/features/litter-journal/litter-care-task-schedule-view";
+import { listOrganizationLitterWeighingToday } from "@/features/litter-weights/litter-weighing-today-reader";
+import type { LitterWeighingTodayProjection } from "@/features/litter-weights/litter-weighing-today";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -159,6 +161,32 @@ export default async function BreedingTodayPage() {
 
   const canWrite =
     source.role === "owner" || source.role === "admin" || source.role === "member";
+  let weighingProjections: LitterWeighingTodayProjection[] = [];
+  let weighingUnavailable = false;
+  try {
+    const weighingResult = await listOrganizationLitterWeighingToday(
+      { referenceDate: todayDate },
+      supabase,
+    );
+    if (
+      weighingResult.outcome === "success" &&
+      weighingResult.organizationId === source.organizationId
+    ) {
+      weighingProjections = weighingResult.projections;
+    } else {
+      weighingUnavailable = true;
+      console.error("breeding_today_litter_weighing_read_failed", {
+        outcome: weighingResult.outcome,
+        code:
+          weighingResult.outcome === "error"
+            ? weighingResult.error.code
+            : "organization_mismatch",
+      });
+    }
+  } catch (error) {
+    weighingUnavailable = true;
+    console.error("breeding_today_litter_weighing_read_failed", error);
+  }
   const plannedTasks = source.tasks.filter((task) => task.status === "planned");
   const quickActions = canWrite
     ? plannedTasks.map((task) => ({
@@ -214,6 +242,8 @@ export default async function BreedingTodayPage() {
         reminders={reminders}
         canManageReminders={canWrite}
         reminderLoadFailed={reminderLoadFailed}
+        weighingProjections={weighingProjections}
+        weighingUnavailable={weighingUnavailable}
         quickActions={quickActions}
         scheduleActions={scheduleActions}
       />

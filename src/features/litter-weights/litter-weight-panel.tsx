@@ -544,7 +544,7 @@ export function LitterWeightPanel({
 
   if (loadError) {
     return (
-      <section data-testid="litter-weight-panel" className="rounded-2xl border bg-surface p-5 sm:p-6">
+      <section id="litter-weights" data-testid="litter-weight-panel" className="rounded-2xl border bg-surface p-5 sm:p-6">
         <div className="flex items-center gap-3">
           <Scale aria-hidden="true" className="text-accent" />
           <h2 className="text-lg font-semibold">Poids et croissance</h2>
@@ -557,7 +557,7 @@ export function LitterWeightPanel({
   }
 
   return (
-    <section data-testid="litter-weight-panel" className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
+    <section id="litter-weights" data-testid="litter-weight-panel" className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
         <div className="min-w-0">
           <div className="flex items-center gap-3">

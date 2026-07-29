@@ -67,6 +67,7 @@ import type {
 } from "@/features/litter-weights/litter-weights-core";
 import type { LitterWeightLatestSessionComparison } from "@/features/litter-weights/litter-weighing-session-comparison";
 import type { LitterWeighingScheduleResult } from "@/features/litter-weights/litter-weighing-schedule-model";
+import type { LitterWeighingTodayProjection } from "@/features/litter-weights/litter-weighing-today";
 import type { LitterRoutineWeightsActionState } from "@/features/litter-weights/litter-weights-actions-core";
 import {
   WhelpingPanel,
@@ -260,6 +261,7 @@ export function LitterJournalDashboard({
   litterWeightLatestSessionComparison,
   litterWeightSchedule,
   litterWeightSchedulePolicy,
+  litterWeightTodayProjections,
   litterWeightRole,
   litterWeightAction,
   litterWeightMeasurementAdjustmentActions,
@@ -374,6 +376,7 @@ export function LitterJournalDashboard({
   litterWeightLatestSessionComparison: LitterWeightLatestSessionComparison;
   litterWeightSchedule: LitterWeighingScheduleResult | null;
   litterWeightSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
+  litterWeightTodayProjections: readonly LitterWeighingTodayProjection[];
   litterWeightRole: LitterWeightOrganizationRole | null;
   litterWeightAction: ((
     previousState: LitterRoutineWeightsActionState,
@@ -479,6 +482,8 @@ export function LitterJournalDashboard({
         scheduleActions={litterCareTodayScheduleActions}
         todayDate={litterCareTodayDate}
         todayLocalTime={litterCareTodayLocalTime}
+        weighingProjections={litterWeightTodayProjections}
+        weighingUnavailable={litterWeightsLoadError}
         unavailable={litterCareTasksLoadError}
       />
 
