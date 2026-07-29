@@ -11,6 +11,10 @@ import {
   type LitterCareTodayQuickActions,
 } from "./litter-care-today-quick-actions";
 import type { LitterCareTaskScheduleActionBinding } from "./litter-care-task-schedule-dialog";
+import {
+  MaternalTemperatureTaskFactSummary,
+  TaskCompletionOriginBadge,
+} from "./maternal-observation-task-link";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",
@@ -83,6 +87,20 @@ function TodayTask({ task, active, quickActions, scheduleActions }: { task: Litt
             {priority ? <span className="font-medium text-foreground">{priority}</span> : null}
             {!active ? <span className="font-medium text-foreground">Statut : {statusLabels[task.status]}</span> : null}
           </div>
+          {!active && task.status === "done" ? (
+            <div className="mt-3">
+              <TaskCompletionOriginBadge origin={task.completionOrigin} />
+            </div>
+          ) : null}
+          {!active && task.completionFact ? (
+            <div className="mt-2">
+              <MaternalTemperatureTaskFactSummary
+                fact={task.completionFact}
+                compact
+                href="#maternal-observations"
+              />
+            </div>
+          ) : null}
         </div>
         {active ? <div className="flex shrink-0 flex-wrap items-center gap-3">
           {quickActions ? <LitterCareTodayQuickActionsComponent task={task} actions={quickActions} scheduleActions={scheduleActions} /> : null}

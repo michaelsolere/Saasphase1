@@ -6,7 +6,7 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `e389a6deaf461afa1675a1813de81809158ffb98`.
+- SHA de base vérifié avant ce lot : `f298a85d9197ebd6c6be573a2e8a9a099c40c2cc`.
 - La dernière migration incluse est `202607290001_maternal_temperature_planning_link`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
@@ -770,3 +770,32 @@ Ce lot ne rapproche pas rétroactivement les observations existantes, ne crée
 aucun fait depuis le planning, n’ajoute aucun modèle canonique ou moteur
 polymorphe et ne couvre ni les pesées, ni les contractions, ni les autres
 observations maternelles.
+
+## Lot du 2026-07-29 — Visibilité du lien entre température et tâche
+
+La relation append-only `maternal_observation_task_links` est désormais la
+seule source utilisée pour présenter l’origine d’une tâche réalisée. Un lecteur
+serveur central charge en lots les liens et leurs observations ou tâches
+associées, puis construit deux projections publiques expurgées : le fait de
+température porté par une tâche et l’action planifiée portée par une
+observation. Aucun identifiant d’observation, de lien ou de commande n’est
+transmis aux composants client.
+
+Une tâche `done` est présentée comme **Réalisée depuis le Journal** uniquement
+si un lien autoritatif existe. En l’absence de lien après une lecture réussie,
+elle est présentée comme **Traitement manuel**, y compris si sa note de
+résolution reprend mot pour mot la note automatique. Si la lecture
+complémentaire échoue, l’origine reste `unknown` et l’interface affiche un état
+neutre sans masquer les tâches ou observations principales. Les statuts
+`cancelled` et `not_applicable` conservent leurs libellés sans origine manuelle.
+
+Cette origine et le résumé de la température dans son unité saisie sont visibles
+dans l’historique des tâches, la vue Aujourd’hui de la portée et la vue
+Aujourd’hui de l’élevage. Les liens concernés ouvrent l’ancre publique
+`#maternal-observations`. Réciproquement, chaque observation liée indique le
+titre, l’occurrence récurrente et la programmation satisfaite. Les composants
+et formateurs sont partagés entre les trois présentations.
+
+Ce lot est strictement en lecture et en présentation : aucune migration, RPC,
+règle de rapprochement, relation générique, résolution supplémentaire ou
+écriture métier n’est ajoutée.
