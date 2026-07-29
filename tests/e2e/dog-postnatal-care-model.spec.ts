@@ -30,6 +30,14 @@ const templateCodes = [
   "dog-puppy-veterinary-identification-vaccination",
 ] as const;
 
+const expectedDurablePostnatalAbsence = {
+  models: [],
+  modelItems: [],
+  modelSlots: [],
+  templates: [],
+  imports: [],
+};
+
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const sql = (statement: string) => runE2eSqlSync(statement);
 
@@ -206,11 +214,30 @@ function durableOrganizationSnapshot() {
         from public.litter_planning_models model
         where model.organization_id = ${q(durableOrganizationId)}::uuid
           and model.library_model_code = ${q(modelCode)}
+          and model.library_model_version = 1
+      ),
+      'modelItems', (
+        select coalesce(jsonb_agg(to_jsonb(item) order by item.id), '[]'::jsonb)
+        from public.litter_planning_model_items item
+        join public.litter_planning_models model on model.id = item.model_id
+        where model.organization_id = ${q(durableOrganizationId)}::uuid
+          and model.library_model_code = ${q(modelCode)}
+          and model.library_model_version = 1
+      ),
+      'modelSlots', (
+        select coalesce(jsonb_agg(to_jsonb(slot) order by slot.id), '[]'::jsonb)
+        from public.litter_planning_model_item_time_slots slot
+        join public.litter_planning_model_items item on item.id = slot.model_item_id
+        join public.litter_planning_models model on model.id = item.model_id
+        where model.organization_id = ${q(durableOrganizationId)}::uuid
+          and model.library_model_code = ${q(modelCode)}
+          and model.library_model_version = 1
       ),
       'templates', (
         select coalesce(jsonb_agg(to_jsonb(template) order by template.id), '[]'::jsonb)
         from public.litter_care_task_templates template
         where template.organization_id = ${q(durableOrganizationId)}::uuid
+          and template.library_template_version = 1
           and template.library_template_code = any(array[
             ${templateCodes.map(q).join(",")}
           ])
@@ -521,6 +548,7 @@ test("importe et applique le modèle postnatal essentiel sans inventer de faits"
   const growthBefore = growthComparisonSnapshot();
   const durableBefore = durableOrganizationSnapshot();
   const previousCatalogBefore = previousCatalogSnapshot();
+  expect(durableBefore).toEqual(expectedDurablePostnatalAbsence);
   expect(growthBefore).toEqual({
     animals: 13,
     litters: 2,
@@ -968,7 +996,9 @@ test("importe et applique le modèle postnatal essentiel sans inventer de faits"
     ).toHaveCount(0);
 
     expect(previousCatalogSnapshot()).toEqual(previousCatalogBefore);
-    expect(durableOrganizationSnapshot()).toEqual(durableBefore);
+    expect(durableOrganizationSnapshot()).toEqual(
+      expectedDurablePostnatalAbsence,
+    );
     expect(growthComparisonSnapshot()).toEqual(growthBefore);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);
@@ -1005,7 +1035,9 @@ test("importe et applique le modèle postnatal essentiel sans inventer de faits"
     if (owner) await owner.auth.signOut();
     cleanup();
     expectCleanupAtZero();
-    expect(durableOrganizationSnapshot()).toEqual(durableBefore);
+    expect(durableOrganizationSnapshot()).toEqual(
+      expectedDurablePostnatalAbsence,
+    );
     expect(previousCatalogSnapshot()).toEqual(previousCatalogBefore);
     expect(growthComparisonSnapshot()).toEqual(growthBefore);
     console.log(
