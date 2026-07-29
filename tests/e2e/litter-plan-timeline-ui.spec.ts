@@ -51,6 +51,20 @@ function expectCleanup() {
   for (const [table, count] of Object.entries(remainingCounts())) expect(count, `${table} fixtures must be hard-deleted`).toBe(0);
 }
 
+function createdFixtureIds() {
+  return JSON.parse(sql(`select json_build_object(
+    'animals', (select coalesce(json_agg(id order by id), '[]'::json) from public.animals where id = ${q(ids.mother)}::uuid),
+    'litters', (select coalesce(json_agg(id order by id), '[]'::json) from public.litters where id = ${q(ids.litter)}::uuid),
+    'templates', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_care_task_templates where id::text like '9f240003-%'),
+    'models', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_planning_models where id = ${q(ids.model)}::uuid),
+    'modelItems', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_planning_model_items where model_id = ${q(ids.model)}::uuid),
+    'plans', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_plans where litter_id = ${q(ids.litter)}::uuid),
+    'planItems', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid),
+    'tasks', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_care_tasks where litter_id = ${q(ids.litter)}::uuid),
+    'applicationCommands', (select coalesce(json_agg(id order by id), '[]'::json) from public.litter_plan_application_commands where litter_id = ${q(ids.litter)}::uuid)
+  )::text;`)) as Record<string, string[]>;
+}
+
 function createFixtures() {
   sql(`
     insert into public.animals(id, organization_id, call_name, species, breed, sex, status, ownership_status, created_by, updated_by)
@@ -86,17 +100,110 @@ async function login(page: Page) {
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
 
-test.afterEach(() => { cleanup(); expectCleanup(); });
+test("filtre la frise localement, reste accessible sur mobile et conserve les actions", async ({ page }) => {
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  const failedRequests: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("requestfailed", (request) => {
+    failedRequests.push(
+      `${request.method()} ${request.url()} — ${request.failure()?.errorText ?? "échec"}`,
+    );
+  });
 
-test("affiche une frise de planning en lecture seule pour un viewer et l’état sans planning", async ({ page }) => {
-  cleanup(); expectCleanup(); createFixtures(); await applyPlan(); await login(page);
+  cleanup();
+  expectCleanup();
+  try {
+  createFixtures(); await applyPlan();
+  const fixtureIds = createdFixtureIds();
+  expect(Object.fromEntries(Object.entries(fixtureIds).map(([name, values]) => [name, values.length]))).toEqual({
+    animals: 1,
+    litters: 1,
+    templates: 3,
+    models: 1,
+    modelItems: 3,
+    plans: 1,
+    planItems: 3,
+    tasks: 2,
+    applicationCommands: 1,
+  });
+  console.log(`LITTER-TIMELINE-FILTERS-01 fixtures: ${JSON.stringify(fixtureIds)}`);
+  sql(`
+    update public.litter_care_tasks
+    set status = 'done',
+        resolution_command_id = ${q(`${prefix}11`)}::uuid,
+        resolved_at = now(),
+        resolved_timezone_name = 'Europe/Paris',
+        resolved_by = ${q(ownerId)}::uuid
+    where litter_id = ${q(ids.litter)}::uuid
+      and title = 'E2E jalon ponctuel';
+  `);
+  await login(page);
   await page.goto(`/litters/journal?litter=${ids.litter}`);
-  const panel = page.getByRole("region", { name: "Planning de la portée" });
+  const panel = page.getByRole("region", {
+    name: "Planning de la portée",
+    exact: true,
+  });
   await expect(panel).toContainText("E2E timeline portée");
-  await expect(panel).toContainText("Jalon");
-  await expect(panel).toContainText("E2E jalon ponctuel");
-  await expect(panel).toContainText("Fenêtre");
+  const categoryFilter = panel.getByLabel("Catégorie", { exact: true });
+  const includeTerminal = panel.getByLabel("Inclure les éléments traités", {
+    exact: true,
+  });
+  const counter = panel.locator("[data-timeline-filter-count]");
+
+  await expect(categoryFilter).toHaveValue("all");
+  await expect(includeTerminal).not.toBeChecked();
+  await expect(counter).toHaveAttribute("role", "status");
+  await expect(counter).toHaveAttribute("aria-live", "polite");
+  await expect(categoryFilter.locator("option")).toHaveText([
+    "Toutes les catégories",
+    "Préparation",
+    "Vétérinaire",
+    "Santé des petits",
+  ]);
+  await expect(counter).toHaveText("2 éléments affichés sur 3");
+  await expect(panel.getByText("E2E jalon ponctuel", { exact: true })).toHaveCount(0);
   await expect(panel).toContainText("E2E fenêtre");
+  await expect(panel).toContainText("E2E attente ancre");
+
+  await categoryFilter.selectOption("veterinary");
+  await expect(counter).toHaveText("1 éléments affichés sur 3");
+  await expect(panel).toContainText("E2E fenêtre");
+  await expect(panel.getByText("E2E attente ancre", { exact: true })).toHaveCount(0);
+  await panel.getByRole("button", { name: "Ajuster précisément" }).click();
+  const scheduleDialog = page.getByRole("dialog");
+  await expect(scheduleDialog).toBeVisible();
+  await scheduleDialog.getByRole("button", { name: "Annuler" }).click();
+  await expect(scheduleDialog).toHaveCount(0);
+
+  await categoryFilter.selectOption("preparation");
+  await expect(counter).toHaveText("0 éléments affichés sur 3");
+  const emptyState = panel.locator("[data-timeline-filter-empty]");
+  await expect(emptyState).toContainText(
+    "Aucun élément ne correspond aux filtres actuels.",
+  );
+  await expect(
+    emptyState.getByRole("button", { name: "Voir toutes les catégories" }),
+  ).toBeVisible();
+  await expect(
+    emptyState.getByRole("button", {
+      name: "Inclure les éléments traités",
+    }),
+  ).toBeVisible();
+  await emptyState
+    .getByRole("button", { name: "Voir toutes les catégories" })
+    .click();
+  await expect(categoryFilter).toHaveValue("all");
+  await expect(counter).toHaveText("2 éléments affichés sur 3");
+
+  await includeTerminal.check();
+  await expect(counter).toHaveText("3 éléments affichés sur 3");
+  await expect(panel).toContainText("E2E jalon ponctuel");
+  await expect(panel).toContainText("Traité");
+  await expect(panel).toContainText("Fenêtre");
   const window = panel.locator("[data-timeline-window]").filter({ hasText: "E2E fenêtre" });
   await expect(window).toHaveAttribute("data-start-percent", /44\.4/);
   await expect(window).toHaveAttribute("data-end-percent", /61\.1/);
@@ -105,15 +212,49 @@ test("affiche une frise de planning en lecture seule pour un viewer et l’état
   await expect(window.locator("[data-timeline-window-end]")).toHaveCount(1);
   await expect(panel).toContainText("En attente d’une date de référence");
   await expect(panel).toContainText("E2E attente ancre");
-  await expect(panel.getByRole("button", { name: /Ajuster précisément/ })).toHaveCount(2);
+  await expect(panel.getByRole("button", { name: /Ajuster précisément/ })).toHaveCount(1);
+
+  await includeTerminal.uncheck();
+  await categoryFilter.selectOption("offspring_health");
+  await expect(counter).toHaveText("1 éléments affichés sur 3");
+  await expect(panel).toContainText("E2E attente ancre");
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(categoryFilter).toBeVisible();
+  await expect(includeTerminal).toBeVisible();
+  await expect(counter).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await categoryFilter.selectOption("all");
+  await expect(counter).toHaveText("2 éléments affichés sur 3");
+  await categoryFilter.focus();
+  await expect(categoryFilter).toBeFocused();
+  await includeTerminal.focus();
+  await page.keyboard.press("Space");
+  await expect(includeTerminal).toBeChecked();
+  await page.keyboard.press("Space");
+  await expect(includeTerminal).not.toBeChecked();
 
   sql(`set session_replication_role = replica; update public.memberships set role = 'viewer' where id = ${q(membershipId)}::uuid; set session_replication_role = origin;`);
   await page.context().clearCookies(); await login(page); await page.goto(`/litters/journal?litter=${ids.litter}`);
-  await expect(page.getByRole("region", { name: "Planning de la portée" })).toContainText("E2E jalon ponctuel");
-  await expect(page.getByRole("region", { name: "Planning de la portée" }).getByRole("button")).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Planning de la portée", exact: true })).toContainText("E2E fenêtre");
+  await expect(page.getByRole("region", { name: "Planning de la portée", exact: true }).getByText("E2E jalon ponctuel", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Planning de la portée", exact: true }).getByRole("button")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Ajouter une tâche" })).toHaveCount(0);
 
   sql(`delete from public.litter_plan_application_commands where litter_id = ${q(ids.litter)}::uuid; delete from public.litter_care_tasks where litter_id = ${q(ids.litter)}::uuid; delete from public.litter_plan_items where litter_id = ${q(ids.litter)}::uuid; delete from public.litter_plans where litter_id = ${q(ids.litter)}::uuid;`);
   await page.goto(`/litters/journal?litter=${ids.litter}`);
   await expect(page.getByText("Aucun planning n’a encore été appliqué à cette portée.")).toBeVisible();
+  expect(pageErrors).toEqual([]);
+  expect(consoleErrors).toEqual([]);
+  expect(failedRequests).toEqual([]);
+  } finally {
+    cleanup();
+    expectCleanup();
+  }
 });

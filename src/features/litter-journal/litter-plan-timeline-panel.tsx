@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -39,6 +40,7 @@ import {
   buildTimelinePreviewLiveMessage,
   civilInclusiveDurationDays,
   cumulativeDayDeltaForHandle,
+  filterInteractiveLitterPlanTimeline,
   formatHandleDisplacementLabel,
   keyboardScheduleDayStep,
   pointerDeltaToCivilDays,
@@ -49,6 +51,7 @@ import {
   timelineScheduleResultRequiresRefresh,
   type InteractiveTimelineGeometryItem,
   type InteractiveTimelineItem,
+  type LitterPlanTimelineCategoryFilter,
   type TimelineDragHandle,
 } from "./litter-plan-timeline-interaction";
 
@@ -179,6 +182,7 @@ export function LitterPlanTimelinePanel({
   programmerBusinessDate = null,
 }: LitterPlanTimelinePanelProps) {
   const router = useRouter();
+  const categoryFilterId = useId();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -198,6 +202,9 @@ export function LitterPlanTimelinePanel({
   const [programmerMessage, setProgrammerMessage] = useState<string | null>(
     null,
   );
+  const [categoryFilter, setCategoryFilter] =
+    useState<LitterPlanTimelineCategoryFilter>("all");
+  const [includeTerminalItems, setIncludeTerminalItems] = useState(false);
 
   const handleProgrammerPreviewChange = useCallback(
     (preview: LitterPlanAdHocProgrammerPreview | null) => {
@@ -210,6 +217,42 @@ export function LitterPlanTimelinePanel({
     () =>
       buildLitterPlanAdHocProgrammerDisplayTimeline(timeline, programmerPreview),
     [timeline, programmerPreview],
+  );
+
+  const availableCategories = useMemo(
+    () =>
+      displayTimeline
+        ? filterInteractiveLitterPlanTimeline({
+            timeline: displayTimeline,
+            category: "all",
+            includeTerminal: true,
+          }).availableCategories
+        : [],
+    [displayTimeline],
+  );
+  const activeCategoryFilter =
+    categoryFilter === "all" || availableCategories.includes(categoryFilter)
+      ? categoryFilter
+      : "all";
+
+  const filteredTimeline = useMemo(
+    () =>
+      displayTimeline
+        ? filterInteractiveLitterPlanTimeline({
+            timeline: displayTimeline,
+            category: activeCategoryFilter,
+            includeTerminal: includeTerminalItems,
+            pinnedPublicKeys: programmerPreview
+              ? [programmerPreview.publicKey]
+              : [],
+          })
+        : null,
+    [
+      activeCategoryFilter,
+      displayTimeline,
+      includeTerminalItems,
+      programmerPreview,
+    ],
   );
 
   const overrides = useMemo(() => {
@@ -228,9 +271,11 @@ export function LitterPlanTimelinePanel({
     return map;
   }, [drag, keyboardPreview]);
 
-  const geometry = displayTimeline
-    ? buildInteractiveTimelineGeometry(displayTimeline, overrides)
+  const geometry = filteredTimeline
+    ? buildInteractiveTimelineGeometry(filteredTimeline.timeline, overrides)
     : null;
+  const visibleUndatedItems =
+    geometry?.undatedItems ?? filteredTimeline?.timeline.items ?? [];
   const state = timelinePanelState(displayTimeline, unavailable);
   const showProgrammer =
     !unavailable &&
@@ -987,8 +1032,98 @@ export function LitterPlanTimelinePanel({
       ) : state === "available" && displayTimeline ? (
         <>
           <p className="mt-1 text-sm text-muted">{displayTimeline.title}</p>
+          {filteredTimeline ? (
+            <div
+              className="mt-4 flex flex-col gap-4 rounded-lg border bg-background/40 p-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between"
+              data-timeline-filters
+            >
+              <div className="min-w-0 w-full sm:w-auto">
+                <label
+                  htmlFor={categoryFilterId}
+                  className="mb-1 block text-sm font-medium"
+                >
+                  Catégorie
+                </label>
+                <select
+                  id={categoryFilterId}
+                  value={activeCategoryFilter}
+                  onChange={(event) =>
+                    setCategoryFilter(
+                      event.target.value as LitterPlanTimelineCategoryFilter,
+                    )
+                  }
+                  className="h-10 w-full max-w-full rounded-md border bg-background px-3 text-sm sm:w-64"
+                >
+                  <option value="all">Toutes les catégories</option>
+                  {filteredTimeline.availableCategories.map((category) => (
+                    <option key={category} value={category}>
+                      {litterCareTaskCategoryLabels[category]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex min-h-10 cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={includeTerminalItems}
+                  onChange={(event) =>
+                    setIncludeTerminalItems(event.target.checked)
+                  }
+                  className="h-4 w-4 shrink-0 accent-current"
+                />
+                <span>Inclure les éléments traités</span>
+              </label>
+              <p
+                className="text-sm text-muted"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-timeline-filter-count
+              >
+                {filteredTimeline.visibleCount} éléments affichés sur{" "}
+                {filteredTimeline.totalCount}
+              </p>
+            </div>
+          ) : null}
           <div className="mt-5 space-y-5">
-            {geometry ? (
+            {filteredTimeline &&
+            filteredTimeline.totalCount > 0 &&
+            filteredTimeline.visibleCount === 0 ? (
+              <div
+                className="rounded-lg border border-dashed p-4"
+                data-timeline-filter-empty
+              >
+                <p className="text-sm font-medium">
+                  Aucun élément ne correspond aux filtres actuels.
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  Aucune donnée n’a été modifiée. Vous pouvez revenir à toutes
+                  les catégories ou inclure les éléments traités.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {activeCategoryFilter !== "all" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCategoryFilter("all")}
+                    >
+                      Voir toutes les catégories
+                    </Button>
+                  ) : null}
+                  {!includeTerminalItems ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setIncludeTerminalItems(true)}
+                    >
+                      Inclure les éléments traités
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+            ) : geometry ? (
               <div className="overflow-x-auto pb-2">
                 <div className="min-w-[48rem]" ref={trackRef}>
                   <div
@@ -1033,13 +1168,13 @@ export function LitterPlanTimelinePanel({
                 planning.
               </p>
             )}
-            {geometry?.undatedItems.length ? (
+            {visibleUndatedItems.length ? (
               <section className="rounded-lg border border-dashed p-4">
                 <h3 className="text-sm font-semibold">
                   Éléments sans date exploitable
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm">
-                  {geometry.undatedItems.map((item) => (
+                  {visibleUndatedItems.map((item) => (
                     <li key={item.publicKey}>
                       {kindLabel(item.kind)} · {item.title}
                       {item.readOnlyReason === "missing_task"
@@ -1050,13 +1185,14 @@ export function LitterPlanTimelinePanel({
                 </ul>
               </section>
             ) : null}
-            {displayTimeline.pendingAnchorItems.length > 0 ? (
+            {filteredTimeline &&
+            filteredTimeline.timeline.pendingAnchorItems.length > 0 ? (
               <section className="rounded-lg border border-dashed p-4">
                 <h3 className="text-sm font-semibold">
                   En attente d’une date de référence
                 </h3>
                 <ul className="mt-3 space-y-2 text-sm">
-                  {displayTimeline.pendingAnchorItems.map((item) => (
+                  {filteredTimeline.timeline.pendingAnchorItems.map((item) => (
                     <li key={item.publicKey}>
                       <span className="font-medium">
                         {kindLabel(item.kind)}

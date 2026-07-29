@@ -103,6 +103,17 @@ export type InteractiveLitterPlanTimeline = {
   pendingAnchorItems: InteractiveTimelineItem[];
 };
 
+export type LitterPlanTimelineCategoryFilter =
+  | "all"
+  | LitterCareTaskCategory;
+
+export type FilteredInteractiveLitterPlanTimeline = {
+  timeline: InteractiveLitterPlanTimeline;
+  availableCategories: LitterCareTaskCategory[];
+  visibleCount: number;
+  totalCount: number;
+};
+
 export type InteractiveLitterPlanTimelineBuildResult = InteractiveLitterPlanTimeline & {
   bindings: InteractiveTimelineBinding[];
 };
@@ -123,6 +134,48 @@ const WRITABLE_ROLES = new Set<OrganizationRole>(["owner", "admin", "member"]);
 
 const MIN_MARGIN_DAYS = 7;
 const MAX_MARGIN_DAYS = 21;
+
+/**
+ * Applies presentation-only filters to every timeline bucket.
+ * Pinned items are intended for local, unsaved previews and always remain visible.
+ */
+export function filterInteractiveLitterPlanTimeline(input: {
+  timeline: InteractiveLitterPlanTimeline;
+  category: LitterPlanTimelineCategoryFilter;
+  includeTerminal: boolean;
+  pinnedPublicKeys?: readonly string[];
+}): FilteredInteractiveLitterPlanTimeline {
+  const allItems = [
+    ...input.timeline.items,
+    ...input.timeline.pendingAnchorItems,
+  ];
+  const pinnedPublicKeys = new Set(input.pinnedPublicKeys ?? []);
+  const availableCategories = [
+    ...new Set(allItems.map((item) => item.category)),
+  ];
+
+  const isVisible = (item: InteractiveTimelineItem) => {
+    if (pinnedPublicKeys.has(item.publicKey)) return true;
+    if (input.category !== "all" && item.category !== input.category) {
+      return false;
+    }
+    return input.includeTerminal || !TERMINAL_STATUSES.has(item.status);
+  };
+
+  const items = input.timeline.items.filter(isVisible);
+  const pendingAnchorItems = input.timeline.pendingAnchorItems.filter(isVisible);
+
+  return {
+    timeline: {
+      title: input.timeline.title,
+      items,
+      pendingAnchorItems,
+    },
+    availableCategories,
+    visibleCount: items.length + pendingAnchorItems.length,
+    totalCount: allItems.length,
+  };
+}
 
 export function buildLitterPlanTimelineItemPublicKey(
   instanceKey: string,

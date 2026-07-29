@@ -703,3 +703,23 @@ La liste fautive n’était pas la liste interne des cartes rapides. Dans le gro
 Les espaces de clés du panneau sont désormais explicitement séparés. La commande express utilise un préfixe propre, et le remontage de la file rapide utilise un autre préfixe avec une identité publique composée de l’ordre, de l’heure de naissance et du sexe. Aucun identifiant de base n’est exposé. Les clés de la chronologie, de l’historique, de la palette, du sélecteur et des dialogues ont aussi été vérifiées sans collision réelle.
 
 Le scénario navigateur capture la console dès le chargement initial et échoue dès la première alerte de clé dupliquée. Il contrôle chaque action et chaque rafraîchissement, les cartes rapides, la chronologie, l’historique et les comptes SQL, puis exige le hard-delete de toutes les fixtures. Ce lot n’ajoute aucune migration, RPC, table ou dépendance.
+
+## Lot du 2026-07-29 — Filtres locaux de la frise du planning
+
+Le panneau **Planning de la portée** propose désormais un filtre local à choix
+unique parmi les catégories réellement présentes et une option
+**Inclure les éléments traités**. Par défaut, les éléments `done`, `cancelled`
+et `not_applicable` sont masqués. Le compteur inclut conjointement les éléments
+datés, sans date exploitable et en attente d’ancre.
+
+La projection filtrée est une copie de présentation : elle ne modifie ni le DTO
+source, ni les tâches, ni leur programmation, leur statut ou leurs actions. La
+géométrie et le domaine temporel sont recalculés depuis les seuls éléments
+visibles. L’aperçu non enregistré de **+ Programmer** reste toujours visible,
+y compris hors de la catégorie sélectionnée. L’état vide filtré est neutre et
+permet de revenir à toutes les catégories ou d’inclure les éléments traités.
+
+L’état reste strictement dans le composant React, sans base, URL, cookie ou
+stockage navigateur. Les `recurring_task` et leurs occurrences restent exclus
+de la frise principale ; leur panneau dédié n’est pas modifié. Ce lot n’ajoute
+aucune migration, RPC, table, dépendance ou écriture métier.

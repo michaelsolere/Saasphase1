@@ -15,6 +15,7 @@ import {
   cumulativeDayDeltaForHandle,
   dateToDomainPercent,
   domainPercentToDate,
+  filterInteractiveLitterPlanTimeline,
   formatHandleDisplacementLabel,
   isOpaqueTimelinePublicKey,
   keyboardScheduleDayStep,
@@ -26,6 +27,10 @@ import {
   publicKeyContainsForbiddenOpaqueData,
   timelineScheduleResultRequiresRefresh,
 } from "../../src/features/litter-journal/litter-plan-timeline-interaction";
+import {
+  buildLitterPlanAdHocProgrammerDisplayTimeline,
+  type LitterPlanAdHocProgrammerPreview,
+} from "../../src/features/litter-journal/litter-plan-ad-hoc-programmer";
 import {
   scheduleViewContainsForbiddenIdentity,
   toLitterCareTaskScheduleView,
@@ -238,6 +243,173 @@ test("rapproche snapshot et tâche, conserve l’ordre métier et exclut les ré
   );
   expect(planCopy).toEqual(plan);
   expect(tasksCopy).toEqual(tasks);
+});
+
+test("filtre sans mutation tous les compartiments et épingle l’aperçu du programmateur", () => {
+  const built = buildInteractiveLitterPlanTimeline({
+    plan,
+    tasks,
+    role: "owner",
+    instanceKey: "filters",
+  });
+  const before = structuredClone(built);
+
+  const defaultView = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "all",
+    includeTerminal: false,
+  });
+  expect(defaultView.availableCategories).toEqual([
+    "preparation",
+    "maternal_health",
+    "veterinary",
+    "other",
+    "identification",
+    "offspring_health",
+  ]);
+  expect(defaultView.totalCount).toBe(7);
+  expect(defaultView.visibleCount).toBe(6);
+  expect(
+    defaultView.timeline.items.some((item) => item.title === "Tâche terminée"),
+  ).toBe(false);
+  const defaultGeometry = buildInteractiveTimelineGeometry(defaultView.timeline);
+  expect(defaultGeometry?.categories.map((entry) => entry.category)).not.toContain(
+    "other",
+  );
+
+  const preparation = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "preparation",
+    includeTerminal: false,
+  });
+  expect(preparation.timeline.items.map((item) => item.title)).toEqual([
+    "Radiographie de comptage",
+    "Tâche ponctuelle",
+  ]);
+  expect(preparation.timeline.pendingAnchorItems).toEqual([]);
+
+  const undated = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "identification",
+    includeTerminal: false,
+  });
+  expect(undated.timeline.items.map((item) => item.title)).toEqual([
+    "Snapshot orphelin",
+  ]);
+  expect(buildInteractiveTimelineGeometry(undated.timeline)).toBeNull();
+
+  const pendingAnchor = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "offspring_health",
+    includeTerminal: false,
+  });
+  expect(pendingAnchor.timeline.items).toEqual([]);
+  expect(
+    pendingAnchor.timeline.pendingAnchorItems.map((item) => item.title),
+  ).toEqual(["En attente"]);
+
+  const terminalHidden = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "other",
+    includeTerminal: false,
+  });
+  expect(terminalHidden.visibleCount).toBe(0);
+  const terminalIncluded = filterInteractiveLitterPlanTimeline({
+    timeline: built,
+    category: "other",
+    includeTerminal: true,
+  });
+  expect(terminalIncluded.timeline.items.map((item) => item.title)).toEqual([
+    "Tâche terminée",
+  ]);
+  const terminalGeometry = buildInteractiveTimelineGeometry(
+    terminalIncluded.timeline,
+  );
+  expect(terminalGeometry?.domain.startsOn).not.toBe(
+    defaultGeometry?.domain.startsOn,
+  );
+
+  const allTerminalStatuses = {
+    ...built,
+    items: [
+      ...built.items,
+      {
+        ...built.items[0]!,
+        publicKey: "terminal-cancelled",
+        title: "Tâche annulée",
+        status: "cancelled" as const,
+      },
+      {
+        ...built.items[0]!,
+        publicKey: "terminal-not-applicable",
+        title: "Tâche non applicable",
+        status: "not_applicable" as const,
+      },
+    ],
+  };
+  const allTerminalHidden = filterInteractiveLitterPlanTimeline({
+    timeline: allTerminalStatuses,
+    category: "all",
+    includeTerminal: false,
+  });
+  expect(
+    [
+      ...allTerminalHidden.timeline.items,
+      ...allTerminalHidden.timeline.pendingAnchorItems,
+    ].some((item) =>
+      ["done", "cancelled", "not_applicable"].includes(item.status),
+    ),
+  ).toBe(false);
+  const allTerminalIncluded = filterInteractiveLitterPlanTimeline({
+    timeline: allTerminalStatuses,
+    category: "all",
+    includeTerminal: true,
+  });
+  expect(
+    allTerminalIncluded.timeline.items.filter((item) =>
+      ["done", "cancelled", "not_applicable"].includes(item.status),
+    ),
+  ).toHaveLength(3);
+
+  const preview: LitterPlanAdHocProgrammerPreview = {
+    publicKey: "programmer-preview-filters",
+    kind: "task",
+    title: "Aperçu hors catégorie",
+    category: "socialization",
+    startDate: "2026-08-25",
+    endDate: "2026-08-25",
+    geometryKind: "point",
+    statusLabel: "Aperçu — non enregistré",
+    panelSummary: {
+      kindLabel: "Tâche",
+      title: "Aperçu hors catégorie",
+      timingLine: "25 août 2026",
+    },
+    recurringDetails: null,
+  };
+  const display = buildLitterPlanAdHocProgrammerDisplayTimeline(built, preview)!;
+  const withPinnedPreview = filterInteractiveLitterPlanTimeline({
+    timeline: display,
+    category: "maternal_health",
+    includeTerminal: false,
+    pinnedPublicKeys: [preview.publicKey],
+  });
+  expect(withPinnedPreview.timeline.items.map((item) => item.title)).toEqual([
+    "Surveillance de la température",
+    "Aperçu hors catégorie",
+  ]);
+  expect(withPinnedPreview.visibleCount).toBe(2);
+  expect(withPinnedPreview.totalCount).toBe(8);
+  expect(
+    withPinnedPreview.timeline.items.some(
+      (item) => item.title === "Pesée récurrente",
+    ),
+  ).toBe(false);
+
+  expect(built).toEqual(before);
+  expect(plan.items.find((item) => item.item_kind === "recurring_task")?.title).toBe(
+    "Pesée récurrente",
+  );
 });
 
 test("clés publiques opaques, sans UUID ni titre, distinctes entre chargements", () => {

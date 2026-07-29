@@ -929,11 +929,20 @@ test("LITTER-TIMELINE-RESOLUTION-UI-01 — rôles, confidentialité, panneau dé
         }),
       ).toHaveCount(1);
       await expect(
+        timeline(page).getByText("E7280002 terminal", { exact: true }),
+      ).toHaveCount(0);
+      await timeline(page)
+        .getByLabel("Inclure les éléments traités", { exact: true })
+        .check();
+      await expect(
         timelineCard(page, "E7280002 terminal").getByRole("button", {
           name: "Traiter",
           exact: true,
         }),
       ).toHaveCount(0);
+      await timeline(page)
+        .getByLabel("Inclure les éléments traités", { exact: true })
+        .uncheck();
 
       const pendingSection = timeline(page)
         .locator("section")
@@ -1377,6 +1386,9 @@ test("LITTER-TIMELINE-RESOLUTION-UI-01 — rôles, confidentialité, panneau dé
           exact: true,
         }),
       ).toBeVisible();
+      await timeline(page)
+        .getByLabel("Inclure les éléments traités", { exact: true })
+        .check();
       const item = timelineCard(page, "E7280002 concurrence");
       await expect(item).toContainText("Annulé");
       await expect(
