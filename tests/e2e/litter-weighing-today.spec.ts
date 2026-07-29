@@ -42,6 +42,15 @@ const dueLitterLabel = "Rosie × Rimbaud";
 const handledLitterLabel = "Naya × Oslo";
 const sql = (value: string) => runE2eSqlSync(value);
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
+const expectedGrowthComparisonSnapshot = {
+  animals: 13,
+  litters: 2,
+  whelpingSessions: 2,
+  whelpingEvents: 11,
+  whelpingBirths: 9,
+  litterWeighingSessions: 62,
+  animalWeightMeasurements: 286,
+} as const;
 
 function addCivilDays(value: string, days: number) {
   const [year, month, day] = value.split("-").map(Number);
@@ -75,6 +84,22 @@ function organizationSnapshot() {
   `);
 }
 
+function growthComparisonSnapshot() {
+  return JSON.parse(
+    sql(`
+      select json_build_object(
+        'animals', (select count(*) from public.animals where id::text like 'd3c9%'),
+        'litters', (select count(*) from public.litters where id::text like 'd3c9%'),
+        'whelpingSessions', (select count(*) from public.whelping_sessions where id::text like 'd3c9%'),
+        'whelpingEvents', (select count(*) from public.whelping_events where id::text like 'd3c9%'),
+        'whelpingBirths', (select count(*) from public.whelping_births where id::text like 'd3c9%'),
+        'litterWeighingSessions', (select count(*) from public.litter_weighing_sessions where id::text like 'd3c9%'),
+        'animalWeightMeasurements', (select count(*) from public.animal_weight_measurements where id::text like 'd3c9%')
+      )::text;
+    `),
+  ) as typeof expectedGrowthComparisonSnapshot;
+}
+
 function reservedPrefixCounts() {
   return JSON.parse(
     sql(`
@@ -103,6 +128,8 @@ async function expectNoHorizontalOverflow(page: Page) {
 test("LITTER-WEIGHING-TODAY-INTEGRATION-01 — Journal, Aujourd’hui élevage et cleanup", async ({
   page,
 }) => {
+  const growthBeforeFixtures = growthComparisonSnapshot();
+  expect(growthBeforeFixtures).toEqual(expectedGrowthComparisonSnapshot);
   const fixtures = createE2eFixtureRegistry(sql, "d7290004-litter-weighing-today");
   const pageErrors: string[] = [];
   const consoleErrors: string[] = [];
@@ -339,12 +366,21 @@ test("LITTER-WEIGHING-TODAY-INTEGRATION-01 — Journal, Aujourd’hui élevage e
     expect(consoleErrors).toEqual([]);
     expect(failedRequests).toEqual([]);
     expect(failedResponses).toEqual([]);
+    const growthAfterReads = growthComparisonSnapshot();
+    expect(growthAfterReads).toEqual(expectedGrowthComparisonSnapshot);
+    expect(growthAfterReads).toEqual(growthBeforeFixtures);
   } finally {
-    await fixtures.cleanup();
-    const exactCounts = await fixtures.assertEmpty();
-    expect(Object.values(exactCounts).every((count) => count === 0)).toBe(true);
-    expect(Object.values(reservedPrefixCounts()).every((count) => count === 0)).toBe(
-      true,
-    );
+    try {
+      await fixtures.cleanup();
+      const exactCounts = await fixtures.assertEmpty();
+      expect(Object.values(exactCounts).every((count) => count === 0)).toBe(true);
+      expect(
+        Object.values(reservedPrefixCounts()).every((count) => count === 0),
+      ).toBe(true);
+    } finally {
+      const growthAfterCleanup = growthComparisonSnapshot();
+      expect(growthAfterCleanup).toEqual(expectedGrowthComparisonSnapshot);
+      expect(growthAfterCleanup).toEqual(growthBeforeFixtures);
+    }
   }
 });

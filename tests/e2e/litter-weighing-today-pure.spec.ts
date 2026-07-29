@@ -9,6 +9,7 @@ import {
   projectLitterWeighingToday,
   type LitterWeighingTodaySession,
 } from "@/features/litter-weights/litter-weighing-today";
+import { collectLitterWeighingTodayPages } from "@/features/litter-weights/litter-weighing-today-pagination";
 
 const litterId = "d7290004-0000-4000-8000-000000000001";
 const sessionId = "d7290004-0000-4000-8000-000000000101";
@@ -248,4 +249,35 @@ test("n’expose aucun identifiant de séance, mesure ou commande", () => {
       ]),
     );
   }
+});
+
+test("agrège deux pages stables sans doublon ni mutation", async () => {
+  const rows = Array.from({ length: 507 }, (_, index) => ({
+    id: `row-${String(index).padStart(3, "0")}`,
+    value: index,
+  }));
+  const firstPage = rows.slice(0, 500);
+  const secondPage = [firstPage.at(-1)!, ...rows.slice(500)];
+  const sourcePages = [firstPage, secondPage];
+  const sourceSnapshot = structuredClone(sourcePages);
+  const ranges: Array<[number, number]> = [];
+
+  const result = await collectLitterWeighingTodayPages({
+    pageSize: 500,
+    rowKey: (row) => row.id,
+    readPage: async (from, to) => {
+      ranges.push([from, to]);
+      const page = sourcePages[ranges.length - 1];
+      if (!page) throw new Error("Pagination did not stop after the short page.");
+      return page;
+    },
+  });
+
+  expect(ranges).toEqual([
+    [0, 499],
+    [500, 999],
+  ]);
+  expect(result).toEqual(rows);
+  expect(new Set(result.map(({ id }) => id)).size).toBe(rows.length);
+  expect(sourcePages).toEqual(sourceSnapshot);
 });

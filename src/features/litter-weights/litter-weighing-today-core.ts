@@ -5,6 +5,7 @@ import type { Database } from "@/types/database.types";
 
 import { resolveAuthorizedLitterWeighingSchedulePolicyCore } from "./litter-weighing-policy-core";
 import { buildLitterWeighingScheduleFromHistory } from "./litter-weighing-schedule-history-adapter";
+import { collectLitterWeighingTodayPages } from "./litter-weighing-today-pagination";
 import {
   projectLitterWeighingToday,
   type LitterWeighingTodayProjection,
@@ -35,6 +36,41 @@ export type ListOrganizationLitterWeighingTodayResult =
     };
 
 const PAGE_SIZE = 500;
+
+type LitterTodayRow = {
+  id: string;
+  name: string | null;
+  actual_birth_date: string | null;
+  litter_weighing_schedule_policy_snapshot: Database["public"]["Tables"]["litters"]["Row"]["litter_weighing_schedule_policy_snapshot"];
+};
+
+type WeighingSessionTodayRow = {
+  id: string;
+  litter_id: string;
+  measured_at: string;
+  timezone_name: string;
+  created_at: string;
+};
+
+type WeightMeasurementTodayRow = {
+  id: string;
+  animal_id: string;
+  litter_weighing_session_id: string | null;
+  measurement_kind: string;
+  animal:
+    | {
+        litter_id: string | null;
+        is_external: boolean;
+        status: string;
+        deleted_at: string | null;
+      }
+    | Array<{
+        litter_id: string | null;
+        is_external: boolean;
+        status: string;
+        deleted_at: string | null;
+      }>;
+};
 
 function failure(
   code: Extract<
@@ -107,23 +143,34 @@ export async function listOrganizationLitterWeighingTodayCore(
   if ("outcome" in membership) return membership;
   const { organizationId, role } = membership;
 
-  const litters = await supabase
-    .from("litters")
-    .select(
-      "id, name, actual_birth_date, litter_weighing_schedule_policy_snapshot",
-    )
-    .eq("organization_id", organizationId)
-    .in("status", ACTIVE_LITTER_JOURNAL_STATUSES)
-    .is("deleted_at", null)
-    .order("id", { ascending: true });
-  if (litters.error) {
+  let litterRows: LitterTodayRow[];
+  try {
+    litterRows = await collectLitterWeighingTodayPages({
+      pageSize: PAGE_SIZE,
+      rowKey: (litter) => litter.id,
+      readPage: async (from, to) => {
+        const page = await supabase
+          .from("litters")
+          .select(
+            "id, name, actual_birth_date, litter_weighing_schedule_policy_snapshot",
+          )
+          .eq("organization_id", organizationId)
+          .in("status", ACTIVE_LITTER_JOURNAL_STATUSES)
+          .is("deleted_at", null)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (page.error) throw page.error;
+        return (page.data ?? []) as LitterTodayRow[];
+      },
+    });
+  } catch {
     return failure(
       "database_error",
       "Une erreur technique empêche la lecture des portées suivies.",
     );
   }
 
-  const candidates = (litters.data ?? []).filter(
+  const candidates = litterRows.filter(
     (
       litter,
     ): litter is typeof litter & {
@@ -140,63 +187,57 @@ export async function listOrganizationLitterWeighingTodayCore(
   }
 
   const litterIds = candidates.map((litter) => litter.id);
-  const sessions = await supabase
-    .from("litter_weighing_sessions")
-    .select("id, litter_id, measured_at, timezone_name, created_at")
-    .eq("organization_id", organizationId)
-    .in("litter_id", litterIds)
-    .is("cancelled_at", null)
-    .order("id", { ascending: true });
-  if (sessions.error) {
+  let sessionRows: WeighingSessionTodayRow[];
+  try {
+    sessionRows = await collectLitterWeighingTodayPages({
+      pageSize: PAGE_SIZE,
+      rowKey: (session) => session.id,
+      readPage: async (from, to) => {
+        const page = await supabase
+          .from("litter_weighing_sessions")
+          .select("id, litter_id, measured_at, timezone_name, created_at")
+          .eq("organization_id", organizationId)
+          .in("litter_id", litterIds)
+          .is("cancelled_at", null)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (page.error) throw page.error;
+        return (page.data ?? []) as WeighingSessionTodayRow[];
+      },
+    });
+  } catch {
     return failure(
       "database_error",
       "Une erreur technique empêche la lecture des séances de pesée.",
     );
   }
 
-  const measurementRows: Array<{
-    id: string;
-    animal_id: string;
-    litter_weighing_session_id: string | null;
-    measurement_kind: string;
-    animal:
-      | {
-          litter_id: string | null;
-          is_external: boolean;
-          status: string;
-          deleted_at: string | null;
-        }
-      | Array<{
-          litter_id: string | null;
-          is_external: boolean;
-          status: string;
-          deleted_at: string | null;
-        }>;
-  }> = [];
-  let offset = 0;
-  while (true) {
-    const page = await supabase
-      .from("animal_weight_measurements")
-      .select(
-        "id, animal_id, litter_weighing_session_id, measurement_kind, animal:animals!inner(litter_id, is_external, status, deleted_at)",
-      )
-      .eq("organization_id", organizationId)
-      .in("measurement_kind", ["birth", "routine"])
-      .is("cancelled_at", null)
-      .in("animal.litter_id", litterIds)
-      .order("id", { ascending: true })
-      .range(offset, offset + PAGE_SIZE - 1);
-    if (page.error) {
-      return failure(
-        "database_error",
-        "Une erreur technique empêche le comptage des mesures actives.",
-      );
-    }
-
-    const rows = (page.data ?? []) as typeof measurementRows;
-    measurementRows.push(...rows);
-    if (rows.length < PAGE_SIZE) break;
-    offset += PAGE_SIZE;
+  let measurementRows: WeightMeasurementTodayRow[];
+  try {
+    measurementRows = await collectLitterWeighingTodayPages({
+      pageSize: PAGE_SIZE,
+      rowKey: (measurement) => measurement.id,
+      readPage: async (from, to) => {
+        const page = await supabase
+          .from("animal_weight_measurements")
+          .select(
+            "id, animal_id, litter_weighing_session_id, measurement_kind, animal:animals!inner(litter_id, is_external, status, deleted_at)",
+          )
+          .eq("organization_id", organizationId)
+          .in("measurement_kind", ["birth", "routine"])
+          .is("cancelled_at", null)
+          .in("animal.litter_id", litterIds)
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (page.error) throw page.error;
+        return (page.data ?? []) as WeightMeasurementTodayRow[];
+      },
+    });
+  } catch {
+    return failure(
+      "database_error",
+      "Une erreur technique empêche le comptage des mesures actives.",
+    );
   }
 
   const sessionCountById = new Map<string, number>();
@@ -238,7 +279,7 @@ export async function listOrganizationLitterWeighingTodayCore(
       routineMeasurementCount: number;
     }>
   >();
-  for (const session of sessions.data ?? []) {
+  for (const session of sessionRows) {
     const litterSessions = sessionsByLitterId.get(session.litter_id) ?? [];
     litterSessions.push({
       internalId: session.id,
