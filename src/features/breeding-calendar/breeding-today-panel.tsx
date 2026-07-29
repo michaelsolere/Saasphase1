@@ -32,11 +32,15 @@ import {
   MaternalTemperatureTaskFactSummary,
   TaskCompletionOriginBadge,
 } from "@/features/litter-journal/maternal-observation-task-link";
+import type { LitterWeighingTodayProjection } from "@/features/litter-weights/litter-weighing-today";
+import { LitterWeighingTodayCard } from "@/features/litter-weights/litter-weighing-today-card";
 
 export const BREEDING_TODAY_EMPTY_MESSAGE =
   "Aucune action à traiter aujourd’hui pour l’élevage.";
 export const BREEDING_TODAY_UNAVAILABLE_MESSAGE =
   "La vue Aujourd’hui de l’élevage n’est pas disponible pour le moment.";
+export const BREEDING_TODAY_WEIGHING_UNAVAILABLE_MESSAGE =
+  "Les échéances de pesée ne sont pas disponibles pour le moment.";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",
@@ -197,6 +201,7 @@ function TodayTask({
 function TodaySection({
   title,
   tasks,
+  weighings,
   litterNames,
   active,
   quickActionsByTaskId,
@@ -204,17 +209,19 @@ function TodaySection({
 }: {
   title: string;
   tasks: LitterCareTaskSummary[];
+  weighings: readonly LitterWeighingTodayProjection[];
   litterNames: Record<string, string>;
   active: boolean;
   quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>;
   scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding>;
 }) {
-  if (tasks.length === 0) return null;
+  const count = tasks.length + weighings.length;
+  if (count === 0) return null;
 
   return (
     <section aria-label={title}>
       <h3 className="text-sm font-semibold">
-        {title} <span className="text-muted">({tasks.length})</span>
+        {title} <span className="text-muted">({count})</span>
       </h3>
       <ul className="mt-3 space-y-2">
         {tasks.map((task) => (
@@ -225,6 +232,13 @@ function TodaySection({
             active={active}
             quickActions={active ? quickActionsByTaskId.get(task.id) ?? null : null}
             scheduleActions={active ? scheduleActionsByTaskId.get(task.id) ?? null : null}
+          />
+        ))}
+        {weighings.map((projection) => (
+          <LitterWeighingTodayCard
+            key={`${projection.litterId}:${projection.state}:${projection.scheduledOn ?? "extra"}`}
+            projection={projection}
+            context="organization"
           />
         ))}
       </ul>
@@ -394,6 +408,8 @@ export function BreedingTodayPanel({
   reminderLoadFailed = false,
   quickActions = [],
   scheduleActions = [],
+  weighingProjections = [],
+  weighingUnavailable = false,
   unavailable = false,
 }: {
   tasks: LitterCareTaskSummary[];
@@ -407,6 +423,8 @@ export function BreedingTodayPanel({
   reminderLoadFailed?: boolean;
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActionBinding[];
+  weighingProjections?: readonly LitterWeighingTodayProjection[];
+  weighingUnavailable?: boolean;
   unavailable?: boolean;
 }) {
   const projection = projectLitterCareToday(tasks, {
@@ -417,7 +435,11 @@ export function BreedingTodayPanel({
     projection.dueToday.length +
     projection.overdue.length +
     projection.openWindows.length +
-    projection.handledToday.length;
+    projection.handledToday.length +
+    weighingProjections.length;
+  const dueWeighings = weighingProjections.filter(({ state }) => state === "due_today");
+  const overdueWeighings = weighingProjections.filter(({ state }) => state === "overdue");
+  const handledWeighings = weighingProjections.filter(({ state }) => state === "handled_today");
   const quickActionsByTaskId = new Map(quickActions.map((actions) => [actions.taskId, actions]));
   const scheduleActionsByTaskId = new Map(
     scheduleActions.map((actions) => [actions.taskId, actions]),
@@ -445,43 +467,56 @@ export function BreedingTodayPanel({
         </div>
         {unavailable ? (
           <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_UNAVAILABLE_MESSAGE}</p>
-        ) : total === 0 ? (
-          <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_EMPTY_MESSAGE}</p>
         ) : (
-          <div className="mt-5 space-y-6">
-            <TodaySection
-              title="À faire aujourd’hui"
-              tasks={projection.dueToday}
-              litterNames={litterNames}
-              active
-              quickActionsByTaskId={quickActionsByTaskId}
-              scheduleActionsByTaskId={scheduleActionsByTaskId}
-            />
-            <TodaySection
-              title="En retard"
-              tasks={projection.overdue}
-              litterNames={litterNames}
-              active
-              quickActionsByTaskId={quickActionsByTaskId}
-              scheduleActionsByTaskId={scheduleActionsByTaskId}
-            />
-            <TodaySection
-              title="Fenêtres ouvertes"
-              tasks={projection.openWindows}
-              litterNames={litterNames}
-              active
-              quickActionsByTaskId={quickActionsByTaskId}
-              scheduleActionsByTaskId={scheduleActionsByTaskId}
-            />
-            <TodaySection
-              title="Traité aujourd’hui"
-              tasks={projection.handledToday}
-              litterNames={litterNames}
-              active={false}
-              quickActionsByTaskId={quickActionsByTaskId}
-              scheduleActionsByTaskId={scheduleActionsByTaskId}
-            />
-          </div>
+          <>
+            {weighingUnavailable ? (
+              <p className="mt-5 text-sm text-muted">
+                {BREEDING_TODAY_WEIGHING_UNAVAILABLE_MESSAGE}
+              </p>
+            ) : null}
+            {total === 0 ? (
+              <p className="mt-5 text-sm text-muted">{BREEDING_TODAY_EMPTY_MESSAGE}</p>
+            ) : (
+              <div className="mt-5 space-y-6">
+                <TodaySection
+                  title="À faire aujourd’hui"
+                  tasks={projection.dueToday}
+                  weighings={dueWeighings}
+                  litterNames={litterNames}
+                  active
+                  quickActionsByTaskId={quickActionsByTaskId}
+                  scheduleActionsByTaskId={scheduleActionsByTaskId}
+                />
+                <TodaySection
+                  title="En retard"
+                  tasks={projection.overdue}
+                  weighings={overdueWeighings}
+                  litterNames={litterNames}
+                  active
+                  quickActionsByTaskId={quickActionsByTaskId}
+                  scheduleActionsByTaskId={scheduleActionsByTaskId}
+                />
+                <TodaySection
+                  title="Fenêtres ouvertes"
+                  tasks={projection.openWindows}
+                  weighings={[]}
+                  litterNames={litterNames}
+                  active
+                  quickActionsByTaskId={quickActionsByTaskId}
+                  scheduleActionsByTaskId={scheduleActionsByTaskId}
+                />
+                <TodaySection
+                  title="Traité aujourd’hui"
+                  tasks={projection.handledToday}
+                  weighings={handledWeighings}
+                  litterNames={litterNames}
+                  active={false}
+                  quickActionsByTaskId={quickActionsByTaskId}
+                  scheduleActionsByTaskId={scheduleActionsByTaskId}
+                />
+              </div>
+            )}
+          </>
         )}
       </section>
       <CalendarRemindersTodaySection

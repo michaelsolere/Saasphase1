@@ -56,6 +56,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/litter-weighing-schedule-history-adapter.spec.ts",
   "tests/e2e/litter-weighing-schedule-model.spec.ts",
   "tests/e2e/litter-weighing-schedule-summary.spec.tsx",
+  "tests/e2e/litter-weighing-today-pure.spec.ts",
   "tests/e2e/litter-weighing-session-comparison.spec.ts",
   "tests/e2e/litter-weighing-session-statistics.spec.ts",
   "tests/e2e/litter-weight-adjustment-actions-core.spec.ts",

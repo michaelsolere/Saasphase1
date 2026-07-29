@@ -15,6 +15,8 @@ import {
   MaternalTemperatureTaskFactSummary,
   TaskCompletionOriginBadge,
 } from "./maternal-observation-task-link";
+import { LitterWeighingTodayCard } from "@/features/litter-weights/litter-weighing-today-card";
+import type { LitterWeighingTodayProjection } from "@/features/litter-weights/litter-weighing-today";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",
@@ -111,14 +113,22 @@ function TodayTask({ task, active, quickActions, scheduleActions }: { task: Litt
   );
 }
 
-function TodaySection({ title, tasks, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding> }) {
-  if (tasks.length === 0) return null;
+function TodaySection({ title, tasks, weighings, active, quickActionsByTaskId, scheduleActionsByTaskId }: { title: string; tasks: LitterCareTaskSummary[]; weighings: readonly LitterWeighingTodayProjection[]; active: boolean; quickActionsByTaskId: Map<string, LitterCareTodayQuickActions>; scheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding> }) {
+  const count = tasks.length + weighings.length;
+  if (count === 0) return null;
 
   return (
     <section aria-label={title}>
-      <h3 className="text-sm font-semibold">{title} <span className="text-muted">({tasks.length})</span></h3>
+      <h3 className="text-sm font-semibold">{title} <span className="text-muted">({count})</span></h3>
       <ul className="mt-3 space-y-2">
         {tasks.map((task) => <TodayTask key={task.id} task={task} active={active} quickActions={active ? quickActionsByTaskId.get(task.id) ?? null : null} scheduleActions={active ? scheduleActionsByTaskId.get(task.id) ?? null : null} />)}
+        {weighings.map((projection) => (
+          <LitterWeighingTodayCard
+            key={`${projection.litterId}:${projection.state}:${projection.scheduledOn ?? "extra"}`}
+            projection={projection}
+            context="journal"
+          />
+        ))}
       </ul>
     </section>
   );
@@ -130,6 +140,8 @@ export function LitterCareTodayPanel({
   todayLocalTime,
   quickActions = [],
   scheduleActions = [],
+  weighingProjections = [],
+  weighingUnavailable = false,
   unavailable = false,
 }: {
   tasks: LitterCareTaskSummary[];
@@ -137,10 +149,15 @@ export function LitterCareTodayPanel({
   todayLocalTime: string;
   quickActions?: LitterCareTodayQuickActions[];
   scheduleActions?: LitterCareTaskScheduleActionBinding[];
+  weighingProjections?: readonly LitterWeighingTodayProjection[];
+  weighingUnavailable?: boolean;
   unavailable?: boolean;
 }) {
   const projection = projectLitterCareToday(tasks, { date: todayDate, localTime: todayLocalTime });
-  const total = projection.dueToday.length + projection.overdue.length + projection.openWindows.length + projection.handledToday.length;
+  const dueWeighings = weighingProjections.filter(({ state }) => state === "due_today");
+  const overdueWeighings = weighingProjections.filter(({ state }) => state === "overdue");
+  const handledWeighings = weighingProjections.filter(({ state }) => state === "handled_today");
+  const total = projection.dueToday.length + projection.overdue.length + projection.openWindows.length + projection.handledToday.length + weighingProjections.length;
   const quickActionsByTaskId = new Map(quickActions.map((actions) => [actions.taskId, actions]));
   const scheduleActionsByTaskId = new Map(scheduleActions.map((actions) => [actions.taskId, actions]));
 
@@ -155,15 +172,24 @@ export function LitterCareTodayPanel({
       </div>
       {unavailable ? (
         <p className="mt-5 text-sm text-muted">La vue Aujourd’hui n’est pas disponible pour le moment.</p>
-      ) : total === 0 ? (
-        <p className="mt-5 text-sm text-muted">Rien à signaler aujourd’hui pour cette portée.</p>
       ) : (
-        <div className="mt-5 space-y-6">
-          <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-          <TodaySection title="En retard" tasks={projection.overdue} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-          <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-          <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} active={false} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
-        </div>
+        <>
+          {weighingUnavailable ? (
+            <p className="mt-5 text-sm text-muted">
+              Les échéances de pesée ne sont pas disponibles pour le moment.
+            </p>
+          ) : null}
+          {total === 0 ? (
+            <p className="mt-5 text-sm text-muted">Rien à signaler aujourd’hui pour cette portée.</p>
+          ) : (
+            <div className="mt-5 space-y-6">
+              <TodaySection title="À faire aujourd’hui" tasks={projection.dueToday} weighings={dueWeighings} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="En retard" tasks={projection.overdue} weighings={overdueWeighings} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="Fenêtres ouvertes" tasks={projection.openWindows} weighings={[]} active quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+              <TodaySection title="Traité aujourd’hui" tasks={projection.handledToday} weighings={handledWeighings} active={false} quickActionsByTaskId={quickActionsByTaskId} scheduleActionsByTaskId={scheduleActionsByTaskId} />
+            </div>
+          )}
+        </>
       )}
     </section>
   );

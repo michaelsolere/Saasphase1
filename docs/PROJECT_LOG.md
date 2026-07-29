@@ -832,3 +832,37 @@ Ce modèle sert uniquement à organiser les relevés et la période de vigilance
 Il ne produit aucune alerte clinique, n’interprète aucune baisse de température
 et ne prédit pas la mise-bas. Sa configuration doit être adaptée au protocole
 de l’élevage et aux recommandations vétérinaires.
+
+## Lot du 2026-07-29 — Pesées dans les vues Aujourd’hui
+
+Les vues **Aujourd’hui** du Journal et de l’élevage projettent désormais les
+échéances et les faits réels de pesée sans créer de tâche générique. La séance
+de pesée demeure le fait métier autoritatif : une séance active satisfait le
+calendrier dès qu’elle contient au moins une mesure `routine` active. Une
+séance partielle est donc valide, tandis qu’une séance vide, une séance annulée
+ou une mesure annulée ne produit aucun accomplissement.
+
+La projection pure réutilise exclusivement le calendrier existant calculé par
+`buildLitterWeighingScheduleFromHistory` et
+`buildLitterWeighingSchedule`. Pour une portée née, la résolution passe par son
+snapshot immuable avec
+`resolveAuthorizedLitterWeighingSchedulePolicyCore` ; un snapshot absent ou
+invalide ne se replie jamais silencieusement sur la politique courante de
+l’organisation. Les poids de naissance réels peuvent toujours satisfaire J0
+sans créer de séance de routine ni dupliquer une mesure.
+
+Les échéances du jour apparaissent individuellement, les échéances antérieures
+sont agrégées en une seule carte par portée et toutes les séances du jour civil
+dans leur fuseau enregistré sont réunies en une seule carte traitée. Une séance
+réelle un jour non prévu reste un fait supplémentaire explicite. Le Journal
+construit cette projection depuis les séances, mesures et calendrier déjà
+chargés, sans seconde lecture. La vue élevage charge en lots les portées
+actuellement suivies selon le prédicat du Journal, leurs snapshots, leurs
+séances actives et les seules colonnes nécessaires au comptage des mesures
+actives ; elle ne réalise aucune requête par portée.
+
+Ce lot reste strictement en lecture et en présentation. Il n’ajoute ni tâche,
+relation séance–tâche, série récurrente, modèle canonique, migration, RPC,
+table, colonne, création automatique de séance ou validation manuelle. Il ne
+modifie aucune cadence, règle d’éligibilité, courbe, statistique, comparaison,
+interpolation ou interprétation médicale.
