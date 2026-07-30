@@ -1150,3 +1150,49 @@ devra ajouter une désactivation auditée, permettre une lignée d’activations
 successives et traiter atomiquement le retour des éléments en attente, les
 tâches, les séries et l’ancre réelle avant d’autoriser une nouvelle première
 naissance.
+
+## Lot du 2026-07-30 — Cycle de vie audité des activations de première naissance
+
+Le registre privé append-only
+`litter_plan_actual_birth_activations` porte désormais une lignée : une
+activation successive référence son prédécesseur sans modifier, supprimer ou
+remplacer aucune activation historique. L’unicité de la commande de naissance
+est conservée, tandis que la contrainte qui limitait une portée à une seule
+activation est retirée. Aucun `UPDATE` ni `DELETE` ne touche les activations
+existantes ; elles deviennent chacune la racine courante de leur portée au
+moyen d’une projection séparée.
+
+La table privée `litter_plan_actual_birth_activation_states` constitue cette
+projection opérationnelle. Elle conserve, pour une organisation et une portée,
+l’activation courante éventuelle, le dernier élément de la lignée, une révision
+et l’auteur de la dernière transition. Une désactivation met uniquement
+`current_activation_id` à `null`, conserve `last_activation_id` et augmente la
+révision exactement une fois.
+
+Le registre privé append-only
+`litter_plan_actual_birth_activation_deactivations` audite chaque
+désactivation. Son autorité provient obligatoirement d’une véritable commande
+`cancel_birth` de `whelping_birth_adjustment_commands`, dont l’organisation,
+la portée, la date, le motif, l’auteur et le snapshot effectif doivent être
+cohérents. Une activation et une commande ne peuvent chacune être utilisées
+qu’une fois. Les rejeux exacts rendent le résultat existant ; une réutilisation
+divergente est refusée.
+
+L’activation de première naissance conserve sa signature historique. Elle
+résout d’abord le rejeu par commande, consulte ensuite la projection courante
+et, après une désactivation, peut créer atomiquement un successeur lié au
+dernier élément. Le cas sans plan actif reste compatible. Les corrections de
+date ne créent ni activation ni désactivation et ne modifient pas la projection.
+
+La désactivation reste volontairement privée et n’est pas raccordée à
+`cancel_whelping_birth`. Le garde public temporaire conserve strictement son
+contrat et refuse encore l’annulation de l’unique naissance lorsqu’une
+activation courante existe avec `birth_has_downstream_data`; une activation
+historique déjà désactivée est ignorée. Ce lot ne remet pas
+`litters.actual_birth_date` à `null`, ne réouvre aucune série et ne modifie,
+supprime ou recrée aucun élément ou tâche de planning.
+
+Le prochain lot devra raccorder la réversibilité atomique du planning à
+l’annulation publique : retour contrôlé des éléments postnatals en attente,
+traitement des tâches et séries, ancre réelle et désactivation dans une même
+transaction.

@@ -125,6 +125,13 @@ function cleanup() {
        or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
 
+    delete from public.litter_plan_actual_birth_activation_deactivations
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_states
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_activations
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
@@ -148,13 +155,13 @@ function cleanup() {
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or creation_command_id::text like ${q(like)};
-    delete from public.litter_plan_series_time_slots slot
-    using public.litter_plan_series series
-    where slot.series_id = series.id
-      and (
-        series.organization_id = ${q(ids.organization)}::uuid
-        or series.litter_id::text like ${q(like)}
-      );
+    delete from public.litter_plan_series_time_slots
+    where organization_id = ${q(ids.organization)}::uuid
+       or series_id in (
+         select id
+         from public.litter_plan_series
+         where litter_id::text like ${q(like)}
+       );
     delete from public.litter_plan_series
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)};
@@ -238,6 +245,8 @@ function cleanup() {
 function fixtureCounts() {
   return jsonSql<Record<string, number>>(`
     select json_build_object(
+      'activation_deactivations', (select count(*) from public.litter_plan_actual_birth_activation_deactivations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or birth_adjustment_client_command_id::text like ${q(like)}),
+      'activation_states', (select count(*) from public.litter_plan_actual_birth_activation_states where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'activations', (select count(*) from public.litter_plan_actual_birth_activations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or whelping_client_command_id::text like ${q(like)}),
       'observations', (select count(*) from public.maternal_observations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
       'observation_commands', (select count(*) from public.maternal_observation_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
@@ -247,8 +256,12 @@ function fixtureCounts() {
       'tasks', (select count(*) from public.litter_care_tasks where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or creation_command_id::text like ${q(like)}),
       'series_slots', (
         select count(*) from public.litter_plan_series_time_slots slot
-        join public.litter_plan_series series on series.id = slot.series_id
-        where series.organization_id = ${q(ids.organization)}::uuid or series.litter_id::text like ${q(like)}
+        where slot.organization_id = ${q(ids.organization)}::uuid
+           or slot.series_id in (
+             select id
+             from public.litter_plan_series
+             where litter_id::text like ${q(like)}
+           )
       ),
       'series_materialization_commands', (select count(*) from public.litter_plan_series_materialization_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),
       'series_state_commands', (select count(*) from public.litter_plan_series_state_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or client_command_id::text like ${q(like)}),

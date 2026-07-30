@@ -126,6 +126,13 @@ function cleanup() {
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_deactivations
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_states
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_activations
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
@@ -255,6 +262,8 @@ function fixtureCounts() {
       'plan_audits', (select count(*) from public.litter_plan_actual_birth_reconciliations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'series_change_audits', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
       'series_audits', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
+      'activation_deactivations', (select count(*) from public.litter_plan_actual_birth_activation_deactivations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
+      'activation_states', (select count(*) from public.litter_plan_actual_birth_activation_states where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'activations', (select count(*) from public.litter_plan_actual_birth_activations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'schedule_changes', (select count(*) from public.litter_care_task_schedule_changes where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'schedule_commands', (select count(*) from public.litter_care_task_schedule_commands where organization_id = ${q(ids.organization)}::uuid or client_command_id::text like ${q(like)}),
@@ -1170,6 +1179,10 @@ test("bloque atomiquement l’annulation irréversible de l’unique naissance",
     sql(`
       begin;
       set local session_replication_role = replica;
+      delete from public.litter_plan_actual_birth_activation_states
+      where organization_id = ${q(ids.organization)}::uuid
+        and litter_id = ${q(ids.technicalLitter)}::uuid
+        and current_activation_id = ${q(capturedTechnicalActivationId)}::uuid;
       delete from public.litter_plan_actual_birth_activations
       where organization_id = ${q(ids.organization)}::uuid
         and litter_id = ${q(ids.technicalLitter)}::uuid

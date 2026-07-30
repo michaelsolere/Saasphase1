@@ -12,6 +12,13 @@ export const fixtureTables = [
   "maternal_observation_task_links",
   "maternal_observation_commands",
   "maternal_observations",
+  "litter_plan_actual_birth_reconciliation_task_changes",
+  "litter_plan_actual_birth_reconciliations",
+  "litter_plan_series_actual_birth_reconciliation_changes",
+  "litter_plan_series_actual_birth_reconciliation_commands",
+  "litter_plan_actual_birth_activation_deactivations",
+  "litter_plan_actual_birth_activation_states",
+  "litter_plan_actual_birth_activations",
   "litter_care_tasks",
   "litter_plan_series_time_slots",
   "litter_plan_series_materialization_commands",
@@ -62,6 +69,13 @@ const cleanupOrder: FixtureTable[] = [
   "maternal_observation_task_links",
   "maternal_observation_commands",
   "maternal_observations",
+  "litter_plan_actual_birth_reconciliation_task_changes",
+  "litter_plan_actual_birth_reconciliations",
+  "litter_plan_series_actual_birth_reconciliation_changes",
+  "litter_plan_series_actual_birth_reconciliation_commands",
+  "litter_plan_actual_birth_activation_deactivations",
+  "litter_plan_actual_birth_activation_states",
+  "litter_plan_actual_birth_activations",
   "litter_care_tasks",
   "litter_plan_series_time_slots",
   "litter_plan_series_materialization_commands",
@@ -128,7 +142,19 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     }
     if (table === "litters" && animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)}) and litter_id is not null`);
     const statement = `delete from public.${table} where id in (${idsSql(tableIds)})`;
-    await execute(table === "whelping_birth_adjustment_commands" ? `begin; set local app.fixture_cleanup = 'on'; ${statement}; commit;` : statement);
+    const requiresAppendOnlyBypass =
+      table === "litter_plan_actual_birth_reconciliation_task_changes"
+      || table === "litter_plan_actual_birth_reconciliations"
+      || table === "litter_plan_series_actual_birth_reconciliation_changes"
+      || table === "litter_plan_series_actual_birth_reconciliation_commands"
+      || table === "whelping_birth_adjustment_commands"
+      || table === "litter_plan_actual_birth_activation_deactivations"
+      || table === "litter_plan_actual_birth_activations";
+    await execute(
+      requiresAppendOnlyBypass
+        ? `begin; set local session_replication_role = replica; set local app.fixture_cleanup = 'on'; ${statement}; commit;`
+        : statement,
+    );
   } }
     if (animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)})`);
     const organizationIds = [...ids.get("organizations")!];

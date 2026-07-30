@@ -243,6 +243,7 @@ async function main() {
       "tests/e2e/litter-weight-quick-entry.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
       "tests/e2e/litter-actual-birth-plan-activation.spec.ts",
+      "tests/e2e/litter-actual-birth-activation-lifecycle.spec.ts",
       "tests/e2e/litter-actual-birth-plan-reconciliation.spec.ts",
       "tests/e2e/litter-actual-birth-series-reconciliation-engine.spec.ts",
       "tests/e2e/litter-single-birth-cancellation-safety-guard.spec.ts",
