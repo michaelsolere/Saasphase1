@@ -1199,3 +1199,75 @@ Le prochain lot devra raccorder la réversibilité atomique du planning à
 l’annulation publique : retour contrôlé des éléments postnatals en attente,
 traitement des tâches et séries, ancre réelle et désactivation dans une même
 transaction.
+
+## Lot du 2026-07-30 — Photographie de réversibilité des activations
+
+La migration
+`202607300008_litter_actual_birth_reversal_snapshot_foundation` ajoute la
+preuve historique nécessaire à une future restauration exacte du planning
+après l’annulation réelle d’une première naissance. Elle ne restaure, ne
+supprime et ne rouvre encore aucune donnée.
+
+L’audit du chemin existant a confirmé que les compteurs de
+`litter_plan_actual_birth_activations` ne suffisent pas à reconstruire les
+effets. L’activation peut modifier les éléments postnatals, matérialiser une
+série récurrente vide, insérer ses occurrences, créer des tâches ponctuelles
+ou fenêtres, terminer une série pré-mise-bas et passer certaines occurrences
+existantes à `not_applicable`. Les registres de commandes de matérialisation,
+d’état de série et de programmation ne sont pas écrits par ce chemin interne ;
+ils ne peuvent donc pas servir de substitut à une capture complète.
+
+Deux registres privés append-only sont créés :
+
+- `litter_plan_actual_birth_activation_reversal_snapshots` porte l’en-tête
+  versionné, le plan éventuel et les quatre compteurs exacts ;
+- `litter_plan_actual_birth_activation_reversal_changes` porte une ligne par
+  élément, série ou tâche réellement inséré ou modifié, avec la ligne
+  persistée complète avant et après l’opération.
+
+Un changement `insert` conserve un `snapshot_before` SQL nul et relit la ligne
+effectivement persistée dans `snapshot_after`. Un changement `update`
+conserve deux objets JSON complets et distincts. Aucune ligne n’est écrite pour
+un état inchangé. L’ordre est déterministe : éléments, séries, puis tâches,
+avec les occurrences récurrentes ordonnées par série et numéro d’occurrence.
+Les compteurs d’en-tête sont recalculables depuis les changements.
+
+Les quatre compteurs de photographie proviennent exclusivement de ce diff
+exhaustif. Les compteurs historiques de l’activation et son `result` sont
+recopiés dans le `result` de l’en-tête à titre informatif, mais aucune
+divergence ne bloque la photographie. En particulier, une première naissance
+postérieure à l’horizon déjà matérialisé d’une série pré-mise-bas peut insérer
+les occurrences manquantes pendant sa réconciliation : ces tâches figurent
+bien dans le registre exact, même si `created_task_count` ne comptabilise que
+les créations postnatales directement suivies par l’orchestrateur.
+
+`entity_id` ne possède volontairement aucune FK vers les tables métier. Le
+futur moteur pourra hard-delete une tâche créée par l’activation sans détruire
+ni invalider la preuve qui l’identifie. Les liens vers l’organisation, la
+portée, l’activation, la photographie et le plan éventuel restent, eux,
+protégés par des FK composites.
+
+Sous le verrou canonique existant, l’activation capture toutes les lignes
+concernées avant mutation, exécute les opérations historiques, relit les lignes
+persistées, calcule le diff exact, insère l’activation, puis l’en-tête et les
+changements avant d’avancer la projection
+`litter_plan_actual_birth_activation_states`. L’ensemble reste dans la
+transaction de `record_whelping_birth` avec l’événement, la naissance,
+l’Animal, le poids éventuel et les projections de portée. Un échec
+d’insertion de photographie annule donc toutes ces écritures.
+
+Une activation nouvelle sans plan actif reçoit un en-tête version 1 avec
+`litter_plan_id = null` et quatre compteurs nuls. Les activations antérieures à
+la migration ne sont ni mises à jour, ni désactivées, ni dotées d’un faux
+snapshot reconstruit depuis l’état courant. L’absence d’en-tête désigne ainsi
+une activation legacy qui n’est pas automatiquement réversible.
+
+Les deux registres ont la RLS active, aucune policy et aucun grant client.
+`UPDATE` et `DELETE` sont refusés ; seul le hard-delete explicite des fixtures,
+avec utilisateur Auth nul et `app.fixture_cleanup = on`, est permis. Les
+fonctions de capture et de protection restent privées.
+
+Le prochain lot attendu est
+`LITTER-ACTUAL-BIRTH-PLAN-REVERSAL-ENGINE-01`. Il consommera ces photographies
+pour préparer une restauration privée et auditée après une véritable commande
+`cancel_birth`, en détectant notamment toute modification humaine postérieure.

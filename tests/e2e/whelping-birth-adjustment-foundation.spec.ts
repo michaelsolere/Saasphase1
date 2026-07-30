@@ -56,6 +56,10 @@ function cleanup() {
     delete from public.litter_plan_actual_birth_reconciliations
       where litter_id=${q(ids.litter)}::uuid
         or birth_adjustment_client_command_id::text like '9f200005-%';
+    delete from public.litter_plan_actual_birth_activation_reversal_changes
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activation_reversal_snapshots
+      where litter_id=${q(ids.litter)}::uuid;
     delete from public.litter_plan_actual_birth_activation_deactivations
       where litter_id=${q(ids.litter)}::uuid
         or birth_adjustment_client_command_id::text like '9f200005-%';
@@ -77,6 +81,22 @@ function cleanup() {
     delete from public.animals where id in (${q(ids.father)}::uuid,${q(ids.mother)}::uuid);
     delete from public.memberships where id::text like '9f200005-%';
     delete from public.profiles where id::text like '9f200005-%';
+    delete from auth.mfa_amr_claims where session_id in (
+      select id from auth.sessions where user_id::text like '9f200005-%'
+    );
+    delete from auth.refresh_tokens
+      where user_id like '9f200005-%'
+         or session_id in (
+           select id from auth.sessions where user_id::text like '9f200005-%'
+         );
+    delete from auth.webauthn_credentials where user_id::text like '9f200005-%';
+    delete from auth.webauthn_challenges where user_id::text like '9f200005-%';
+    delete from auth.oauth_authorizations where user_id::text like '9f200005-%';
+    delete from auth.oauth_consents where user_id::text like '9f200005-%';
+    delete from auth.one_time_tokens where user_id::text like '9f200005-%';
+    delete from auth.mfa_factors where user_id::text like '9f200005-%';
+    delete from auth.flow_state where user_id::text like '9f200005-%';
+    delete from auth.sessions where user_id::text like '9f200005-%';
     delete from auth.identities where user_id::text like '9f200005-%';
     delete from auth.users where id::text like '9f200005-%';
     delete from public.organizations where id=${q(ids.foreignOrganization)}::uuid;
@@ -88,6 +108,8 @@ function remaining() {
   return JSON.parse(sql(`select json_build_object(
     'plan_changes',(select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where organization_id=${q(organizationId)}::uuid and command_id in (select id from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid)),
     'plan_audits',(select count(*) from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid or birth_adjustment_client_command_id::text like '9f200005-%'),
+    'reversal_changes',(select count(*) from public.litter_plan_actual_birth_activation_reversal_changes where litter_id=${q(ids.litter)}::uuid),
+    'reversal_snapshots',(select count(*) from public.litter_plan_actual_birth_activation_reversal_snapshots where litter_id=${q(ids.litter)}::uuid),
     'activation_deactivations',(select count(*) from public.litter_plan_actual_birth_activation_deactivations where litter_id=${q(ids.litter)}::uuid or birth_adjustment_client_command_id::text like '9f200005-%'),
     'activation_states',(select count(*) from public.litter_plan_actual_birth_activation_states where litter_id=${q(ids.litter)}::uuid),
     'activations',(select count(*) from public.litter_plan_actual_birth_activations where litter_id=${q(ids.litter)}::uuid or whelping_client_command_id::text like '9f200005-%'),
@@ -101,6 +123,8 @@ function remaining() {
     'litters',(select count(*) from public.litters where id=${q(ids.litter)}::uuid),
     'memberships',(select count(*) from public.memberships where id::text like '9f200005-%'),
     'profiles',(select count(*) from public.profiles where id::text like '9f200005-%'),
+    'auth_refresh_tokens',(select count(*) from auth.refresh_tokens where user_id like '9f200005-%' or session_id in (select id from auth.sessions where user_id::text like '9f200005-%')),
+    'auth_sessions',(select count(*) from auth.sessions where user_id::text like '9f200005-%'),
     'users',(select count(*) from auth.users where id::text like '9f200005-%'),
     'organizations',(select count(*) from public.organizations where id=${q(ids.foreignOrganization)}::uuid)
   )::text;`)) as Record<string, number>;
@@ -266,6 +290,10 @@ test("corrects and cancels births atomically while preserving every source row",
       begin;
       set local session_replication_role = replica;
       select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
+      delete from public.litter_plan_actual_birth_activation_reversal_changes
+      where litter_id=${q(ids.litter)}::uuid;
+      delete from public.litter_plan_actual_birth_activation_reversal_snapshots
+      where litter_id=${q(ids.litter)}::uuid;
       delete from public.litter_plan_actual_birth_activation_states
       where litter_id=${q(ids.litter)}::uuid;
       delete from public.litter_plan_actual_birth_activations

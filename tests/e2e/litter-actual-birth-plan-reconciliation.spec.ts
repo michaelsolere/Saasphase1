@@ -147,6 +147,12 @@ function cleanup() {
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_reversal_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_reversal_snapshots
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_activation_deactivations
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
