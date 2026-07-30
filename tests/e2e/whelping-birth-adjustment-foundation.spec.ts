@@ -46,6 +46,19 @@ function cleanup() {
   sql(`
     begin;
     set local session_replication_role = replica;
+    select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
+    delete from public.litter_plan_actual_birth_reconciliation_task_changes
+      where organization_id=${q(organizationId)}::uuid
+        and command_id in (
+          select id from public.litter_plan_actual_birth_reconciliations
+          where litter_id=${q(ids.litter)}::uuid
+        );
+    delete from public.litter_plan_actual_birth_reconciliations
+      where litter_id=${q(ids.litter)}::uuid
+        or birth_adjustment_client_command_id::text like '9f200005-%';
+    delete from public.litter_plan_actual_birth_activations
+      where litter_id=${q(ids.litter)}::uuid
+        or whelping_client_command_id::text like '9f200005-%';
     delete from public.whelping_birth_adjustment_commands
       where client_command_id::text like '9f200005-%' or birth_id in (${uuidList(created.births)});
     delete from public.whelping_commands where client_command_id::text like '9f200005-%' or session_id=${q(ids.session)}::uuid;
@@ -68,6 +81,9 @@ function cleanup() {
 
 function remaining() {
   return JSON.parse(sql(`select json_build_object(
+    'plan_changes',(select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where organization_id=${q(organizationId)}::uuid and command_id in (select id from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid)),
+    'plan_audits',(select count(*) from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid or birth_adjustment_client_command_id::text like '9f200005-%'),
+    'activations',(select count(*) from public.litter_plan_actual_birth_activations where litter_id=${q(ids.litter)}::uuid or whelping_client_command_id::text like '9f200005-%'),
     'adjustments',(select count(*) from public.whelping_birth_adjustment_commands where client_command_id::text like '9f200005-%'),
     'commands',(select count(*) from public.whelping_commands where client_command_id::text like '9f200005-%'),
     'weights',(select count(*) from public.animal_weight_measurements where id::text like '9f200005-%' or animal_id in (${uuidList(created.animals)})),
@@ -247,6 +263,14 @@ test("corrects and cancels births atomically while preserving every source row",
     expect(sql(`select json_build_object('birth',row_to_json(birth),'measurement',row_to_json(measurement),'animal',row_to_json(animal))::text from public.whelping_births birth join public.animals animal on animal.organization_id=birth.organization_id and animal.id=birth.animal_id join public.animal_weight_measurements measurement on measurement.organization_id=birth.organization_id and measurement.source_birth_id=birth.id where birth.id=${q(one.birthId)}::uuid;`)).toBe(cancelledBirthState);
     expect(JSON.parse(sql(`select json_build_object('total',born_total_count,'male',born_male_count,'female',born_female_count,'alive',alive_count,'date',actual_birth_date) from public.litters where id=${q(ids.litter)}::uuid;`))).toEqual({ total: 0, male: 0, female: 0, alive: 0, date: "2026-07-20" });
 
+    sql(`
+      begin;
+      set local session_replication_role = replica;
+      select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
+      delete from public.litter_plan_actual_birth_activations
+      where litter_id=${q(ids.litter)}::uuid;
+      commit;
+    `);
     const three = await recordWhelpingBirthCore(recordInput(ids.birthThreeCommand, "2026-07-21T20:20:00.000Z"), owner);
     expect(three).toMatchObject({ outcome: "success", birthOrder: 1 });
     if (three.outcome !== "success") throw new Error("replacement birth failed");

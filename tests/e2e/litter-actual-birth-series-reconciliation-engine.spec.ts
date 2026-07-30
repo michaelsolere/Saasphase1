@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
-  correctWhelpingBirthCore,
   openWhelpingSessionCore,
   recordWhelpingBirthCore,
 } from "../../src/features/whelping/whelping-core";
@@ -97,6 +96,17 @@ function cleanup() {
     set local session_replication_role = replica;
     select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
 
+    delete from public.litter_plan_actual_birth_reconciliation_task_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or command_id in (
+         select id
+         from public.litter_plan_actual_birth_reconciliations
+         where litter_id::text like ${q(like)}
+       );
+    delete from public.litter_plan_actual_birth_reconciliations
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
     delete from public.litter_plan_series_actual_birth_reconciliation_changes
     where organization_id = ${q(ids.organization)}::uuid
        or command_id::text like ${q(like)}
@@ -229,6 +239,21 @@ function cleanup() {
 function fixtureCounts() {
   return jsonSql<Record<string, number>>(`
     select json_build_object(
+      'plan_reconciliation_changes', (
+        select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes
+        where organization_id = ${q(ids.organization)}::uuid
+           or command_id in (
+             select id
+             from public.litter_plan_actual_birth_reconciliations
+             where litter_id::text like ${q(like)}
+           )
+      ),
+      'plan_reconciliations', (
+        select count(*) from public.litter_plan_actual_birth_reconciliations
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
+           or birth_adjustment_client_command_id::text like ${q(like)}
+      ),
       'reconciliation_changes', (
         select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes
         where organization_id = ${q(ids.organization)}::uuid
@@ -591,35 +616,46 @@ async function recordFirstBirth(
 }
 
 async function correctBirth(
-  owner: Supabase,
+  _owner: Supabase,
   fixture: BirthFixture,
   commandId: string,
   expectedRevisionNo: number,
   occurredAt: string,
   sex: "male" | "female" | "unknown" = "unknown",
 ) {
-  const corrected = await correctWhelpingBirthCore(
-    {
-      birthId: fixture.birthId,
-      clientCommandId: commandId,
-      expectedRevisionNo,
-      occurredAt,
-      sex,
-      viability: "unknown",
-      initialCollarColor: null,
-      birthNote: null,
-      weightGrams: null,
-      weightMeasuredAt: null,
-      weightNote: null,
-      reason: `Correction auditée ${commandId.slice(-4)}`,
-    },
-    owner,
-  );
+  const corrected = jsonSql<{
+    outcome: string;
+    revision_no: number | null;
+    reason: string | null;
+  }>(`
+    begin;
+    select pg_catalog.set_config(
+      'request.jwt.claim.sub',
+      ${q(ownerId)},
+      true
+    );
+    select row_to_json(corrected)::text
+    from public.correct_whelping_birth_core_internal(
+      ${q(fixture.birthId)}::uuid,
+      ${q(commandId)}::uuid,
+      ${expectedRevisionNo},
+      ${q(occurredAt)}::timestamptz,
+      ${q(sex)},
+      'unknown',
+      null,
+      null,
+      null,
+      null,
+      null,
+      ${q(`Correction auditée ${commandId.slice(-4)}`)}
+    ) corrected;
+    commit;
+  `);
   expect(corrected.outcome).toBe("success");
-  if (corrected.outcome !== "success") {
+  if (corrected.outcome !== "success" || corrected.revision_no === null) {
     throw new Error(`Correction failed: ${corrected.reason}`);
   }
-  return corrected.revisionNo;
+  return corrected.revision_no;
 }
 
 function seriesId(litterId: string) {
@@ -776,6 +812,8 @@ function nonSeriesBusinessFingerprint(litterId: string) {
 test("réconcilie de façon privée les séries actual_birth terminales", async () => {
   cleanup();
   expect(fixtureCounts()).toEqual({
+    plan_reconciliation_changes: 0,
+    plan_reconciliations: 0,
     reconciliation_changes: 0,
     reconciliation_commands: 0,
     activations: 0,
@@ -1713,6 +1751,8 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
   }
 
   expect(fixtureCounts()).toEqual({
+    plan_reconciliation_changes: 0,
+    plan_reconciliations: 0,
     reconciliation_changes: 0,
     reconciliation_commands: 0,
     activations: 0,

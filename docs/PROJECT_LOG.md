@@ -1060,3 +1060,54 @@ Ce lot ne raccorde pas encore l’orchestrateur à `correct_whelping_birth`.
 Cette enveloppe transactionnelle est reportée au lot suivant. Aucun plan,
 élément, naissance, Animal, observation, poids, document, paiement,
 réservation ou e-mail n’est modifié par la fonction de réconciliation.
+
+## Lot du 2026-07-30 — Réconciliation atomique du plan après correction de naissance
+
+La correction auditée de la première naissance est désormais l’unique point
+d’entrée public qui puisse réconcilier une date réelle déplacée. Le corps
+historique de `correct_whelping_birth` est conservé sans copie : la migration
+le renomme en fonction privée en gardant son OID, sa définition et sa
+configuration, puis recrée une enveloppe publique de même signature et de même
+contrat observable.
+
+Après un succès frais, l’enveloppe lit exclusivement les dates avant/après de
+la commande `correct_birth`. Si elles sont non nulles et différentes, le cœur
+historique et toute la réconciliation s’exécutent dans la même
+sous-transaction. Une erreur de planning annule donc aussi la correction de
+naissance, de l’Animal, du poids, l’événement `birth_corrected`, la commande
+d’ajustement et les projections de portée, puis restitue l’erreur historique
+`technical_error`.
+
+L’orchestrateur privé reprend le verrou canonique du plan, verrouille portée,
+plan, éléments, séries et tâches, puis réancre uniquement les éléments
+matérialisés fondés sur `actual_birth` ou `offspring_age`. Les suggestions,
+ancres et offsets techniques suivent la nouvelle date. La programmation
+retenue ne suit la suggestion que pour une tâche encore automatique. Les
+programmations manuelles, verrouillées et terminales restent inchangées,
+tandis que leur nouvelle suggestion est conservée pour expliquer l’écart.
+Chaque tâche réellement modifiée progresse d’une révision et reçoit un audit
+avant/après classé.
+
+La série postnatale existante est recalée sans créer ni supprimer
+d’occurrence : son début, sa fin et sa couverture suivent la nouvelle ancre,
+ses identités et son plafond restent intacts. Les séries pré-mise-bas
+`completed/actual_birth_reached` sont déléguées au moteur privé spécialisé,
+qui reste seul responsable des restaurations, insertions, contractions,
+collisions, plafonds et audits. L’état terminal n’est jamais rouvert.
+
+Le plan actif progresse d’une seule révision pour l’ensemble d’une correction,
+et seulement si une donnée de planning change. Un changement d’heure restant
+le même jour, une correction d’une naissance qui ne déplace pas la première
+date réelle et un rejeu exact ne modifient ni plan ni audit de réconciliation.
+En l’absence de plan actif, la correction reste valide et un audit de succès
+à compteurs nuls explicite l’absence d’effet.
+
+Deux registres privés, RLS sans policy ni grant client et protégés en
+append-only, conservent le résultat parent et les snapshots de chaque tâche
+postnatale modifiée. Les tâches pré-mise-bas restent exclusivement dans les
+registres du moteur de série. Le cœur renommé, l’orchestrateur et les
+fonctions de protection ne sont exécutables par aucun rôle client ; seule
+l’enveloppe historique demeure accessible à `authenticated`. La fonction
+d’annulation de naissance n’est pas modifiée. La migration de ce lot devra
+être appliquée à la stack personnelle uniquement après fusion, avec la
+sauvegarde et l’instruction séparée prévues.

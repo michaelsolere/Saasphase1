@@ -243,10 +243,12 @@ async function main() {
       "tests/e2e/litter-weight-quick-entry.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
       "tests/e2e/litter-actual-birth-plan-activation.spec.ts",
+      "tests/e2e/litter-actual-birth-plan-reconciliation.spec.ts",
       "tests/e2e/litter-actual-birth-series-reconciliation-engine.spec.ts",
       "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
       "tests/e2e/maternal-temperature-planning-link.spec.ts",
       "tests/e2e/planning-fact-link-visibility.spec.ts",
+      "tests/e2e/whelping-birth-adjustment-foundation.spec.ts",
     ]);
     const permitted = playwrightArgs.every((arg) => allowedSpecs.has(arg) || /^--(workers=1|retries=0)$/.test(arg));
     if (mode !== "reuse" || target.length !== 1 || !allowedSpecs.has(target[0]) || !permitted) {
