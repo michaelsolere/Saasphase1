@@ -1232,6 +1232,15 @@ un état inchangé. L’ordre est déterministe : éléments, séries, puis tâc
 avec les occurrences récurrentes ordonnées par série et numéro d’occurrence.
 Les compteurs d’en-tête sont recalculables depuis les changements.
 
+Les quatre compteurs de photographie proviennent exclusivement de ce diff
+exhaustif. Les compteurs historiques de l’activation et son `result` sont
+recopiés dans le `result` de l’en-tête à titre informatif, mais aucune
+divergence ne bloque la photographie. En particulier, une première naissance
+postérieure à l’horizon déjà matérialisé d’une série pré-mise-bas peut insérer
+les occurrences manquantes pendant sa réconciliation : ces tâches figurent
+bien dans le registre exact, même si `created_task_count` ne comptabilise que
+les créations postnatales directement suivies par l’orchestrateur.
+
 `entity_id` ne possède volontairement aucune FK vers les tables métier. Le
 futur moteur pourra hard-delete une tâche créée par l’activation sans détruire
 ni invalider la preuve qui l’identifie. Les liens vers l’organisation, la

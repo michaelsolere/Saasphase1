@@ -359,7 +359,139 @@ from public, anon, authenticated;
 -- evidence must continue to identify it.
 
 -- ---------------------------------------------------------------------------
--- 3. Private exact-diff writer
+-- 3. Let the authoritative first-birth reconciliation fill a bounded gap
+-- ---------------------------------------------------------------------------
+
+do $adapt_materialization_for_first_birth$
+declare
+  v_signature regprocedure :=
+    'public.materialize_litter_plan_series_occurrences(uuid,date,uuid,uuid,boolean)'::regprocedure;
+  v_oid oid := v_signature::oid;
+  v_owner oid;
+  v_acl aclitem[];
+  v_config text[];
+  v_security_definer boolean;
+  v_definition text := pg_catalog.pg_get_functiondef(v_signature);
+  v_fragment text;
+  v_replacement text;
+  v_occurrences integer;
+  v_overload_count integer;
+begin
+  select count(*)
+  into v_overload_count
+  from pg_catalog.pg_proc procedure
+  join pg_catalog.pg_namespace namespace
+    on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'public'
+    and procedure.proname = 'materialize_litter_plan_series_occurrences';
+
+  if v_overload_count <> 1 then
+    raise exception
+      'materialize helper first-birth guard found % overloads',
+      v_overload_count;
+  end if;
+
+  select
+    procedure.proowner,
+    procedure.proacl,
+    procedure.proconfig,
+    procedure.prosecdef
+  into
+    v_owner,
+    v_acl,
+    v_config,
+    v_security_definer
+  from pg_catalog.pg_proc procedure
+  where procedure.oid = v_oid;
+
+  if pg_catalog.pg_get_userbyid(v_owner) is distinct from 'postgres'
+    or not v_security_definer
+    or not coalesce('search_path=""' = any(v_config), false)
+    or not coalesce('row_security=off' = any(v_config), false)
+  then
+    raise exception
+      'materialize helper first-birth guard found an unexpected contract';
+  end if;
+
+  v_fragment := $fragment$  v_allow_inserts :=
+    (v_series.state = 'active' and not p_reconciliation_only)
+    or (
+      v_private_birth_reconciliation
+      and v_series.state = 'completed'
+      and v_series.completion_reason = 'actual_birth_reached'
+      and v_series.end_kind = 'actual_birth'
+    );
+$fragment$;
+  v_replacement := $replacement$  v_allow_inserts :=
+    (v_series.state = 'active' and not p_reconciliation_only)
+    or (
+      p_reconciliation_only
+      and pg_catalog.current_setting(
+        'app.litter_actual_birth_plan_activation',
+        true
+      ) = 'on'
+      and p_command_id is not null
+      and v_series.state in ('active', 'suspended', 'completed')
+      and v_series.end_kind = 'actual_birth'
+    )
+    or (
+      v_private_birth_reconciliation
+      and v_series.state = 'completed'
+      and v_series.completion_reason = 'actual_birth_reached'
+      and v_series.end_kind = 'actual_birth'
+    );
+$replacement$;
+  v_occurrences :=
+    (length(v_definition) - length(replace(v_definition, v_fragment, '')))
+    / length(v_fragment);
+
+  if v_occurrences <> 1 then
+    raise exception
+      'materialize helper first-birth insertion guard failed: %',
+      v_occurrences;
+  end if;
+
+  v_definition := replace(v_definition, v_fragment, v_replacement);
+  execute v_definition;
+
+  if v_signature::oid is distinct from v_oid
+    or (
+      select procedure.proowner
+      from pg_catalog.pg_proc procedure
+      where procedure.oid = v_oid
+    ) is distinct from v_owner
+    or (
+      select procedure.proacl
+      from pg_catalog.pg_proc procedure
+      where procedure.oid = v_oid
+    ) is distinct from v_acl
+    or (
+      select procedure.proconfig
+      from pg_catalog.pg_proc procedure
+      where procedure.oid = v_oid
+    ) is distinct from v_config
+    or (
+      select procedure.prosecdef
+      from pg_catalog.pg_proc procedure
+      where procedure.oid = v_oid
+    ) is distinct from v_security_definer
+  then
+    raise exception
+      'materialize helper first-birth replacement changed its contract';
+  end if;
+end;
+$adapt_materialization_for_first_birth$;
+
+revoke all on function public.materialize_litter_plan_series_occurrences(
+  uuid,
+  date,
+  uuid,
+  uuid,
+  boolean
+) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 4. Private exact-diff writer
 -- ---------------------------------------------------------------------------
 
 create or replace function public.capture_litter_birth_reversal_snapshot_internal(
@@ -634,16 +766,6 @@ begin
     v_task_update_count
   from jsonb_array_elements(v_changes) change_entry;
 
-  if v_item_change_count <> v_activation.materialized_item_count
-    or v_task_insert_count <> v_activation.created_task_count
-    or v_task_update_count <>
-      v_activation.not_applicable_occurrence_count
-  then
-    raise exception
-      'first-birth reversal snapshot counters disagree with activation'
-      using errcode = '23514';
-  end if;
-
   v_result := jsonb_build_object(
     'outcome', 'success',
     'snapshotVersion', 1,
@@ -651,7 +773,16 @@ begin
     'seriesChangeCount', v_series_change_count,
     'taskInsertCount', v_task_insert_count,
     'taskUpdateCount', v_task_update_count,
-    'activationResult', v_activation.result
+    'activationResult', v_activation.result,
+    'activationCounters', jsonb_build_object(
+      'materializedItemCount', v_activation.materialized_item_count,
+      'createdTaskCount', v_activation.created_task_count,
+      'createdSeriesOccurrenceCount',
+        v_activation.created_series_occurrence_count,
+      'reconciledSeriesCount', v_activation.reconciled_series_count,
+      'notApplicableOccurrenceCount',
+        v_activation.not_applicable_occurrence_count
+    )
   );
 
   insert into public.litter_plan_actual_birth_activation_reversal_snapshots (
@@ -708,6 +839,29 @@ begin
   from jsonb_array_elements(v_changes) change_entry
   order by (change_entry ->> 'sequenceNo')::integer;
 
+  if not coalesce((
+    select
+      count(*) filter (
+        where change.entity_kind = 'litter_plan_item'
+      ) = v_item_change_count
+      and count(*) filter (
+        where change.entity_kind = 'litter_plan_series'
+      ) = v_series_change_count
+      and count(*) filter (
+        where change.entity_kind = 'litter_care_task'
+          and change.change_kind = 'insert'
+      ) = v_task_insert_count
+      and count(*) filter (
+        where change.entity_kind = 'litter_care_task'
+          and change.change_kind = 'update'
+      ) = v_task_update_count
+    from public.litter_plan_actual_birth_activation_reversal_changes change
+    where change.snapshot_id = v_snapshot_id
+  ), false) then
+    raise exception 'first-birth reversal persisted counters disagree'
+      using errcode = '23514';
+  end if;
+
   return v_snapshot_id;
 end;
 $function$;
@@ -724,7 +878,7 @@ revoke all on function public.capture_litter_birth_reversal_snapshot_internal(
 ) from public, anon, authenticated;
 
 -- ---------------------------------------------------------------------------
--- 4. Inject exact pre-state capture and the atomic snapshot write into the
+-- 5. Inject exact pre-state capture and the atomic snapshot write into the
 --    established activation function. Its signature, OID and ACL are retained.
 -- ---------------------------------------------------------------------------
 

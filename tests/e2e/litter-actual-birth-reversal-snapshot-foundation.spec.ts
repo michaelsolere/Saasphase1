@@ -42,14 +42,18 @@ const ids = {
   concurrentMother: `${prefix}000000000005`,
   rollbackMother: `${prefix}000000000006`,
   legacyMother: `${prefix}000000000007`,
+  lateBirthMother: `${prefix}000000000008`,
   mainLitter: `${prefix}000000000011`,
   noPlanLitter: `${prefix}000000000012`,
   concurrentLitter: `${prefix}000000000013`,
   rollbackLitter: `${prefix}000000000014`,
   legacyLitter: `${prefix}000000000015`,
+  lateBirthLitter: `${prefix}000000000016`,
   importCommand: `${prefix}000000000020`,
   mainPreApplyCommand: `${prefix}000000000021`,
   mainPostApplyCommand: `${prefix}000000000022`,
+  lateBirthPreApplyCommand: `${prefix}000000000023`,
+  lateBirthPostApplyCommand: `${prefix}000000000024`,
   mainOpenCommand: `${prefix}000000000031`,
   mainBirthCommand: `${prefix}000000000032`,
   noPlanOpenCommand: `${prefix}000000000033`,
@@ -61,6 +65,8 @@ const ids = {
   rollbackBirthCommand: `${prefix}000000000039`,
   legacyOpenCommand: `${prefix}000000000040`,
   legacyBirthCommand: `${prefix}000000000041`,
+  lateBirthOpenCommand: `${prefix}000000000042`,
+  lateBirthCommand: `${prefix}000000000043`,
 } as const;
 
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -292,7 +298,8 @@ function seedScope() {
       (${q(ids.noPlanMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère photographie sans plan', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.concurrentMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère photographie concurrence', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.rollbackMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère photographie rollback', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.legacyMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère activation legacy', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.legacyMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère activation legacy', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lateBirthMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère naissance tardive', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
 
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status,
@@ -302,7 +309,8 @@ function seedScope() {
       (${q(ids.noPlanLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée photographie sans plan', 'dog', 'Golden Retriever', ${q(ids.noPlanMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.concurrentLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée photographie concurrence', 'dog', 'Golden Retriever', ${q(ids.concurrentMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.rollbackLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée photographie rollback', 'dog', 'Golden Retriever', ${q(ids.rollbackMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.legacyLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée activation legacy', 'dog', 'Golden Retriever', ${q(ids.legacyMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.legacyLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée activation legacy', 'dog', 'Golden Retriever', ${q(ids.legacyMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lateBirthLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée naissance tardive', 'dog', 'Golden Retriever', ${q(ids.lateBirthMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -348,12 +356,13 @@ function planRevision(litterId: string) {
 
 async function applyModel(
   owner: TypedClient,
+  litterId: string,
   code: string,
   commandId: string,
   expectedPlanRevision: number | null,
 ) {
   const applied = await owner.rpc("apply_litter_planning_model", {
-    p_litter_id: ids.mainLitter,
+    p_litter_id: litterId,
     p_planning_model_id: modelId(code),
     p_client_command_id: commandId,
     p_expected_model_revision: 1,
@@ -386,7 +395,7 @@ async function openSession(
   return opened.sessionId;
 }
 
-function completePlanBefore() {
+function completePlanBefore(litterId: string) {
   return jsonSql<{
     items: Record<string, JsonRecord>;
     series: Record<string, JsonRecord>;
@@ -397,19 +406,19 @@ function completePlanBefore() {
         select jsonb_object_agg(item.id::text, to_jsonb(item) order by item.id)
         from public.litter_plan_items item
         where item.organization_id = ${q(ids.organization)}::uuid
-          and item.litter_id = ${q(ids.mainLitter)}::uuid
+          and item.litter_id = ${q(litterId)}::uuid
       ), '{}'::jsonb),
       'series', coalesce((
         select jsonb_object_agg(series.id::text, to_jsonb(series) order by series.id)
         from public.litter_plan_series series
         where series.organization_id = ${q(ids.organization)}::uuid
-          and series.litter_id = ${q(ids.mainLitter)}::uuid
+          and series.litter_id = ${q(litterId)}::uuid
       ), '{}'::jsonb),
       'tasks', coalesce((
         select jsonb_object_agg(task.id::text, to_jsonb(task) order by task.id)
         from public.litter_care_tasks task
         where task.organization_id = ${q(ids.organization)}::uuid
-          and task.litter_id = ${q(ids.mainLitter)}::uuid
+          and task.litter_id = ${q(litterId)}::uuid
       ), '{}'::jsonb)
     )::text;
   `);
@@ -474,6 +483,33 @@ function snapshotHeader(litterId: string) {
     from public.litter_plan_actual_birth_activation_reversal_snapshots snapshot
     where snapshot.organization_id = ${q(ids.organization)}::uuid
       and snapshot.litter_id = ${q(litterId)}::uuid;
+  `);
+}
+
+function activationSnapshotTaskCounts(litterId: string) {
+  return jsonSql<{
+    activationCreatedTaskCount: number;
+    snapshotTaskInsertCount: number;
+    actualTaskInsertChangeCount: number;
+  }>(`
+    select json_build_object(
+      'activationCreatedTaskCount', activation.created_task_count,
+      'snapshotTaskInsertCount', snapshot.task_insert_count,
+      'actualTaskInsertChangeCount', (
+        select count(*)
+        from public.litter_plan_actual_birth_activation_reversal_changes change
+        where change.snapshot_id = snapshot.id
+          and change.entity_kind = 'litter_care_task'
+          and change.change_kind = 'insert'
+      )
+    )::text
+    from public.litter_plan_actual_birth_activations activation
+    join public.litter_plan_actual_birth_activation_reversal_snapshots snapshot
+      on snapshot.organization_id = activation.organization_id
+     and snapshot.litter_id = activation.litter_id
+     and snapshot.activation_id = activation.id
+    where activation.organization_id = ${q(ids.organization)}::uuid
+      and activation.litter_id = ${q(litterId)}::uuid;
   `);
 }
 
@@ -711,15 +747,22 @@ test("photographie exacte, atomique, idempotente, concurrente et privée", async
     const owner = await createAuthenticatedSupabaseClient();
     const secondOwner = await createAuthenticatedSupabaseClient();
     await importModels(owner);
-    await applyModel(owner, preModelCode, ids.mainPreApplyCommand, null);
     await applyModel(
       owner,
+      ids.mainLitter,
+      preModelCode,
+      ids.mainPreApplyCommand,
+      null,
+    );
+    await applyModel(
+      owner,
+      ids.mainLitter,
       postModelCode,
       ids.mainPostApplyCommand,
       planRevision(ids.mainLitter),
     );
 
-    const before = completePlanBefore();
+    const before = completePlanBefore(ids.mainLitter);
     expect(Object.keys(before.items)).toHaveLength(7);
     expect(Object.keys(before.series)).toHaveLength(2);
     expect(Object.keys(before.tasks)).toHaveLength(16);
@@ -816,6 +859,142 @@ test("photographie exacte, atomique, idempotente, concurrente et privée", async
     const replay = await recordWhelpingBirthCore(mainInput, owner);
     expect(replay).toEqual({ ...mainBirth, replayed: true });
     expect(idempotenceState(ids.mainLitter)).toEqual(mainStableBeforeReplay);
+
+    await applyModel(
+      owner,
+      ids.lateBirthLitter,
+      preModelCode,
+      ids.lateBirthPreApplyCommand,
+      null,
+    );
+    await applyModel(
+      owner,
+      ids.lateBirthLitter,
+      postModelCode,
+      ids.lateBirthPostApplyCommand,
+      planRevision(ids.lateBirthLitter),
+    );
+    const lateBefore = completePlanBefore(ids.lateBirthLitter);
+    const latePreBirthHorizon = jsonSql<{
+      startsOn: string;
+      materializedThrough: string;
+      occurrenceCount: number;
+    }>(`
+      select json_build_object(
+        'startsOn', series.starts_on,
+        'materializedThrough', series.materialized_through,
+        'occurrenceCount', series.materialized_occurrence_count
+      )::text
+      from public.litter_plan_series series
+      join public.litter_plan_items item
+        on item.organization_id = series.organization_id
+       and item.id = series.litter_plan_item_id
+      where series.organization_id = ${q(ids.organization)}::uuid
+        and series.litter_id = ${q(ids.lateBirthLitter)}::uuid
+        and series.end_kind = 'actual_birth'
+        and item.anchor_type = 'expected_birth';
+    `);
+    expect(latePreBirthHorizon).toEqual({
+      startsOn: "2026-08-03",
+      materializedThrough: "2026-08-09",
+      occurrenceCount: 14,
+    });
+
+    const lateBirthSession = await openSession(
+      owner,
+      ids.lateBirthLitter,
+      ids.lateBirthOpenCommand,
+      "2026-08-11T02:45:00+02:00",
+    );
+    const lateBirthInput = {
+      sessionId: lateBirthSession,
+      clientCommandId: ids.lateBirthCommand,
+      occurredAt: "2026-08-11T03:00:00+02:00",
+      sex: "female" as const,
+      viability: "alive" as const,
+      note: "Naissance tardive au-delà de l’horizon pré-mise-bas",
+    };
+    const lateBirth = await recordWhelpingBirthCore(lateBirthInput, owner);
+    expect(lateBirth).toMatchObject({
+      outcome: "success",
+      birthOrder: 1,
+      replayed: false,
+    });
+
+    const lateHeader = snapshotHeader(ids.lateBirthLitter);
+    const lateChanges = reversalChanges(ids.lateBirthLitter);
+    const latePreBirthSeriesId = Object.entries(lateBefore.series).find(
+      ([, series]) => series.end_kind === "actual_birth",
+    )?.[0];
+    expect(latePreBirthSeriesId).toBeDefined();
+    const lateTaskInserts = lateChanges.filter(
+      (change) =>
+        change.entityKind === "litter_care_task" &&
+        change.changeKind === "insert",
+    );
+    const latePreBirthInserts = lateTaskInserts.filter(
+      (change) =>
+        change.snapshotAfter.litter_plan_series_id === latePreBirthSeriesId,
+    );
+    const latePostnatalInserts = lateTaskInserts.filter(
+      (change) =>
+        change.snapshotAfter.litter_plan_series_id !== latePreBirthSeriesId,
+    );
+    const lateTaskUpdates = lateChanges.filter(
+      (change) =>
+        change.entityKind === "litter_care_task" &&
+        change.changeKind === "update",
+    );
+    const lateCounts = activationSnapshotTaskCounts(ids.lateBirthLitter);
+
+    expect(latePreBirthInserts).toHaveLength(4);
+    expect(
+      latePreBirthInserts.map((change) => change.snapshotAfter.planned_for),
+    ).toEqual(["2026-08-10", "2026-08-10", "2026-08-11", "2026-08-11"]);
+    expect(latePostnatalInserts).toHaveLength(7);
+    expect(lateTaskUpdates).toEqual([]);
+    expect(lateCounts).toEqual({
+      activationCreatedTaskCount: 7,
+      snapshotTaskInsertCount: 11,
+      actualTaskInsertChangeCount: 11,
+    });
+    expect(lateHeader).toMatchObject({
+      taskInsertCount: lateTaskInserts.length,
+      taskUpdateCount: lateTaskUpdates.length,
+      result: {
+        activationCounters: {
+          createdTaskCount: lateCounts.activationCreatedTaskCount,
+        },
+      },
+    });
+    expect(lateHeader.taskInsertCount).toBeGreaterThan(
+      lateCounts.activationCreatedTaskCount,
+    );
+
+    for (const change of lateChanges) {
+      expect(change.snapshotAfter).toEqual(change.current);
+      if (change.changeKind === "insert") {
+        expect(change.snapshotBefore).toBeNull();
+        expect(lateBefore.tasks[change.entityId]).toBeUndefined();
+      } else {
+        const source =
+          change.entityKind === "litter_plan_item"
+            ? lateBefore.items
+            : change.entityKind === "litter_plan_series"
+              ? lateBefore.series
+              : lateBefore.tasks;
+        expect(change.snapshotBefore).toEqual(source[change.entityId]);
+        expect(change.snapshotBefore).not.toEqual(change.snapshotAfter);
+      }
+    }
+
+    const lateStableBeforeReplay = idempotenceState(ids.lateBirthLitter);
+    expect(
+      await recordWhelpingBirthCore(lateBirthInput, owner),
+    ).toEqual({ ...lateBirth, replayed: true });
+    expect(idempotenceState(ids.lateBirthLitter)).toEqual(
+      lateStableBeforeReplay,
+    );
 
     const noPlanSession = await openSession(
       owner,
@@ -1164,6 +1343,11 @@ test("photographie exacte, atomique, idempotente, concurrente et privée", async
       mainBirth,
       mainSnapshot: header,
       mainChangeIds: changes.map((change) => change.entityId),
+      lateBirth,
+      lateBirthPreBirthHorizon: latePreBirthHorizon,
+      lateBirthTaskCounts: lateCounts,
+      lateBirthPreSeriesInsertCount: latePreBirthInserts.length,
+      lateBirthPostnatalInsertCount: latePostnatalInserts.length,
       concurrentResults,
       rollbackBefore,
       legacyActivationWithoutSnapshot: true,
