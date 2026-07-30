@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `f298a85d9197ebd6c6be573a2e8a9a099c40c2cc`.
-- La dernière migration incluse est `202607290001_maternal_temperature_planning_link`.
+- SHA de base vérifié avant ce lot : `d6bdbb08efecb94745571db92988ba09f3858de7`.
+- La dernière migration incluse est `202607300003_litter_actual_birth_plan_activation`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -249,6 +249,63 @@ L’ordre de naissance et l’ordre de chronologie sont alloués côté serveur 
 `occurred_at` reste l’heure métier de la naissance. La date et l’heure projetées sur l’animal sont calculées dans le fuseau de la session. `litters.actual_birth_date` correspond au jour civil local de la première naissance et ne se décale pas si la mise-bas se poursuit après minuit.
 
 Les projections `actual_birth_date`, `born_total_count`, `born_male_count`, `born_female_count` et `alive_count` sont recalculées exclusivement depuis les naissances du Journal. Le statut de la portée n’est jamais modifié automatiquement.
+
+##### Activation atomique du planning à la première naissance
+
+La migration `202607300003_litter_actual_birth_plan_activation` transforme la
+commande publique de naissance en enveloppe transactionnelle sans modifier son
+contrat. L’implémentation historique est renommée
+`record_whelping_birth_core_internal` par `ALTER FUNCTION` : son OID, son
+propriétaire, son corps, ses paramètres par défaut et ses propriétés
+`SECURITY DEFINER`, `search_path=""` et `row_security=off` sont conservés. Tout
+accès client direct au cœur renommé est révoqué. La nouvelle
+`record_whelping_birth` publique garde exactement la signature, les neuf
+colonnes de retour et le grant `authenticated` historiques.
+
+Après l’authentification, l’enveloppe applique exactement le prédicat de
+validation historique. Toute entrée invalide est déléguée immédiatement au
+cœur renommé, qui reste l’autorité du résultat `invalid_input`; aucune session,
+membership ou verrou de planning n’est consulté sur ce chemin. Pour une entrée
+valide seulement, l’enveloppe résout la portée depuis la session sans verrou de
+ligne, puis rejoue avant tout verrou la porte d’autorisation historique :
+membership active et non supprimée, rôle `owner`, `admin` ou `member`. La
+membership autorisée est verrouillée `FOR SHARE`; les refus
+`not_authenticated`, `session_not_found` et `membership_required` sont rendus
+sans acquérir le verrou d’un planning. L’ordre autorisé devient ainsi
+membership, planning, commande de naissance, session, portée, plan, éléments,
+séries et tâches. Après une naissance réussie d’ordre 1 seulement, une fonction
+privée active le planning dans la même transaction.
+Une erreur de planning annule donc également l’événement `birth`, la naissance
+structurée, l’Animal, le poids éventuel, les projections de portée et le
+registre d’activation.
+
+Dans le plan actif existant, les snapshots `pending_anchor` basés sur
+`actual_birth` ou `offspring_age` prennent la date réelle comme ancre. Les
+tâches ponctuelles et fenêtres reprennent leurs snapshots et leur programmation
+suggérée. Les séries récurrentes vides sont matérialisées exclusivement par le
+moteur partagé ; le modèle postnatal canonique produit sept tâches au total :
+contrôle post-partum à J1, vermifuges à J14, J28, J42 et J56 à 09:00,
+démarrage du sevrage à J21 et fenêtre vétérinaire de J49 à J56. Les séries
+pré-mise-bas terminées par `actual_birth` sont réconciliées par le même moteur :
+leur borne devient la date réelle, leur état devient `completed` avec
+`actual_birth_reached`, et seules les occurrences encore planifiées après cette
+date deviennent `not_applicable`. Aucune observation ni température n’est
+inventée.
+
+Le plan conserve son identité, son titre, son fuseau et son statut. Sa révision
+augmente exactement une fois lorsqu’un changement de planning existe, quel que
+soit le nombre d’éléments, tâches, occurrences ou séries concernés. Le registre
+privé append-only `litter_plan_actual_birth_activations`, inaccessible aux
+clients, garantit une activation unique par portée et par commande de première
+naissance. Un rejeu exact restitue les mêmes identifiants de naissance sans
+nouvelle activation ; les naissances suivantes n’affectent plus le planning.
+Le verrou unique sérialise aussi deux commandes concurrentes sans interblocage,
+avec un seul passage de révision et une seule activation.
+
+Les corrections, annulations et rectifications horaires des naissances restent
+hors périmètre : elles ne recalculent pas ce planning initial. Après fusion, la
+migration doit être appliquée séparément à la stack personnelle avant d’y
+utiliser cette activation.
 
 ##### Poids de naissance
 
