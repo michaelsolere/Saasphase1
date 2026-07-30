@@ -236,6 +236,7 @@ async function main() {
     const allowedSpecs = new Set([
       "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts",
       "tests/e2e/dog-pre-whelping-temperature-model.spec.ts",
+      "tests/e2e/dog-postnatal-care-model.spec.ts",
       "tests/e2e/litter-plan-timeline-resolution-ui.spec.ts",
       "tests/e2e/litter-plan-timeline-ui.spec.ts",
       "tests/e2e/litter-weighing-today.spec.ts",
