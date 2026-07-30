@@ -1512,6 +1512,7 @@ test("réconcilie atomiquement le plan après correction de la naissance réelle
       ids.cancelFirstBirth,
       "2026-08-08T03:00:00+02:00",
     );
+    const cancelBefore = completeFingerprint(ids.cancelLitter);
     const cancelled = await cancelWhelpingBirthCore(
       {
         birthId: cancelBirth.birthId,
@@ -1522,7 +1523,11 @@ test("réconcilie atomiquement le plan après correction de la naissance réelle
       },
       owner,
     );
-    expect(cancelled).toMatchObject({ outcome: "success", replayed: false });
+    expect(cancelled).toMatchObject({
+      outcome: "error",
+      error: { code: "birth_has_downstream_data" },
+    });
+    expect(completeFingerprint(ids.cancelLitter)).toEqual(cancelBefore);
     expect(sql(`
       select actual_birth_date::text from public.litters
       where id = ${q(ids.cancelLitter)}::uuid;

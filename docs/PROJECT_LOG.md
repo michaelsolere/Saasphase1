@@ -1111,3 +1111,42 @@ l’enveloppe historique demeure accessible à `authenticated`. La fonction
 d’annulation de naissance n’est pas modifiée. La migration de ce lot devra
 être appliquée à la stack personnelle uniquement après fusion, avec la
 sauvegarde et l’instruction séparée prévues.
+
+## Lot du 2026-07-30 — Garde d’annulation de l’unique naissance activée
+
+L’annulation historique de la dernière naissance active recalculait les
+compteurs de portée mais conservait volontairement `actual_birth_date` lorsque
+le nombre de naissances actives retombait à zéro. Depuis l’activation du
+planning à la première naissance, ce comportement pouvait laisser en place les
+éléments et les sept tâches postnatales, la série pré-mise-bas clôturée et une
+ligne d’activation unique et append-only. Cette ligne empêchait ensuite une
+nouvelle première activation à une autre date.
+
+La migration
+`202607300006_litter_single_birth_cancellation_safety_guard` conserve le corps
+historique de `cancel_whelping_birth` sans copie : elle le renomme en cœur
+privé avec le même OID, la même empreinte normalisée, la même configuration,
+les mêmes paramètres et le même retour, puis recrée une enveloppe publique de
+signature identique. Après les refus historiques d’authentification, de
+validation et d’autorisation, l’enveloppe acquiert le verrou canonique du
+planning et verrouille dans l’ordre la portée, ses naissances actives, puis
+l’éventuelle activation.
+
+Lorsque la naissance ciblée est l’unique naissance active et qu’une activation
+existe pour l’organisation et la portée, l’annulation est refusée sans aucune
+écriture avec la raison historique `birth_has_downstream_data`. Le garde vaut
+aussi lorsque `litter_plan_id` est nul : l’unicité du registre empêcherait
+quand même une activation ultérieure à une nouvelle date. Une portée technique
+sans activation continue temporairement de déléguer au cœur historique.
+
+Avec plusieurs naissances actives, le comportement existant reste inchangé :
+seule la dernière peut être annulée, une naissance antérieure renvoie
+`later_active_birth_exists`, et l’annulation de la dernière conserve la
+première naissance et l’ancre du planning. Les rejeux exacts et les conflits de
+commande restent traités par le cœur historique.
+
+Cette garde est transitoire et n’introduit aucune réversibilité. Le futur lot
+devra ajouter une désactivation auditée, permettre une lignée d’activations
+successives et traiter atomiquement le retour des éléments en attente, les
+tâches, les séries et l’ancre réelle avant d’autoriser une nouvelle première
+naissance.
