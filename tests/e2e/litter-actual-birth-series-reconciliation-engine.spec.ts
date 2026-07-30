@@ -126,6 +126,13 @@ function cleanup() {
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_deactivations
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_activation_states
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_activations
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
@@ -265,6 +272,17 @@ function fixtureCounts() {
         where organization_id = ${q(ids.organization)}::uuid
            or litter_id::text like ${q(like)}
            or birth_adjustment_client_command_id::text like ${q(like)}
+      ),
+      'activation_deactivations', (
+        select count(*) from public.litter_plan_actual_birth_activation_deactivations
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
+           or birth_adjustment_client_command_id::text like ${q(like)}
+      ),
+      'activation_states', (
+        select count(*) from public.litter_plan_actual_birth_activation_states
+        where organization_id = ${q(ids.organization)}::uuid
+           or litter_id::text like ${q(like)}
       ),
       'activations', (
         select count(*) from public.litter_plan_actual_birth_activations
@@ -816,6 +834,8 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
     plan_reconciliations: 0,
     reconciliation_changes: 0,
     reconciliation_commands: 0,
+    activation_deactivations: 0,
+    activation_states: 0,
     activations: 0,
     observation_links: 0,
     observation_commands: 0,
@@ -1571,15 +1591,21 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       audits: 1,
     });
 
-    const cancellation = await owner.rpc("cancel_whelping_birth", {
-      p_birth_id: cancelBirth.birthId,
-      p_client_command_id: ids.cancellationCommand,
-      p_expected_revision_no: 0,
-      p_cancelled_at: "2026-08-08T04:00:00+02:00",
-      p_reason: "Commande annulation de contrôle",
-    });
-    expect(cancellation.error).toBeNull();
-    expect(cancellation.data?.[0]?.outcome).toBe("success");
+    const cancellation = jsonSql<{ outcome: string }>(`
+      begin;
+      set local request.jwt.claims =
+        '{"sub":"${ownerId}","role":"authenticated"}';
+      select row_to_json(result)::text
+      from public.cancel_whelping_birth_core_internal(
+        ${q(cancelBirth.birthId)}::uuid,
+        ${q(ids.cancellationCommand)}::uuid,
+        0,
+        '2026-08-08T04:00:00+02:00'::timestamptz,
+        'Commande annulation de contrôle'
+      ) result;
+      commit;
+    `);
+    expect(cancellation.outcome).toBe("success");
     expect(reconcile(
       restoreSeries,
       restoreBirth.birthId,
@@ -1755,6 +1781,8 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
     plan_reconciliations: 0,
     reconciliation_changes: 0,
     reconciliation_commands: 0,
+    activation_deactivations: 0,
+    activation_states: 0,
     activations: 0,
     observation_links: 0,
     observation_commands: 0,

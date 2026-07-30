@@ -94,20 +94,26 @@ function removeWorkdir() {
   rmSync(workdir, { recursive: true, force: true });
 }
 
-async function runPlaywright(supabaseEnv) {
+async function runPlaywright(supabaseEnv, { preserveExistingServer = false } = {}) {
   const managedProcess = startManagedProcess("node_modules/.bin/playwright", ["test", ...playwrightArgs], {
     cwd: repoRoot,
-    env: createManagedPlaywrightEnvironment({ ...e2eEnv, ...supabaseEnv }),
+    env: createManagedPlaywrightEnvironment({
+      ...e2eEnv,
+      ...supabaseEnv,
+      ...(preserveExistingServer ? { E2E_REUSE_EXISTING_SERVER: "1" } : {}),
+    }),
   });
   activePlaywright = managedProcess;
   try {
     const outcome = await managedProcess.completed;
-    const deadline = Date.now() + 10_000;
-    while (await isPortOpen(appPort)) {
-      if (Date.now() >= deadline) {
-        throw new Error(`Playwright left its Next server listening on E2E port ${appPort}`);
+    if (!preserveExistingServer) {
+      const deadline = Date.now() + 10_000;
+      while (await isPortOpen(appPort)) {
+        if (Date.now() >= deadline) {
+          throw new Error(`Playwright left its Next server listening on E2E port ${appPort}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     return outcome;
   } finally {
@@ -188,7 +194,9 @@ async function runPreserveDemo() {
   if (supabaseEnv.NEXT_PUBLIC_SUPABASE_URL !== "http://127.0.0.1:55321") {
     throw new Error("Preserved-demo E2E requires http://127.0.0.1:55321.");
   }
-  return runPlaywright(supabaseEnv);
+  return runPlaywright(supabaseEnv, {
+    preserveExistingServer: await isPortOpen(appPort),
+  });
 }
 
 function runStop() {
@@ -243,6 +251,7 @@ async function main() {
       "tests/e2e/litter-weight-quick-entry.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
       "tests/e2e/litter-actual-birth-plan-activation.spec.ts",
+      "tests/e2e/litter-actual-birth-activation-lifecycle.spec.ts",
       "tests/e2e/litter-actual-birth-plan-reconciliation.spec.ts",
       "tests/e2e/litter-actual-birth-series-reconciliation-engine.spec.ts",
       "tests/e2e/litter-single-birth-cancellation-safety-guard.spec.ts",
