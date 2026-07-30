@@ -536,11 +536,16 @@ begin
           or task.occurrence_no is distinct from (
             ((task.recurrence_day_no - 1) * v_slot_count) + task.slot_no
           )
-          or task.planned_for is distinct from (
-            v_series.starts_on
-            + (
-              (task.recurrence_day_no - 1)
-              * v_series.recurrence_interval_days
+          or (
+            task.status = 'planned'
+            and task.schedule_source = 'suggested'
+            and task.is_schedule_locked = false
+            and task.planned_for is distinct from (
+              v_series.starts_on
+              + (
+                (task.recurrence_day_no - 1)
+                * v_series.recurrence_interval_days
+              )
             )
           )
         )

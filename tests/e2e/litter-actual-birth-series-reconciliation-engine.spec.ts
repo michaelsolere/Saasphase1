@@ -31,27 +31,32 @@ const ids = {
   maxMother: `${prefix}000000000013`,
   concurrentMother: `${prefix}000000000014`,
   cancelMother: `${prefix}000000000015`,
+  inconsistentMother: `${prefix}000000000016`,
   restoreLitter: `${prefix}000000000021`,
   insertLitter: `${prefix}000000000022`,
   maxLitter: `${prefix}000000000023`,
   concurrentLitter: `${prefix}000000000024`,
   cancelLitter: `${prefix}000000000025`,
+  inconsistentLitter: `${prefix}000000000026`,
   importCommand: `${prefix}000000000031`,
   restoreApply: `${prefix}000000000032`,
   insertApply: `${prefix}000000000033`,
   maxApply: `${prefix}000000000034`,
   concurrentApply: `${prefix}000000000035`,
   cancelApply: `${prefix}000000000036`,
+  inconsistentApply: `${prefix}000000000037`,
   restoreOpen: `${prefix}000000000041`,
   insertOpen: `${prefix}000000000042`,
   maxOpen: `${prefix}000000000043`,
   concurrentOpen: `${prefix}000000000044`,
   cancelOpen: `${prefix}000000000045`,
+  inconsistentOpen: `${prefix}000000000046`,
   restoreBirth: `${prefix}000000000051`,
   insertBirth: `${prefix}000000000052`,
   maxBirth: `${prefix}000000000053`,
   concurrentBirth: `${prefix}000000000054`,
   cancelBirth: `${prefix}000000000055`,
+  inconsistentBirth: `${prefix}000000000056`,
   restoreCorrection: `${prefix}000000000061`,
   insertCorrection: `${prefix}000000000062`,
   contractionCorrection: `${prefix}000000000063`,
@@ -61,8 +66,11 @@ const ids = {
   concurrentRevert: `${prefix}000000000067`,
   concurrentCorrectionB: `${prefix}000000000068`,
   cancellationCommand: `${prefix}000000000069`,
+  inconsistentCorrection: `${prefix}00000000006a`,
   publicMaterialization: `${prefix}000000000071`,
   missingAdjustment: `${prefix}000000000072`,
+  manualReschedule: `${prefix}000000000073`,
+  lockedSchedule: `${prefix}000000000074`,
   doneResolution: `${prefix}000000000081`,
   cancelledResolution: `${prefix}000000000082`,
   incompatibleResolution: `${prefix}000000000083`,
@@ -469,7 +477,8 @@ function seedScope() {
       (${q(ids.insertMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère extension', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.maxMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère plafond', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.concurrentMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère concurrence', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.cancelMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère annulation', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.cancelMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère annulation', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.inconsistentMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère automatique incohérente', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
 
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status,
@@ -479,7 +488,8 @@ function seedScope() {
       (${q(ids.insertLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée extension', 'dog', 'Golden Retriever', ${q(ids.insertMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.maxLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée plafond', 'dog', 'Golden Retriever', ${q(ids.maxMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.concurrentLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée concurrence', 'dog', 'Golden Retriever', ${q(ids.concurrentMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.cancelLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée annulation', 'dog', 'Golden Retriever', ${q(ids.cancelMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.cancelLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée annulation', 'dog', 'Golden Retriever', ${q(ids.cancelMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.inconsistentLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée automatique incohérente', 'dog', 'Golden Retriever', ${q(ids.inconsistentMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', null, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -513,6 +523,7 @@ async function importAndApply(owner: Supabase) {
     [ids.maxLitter, ids.maxApply],
     [ids.concurrentLitter, ids.concurrentApply],
     [ids.cancelLitter, ids.cancelApply],
+    [ids.inconsistentLitter, ids.inconsistentApply],
   ] as const;
 
   for (const [litterId, commandId] of applications) {
@@ -808,6 +819,71 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
     seedScope();
     await importAndApply(owner);
 
+    const insertSeries = seriesId(ids.insertLitter);
+    const retainedTargets = jsonSql<{
+      manual: { id: string; revisionNo: number };
+      locked: { id: string; revisionNo: number };
+    }>(`
+      with targets as (
+        select
+          task.id,
+          task.revision_no,
+          row_number() over (order by task.slot_no) as position
+        from public.litter_care_tasks task
+        where task.litter_plan_series_id = ${q(insertSeries)}::uuid
+          and task.planned_for = '2026-08-09'
+          and task.status = 'planned'
+      )
+      select json_build_object(
+        'manual', (
+          select json_build_object('id', id, 'revisionNo', revision_no)
+          from targets where position = 1
+        ),
+        'locked', (
+          select json_build_object('id', id, 'revisionNo', revision_no)
+          from targets where position = 2
+        )
+      )::text;
+    `);
+    const manualReschedule = await owner.rpc(
+      "reschedule_litter_care_task_point",
+      {
+        p_task_id: retainedTargets.manual.id,
+        p_client_command_id: ids.manualReschedule,
+        p_expected_revision_no: retainedTargets.manual.revisionNo,
+        p_planned_for: "2026-08-10",
+        p_scheduled_local_time: "11:45",
+        p_schedule_timezone_name: "Europe/Paris",
+        p_reason: "Report utilisateur avant naissance",
+      },
+    );
+    expect(manualReschedule.error).toBeNull();
+    expect(manualReschedule.data?.[0]?.outcome).toBe("success");
+
+    const lockedSchedule = await owner.rpc(
+      "set_litter_care_task_schedule_lock",
+      {
+        p_task_id: retainedTargets.locked.id,
+        p_client_command_id: ids.lockedSchedule,
+        p_expected_revision_no: retainedTargets.locked.revisionNo,
+        p_is_locked: true,
+        p_reason: "Créneau utilisateur verrouillé",
+      },
+    );
+    expect(lockedSchedule.error).toBeNull();
+    expect(lockedSchedule.data?.[0]?.outcome).toBe("success");
+    sql(`
+      update public.litter_care_tasks
+      set planned_for = '2026-08-11',
+          scheduled_local_time = '22:15',
+          revision_no = revision_no + 1,
+          updated_at = statement_timestamp(),
+          updated_by = ${q(ownerId)}::uuid
+      where id = ${q(retainedTargets.locked.id)}::uuid
+        and schedule_source = 'suggested'
+        and is_schedule_locked = true;
+    `);
+
     const restoreBirth = await recordFirstBirth(
       owner,
       ids.restoreLitter,
@@ -838,11 +914,17 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       ids.cancelOpen,
       ids.cancelBirth,
     );
+    const inconsistentBirth = await recordFirstBirth(
+      owner,
+      ids.inconsistentLitter,
+      ids.inconsistentOpen,
+      ids.inconsistentBirth,
+    );
 
     const restoreSeries = seriesId(ids.restoreLitter);
-    const insertSeries = seriesId(ids.insertLitter);
     const maxSeries = seriesId(ids.maxLitter);
     const concurrentSeries = seriesId(ids.concurrentLitter);
+    const inconsistentSeries = seriesId(ids.inconsistentLitter);
 
     const restoreRevision = seriesRevision(restoreSeries);
     await correctBirth(
@@ -933,6 +1015,46 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       replayed: false,
     });
 
+    const retainedBefore = jsonSql<{
+      manual: Record<string, unknown>;
+      locked: Record<string, unknown>;
+    }>(`
+      select json_build_object(
+        'manual', (
+          select to_jsonb(task)
+          from public.litter_care_tasks task
+          where task.id = ${q(retainedTargets.manual.id)}::uuid
+        ),
+        'locked', (
+          select to_jsonb(task)
+          from public.litter_care_tasks task
+          where task.id = ${q(retainedTargets.locked.id)}::uuid
+        )
+      )::text;
+    `);
+    expect(retainedBefore.manual).toMatchObject({
+      status: "not_applicable",
+      resolution_note: "actual_birth_reached",
+      planned_for: "2026-08-10",
+      scheduled_local_time: "11:45:00",
+      schedule_source: "manual",
+      is_schedule_locked: false,
+      recurrence_day_no: 7,
+      slot_no: 1,
+      occurrence_no: 13,
+    });
+    expect(retainedBefore.locked).toMatchObject({
+      status: "not_applicable",
+      resolution_note: "actual_birth_reached",
+      planned_for: "2026-08-11",
+      scheduled_local_time: "22:15:00",
+      schedule_source: "suggested",
+      is_schedule_locked: true,
+      recurrence_day_no: 7,
+      slot_no: 2,
+      occurrence_no: 14,
+    });
+
     const insertRevision = seriesRevision(insertSeries);
     await correctBirth(
       owner,
@@ -960,12 +1082,93 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       materialized_occurrence_count: 20,
       revision_no: insertRevision + 1,
     });
+    const retainedAfter = jsonSql<{
+      manual: Record<string, unknown>;
+      locked: Record<string, unknown>;
+    }>(`
+      select json_build_object(
+        'manual', (
+          select to_jsonb(task)
+          from public.litter_care_tasks task
+          where task.id = ${q(retainedTargets.manual.id)}::uuid
+        ),
+        'locked', (
+          select to_jsonb(task)
+          from public.litter_care_tasks task
+          where task.id = ${q(retainedTargets.locked.id)}::uuid
+        )
+      )::text;
+    `);
+    expect(retainedAfter.manual).toMatchObject({
+      status: "planned",
+      resolution_command_id: null,
+      resolved_at: null,
+      resolved_timezone_name: null,
+      resolved_by: null,
+      resolution_note: null,
+      planned_for: "2026-08-10",
+      scheduled_local_time: "11:45:00",
+      schedule_source: "manual",
+      is_schedule_locked: false,
+      recurrence_day_no: 7,
+      slot_no: 1,
+      occurrence_no: 13,
+      revision_no: Number(retainedBefore.manual.revision_no) + 1,
+    });
+    expect(retainedAfter.locked).toMatchObject({
+      status: "planned",
+      resolution_command_id: null,
+      resolved_at: null,
+      resolved_timezone_name: null,
+      resolved_by: null,
+      resolution_note: null,
+      planned_for: "2026-08-11",
+      scheduled_local_time: "22:15:00",
+      schedule_source: "suggested",
+      is_schedule_locked: true,
+      recurrence_day_no: 7,
+      slot_no: 2,
+      occurrence_no: 14,
+      revision_no: Number(retainedBefore.locked.revision_no) + 1,
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select jsonb_object_agg(
+        change.task_id::text,
+        jsonb_build_object(
+          'type', change.change_type,
+          'before', change.snapshot_before,
+          'after', change.snapshot_after
+        )
+      )::text
+      from public.litter_plan_series_actual_birth_reconciliation_changes change
+      join public.litter_plan_series_actual_birth_reconciliation_commands command
+        on command.id = change.command_id
+      where command.series_id = ${q(insertSeries)}::uuid
+        and change.task_id in (
+          ${q(retainedTargets.manual.id)}::uuid,
+          ${q(retainedTargets.locked.id)}::uuid
+        );
+    `)).toEqual({
+      [retainedTargets.manual.id]: {
+        type: "restored",
+        before: retainedBefore.manual,
+        after: retainedAfter.manual,
+      },
+      [retainedTargets.locked.id]: {
+        type: "restored",
+        before: retainedBefore.locked,
+        after: retainedAfter.locked,
+      },
+    });
     expect(jsonSql<Record<string, unknown>>(`
       select json_build_object(
         'newDates', json_agg(distinct task.planned_for::text order by task.planned_for::text)
           filter (where task.planned_for between '2026-08-10' and '2026-08-12'),
-        'newCount', count(*) filter (
+        'retainedDateCount', count(*) filter (
           where task.planned_for between '2026-08-10' and '2026-08-12'
+        ),
+        'insertedIdentityCount', count(*) filter (
+          where task.recurrence_day_no between 8 and 10
         ),
         'identityCollisions', (
           select count(*) - count(distinct (task.recurrence_day_no, task.slot_no))
@@ -985,7 +1188,8 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       where task.litter_plan_series_id = ${q(insertSeries)}::uuid;
     `)).toEqual({
       newDates: ["2026-08-10", "2026-08-11", "2026-08-12"],
-      newCount: 6,
+      retainedDateCount: 8,
+      insertedIdentityCount: 6,
       identityCollisions: 0,
       insertAudits: 6,
     });
@@ -1011,6 +1215,8 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
     sql(`
       update public.litter_care_tasks
       set status = 'done',
+          planned_for = planned_for + 17,
+          scheduled_local_time = '13:20',
           resolution_command_id = ${q(ids.doneResolution)}::uuid,
           resolved_at = statement_timestamp(),
           resolved_timezone_name = 'Europe/Paris',
@@ -1109,6 +1315,45 @@ test("réconcilie de façon privée les séries actual_birth terminales", async 
       state: "completed",
       completion: "actual_birth_reached",
     });
+
+    const inconsistentRevision = seriesRevision(inconsistentSeries);
+    sql(`
+      update public.litter_care_tasks task
+      set planned_for = task.planned_for - 1,
+          updated_at = statement_timestamp(),
+          updated_by = ${q(ownerId)}::uuid
+      where task.id = (
+        select candidate.id
+        from public.litter_care_tasks candidate
+        where candidate.litter_plan_series_id = ${q(inconsistentSeries)}::uuid
+          and candidate.status = 'planned'
+          and candidate.schedule_source = 'suggested'
+          and candidate.is_schedule_locked = false
+        order by candidate.recurrence_day_no, candidate.slot_no
+        limit 1
+      );
+    `);
+    await correctBirth(
+      owner,
+      inconsistentBirth,
+      ids.inconsistentCorrection,
+      0,
+      "2026-08-09T03:00:00+02:00",
+    );
+    const inconsistentBefore = seriesFingerprint(inconsistentSeries);
+    expect(reconcile(
+      inconsistentSeries,
+      inconsistentBirth.birthId,
+      ids.inconsistentCorrection,
+      "2026-08-08",
+      "2026-08-09",
+      inconsistentRevision,
+    )).toMatchObject({
+      outcome: "error",
+      reason: "invariant_failed",
+      replayed: false,
+    });
+    expect(seriesFingerprint(inconsistentSeries)).toEqual(inconsistentBefore);
 
     const maxRevision = seriesRevision(maxSeries);
     await correctBirth(
