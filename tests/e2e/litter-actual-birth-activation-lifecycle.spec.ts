@@ -219,6 +219,18 @@ async function discoverLifecycleFixtures(
       where organization_id = ${q(organizationId)}::uuid
         and litter_id in (${litterList})
     `,
+    litter_plan_actual_birth_activation_reversal_changes: `
+      select id::text
+      from public.litter_plan_actual_birth_activation_reversal_changes
+      where organization_id = ${q(organizationId)}::uuid
+        and litter_id in (${litterList})
+    `,
+    litter_plan_actual_birth_activation_reversal_snapshots: `
+      select id::text
+      from public.litter_plan_actual_birth_activation_reversal_snapshots
+      where organization_id = ${q(organizationId)}::uuid
+        and litter_id in (${litterList})
+    `,
     litter_plan_actual_birth_activation_deactivations: `
       select id::text
       from public.litter_plan_actual_birth_activation_deactivations
@@ -1042,6 +1054,16 @@ test("audite le cycle activation, désactivation et activation suivante", async 
 
   const finalCounts = jsonSql<Record<string, number>>(`
     select json_build_object(
+      'reversal_changes', (
+        select count(*)
+        from public.litter_plan_actual_birth_activation_reversal_changes
+        where litter_id::text like ${q(`${prefix}-%`)}
+      ),
+      'reversal_snapshots', (
+        select count(*)
+        from public.litter_plan_actual_birth_activation_reversal_snapshots
+        where litter_id::text like ${q(`${prefix}-%`)}
+      ),
       'deactivations', (
         select count(*)
         from public.litter_plan_actual_birth_activation_deactivations
