@@ -30,6 +30,7 @@ const viewerId = "10000000-0000-4000-8000-000000000003";
 const durableOrganizationId = "20000000-0000-4000-8000-000000000001";
 const prefix = "e7300002-0000-4000-8000-";
 const like = "e7300002-%";
+const missingSessionId = `${prefix}000000000099`;
 const preModelCode = "dog-pre-whelping-temperature-monitoring";
 const postModelCode = "dog-postnatal-essential-care";
 
@@ -61,10 +62,26 @@ const ids = {
   unauthenticatedBirthCommand: `${prefix}000000000039`,
   viewerBirthCommand: `${prefix}000000000040`,
   foreignBirthCommand: `${prefix}000000000041`,
+  nullSessionBirthCommand: `${prefix}000000000042`,
+  missingInvalidBirthCommand: `${prefix}000000000043`,
+  missingValidBirthCommand: `${prefix}000000000044`,
+  viewerInvalidBirthCommand: `${prefix}000000000045`,
+  foreignInvalidBirthCommand: `${prefix}000000000046`,
 } as const;
 
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const sql = (statement: string) => runE2eSqlSync(statement);
+const historicalErrorRow = (reason: string) => ({
+  outcome: "error",
+  birth_id: null,
+  event_id: null,
+  animal_id: null,
+  weight_measurement_id: null,
+  event_sequence_no: null,
+  birth_order: null,
+  replayed: false,
+  reason,
+});
 
 function jsonSql<T>(statement: string): T {
   const lines = sql(statement).split(/\r?\n/).reverse();
@@ -515,11 +532,39 @@ async function rawBirthAttempt(
   });
 }
 
-function deniedBirthLockProbe(
-  profileId: string | null,
-  sessionId: string,
-  commandId: string,
-) {
+type BirthLockProbeInput = {
+  profileId: string | null;
+  sessionId: string | null;
+  commandId: string;
+  occurredAt?: string | null;
+  sex?: string | null;
+  viability?: string | null;
+  initialCollarColor?: string | null;
+  weightGrams?: number | null;
+  measuredAt?: string | null;
+  note?: string | null;
+};
+
+const nullableSql = (
+  value: string | number | null,
+  type: "uuid" | "text" | "integer" | "timestamptz",
+) =>
+  value === null
+    ? `null::${type}`
+    : `${typeof value === "number" ? value : q(value)}::${type}`;
+
+function deniedBirthLockProbe({
+  profileId,
+  sessionId,
+  commandId,
+  occurredAt = "2026-08-08T03:00:00+02:00",
+  sex = "unknown",
+  viability = "unknown",
+  initialCollarColor = null,
+  weightGrams = null,
+  measuredAt = null,
+  note = null,
+}: BirthLockProbeInput) {
   return jsonSql<{
     result: Record<string, unknown>;
     targetLockCount: number;
@@ -536,15 +581,15 @@ function deniedBirthLockProbe(
     with denied as materialized (
       select *
       from public.record_whelping_birth(
-        ${q(sessionId)}::uuid,
+        ${nullableSql(sessionId, "uuid")},
         ${q(commandId)}::uuid,
-        '2026-08-08T03:00:00+02:00'::timestamptz,
-        'unknown',
-        'unknown',
-        null,
-        null,
-        null,
-        null
+        ${nullableSql(occurredAt, "timestamptz")},
+        ${nullableSql(sex, "text")},
+        ${nullableSql(viability, "text")},
+        ${nullableSql(initialCollarColor, "text")},
+        ${nullableSql(weightGrams, "integer")},
+        ${nullableSql(measuredAt, "timestamptz")},
+        ${nullableSql(note, "text")}
       )
     ),
     lock_key as (
@@ -1116,22 +1161,62 @@ test("active atomiquement le planning à la première naissance", async ({
       foreignTasks: 0,
     });
 
-    const viewerDenied = await rawBirthAttempt(
-      viewer,
-      opened.sessionId,
-      ids.viewerBirthCommand,
-    );
-    expect(viewerDenied.error).toBeNull();
-    expect(viewerDenied.data?.[0]).toEqual({
-      outcome: "error",
-      birth_id: null,
-      event_id: null,
-      animal_id: null,
-      weight_measurement_id: null,
-      event_sequence_no: null,
-      birth_order: null,
-      replayed: false,
-      reason: "membership_required",
+    const unauthenticatedProbe = deniedBirthLockProbe({
+      profileId: null,
+      sessionId: null,
+      commandId: ids.unauthenticatedBirthCommand,
+      sex: "invalid",
+    });
+    expect(unauthenticatedProbe).toEqual({
+      result: historicalErrorRow("not_authenticated"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const nullSessionProbe = deniedBirthLockProbe({
+      profileId: ownerId,
+      sessionId: null,
+      commandId: ids.nullSessionBirthCommand,
+    });
+    expect(nullSessionProbe).toEqual({
+      result: historicalErrorRow("invalid_input"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const missingInvalidProbe = deniedBirthLockProbe({
+      profileId: ownerId,
+      sessionId: missingSessionId,
+      commandId: ids.missingInvalidBirthCommand,
+      sex: "invalid",
+    });
+    expect(missingInvalidProbe).toEqual({
+      result: historicalErrorRow("invalid_input"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const missingValidProbe = deniedBirthLockProbe({
+      profileId: ownerId,
+      sessionId: missingSessionId,
+      commandId: ids.missingValidBirthCommand,
+    });
+    expect(missingValidProbe).toEqual({
+      result: historicalErrorRow("session_not_found"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const foreignInvalidProbe = deniedBirthLockProbe({
+      profileId: memberId,
+      sessionId: opened.sessionId,
+      commandId: ids.foreignInvalidBirthCommand,
+      sex: "invalid",
+    });
+    expect(foreignInvalidProbe).toEqual({
+      result: historicalErrorRow("invalid_input"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
     });
 
     const foreignDenied = await rawBirthAttempt(
@@ -1140,57 +1225,49 @@ test("active atomiquement le planning à la première naissance", async ({
       ids.foreignBirthCommand,
     );
     expect(foreignDenied.error).toBeNull();
-    expect(foreignDenied.data?.[0]).toEqual({
-      outcome: "error",
-      birth_id: null,
-      event_id: null,
-      animal_id: null,
-      weight_measurement_id: null,
-      event_sequence_no: null,
-      birth_order: null,
-      replayed: false,
-      reason: "session_not_found",
-    });
-
-    const unauthenticatedProbe = deniedBirthLockProbe(
-      null,
-      opened.sessionId,
-      ids.unauthenticatedBirthCommand,
+    expect(foreignDenied.data?.[0]).toEqual(
+      historicalErrorRow("session_not_found"),
     );
-    expect(unauthenticatedProbe).toEqual({
-      result: {
-        outcome: "error",
-        birth_id: null,
-        event_id: null,
-        animal_id: null,
-        weight_measurement_id: null,
-        event_sequence_no: null,
-        birth_order: null,
-        replayed: false,
-        reason: "not_authenticated",
-      },
+    const foreignValidProbe = deniedBirthLockProbe({
+      profileId: memberId,
+      sessionId: opened.sessionId,
+      commandId: ids.foreignBirthCommand,
+    });
+    expect(foreignValidProbe).toEqual({
+      result: foreignDenied.data?.[0],
       targetLockCount: 0,
       backendAdvisoryLockCount: 0,
     });
 
-    const viewerProbe = deniedBirthLockProbe(
-      viewerId,
+    const viewerInvalidProbe = deniedBirthLockProbe({
+      profileId: viewerId,
+      sessionId: opened.sessionId,
+      commandId: ids.viewerInvalidBirthCommand,
+      weightGrams: 400,
+      measuredAt: null,
+    });
+    expect(viewerInvalidProbe).toEqual({
+      result: historicalErrorRow("invalid_input"),
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const viewerDenied = await rawBirthAttempt(
+      viewer,
       opened.sessionId,
       ids.viewerBirthCommand,
     );
-    expect(viewerProbe).toEqual({
-      result: viewerDenied.data?.[0],
-      targetLockCount: 0,
-      backendAdvisoryLockCount: 0,
-    });
-
-    const foreignProbe = deniedBirthLockProbe(
-      memberId,
-      opened.sessionId,
-      ids.foreignBirthCommand,
+    expect(viewerDenied.error).toBeNull();
+    expect(viewerDenied.data?.[0]).toEqual(
+      historicalErrorRow("membership_required"),
     );
-    expect(foreignProbe).toEqual({
-      result: foreignDenied.data?.[0],
+    const viewerValidProbe = deniedBirthLockProbe({
+      profileId: viewerId,
+      sessionId: opened.sessionId,
+      commandId: ids.viewerBirthCommand,
+    });
+    expect(viewerValidProbe).toEqual({
+      result: viewerDenied.data?.[0],
       targetLockCount: 0,
       backendAdvisoryLockCount: 0,
     });

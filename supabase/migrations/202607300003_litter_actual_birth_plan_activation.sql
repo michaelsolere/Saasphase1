@@ -829,6 +829,8 @@ declare
   v_organization_id uuid;
   v_litter_id uuid;
   v_membership_role text;
+  v_initial_collar_color text := nullif(btrim(p_initial_collar_color), '');
+  v_note text := nullif(btrim(p_note), '');
   v_actual_birth_date date;
   v_result record;
 begin
@@ -844,6 +846,48 @@ begin
 
   if v_user_id is null then
     reason := 'not_authenticated';
+    return next;
+    return;
+  end if;
+
+  if p_session_id is null
+    or p_client_command_id is null
+    or p_occurred_at is null
+    or not pg_catalog.isfinite(p_occurred_at)
+    or p_sex is null
+    or p_sex not in ('male', 'female', 'unknown')
+    or p_viability is null
+    or p_viability not in ('alive', 'stillborn', 'unknown')
+    or (v_initial_collar_color is not null and char_length(v_initial_collar_color) > 255)
+    or (v_note is not null and char_length(v_note) > 5000)
+    or (p_weight_grams is not null and p_weight_grams not between 1 and 100000)
+    or (p_weight_grams is not null and p_measured_at is null)
+    or (p_weight_grams is null and p_measured_at is not null)
+    or (p_measured_at is not null and not pg_catalog.isfinite(p_measured_at))
+  then
+    select *
+    into v_result
+    from public.record_whelping_birth_core_internal(
+      p_session_id,
+      p_client_command_id,
+      p_occurred_at,
+      p_sex,
+      p_viability,
+      p_initial_collar_color,
+      p_weight_grams,
+      p_measured_at,
+      p_note
+    );
+
+    outcome := v_result.outcome;
+    birth_id := v_result.birth_id;
+    event_id := v_result.event_id;
+    animal_id := v_result.animal_id;
+    weight_measurement_id := v_result.weight_measurement_id;
+    event_sequence_no := v_result.event_sequence_no;
+    birth_order := v_result.birth_order;
+    replayed := v_result.replayed;
+    reason := v_result.reason;
     return next;
     return;
   end if;
