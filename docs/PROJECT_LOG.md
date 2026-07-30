@@ -262,11 +262,16 @@ accès client direct au cœur renommé est révoqué. La nouvelle
 `record_whelping_birth` publique garde exactement la signature, les neuf
 colonnes de retour et le grant `authenticated` historiques.
 
-L’enveloppe résout la portée depuis la session sans verrou de ligne, prend
-d’abord le verrou consultatif canonique du planning, puis appelle le cœur
-historique. L’ordre devient ainsi planning, commande de naissance, session,
-portée, plan, éléments, séries et tâches. Après une naissance réussie d’ordre
-1 seulement, une fonction privée active le planning dans la même transaction.
+L’enveloppe résout la portée depuis la session sans verrou de ligne, puis
+rejoue avant tout verrou la porte d’autorisation historique : utilisateur
+authentifié, session existante, membership active et non supprimée, rôle
+`owner`, `admin` ou `member`. La membership autorisée est verrouillée
+`FOR SHARE`; les refus `not_authenticated`, `session_not_found` et
+`membership_required` sont rendus sans appeler le cœur ni acquérir le verrou
+d’un planning. L’ordre autorisé devient ainsi membership, planning, commande de
+naissance, session, portée, plan, éléments, séries et tâches. Après une
+naissance réussie d’ordre 1 seulement, une fonction privée active le planning
+dans la même transaction.
 Une erreur de planning annule donc également l’événement `birth`, la naissance
 structurée, l’Animal, le poids éventuel, les projections de portée et le
 registre d’activation.

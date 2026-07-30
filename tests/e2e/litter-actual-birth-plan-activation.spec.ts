@@ -1,5 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient,
+  type SupabaseClient,
+} from "@supabase/supabase-js";
 
 import {
   openWhelpingSessionCore,
@@ -8,8 +11,12 @@ import {
 import type { Database, Json } from "../../src/types/database.types";
 import {
   createAuthenticatedSupabaseClient,
+  E2E_MEMBER_EMAIL,
+  E2E_MEMBER_PASSWORD,
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
+  E2E_VIEWER_EMAIL,
+  E2E_VIEWER_PASSWORD,
   runE2eSqlSync,
 } from "./helpers/supabase";
 
@@ -18,6 +25,8 @@ test.setTimeout(360_000);
 type Supabase = SupabaseClient<Database>;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
+const memberId = "10000000-0000-4000-8000-000000000002";
+const viewerId = "10000000-0000-4000-8000-000000000003";
 const durableOrganizationId = "20000000-0000-4000-8000-000000000001";
 const prefix = "e7300002-0000-4000-8000-";
 const like = "e7300002-%";
@@ -30,6 +39,9 @@ const ids = {
   mainMother: `${prefix}000000000003`,
   rollbackMother: `${prefix}000000000004`,
   concurrentMother: `${prefix}000000000005`,
+  viewerMembership: `${prefix}000000000006`,
+  foreignOrganization: `${prefix}000000000007`,
+  foreignMembership: `${prefix}000000000008`,
   mainLitter: `${prefix}000000000011`,
   rollbackLitter: `${prefix}000000000012`,
   concurrentLitter: `${prefix}000000000013`,
@@ -46,6 +58,9 @@ const ids = {
   concurrentOpenCommand: `${prefix}000000000036`,
   concurrentBirthOneCommand: `${prefix}000000000037`,
   concurrentBirthTwoCommand: `${prefix}000000000038`,
+  unauthenticatedBirthCommand: `${prefix}000000000039`,
+  viewerBirthCommand: `${prefix}000000000040`,
+  foreignBirthCommand: `${prefix}000000000041`,
 } as const;
 
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -61,6 +76,19 @@ function jsonSql<T>(statement: string): T {
     }
   }
   throw new Error("E2E SQL did not return a JSON value");
+}
+
+async function authenticatedClient(
+  email: string,
+  password: string,
+): Promise<Supabase> {
+  const client = createClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+  const signedIn = await client.auth.signInWithPassword({ email, password });
+  expect(signedIn.error).toBeNull();
+  return client;
 }
 
 function cleanup() {
@@ -272,23 +300,48 @@ function durableOrganizationTemporaryCounts() {
 function seedScope() {
   sql(`
     insert into public.organizations (id, name, slug)
-    values (
-      ${q(ids.organization)}::uuid,
-      'Activation naissance e7300002',
-      'activation-naissance-e7300002'
-    );
+    values
+      (
+        ${q(ids.organization)}::uuid,
+        'Activation naissance e7300002',
+        'activation-naissance-e7300002'
+      ),
+      (
+        ${q(ids.foreignOrganization)}::uuid,
+        'Organisation étrangère e7300002',
+        'organisation-etrangere-e7300002'
+      );
 
     insert into public.memberships (
       id, organization_id, profile_id, role, status, created_by, updated_by
-    ) values (
-      ${q(ids.membership)}::uuid,
-      ${q(ids.organization)}::uuid,
-      ${q(ownerId)}::uuid,
-      'owner',
-      'active',
-      ${q(ownerId)}::uuid,
-      ${q(ownerId)}::uuid
-    );
+    ) values
+      (
+        ${q(ids.membership)}::uuid,
+        ${q(ids.organization)}::uuid,
+        ${q(ownerId)}::uuid,
+        'owner',
+        'active',
+        ${q(ownerId)}::uuid,
+        ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.viewerMembership)}::uuid,
+        ${q(ids.organization)}::uuid,
+        ${q(viewerId)}::uuid,
+        'viewer',
+        'active',
+        ${q(ownerId)}::uuid,
+        ${q(ownerId)}::uuid
+      ),
+      (
+        ${q(ids.foreignMembership)}::uuid,
+        ${q(ids.foreignOrganization)}::uuid,
+        ${q(memberId)}::uuid,
+        'member',
+        'active',
+        ${q(ownerId)}::uuid,
+        ${q(ownerId)}::uuid
+      );
 
     insert into public.animals (
       id, organization_id, call_name, species, breed, sex, status,
@@ -376,6 +429,154 @@ function planRevision(litterId: string) {
         and status = 'active';
     `),
   );
+}
+
+function authorizationMutationSnapshot() {
+  return jsonSql<Record<string, number>>(`
+    select json_build_object(
+      'targetEvents', (
+        select count(*) from public.whelping_events event
+        join public.whelping_sessions session on session.id = event.session_id
+        where session.litter_id = ${q(ids.mainLitter)}::uuid
+      ),
+      'targetBirths', (
+        select count(*) from public.whelping_births birth
+        join public.whelping_sessions session on session.id = birth.session_id
+        where session.litter_id = ${q(ids.mainLitter)}::uuid
+      ),
+      'targetOffspring', (
+        select count(*) from public.animals
+        where litter_id = ${q(ids.mainLitter)}::uuid
+      ),
+      'targetActivations', (
+        select count(*) from public.litter_plan_actual_birth_activations
+        where litter_id = ${q(ids.mainLitter)}::uuid
+      ),
+      'targetPostTasks', (
+        select count(*) from public.litter_care_tasks task
+        join public.litter_plan_items item on item.id = task.litter_plan_item_id
+        join public.litter_planning_models model
+          on model.id = item.source_planning_model_id
+        where task.litter_id = ${q(ids.mainLitter)}::uuid
+          and model.library_model_code = ${q(postModelCode)}
+      ),
+      'targetCommands', (
+        select count(*) from public.whelping_commands
+        where litter_id = ${q(ids.mainLitter)}::uuid
+      ),
+      'targetRevision', (
+        select revision from public.litter_plans
+        where litter_id = ${q(ids.mainLitter)}::uuid
+          and status = 'active'
+      ),
+      'foreignEvents', (
+        select count(*) from public.whelping_events
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      ),
+      'foreignBirths', (
+        select count(*) from public.whelping_births
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      ),
+      'foreignAnimals', (
+        select count(*) from public.animals
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      ),
+      'foreignCommands', (
+        select count(*) from public.whelping_commands
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      ),
+      'foreignActivations', (
+        select count(*) from public.litter_plan_actual_birth_activations
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      ),
+      'foreignTasks', (
+        select count(*) from public.litter_care_tasks
+        where organization_id = ${q(ids.foreignOrganization)}::uuid
+      )
+    )::text;
+  `);
+}
+
+async function rawBirthAttempt(
+  client: Supabase,
+  sessionId: string,
+  commandId: string,
+) {
+  return client.rpc("record_whelping_birth", {
+    p_session_id: sessionId,
+    p_client_command_id: commandId,
+    p_occurred_at: "2026-08-08T03:00:00+02:00",
+    p_sex: "unknown",
+    p_viability: "unknown",
+    p_initial_collar_color: null,
+    p_weight_grams: null,
+    p_measured_at: null,
+    p_note: null,
+  });
+}
+
+function deniedBirthLockProbe(
+  profileId: string | null,
+  sessionId: string,
+  commandId: string,
+) {
+  return jsonSql<{
+    result: Record<string, unknown>;
+    targetLockCount: number;
+    backendAdvisoryLockCount: number;
+  }>(`
+    begin;
+    set local role authenticated;
+    select pg_catalog.set_config(
+      'request.jwt.claim.sub',
+      ${q(profileId ?? '')},
+      true
+    );
+
+    with denied as materialized (
+      select *
+      from public.record_whelping_birth(
+        ${q(sessionId)}::uuid,
+        ${q(commandId)}::uuid,
+        '2026-08-08T03:00:00+02:00'::timestamptz,
+        'unknown',
+        'unknown',
+        null,
+        null,
+        null,
+        null
+      )
+    ),
+    lock_key as (
+      select pg_catalog.hashtextextended(
+        'litter_plan_mutation:' || ${q(ids.organization)}
+          || ':' || ${q(ids.mainLitter)},
+        0
+      ) as value
+    ),
+    held_locks as materialized (
+      select
+        count(*) filter (
+          where lock.classid::bigint = ((lock_key.value >> 32) & 4294967295)
+            and lock.objid::bigint = (lock_key.value & 4294967295)
+        ) as target_lock_count,
+        count(lock.pid) as backend_advisory_lock_count
+      from denied
+      cross join lock_key
+      left join pg_catalog.pg_locks lock
+        on lock.pid = pg_catalog.pg_backend_pid()
+       and lock.locktype = 'advisory'
+       and lock.granted
+    )
+    select json_build_object(
+      'result', (select row_to_json(denied) from denied),
+      'targetLockCount', held_locks.target_lock_count,
+      'backendAdvisoryLockCount', held_locks.backend_advisory_lock_count
+    )::text
+    from held_locks;
+
+    rollback;
+  `);
 }
 
 async function applyModel(
@@ -581,6 +782,9 @@ function fixtureManifest() {
       'directIds', json_build_object(
         'organization', ${q(ids.organization)},
         'membership', ${q(ids.membership)},
+        'viewerMembership', ${q(ids.viewerMembership)},
+        'foreignOrganization', ${q(ids.foreignOrganization)},
+        'foreignMembership', ${q(ids.foreignMembership)},
         'mainMother', ${q(ids.mainMother)},
         'rollbackMother', ${q(ids.rollbackMother)},
         'concurrentMother', ${q(ids.concurrentMother)},
@@ -787,6 +991,8 @@ test("active atomiquement le planning à la première naissance", async ({
 
   let owner: Supabase | null = null;
   let secondOwner: Supabase | null = null;
+  let viewer: Supabase | null = null;
+  let foreignMember: Supabase | null = null;
   try {
     const security = securityState();
     expect(security).toMatchObject({
@@ -803,7 +1009,7 @@ test("active atomiquement le planning à la première naissance", async ({
           publicExecute: false,
         },
         record_whelping_birth_core_internal: {
-          oid: "21117",
+          oid: expect.any(String),
           owner: "postgres",
           securityDefiner: true,
           config: expect.arrayContaining([
@@ -832,18 +1038,25 @@ test("active atomiquement le planning à la première naissance", async ({
       authenticatedTableAccess: false,
       anonTableAccess: false,
     });
-    expect(
-      (
-        security.functions as Record<
-          string,
-          { oid: string }
-        >
-      ).record_whelping_birth.oid,
-    ).not.toBe("21117");
+    const functionSecurity = security.functions as Record<
+      string,
+      { oid: string }
+    >;
+    expect(functionSecurity.record_whelping_birth.oid).not.toBe(
+      functionSecurity.record_whelping_birth_core_internal.oid,
+    );
 
     seedScope();
     owner = await createAuthenticatedSupabaseClient();
     secondOwner = await createAuthenticatedSupabaseClient();
+    viewer = await authenticatedClient(
+      E2E_VIEWER_EMAIL,
+      E2E_VIEWER_PASSWORD,
+    );
+    foreignMember = await authenticatedClient(
+      E2E_MEMBER_EMAIL,
+      E2E_MEMBER_PASSWORD,
+    );
     await importModels(owner);
 
     await applyModel(
@@ -885,6 +1098,105 @@ test("active atomiquement le planning à la première naissance", async ({
     if (opened.outcome !== "success") {
       throw new Error("Main whelping session did not open");
     }
+
+    const authorizationBefore = authorizationMutationSnapshot();
+    expect(authorizationBefore).toEqual({
+      targetEvents: 0,
+      targetBirths: 0,
+      targetOffspring: 0,
+      targetActivations: 0,
+      targetPostTasks: 0,
+      targetCommands: 1,
+      targetRevision: revisionBefore,
+      foreignEvents: 0,
+      foreignBirths: 0,
+      foreignAnimals: 0,
+      foreignCommands: 0,
+      foreignActivations: 0,
+      foreignTasks: 0,
+    });
+
+    const viewerDenied = await rawBirthAttempt(
+      viewer,
+      opened.sessionId,
+      ids.viewerBirthCommand,
+    );
+    expect(viewerDenied.error).toBeNull();
+    expect(viewerDenied.data?.[0]).toEqual({
+      outcome: "error",
+      birth_id: null,
+      event_id: null,
+      animal_id: null,
+      weight_measurement_id: null,
+      event_sequence_no: null,
+      birth_order: null,
+      replayed: false,
+      reason: "membership_required",
+    });
+
+    const foreignDenied = await rawBirthAttempt(
+      foreignMember,
+      opened.sessionId,
+      ids.foreignBirthCommand,
+    );
+    expect(foreignDenied.error).toBeNull();
+    expect(foreignDenied.data?.[0]).toEqual({
+      outcome: "error",
+      birth_id: null,
+      event_id: null,
+      animal_id: null,
+      weight_measurement_id: null,
+      event_sequence_no: null,
+      birth_order: null,
+      replayed: false,
+      reason: "session_not_found",
+    });
+
+    const unauthenticatedProbe = deniedBirthLockProbe(
+      null,
+      opened.sessionId,
+      ids.unauthenticatedBirthCommand,
+    );
+    expect(unauthenticatedProbe).toEqual({
+      result: {
+        outcome: "error",
+        birth_id: null,
+        event_id: null,
+        animal_id: null,
+        weight_measurement_id: null,
+        event_sequence_no: null,
+        birth_order: null,
+        replayed: false,
+        reason: "not_authenticated",
+      },
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const viewerProbe = deniedBirthLockProbe(
+      viewerId,
+      opened.sessionId,
+      ids.viewerBirthCommand,
+    );
+    expect(viewerProbe).toEqual({
+      result: viewerDenied.data?.[0],
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    const foreignProbe = deniedBirthLockProbe(
+      memberId,
+      opened.sessionId,
+      ids.foreignBirthCommand,
+    );
+    expect(foreignProbe).toEqual({
+      result: foreignDenied.data?.[0],
+      targetLockCount: 0,
+      backendAdvisoryLockCount: 0,
+    });
+
+    expect(authorizationMutationSnapshot()).toEqual(authorizationBefore);
+    expect(planRevision(ids.mainLitter)).toBe(revisionBefore);
 
     const firstBirthInput = {
       sessionId: opened.sessionId,
@@ -1287,6 +1599,8 @@ test("active atomiquement le planning à la première naissance", async ({
       })}`,
     );
   } finally {
+    if (foreignMember) await foreignMember.auth.signOut();
+    if (viewer) await viewer.auth.signOut();
     if (secondOwner) await secondOwner.auth.signOut();
     if (owner) await owner.auth.signOut();
     cleanup();

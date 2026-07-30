@@ -825,22 +825,65 @@ set search_path = ''
 set row_security = off
 as $function$
 declare
+  v_user_id uuid := auth.uid();
   v_organization_id uuid;
   v_litter_id uuid;
+  v_membership_role text;
   v_actual_birth_date date;
   v_result record;
 begin
+  outcome := 'error';
+  birth_id := null;
+  event_id := null;
+  animal_id := null;
+  weight_measurement_id := null;
+  event_sequence_no := null;
+  birth_order := null;
+  replayed := false;
+  reason := null;
+
+  if v_user_id is null then
+    reason := 'not_authenticated';
+    return next;
+    return;
+  end if;
+
   select session.organization_id, session.litter_id
   into v_organization_id, v_litter_id
   from public.whelping_sessions session
   where session.id = p_session_id;
 
-  if found then
-    perform public.acquire_litter_plan_mutation_lock(
-      v_organization_id,
-      v_litter_id
-    );
+  if not found then
+    reason := 'session_not_found';
+    return next;
+    return;
   end if;
+
+  select membership.role
+  into v_membership_role
+  from public.memberships membership
+  where membership.organization_id = v_organization_id
+    and membership.profile_id = v_user_id
+    and membership.status = 'active'
+    and membership.deleted_at is null
+  for share;
+
+  if not found then
+    reason := 'session_not_found';
+    return next;
+    return;
+  end if;
+
+  if v_membership_role not in ('owner', 'admin', 'member') then
+    reason := 'membership_required';
+    return next;
+    return;
+  end if;
+
+  perform public.acquire_litter_plan_mutation_lock(
+    v_organization_id,
+    v_litter_id
+  );
 
   select *
   into v_result
