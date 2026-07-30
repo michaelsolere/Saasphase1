@@ -1174,9 +1174,12 @@ Le registre privé append-only
 désactivation. Son autorité provient obligatoirement d’une véritable commande
 `cancel_birth` de `whelping_birth_adjustment_commands`, dont l’organisation,
 la portée, la date, le motif, l’auteur et le snapshot effectif doivent être
-cohérents. Une activation et une commande ne peuvent chacune être utilisées
-qu’une fois. Les rejeux exacts rendent le résultat existant ; une réutilisation
-divergente est refusée.
+cohérents. La désactivation recoupe également la commande source
+`record_birth` de l’activation et exige que la commande `cancel_birth` cible
+exactement le même `birth_id` ; annuler une autre naissance de la même portée
+ne peut donc pas désactiver l’activation courante. Une activation et une
+commande ne peuvent chacune être utilisées qu’une fois. Les rejeux exacts
+rendent le résultat existant ; une réutilisation divergente est refusée.
 
 L’activation de première naissance conserve sa signature historique. Elle
 résout d’abord le rejeu par commande, consulte ensuite la projection courante

@@ -47,6 +47,8 @@ const ids = {
   historicalCancellation: `${prefix}-0000-4000-8000-000000000009`,
   secondBirthCommand: `${prefix}-0000-4000-8000-00000000000a`,
   secondBlockedCancellation: `${prefix}-0000-4000-8000-00000000000b`,
+  nonSourceBirthCommand: `${prefix}-0000-4000-8000-00000000000c`,
+  nonSourceCancellation: `${prefix}-0000-4000-8000-00000000000d`,
   concurrentMother: `${prefix}-0000-4000-8000-000000000011`,
   concurrentLitter: `${prefix}-0000-4000-8000-000000000012`,
   concurrentSession: `${prefix}-0000-4000-8000-000000000013`,
@@ -254,6 +256,7 @@ test("audite le cycle activation, désactivation et activation suivante", async 
   const owner = await createAuthenticatedSupabaseClient();
   const birthCommands = [
     ids.firstBirthCommand,
+    ids.nonSourceBirthCommand,
     ids.secondBirthCommand,
     ids.concurrentBirthA,
     ids.concurrentBirthB,
@@ -263,6 +266,7 @@ test("audite le cycle activation, désactivation et activation suivante", async 
   const adjustmentCommands = [
     ids.sameDayCorrection,
     ids.nextDayCorrection,
+    ids.nonSourceCancellation,
     ids.privateCancellation,
     ids.rollbackPrivateCancellation,
   ];
@@ -417,6 +421,60 @@ test("audite le cycle activation, désactivation et activation suivante", async 
         ).toBe("0");
         expect(activationSnapshot(ids.litter).deactivations).toEqual([]);
 
+        const nonSourceBirth = await recordWhelpingBirthCore(
+          {
+            sessionId: ids.session,
+            clientCommandId: ids.nonSourceBirthCommand,
+            occurredAt: "2026-07-31T10:01:00+02:00",
+            sex: "male",
+            viability: "alive",
+            note: "Naissance adverse sans nouvelle activation",
+          },
+          owner,
+        );
+        expect(nonSourceBirth).toMatchObject({
+          outcome: "success",
+          birthOrder: 2,
+          replayed: false,
+        });
+        if (nonSourceBirth.outcome !== "success") {
+          throw new Error("non-source birth required");
+        }
+
+        const beforeMismatchedDeactivation = activationSnapshot(ids.litter);
+        const firstActivationId =
+          beforeMismatchedDeactivation.activations[0]!.id;
+        expect(beforeMismatchedDeactivation).toEqual(firstState);
+
+        const nonSourceCancellation = privateCancelBirth({
+          birthId: nonSourceBirth.birthId,
+          commandId: ids.nonSourceCancellation,
+          expectedRevision: 0,
+          cancelledAt: "2026-07-31T10:02:00+02:00",
+          reason: "Annulation adverse de la deuxième naissance",
+        });
+        expect(nonSourceCancellation).toMatchObject({
+          outcome: "success",
+          birth_id: nonSourceBirth.birthId,
+          revision_no: 1,
+          replayed: false,
+        });
+
+        expect(() =>
+          sql(`
+            select public.deactivate_litter_plan_actual_birth_activation_internal(
+              ${q(organizationId)}::uuid,
+              ${q(ids.litter)}::uuid,
+              ${q(firstActivationId)}::uuid,
+              ${q(ids.nonSourceCancellation)}::uuid
+            );
+          `),
+        ).toThrow(/cancel-birth adjustment source birth invariant failed/);
+
+        expect(activationSnapshot(ids.litter)).toEqual(
+          beforeMismatchedDeactivation,
+        );
+
         const privateCancellation = privateCancelBirth({
           birthId: first.birthId,
           commandId: ids.privateCancellation,
@@ -431,7 +489,6 @@ test("audite le cycle activation, désactivation et activation suivante", async 
           replayed: false,
         });
 
-        const firstActivationId = firstState.activations[0]!.id;
         const deactivated = jsonSql<Json>(`
           select public.deactivate_litter_plan_actual_birth_activation_internal(
             ${q(organizationId)}::uuid,

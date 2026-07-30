@@ -309,6 +309,7 @@ as $function$
 declare
   v_state public.litter_plan_actual_birth_activation_states%rowtype;
   v_activation public.litter_plan_actual_birth_activations%rowtype;
+  v_source_command public.whelping_commands%rowtype;
   v_adjustment public.whelping_birth_adjustment_commands%rowtype;
   v_existing
     public.litter_plan_actual_birth_activation_deactivations%rowtype;
@@ -386,6 +387,23 @@ begin
       using errcode = '23514';
   end if;
 
+  select command.*
+  into v_source_command
+  from public.whelping_commands command
+  where command.organization_id = p_organization_id
+    and command.litter_id = p_litter_id
+    and command.client_command_id =
+      v_activation.whelping_client_command_id
+  for share;
+
+  if not found
+    or v_source_command.command_type is distinct from 'record_birth'
+    or v_source_command.birth_id is null
+  then
+    raise exception 'first-birth activation source command invariant failed'
+      using errcode = '23514';
+  end if;
+
   select adjustment.*
   into v_adjustment
   from public.whelping_birth_adjustment_commands adjustment
@@ -408,6 +426,11 @@ begin
       is distinct from v_adjustment.reason
   then
     raise exception 'cancel-birth adjustment command invariant failed'
+      using errcode = '23514';
+  end if;
+
+  if v_adjustment.birth_id is distinct from v_source_command.birth_id then
+    raise exception 'cancel-birth adjustment source birth invariant failed'
       using errcode = '23514';
   end if;
 
