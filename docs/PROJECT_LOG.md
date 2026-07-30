@@ -6,8 +6,8 @@ Ce document décrit l’état utile du projet autour du SHA de base vérifié. I
 
 - Dépôt : `michaelsolere/Saasphase1`.
 - Branche de référence : `main`.
-- SHA de base vérifié avant ce lot : `d6bdbb08efecb94745571db92988ba09f3858de7`.
-- La dernière migration incluse est `202607300003_litter_actual_birth_plan_activation`.
+- SHA de base vérifié avant ce lot : `bac91c0b779fa864516be8199c2eb28813d90e55`.
+- La dernière migration incluse est `202607300004_litter_actual_birth_series_reconciliation_engine`.
 - Stack : Next.js 16 / React 19, TypeScript, Tailwind CSS, shadcn/ui, Supabase (PostgreSQL, Auth et Storage), déploiement cible Vercel.
 
 ## Architecture et règles métier
@@ -994,3 +994,69 @@ l’éleveur ajuste et le Journal constate.
 Les migrations de ce lot ne concernent que le vocabulaire de catégorie et le
 catalogue global. Elles devront être appliquées à la stack personnelle
 uniquement après fusion, avec la sauvegarde et l’instruction séparée prévues.
+
+## Lot du 2026-07-30 — Réconciliation privée des séries après correction de naissance
+
+Le moteur récurrent savait historiquement terminer une série
+`actual_birth` à la première naissance, puis contracter ou réaligner sa borne
+biologique sans insertion. Il ne pouvait pas étendre une série déjà
+`completed/actual_birth_reached` lorsqu’une correction auditée déplaçait la
+date réelle vers un jour ultérieur : les occurrences rendues non applicables
+restaient résolues et les jours réellement manquants n’étaient pas créés.
+
+La migration
+`202607300004_litter_actual_birth_series_reconciliation_engine` ajoute un
+orchestrateur strictement privé pour ce seul état terminal. Son autorité
+provient d’une commande `correct_birth` réellement enregistrée dans
+`whelping_birth_adjustment_commands`. L’organisation, la portée, la naissance,
+le créateur, l’identifiant de commande et les dates des snapshots avant/après
+doivent tous correspondre à la série verrouillée et à
+`litters.actual_birth_date`. Une annulation, une commande étrangère, des
+snapshots sans changement de date, un UUID seul ou un GUC ne peuvent pas
+activer cette capacité.
+
+L’orchestrateur acquiert le verrou canonique puis verrouille portée, plan,
+élément, série et occurrences dans cet ordre. Son préflight vérifie les liens
+d’organisation, la cadence, les un à huit créneaux contigus, les identités,
+le compteur matérialisé, les collisions, la couverture complète attendue et
+le plafond absolu. Une borne qui exigerait davantage que
+`absolute_max_occurrences` est refusée par `absolute_max_insufficient` sans
+troncature ni mutation.
+
+Lors d’une extension, seules les occurrences
+`not_applicable/actual_birth_reached` situées après l’ancienne naissance et au
+plus tard à la nouvelle sont restaurées, en l’absence de fait de réalisation.
+Leur identité, leur programmation et leur verrouillage sont conservés ; seuls
+les champs de résolution sont effacés et leur révision augmente. Les
+occurrences absentes sont ensuite matérialisées par le helper partagé, avec la
+cadence, les créneaux, le fuseau et les collisions historiques. Lors d’une
+contraction, la logique biologique existante rend non applicables les seules
+occurrences encore planifiées après la nouvelle date, sans suppression.
+Les tâches `done`, `cancelled` ou non applicables pour un autre motif restent
+inchangées.
+
+La série n’est jamais rouverte, même temporairement. Elle demeure en permanence
+`completed/actual_birth_reached`; `ends_on` et `materialized_through` suivent
+la nouvelle date réelle. Sa révision augmente exactement une fois lorsqu’une
+réconciliation réussit et ne change pas lors d’un rejeu exact.
+
+Deux registres privés, RLS sans policy ni grant client, conservent la commande
+parent et chaque occurrence restaurée, insérée ou rendue non applicable avec
+ses snapshots avant/après. Ils sont append-only. Le rejeu du même payload
+retourne l’audit existant sans nouvelle écriture ; une réutilisation divergente
+renvoie `client_command_conflict`. Toutes les mutations et tous les audits
+sont atomiques.
+
+La signature historique de
+`materialize_litter_plan_series_occurrences` est conservée. Sa définition,
+son OID, son propriétaire, ses propriétés et son ACL sont protégés par une
+empreinte normalisée et des gardes de remplacement. Le diff logique est limité
+à quatre ajouts : détection de l’audit privé créé dans la même instruction,
+validation de la commande `correct_birth`, révision des occurrences contractées
+dans ce contexte privé et autorisation d’insertion terminale. Tous les appels
+historiques gardent leur comportement.
+
+Ce lot ne raccorde pas encore l’orchestrateur à `correct_whelping_birth`.
+Cette enveloppe transactionnelle est reportée au lot suivant. Aucun plan,
+élément, naissance, Animal, observation, poids, document, paiement,
+réservation ou e-mail n’est modifié par la fonction de réconciliation.
