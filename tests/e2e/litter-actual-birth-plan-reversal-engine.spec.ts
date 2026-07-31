@@ -434,6 +434,7 @@ function birthState(litterId: string) {
 test("restauration atomique, prudente, auditée, idempotente et privée", async () => {
   cleanup();
   for (const count of Object.values(fixtureCounts())) expect(count).toBe(0);
+  let fixtureManifest: Record<string, unknown> = {};
 
   try {
     seedScope();
@@ -834,12 +835,76 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       privateAuthenticatedExecute: false,
       publicCancellationWired: false,
     });
+    fixtureManifest = jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'deterministicIds', ${q(JSON.stringify(ids))}::json,
+        'plans', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plans
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'planItems', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plan_items
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'series', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plan_series
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'tasks', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_care_tasks
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'sessions', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.whelping_sessions
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'events', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.whelping_events
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'births', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.whelping_births
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'offspring', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.animals
+          where organization_id = ${q(ids.organization)}::uuid
+            and litter_id is not null
+        ),
+        'activations', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plan_actual_birth_activations
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'snapshots', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plan_actual_birth_activation_reversal_snapshots
+          where organization_id = ${q(ids.organization)}::uuid
+        ),
+        'reversals', (
+          select coalesce(json_agg(id order by id), '[]'::json)
+          from public.litter_plan_actual_birth_plan_reversals
+          where organization_id = ${q(ids.organization)}::uuid
+        )
+      )::text
+    `);
   } finally {
     cleanup();
     const remaining = fixtureCounts();
     for (const [table, count] of Object.entries(remaining)) {
       expect(count, `${table} fixtures must be physically deleted`).toBe(0);
     }
+    console.log(
+      `LITTER_ACTUAL_BIRTH_PLAN_REVERSAL_FIXTURES=${JSON.stringify(fixtureManifest)}`,
+    );
     console.log(
       `LITTER_ACTUAL_BIRTH_PLAN_REVERSAL_CLEANUP=${JSON.stringify(remaining)}`,
     );
