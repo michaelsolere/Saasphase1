@@ -1,7 +1,7 @@
 "use client";
 
 import { Baby, Clock3, Pencil, Plus, Trash2 } from "lucide-react";
-import { useActionState, useCallback, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -182,17 +182,17 @@ function ActionMessage({ state }: { state: WhelpingActionState }) {
 function AdjustmentMessage({ state }: { state: WhelpingBirthAdjustmentActionState }) {
   if (state.status === "idle" || !state.message) return null;
   return (
-    <p
+    <div
       role={state.status === "error" ? "alert" : "status"}
       className={state.status === "error"
-        ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-        : "rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"}
+        ? "whitespace-pre-line rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
+        : "whitespace-pre-line rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"}
     >
       {state.message}
       {state.stale ? (
-        <> <button type="button" className="font-semibold underline" onClick={() => window.location.reload()}>Recharger les données</button></>
+        <button type="button" className="mt-3 block font-semibold underline" onClick={() => window.location.reload()}>Recharger les données</button>
       ) : null}
-    </p>
+    </div>
   );
 }
 
@@ -999,17 +999,25 @@ function BirthCorrectionDialog({
   birth,
   action,
   onSuccess,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
 }: {
   birth: WhelpingBirthSummary;
   action: BirthAdjustmentAction;
   onSuccess: (message: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
 }) {
   const needsCompletion =
     birth.viability === "unknown" ||
     birth.initialCollarColor === null ||
     birth.birthWeightMeasurement === null;
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [occurredAt, setOccurredAt] = useState(() => isoToLocalDateTime(birth.occurredAt));
   const [weight, setWeight] = useState(() => birth.birthWeightMeasurement?.grams.toString() ?? "");
   const [weightMeasuredAt, setWeightMeasuredAt] = useState(() =>
@@ -1028,7 +1036,7 @@ function BirthCorrectionDialog({
       router.refresh();
     }
     return nextState;
-  }, [action, onSuccess, router]);
+  }, [action, onSuccess, router, setOpen]);
   const [state, formAction] = useActionState(
     submitAction,
     initialWhelpingBirthAdjustmentActionState,
@@ -1044,12 +1052,14 @@ function BirthCorrectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="outline">
-          <Pencil className="size-4" aria-hidden="true" />
-          {needsCompletion ? "Compléter la naissance" : "Corriger"}
-        </Button>
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button type="button" size="sm" variant="outline">
+            <Pencil className="size-4" aria-hidden="true" />
+            {needsCompletion ? "Compléter la naissance" : "Corriger"}
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>
@@ -1125,13 +1135,25 @@ function BirthCancellationDialog({
   birth,
   action,
   onSuccess,
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
+  onRequestCorrection,
+  planningHref,
 }: {
   birth: WhelpingBirthSummary;
   action: BirthAdjustmentAction;
   onSuccess: (message: string) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  showTrigger?: boolean;
+  onRequestCorrection?: () => void;
+  planningHref: "#litter-planning" | "/litters/journal#litter-planning";
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const cancelledAtRef = useRef<HTMLInputElement>(null);
   const submitAction = useCallback(async (
     previousState: WhelpingBirthAdjustmentActionState,
@@ -1140,46 +1162,229 @@ function BirthCancellationDialog({
     const nextState = await action(previousState, formData);
     if (nextState.status === "success") {
       setOpen(false);
-      onSuccess(nextState.message ?? "La naissance a été annulée.");
+      onSuccess(
+        `Naissance n° ${birth.birthOrder} annulée.\nLes données actives de la portée ont été recalculées.\nLe Journal a été actualisé.`,
+      );
       router.refresh();
     }
     return nextState;
-  }, [action, onSuccess, router]);
+  }, [action, birth.birthOrder, onSuccess, router, setOpen]);
   const [state, formAction] = useActionState(submitAction, initialWhelpingBirthAdjustmentActionState);
+  const protectedDownstream =
+    state.status === "error" && state.uxReason === "protected_downstream";
+  const openPlanning = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setOpen(false);
+    router.push(planningHref);
+  };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="outline" className="text-destructive">
-          <Trash2 className="size-4" aria-hidden="true" />Annuler la naissance
-        </Button>
-      </DialogTrigger>
+      {showTrigger ? (
+        <DialogTrigger asChild>
+          <Button type="button" size="sm" variant="outline" className="text-destructive">
+            <Trash2 className="size-4" aria-hidden="true" />Annuler cette saisie
+          </Button>
+        </DialogTrigger>
+      ) : null}
       <DialogContent className="max-h-[90vh] w-[calc(100%-2rem)] overflow-y-auto rounded-xl sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Annuler la naissance n° {birth.birthOrder}</DialogTitle>
-          <DialogDescription>Aucune ligne ne sera physiquement supprimée.</DialogDescription>
+          <DialogTitle>
+            {protectedDownstream
+              ? "Annulation protégée"
+              : `Annuler la saisie de la naissance n° ${birth.birthOrder} ?`}
+          </DialogTitle>
+          <DialogDescription>
+            {protectedDownstream
+              ? "Le SaaS protège le travail enregistré après cette naissance."
+              : "Cette action sert uniquement à corriger une naissance enregistrée par erreur."}
+          </DialogDescription>
         </DialogHeader>
-        <form action={formAction} onSubmit={() => { if (cancelledAtRef.current) cancelledAtRef.current.value = new Date().toISOString(); }} className="space-y-4">
-          <input ref={cancelledAtRef} type="hidden" name="cancelled_at" />
-          <div className="space-y-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-950">
-            <p>L’Animal sera retiré des données actives et son poids éventuel sera neutralisé.</p>
-            <p>Les compteurs de portée seront recalculés et l’ordre libéré pourra être repris par la prochaine naissance.</p>
-            <p>L’opération sera refusée si des données ultérieures existent.</p>
+        {protectedDownstream ? (
+          <div className="space-y-4">
+            <AdjustmentMessage state={state} />
+            <DialogFooter className="sm:justify-between">
+              <Button asChild variant="outline">
+                <a href={planningHref} onClick={openPlanning}>
+                  Voir le planning
+                </a>
+              </Button>
+              {onRequestCorrection ? (
+                <Button type="button" variant="outline" onClick={onRequestCorrection}>
+                  Corriger la naissance
+                </Button>
+              ) : null}
+              <Button type="button" onClick={() => setOpen(false)}>Fermer</Button>
+            </DialogFooter>
           </div>
-          <label className={labelClass}>Motif de l’annulation
-            <textarea className={inputClass} name="reason" rows={3} maxLength={500} required />
-          </label>
-          <AdjustmentMessage state={state} />
-          <DialogFooter>
-            <DialogClose asChild><Button type="button" variant="outline">Conserver</Button></DialogClose>
-            <SubmitButton idleLabel="Confirmer l’annulation" pendingLabel="Annulation..." variant="destructive" />
-          </DialogFooter>
-        </form>
+        ) : (
+          <form action={formAction} onSubmit={() => { if (cancelledAtRef.current) cancelledAtRef.current.value = new Date().toISOString(); }} className="space-y-4">
+            <input ref={cancelledAtRef} type="hidden" name="cancelled_at" />
+            <div className="space-y-2 text-sm leading-6">
+              <p>
+                Pour modifier l’heure, le sexe, le poids, le collier ou l’état du nouveau-né,
+                utilisez plutôt « Corriger ».
+              </p>
+            </div>
+            <section className="space-y-2 rounded-lg border bg-background p-3 text-sm leading-6" aria-labelledby={`birth-cancellation-effects-${birth.birthOrder}`}>
+              <h3 id={`birth-cancellation-effects-${birth.birthOrder}`} className="font-semibold">Ce qui va se passer</h3>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>La naissance et le nouveau-né ne seront plus comptés parmi les données actives.</li>
+                <li>L’enregistrement initial restera conservé dans l’historique.</li>
+                <li>Le poids de naissance éventuel sera neutralisé.</li>
+                <li>Les compteurs de la portée seront recalculés.</li>
+                <li>Si cette naissance a déclenché le planning postnatal, le SaaS vérifiera s’il peut remettre le planning dans son état précédent.</li>
+              </ul>
+            </section>
+            <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+              <p>L’annulation sera refusée si elle risque d’effacer une modification, une tâche ou un rappel enregistré depuis la naissance.</p>
+              <p className="font-semibold">Dans ce cas, aucune donnée ne sera modifiée.</p>
+            </div>
+            <label className={labelClass}>Motif de l’annulation
+              <textarea className={inputClass} name="reason" rows={3} maxLength={500} required />
+            </label>
+            <AdjustmentMessage state={state} />
+            <DialogFooter>
+              <DialogClose asChild><Button type="button" variant="outline">Conserver la naissance</Button></DialogClose>
+              <SubmitButton idleLabel="Annuler cette saisie" pendingLabel="Annulation..." variant="destructive" />
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
+const cancellationUnavailableMessage = (
+  <>
+    Annulation indisponible : une naissance plus récente est encore active.
+    <br />
+    La naissance la plus récente doit être traitée en premier.
+  </>
+);
+
+function BirthAdjustmentControls({
+  birth,
+  adjustment,
+  displayMode,
+  onSuccess,
+}: {
+  birth: WhelpingBirthSummary;
+  adjustment: WhelpingBirthAdjustmentAction;
+  displayMode: "mobile" | "journal";
+  onSuccess: (message: string) => void;
+}) {
+  const [choiceOpen, setChoiceOpen] = useState(false);
+  const [correctionOpen, setCorrectionOpen] = useState(false);
+  const [cancellationOpen, setCancellationOpen] = useState(false);
+
+  const openCorrection = () => {
+    setChoiceOpen(false);
+    setCancellationOpen(false);
+    setCorrectionOpen(true);
+  };
+  const openCancellation = () => {
+    if (!adjustment.cancelAction) return;
+    setChoiceOpen(false);
+    setCorrectionOpen(false);
+    setCancellationOpen(true);
+  };
+
+  if (displayMode === "mobile") {
+    return (
+      <div className="mt-4 border-t pt-3">
+        <Dialog open={choiceOpen} onOpenChange={setChoiceOpen}>
+          <DialogTrigger asChild>
+            <Button type="button" size="sm" variant="outline">
+              <Pencil className="size-4" aria-hidden="true" />
+              Corriger ou annuler cette saisie
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="w-[calc(100%-2rem)] rounded-xl sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Corriger ou annuler la naissance n° {birth.birthOrder}</DialogTitle>
+              <DialogDescription>Choisissez l’action adaptée à cette saisie.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <Button type="button" variant="outline" className="w-full justify-start" onClick={openCorrection}>
+                Corriger les informations
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full justify-start text-destructive"
+                disabled={!adjustment.cancelAction}
+                onClick={openCancellation}
+              >
+                Annuler cette saisie
+              </Button>
+              {!adjustment.cancelAction ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm leading-6 text-amber-950">
+                  {cancellationUnavailableMessage}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <DialogClose asChild><Button type="button" variant="outline">Fermer</Button></DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <BirthCorrectionDialog
+          birth={birth}
+          action={adjustment.correctAction}
+          onSuccess={onSuccess}
+          open={correctionOpen}
+          onOpenChange={setCorrectionOpen}
+          showTrigger={false}
+        />
+        {adjustment.cancelAction ? (
+          <BirthCancellationDialog
+            birth={birth}
+            action={adjustment.cancelAction}
+            onSuccess={onSuccess}
+            open={cancellationOpen}
+            onOpenChange={setCancellationOpen}
+            showTrigger={false}
+            onRequestCorrection={openCorrection}
+            planningHref="/litters/journal#litter-planning"
+          />
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-start gap-2 border-t pt-3">
+      <BirthCorrectionDialog birth={birth} action={adjustment.correctAction} onSuccess={onSuccess} />
+      {adjustment.cancelAction ? (
+        <BirthCancellationDialog
+          birth={birth}
+          action={adjustment.cancelAction}
+          onSuccess={onSuccess}
+          onRequestCorrection={openCorrection}
+          planningHref="#litter-planning"
+        />
+      ) : (
+        <div className="max-w-md space-y-2">
+          <Button type="button" size="sm" variant="outline" className="text-destructive" disabled>
+            <Trash2 className="size-4" aria-hidden="true" />Annuler cette saisie
+          </Button>
+          <p className="text-sm leading-6 text-muted">{cancellationUnavailableMessage}</p>
+        </div>
+      )}
+      <BirthCorrectionDialog
+        birth={birth}
+        action={adjustment.correctAction}
+        onSuccess={onSuccess}
+        open={correctionOpen}
+        onOpenChange={setCorrectionOpen}
+        showTrigger={false}
+      />
+    </div>
+  );
+}
+
 function Timeline({
+  displayMode,
   session,
   events,
   births,
@@ -1187,6 +1392,7 @@ function Timeline({
   birthAdjustmentActions,
   onWeightSuccess,
 }: {
+  displayMode: "mobile" | "journal";
   session: WhelpingSessionSummary;
   events: WhelpingEventSummary[];
   births: WhelpingBirthSummary[];
@@ -1330,12 +1536,12 @@ function Timeline({
               </p>
             ) : null}
             {birth && birthAdjustmentAction ? (
-              <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-                <BirthCorrectionDialog birth={birth} action={birthAdjustmentAction.correctAction} onSuccess={onWeightSuccess} />
-                {birthAdjustmentAction.cancelAction ? (
-                  <BirthCancellationDialog birth={birth} action={birthAdjustmentAction.cancelAction} onSuccess={onWeightSuccess} />
-                ) : null}
-              </div>
+              <BirthAdjustmentControls
+                birth={birth}
+                adjustment={birthAdjustmentAction}
+                displayMode={displayMode}
+                onSuccess={onWeightSuccess}
+              />
             ) : null}
           </li>
         );
@@ -1553,7 +1759,7 @@ export function WhelpingPanel({
       </div>
 
       {confirmation ? (
-        <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
+        <p role="status" className="mt-4 whitespace-pre-line rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}
         </p>
       ) : null}
@@ -1621,6 +1827,7 @@ export function WhelpingPanel({
           <div className="mt-6">
             <h3 className="font-semibold">Chronologie</h3>
             <Timeline
+              displayMode={displayMode}
               session={session}
               events={events}
               births={births}

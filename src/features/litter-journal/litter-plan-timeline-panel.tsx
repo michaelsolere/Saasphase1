@@ -991,6 +991,7 @@ export function LitterPlanTimelinePanel({
 
   return (
     <section
+      id="litter-planning"
       className="rounded-2xl border bg-surface p-5 sm:p-6"
       aria-labelledby="litter-plan-timeline-title"
     >

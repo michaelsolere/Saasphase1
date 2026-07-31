@@ -66,7 +66,16 @@ export type WhelpingBirthActionState = WhelpingActionState & {
 export type WhelpingBirthAdjustmentActionState = WhelpingActionState & {
   stale?: boolean;
   duplicateColorBirthOrder?: number;
+  uxReason?: WhelpingBirthAdjustmentUxReason;
 };
+
+export type WhelpingBirthAdjustmentUxReason =
+  | "stale_revision"
+  | "later_active_birth"
+  | "protected_downstream"
+  | "already_cancelled"
+  | "conflict"
+  | "technical";
 
 export const initialWhelpingActionState = {
   status: "idle",
@@ -340,44 +349,76 @@ function invalidState(message = "Les informations transmises sont invalides.") {
 
 function adjustmentError(
   message: string,
-  stale = false,
+  options: {
+    stale?: boolean;
+    uxReason?: WhelpingBirthAdjustmentUxReason;
+  } = {},
 ): WhelpingBirthAdjustmentActionState {
-  return { status: "error", message, ...(stale ? { stale: true } : {}) };
+  return {
+    status: "error",
+    message,
+    ...(options.stale ? { stale: true } : {}),
+    ...(options.uxReason ? { uxReason: options.uxReason } : {}),
+  };
 }
 
-function adjustmentServiceMessage(error: WhelpingServiceError) {
+const TECHNICAL_CANCELLATION_MESSAGE =
+  "Un problème technique empêche momentanément l’annulation.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.";
+
+function adjustmentServiceMessage(
+  error: WhelpingServiceError,
+  operation: "completion" | "correction" | "cancellation",
+) {
   switch (error.code) {
     case "stale_revision":
       return {
-        message: "Cette naissance a été modifiée depuis son affichage. Rechargez les données avant de recommencer.",
+        message: "Cette naissance a été modifiée depuis l’ouverture de cette fenêtre.\nAucune donnée n’a été changée.",
         stale: true,
+        uxReason: "stale_revision" as const,
       };
     case "no_change":
       return { message: "Aucune modification n’a été détectée." };
     case "later_active_birth_exists":
-      return { message: "Seule la dernière naissance active peut être annulée." };
+      return {
+        message: "Cette naissance ne peut pas être annulée tant qu’une naissance enregistrée après elle reste active.\n\nLa naissance la plus récente doit être traitée en premier.",
+        uxReason: "later_active_birth" as const,
+      };
     case "birth_has_downstream_data":
-      return { message: "Cette naissance possède déjà des données ultérieures. Elle ne peut plus être annulée, mais ses informations peuvent éventuellement être corrigées." };
+      return {
+        message: "Des informations ont été ajoutées ou modifiées depuis cette naissance.\nLe SaaS ne peut pas annuler la saisie sans risquer d’effacer un travail effectué ensuite.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "protected_downstream" as const,
+      };
     case "birth_time_out_of_order":
       return { message: "L’heure indiquée est incompatible avec l’ordre des naissances." };
     case "birth_weight_inconsistent":
     case "invalid_birth_relations":
       return { message: "Les données du poids de naissance ont changé depuis l’affichage." };
     case "birth_cancelled":
-      return { message: "Cette naissance a déjà été annulée." };
+      return {
+        message: "Cette naissance est déjà annulée.\nRechargez le Journal pour afficher son état actuel.",
+        uxReason: "already_cancelled" as const,
+      };
     case "birth_color_already_recorded":
       return { message: "Une couleur de collier est déjà enregistrée pour cette naissance." };
     case "birth_weight_already_recorded":
       return { message: "Un poids de naissance est déjà enregistré pour cette naissance." };
     case "conflict":
-      return { message: "Cette commande entre en conflit avec une tentative précédente. Rechargez les données." };
+      return {
+        message: "Cette tentative entre en conflit avec une tentative précédente.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.",
+        uxReason: "conflict" as const,
+      };
     case "unauthenticated":
     case "forbidden":
       return { message: "Vous n’avez pas les droits nécessaires pour modifier cette naissance." };
     case "not_found":
       return { message: "La naissance demandée est introuvable ou inaccessible." };
     default:
-      return { message: "Une erreur technique empêche momentanément cette opération." };
+      return {
+        message: operation === "cancellation"
+          ? TECHNICAL_CANCELLATION_MESSAGE
+          : "Une erreur technique empêche momentanément cette opération.",
+        uxReason: "technical" as const,
+      };
   }
 }
 
@@ -433,8 +474,8 @@ export async function quickCompleteWhelpingBirthActionCore(
           duplicateColorBirthOrder: result.duplicateColorBirthOrder,
         };
       }
-      const mapped = adjustmentServiceMessage(result.error);
-      return adjustmentError(mapped.message, mapped.stale);
+      const mapped = adjustmentServiceMessage(result.error, "completion");
+      return adjustmentError(mapped.message, mapped);
     }
 
     dependencies.revalidatePath("/whelping");
@@ -456,7 +497,10 @@ export async function quickCompleteWhelpingBirthActionCore(
       replayed: result.replayed,
     };
   } catch {
-    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
+    return adjustmentError(
+      "Une erreur technique empêche momentanément cette opération.",
+      { uxReason: "technical" },
+    );
   }
 }
 
@@ -519,13 +563,16 @@ export async function correctWhelpingBirthActionCore(
       reason,
     });
     if (result.outcome === "error") {
-      const mapped = adjustmentServiceMessage(result.error);
-      return adjustmentError(mapped.message, mapped.stale);
+      const mapped = adjustmentServiceMessage(result.error, "correction");
+      return adjustmentError(mapped.message, mapped);
     }
     revalidateBirthAdjustment(dependencies, intention);
     return { status: "success", message: "La naissance a été corrigée et l’événement initial a été conservé." };
   } catch {
-    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
+    return adjustmentError(
+      "Une erreur technique empêche momentanément cette opération.",
+      { uxReason: "technical" },
+    );
   }
 }
 
@@ -551,13 +598,20 @@ export async function cancelWhelpingBirthActionCore(
       reason,
     });
     if (result.outcome === "error") {
-      const mapped = adjustmentServiceMessage(result.error);
-      return adjustmentError(mapped.message, mapped.stale);
+      const mapped = adjustmentServiceMessage(result.error, "cancellation");
+      return adjustmentError(mapped.message, mapped);
     }
     revalidateBirthAdjustment(dependencies, intention);
-    return { status: "success", message: "La naissance a été annulée sans suppression physique." };
+    return {
+      status: "success",
+      message: "La saisie de naissance a été annulée.",
+      replayed: result.replayed,
+    };
   } catch {
-    return adjustmentError("Une erreur technique empêche momentanément cette opération.");
+    return adjustmentError(
+      TECHNICAL_CANCELLATION_MESSAGE,
+      { uxReason: "technical" },
+    );
   }
 }
 

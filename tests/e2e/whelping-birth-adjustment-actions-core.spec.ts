@@ -47,12 +47,18 @@ function validCorrection(overrides: Record<string, string> = {}) {
   });
 }
 
-function harness(options: { correctionError?: string; cancellationError?: string; throws?: boolean } = {}) {
+function harness(options: {
+  correctionError?: string;
+  cancellationError?: string;
+  errorMessage?: string;
+  replayed?: boolean;
+  throws?: boolean;
+} = {}) {
   const calls: unknown[] = [];
   const paths: string[] = [];
   const failure = (code: string) => ({
     outcome: "error" as const,
-    error: { code: code as never, message: "sql secret" },
+    error: { code: code as never, message: options.errorMessage ?? "sql secret" },
   });
   const success = {
     outcome: "success" as const,
@@ -62,7 +68,7 @@ function harness(options: { correctionError?: string; cancellationError?: string
     weightMeasurementId: null,
     revisionNo: 4,
     eventSequenceNo: 8,
-    replayed: false,
+    replayed: options.replayed ?? false,
   };
   const dependencies: WhelpingBirthAdjustmentActionDependencies = {
     correctBirth: async (input) => {
@@ -181,7 +187,11 @@ test("annule avec un motif et l’horodatage soumis", async () => {
     form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: " Doublon " }),
     testHarness.dependencies,
   );
-  expect(state.status).toBe("success");
+  expect(state).toEqual({
+    status: "success",
+    message: "La saisie de naissance a été annulée.",
+    replayed: false,
+  });
   expect(testHarness.calls).toEqual([{
     birthId: ids.birth,
     clientCommandId: ids.command,
@@ -190,6 +200,23 @@ test("annule avec un motif et l’horodatage soumis", async () => {
     reason: "Doublon",
   }]);
   expect(testHarness.paths).toHaveLength(6);
+});
+
+test("conserve le rejeu idempotent dans l’état de succès", async () => {
+  const testHarness = harness({ replayed: true });
+  const state = await cancelWhelpingBirthActionCore(
+    intention,
+    initialWhelpingBirthAdjustmentActionState,
+    form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: "Doublon" }),
+    testHarness.dependencies,
+  );
+
+  expect(state).toEqual({
+    status: "success",
+    message: "La saisie de naissance a été annulée.",
+    replayed: true,
+  });
+  expect(testHarness.calls).toHaveLength(1);
 });
 
 test("refuse une annulation sans motif ou horodatage valide", async () => {
@@ -203,33 +230,68 @@ test("refuse une annulation sans motif ou horodatage valide", async () => {
   expect(testHarness.calls).toHaveLength(0);
 });
 
-for (const [code, expected, stale] of [
-  ["stale_revision", "Cette naissance a été modifiée depuis son affichage. Rechargez les données avant de recommencer.", true],
-  ["no_change", "Aucune modification n’a été détectée.", false],
-  ["later_active_birth_exists", "Seule la dernière naissance active peut être annulée.", false],
-  ["birth_has_downstream_data", "Cette naissance possède déjà des données ultérieures. Elle ne peut plus être annulée, mais ses informations peuvent éventuellement être corrigées.", false],
-  ["birth_time_out_of_order", "L’heure indiquée est incompatible avec l’ordre des naissances.", false],
-  ["birth_weight_inconsistent", "Les données du poids de naissance ont changé depuis l’affichage.", false],
-  ["birth_cancelled", "Cette naissance a déjà été annulée.", false],
-  ["conflict", "Cette commande entre en conflit avec une tentative précédente. Rechargez les données.", false],
-  ["forbidden", "Vous n’avez pas les droits nécessaires pour modifier cette naissance.", false],
-  ["not_found", "La naissance demandée est introuvable ou inaccessible.", false],
-  ["database_error", "Une erreur technique empêche momentanément cette opération.", false],
+for (const [code, uxReason, expected, stale] of [
+  ["stale_revision", "stale_revision", "Cette naissance a été modifiée depuis l’ouverture de cette fenêtre.\nAucune donnée n’a été changée.", true],
+  ["later_active_birth_exists", "later_active_birth", "Cette naissance ne peut pas être annulée tant qu’une naissance enregistrée après elle reste active.\n\nLa naissance la plus récente doit être traitée en premier.", false],
+  ["birth_has_downstream_data", "protected_downstream", "Des informations ont été ajoutées ou modifiées depuis cette naissance.\nLe SaaS ne peut pas annuler la saisie sans risquer d’effacer un travail effectué ensuite.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_cancelled", "already_cancelled", "Cette naissance est déjà annulée.\nRechargez le Journal pour afficher son état actuel.", false],
+  ["conflict", "conflict", "Cette tentative entre en conflit avec une tentative précédente.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.", false],
+  ["database_error", "technical", "Un problème technique empêche momentanément l’annulation.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.", false],
 ] as const) {
-  test(`présente le message métier ${code} sans détail technique`, async () => {
-    const testHarness = harness({ correctionError: code });
-    const state = await correctWhelpingBirthActionCore(intention, initialWhelpingBirthAdjustmentActionState, validCorrection(), testHarness.dependencies);
-    expect(state).toEqual({ status: "error", message: expected, ...(stale ? { stale: true } : {}) });
+  test(`présente le motif UX structuré ${uxReason} pour ${code}`, async () => {
+    const testHarness = harness({ cancellationError: code });
+    const state = await cancelWhelpingBirthActionCore(
+      intention,
+      initialWhelpingBirthAdjustmentActionState,
+      form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: "Doublon" }),
+      testHarness.dependencies,
+    );
+    expect(state).toEqual({
+      status: "error",
+      message: expected,
+      uxReason,
+      ...(stale ? { stale: true } : {}),
+    });
     expect(JSON.stringify(state)).not.toMatch(/[0-9a-f]{8}-[0-9a-f-]{27,}/i);
     expect(JSON.stringify(state)).not.toContain("sql secret");
     expect(testHarness.paths).toEqual([]);
   });
 }
 
+test("ne déduit jamais le motif UX depuis le texte de l’erreur", async () => {
+  const states = await Promise.all([
+    "texte SQL qui ressemble à stale_revision",
+    "un autre détail interne sans rapport",
+  ].map(async (errorMessage) => {
+    const testHarness = harness({
+      cancellationError: "birth_has_downstream_data",
+      errorMessage,
+    });
+    return cancelWhelpingBirthActionCore(
+      intention,
+      initialWhelpingBirthAdjustmentActionState,
+      form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: "Doublon" }),
+      testHarness.dependencies,
+    );
+  }));
+
+  expect(states[0]).toEqual(states[1]);
+  expect(states[0]).toMatchObject({
+    status: "error",
+    uxReason: "protected_downstream",
+  });
+  expect(JSON.stringify(states)).not.toContain("stale_revision");
+  expect(JSON.stringify(states)).not.toContain("détail interne");
+});
+
 test("masque une exception et ne divulgue aucun identifiant", async () => {
   const testHarness = harness({ throws: true });
   const state = await correctWhelpingBirthActionCore(intention, initialWhelpingBirthAdjustmentActionState, validCorrection(), testHarness.dependencies);
-  expect(state).toEqual({ status: "error", message: "Une erreur technique empêche momentanément cette opération." });
+  expect(state).toEqual({
+    status: "error",
+    message: "Une erreur technique empêche momentanément cette opération.",
+    uxReason: "technical",
+  });
   expect(JSON.stringify(state)).not.toContain(ids.birth);
   expect(testHarness.paths).toEqual([]);
 });

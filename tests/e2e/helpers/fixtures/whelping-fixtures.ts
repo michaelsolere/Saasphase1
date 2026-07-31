@@ -76,5 +76,61 @@ export function registerActualWhelpingCommands(execute: SqlExecutor, registry: R
   const discoverCommands = async () => { if (!ids.length) return; const rows = JSON.parse(await execute(`select coalesce(json_agg(json_build_object('id',id,'event_id',event_id,'birth_id',birth_id,'animal_id',animal_id,'weight_measurement_id',weight_measurement_id) order by id),'[]'::json)::text from public.whelping_commands where organization_id=${quote(input.organizationId)}::uuid and litter_id=${quote(input.litterId)}::uuid and client_command_id in (${ids.map((id) => `${quote(id)}::uuid`).join(",")})`)) as { id: string; event_id: string | null; birth_id: string | null; animal_id: string | null; weight_measurement_id: string | null }[]; for (const row of rows) { register("whelping_commands", row.id); register("whelping_events", row.event_id); register("whelping_births", row.birth_id); register("animals", row.animal_id); register("animal_weight_measurements", row.weight_measurement_id); } };
   const adjustmentWhere = [adjustmentIds.length ? `client_command_id in (${adjustmentIds.map((id) => `${quote(id)}::uuid`).join(",")})` : null, ...(input.adjustments ?? []).map(({ birthId, resultingRevisionNo }) => `(birth_id=${quote(birthId)}::uuid and resulting_revision_no=${resultingRevisionNo})`)].filter(Boolean).join(" or ");
   const discoverAdjustments = async () => { if (!adjustmentWhere) return; const rows = JSON.parse(await execute(`select coalesce(json_agg(json_build_object('id',id,'event_id',event_id,'birth_id',birth_id,'animal_id',animal_id,'weight_measurement_id',weight_measurement_id) order by id),'[]'::json)::text from public.whelping_birth_adjustment_commands where organization_id=${quote(input.organizationId)}::uuid and litter_id=${quote(input.litterId)}::uuid and (${adjustmentWhere})`)) as { id: string; event_id: string; birth_id: string; animal_id: string; weight_measurement_id: string | null }[]; for (const row of rows) { register("whelping_birth_adjustment_commands", row.id); register("whelping_events", row.event_id); register("whelping_births", row.birth_id); register("animals", row.animal_id); register("animal_weight_measurements", row.weight_measurement_id); } };
-  return Promise.all([discoverCommands(), discoverAdjustments()]);
+  const discoverPlanningSideEffects = async () => {
+    const directTables = [
+      "litter_plan_actual_birth_reconciliation_task_changes",
+      "litter_plan_actual_birth_reconciliations",
+      "litter_plan_series_actual_birth_reconciliation_changes",
+      "litter_plan_series_actual_birth_reconciliation_commands",
+      "litter_plan_actual_birth_plan_reversal_changes",
+      "litter_plan_actual_birth_plan_reversals",
+      "litter_plan_actual_birth_activation_reversal_changes",
+      "litter_plan_actual_birth_activation_reversal_snapshots",
+      "litter_plan_actual_birth_activation_deactivations",
+      "litter_plan_actual_birth_activation_states",
+      "litter_plan_actual_birth_activations",
+    ] as const;
+    const parentScopedTables = directTables.filter((table) =>
+      table !== "litter_plan_actual_birth_reconciliation_task_changes" &&
+      table !== "litter_plan_series_actual_birth_reconciliation_changes"
+    );
+
+    await Promise.all(parentScopedTables.map(async (table) => {
+      const rows = JSON.parse(await execute(
+        `select coalesce(json_agg(id order by id),'[]'::json)::text from public.${table} where organization_id=${quote(input.organizationId)}::uuid and litter_id=${quote(input.litterId)}::uuid`,
+      )) as string[];
+      for (const id of rows) register(table, id);
+    }));
+
+    const reconciliationChanges = JSON.parse(await execute(`
+      select coalesce(json_agg(change.id order by change.id),'[]'::json)::text
+      from public.litter_plan_actual_birth_reconciliation_task_changes change
+      join public.litter_plan_actual_birth_reconciliations command
+        on command.organization_id = change.organization_id
+       and command.id = change.command_id
+      where command.organization_id=${quote(input.organizationId)}::uuid
+        and command.litter_id=${quote(input.litterId)}::uuid
+    `)) as string[];
+    for (const id of reconciliationChanges) {
+      register("litter_plan_actual_birth_reconciliation_task_changes", id);
+    }
+
+    const seriesChanges = JSON.parse(await execute(`
+      select coalesce(json_agg(change.id order by change.id),'[]'::json)::text
+      from public.litter_plan_series_actual_birth_reconciliation_changes change
+      join public.litter_plan_series_actual_birth_reconciliation_commands command
+        on command.organization_id = change.organization_id
+       and command.id = change.command_id
+      where command.organization_id=${quote(input.organizationId)}::uuid
+        and command.litter_id=${quote(input.litterId)}::uuid
+    `)) as string[];
+    for (const id of seriesChanges) {
+      register("litter_plan_series_actual_birth_reconciliation_changes", id);
+    }
+  };
+  return Promise.all([
+    discoverCommands(),
+    discoverAdjustments(),
+    discoverPlanningSideEffects(),
+  ]);
 }
