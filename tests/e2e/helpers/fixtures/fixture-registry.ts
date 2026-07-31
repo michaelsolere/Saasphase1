@@ -16,6 +16,8 @@ export const fixtureTables = [
   "litter_plan_actual_birth_reconciliations",
   "litter_plan_series_actual_birth_reconciliation_changes",
   "litter_plan_series_actual_birth_reconciliation_commands",
+  "litter_plan_actual_birth_plan_reversal_changes",
+  "litter_plan_actual_birth_plan_reversals",
   "litter_plan_actual_birth_activation_reversal_changes",
   "litter_plan_actual_birth_activation_reversal_snapshots",
   "litter_plan_actual_birth_activation_deactivations",
@@ -75,6 +77,8 @@ const cleanupOrder: FixtureTable[] = [
   "litter_plan_actual_birth_reconciliations",
   "litter_plan_series_actual_birth_reconciliation_changes",
   "litter_plan_series_actual_birth_reconciliation_commands",
+  "litter_plan_actual_birth_plan_reversal_changes",
+  "litter_plan_actual_birth_plan_reversals",
   "litter_plan_actual_birth_activation_reversal_changes",
   "litter_plan_actual_birth_activation_reversal_snapshots",
   "litter_plan_actual_birth_activation_deactivations",
@@ -151,6 +155,8 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_reconciliations"
       || table === "litter_plan_series_actual_birth_reconciliation_changes"
       || table === "litter_plan_series_actual_birth_reconciliation_commands"
+      || table === "litter_plan_actual_birth_plan_reversal_changes"
+      || table === "litter_plan_actual_birth_plan_reversals"
       || table === "litter_plan_actual_birth_activation_reversal_changes"
       || table === "litter_plan_actual_birth_activation_reversal_snapshots"
       || table === "whelping_birth_adjustment_commands"
