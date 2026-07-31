@@ -1271,3 +1271,157 @@ Le prochain lot attendu est
 `LITTER-ACTUAL-BIRTH-PLAN-REVERSAL-ENGINE-01`. Il consommera ces photographies
 pour préparer une restauration privée et auditée après une véritable commande
 `cancel_birth`, en détectant notamment toute modification humaine postérieure.
+
+## Lot du 2026-07-31 — Moteur privé de restauration après annulation
+
+La migration
+`202607310009_litter_actual_birth_plan_reversal_engine` ajoute le moteur privé
+`reverse_litter_plan_after_cancelled_first_birth_internal`. Sa responsabilité
+reste volontairement séparée de l’annulation historique : le cœur
+`cancel_whelping_birth_core_internal` doit avoir annulé la naissance source et
+persisté une véritable commande `cancel_birth` dans la transaction appelante
+avant que le moteur ne restaure le planning.
+
+Le préflight verrouille dans un ordre stable la portée, les naissances,
+l’activation et sa projection, la photographie, ses changements, le plan
+éventuel, ses éléments, séries et tâches. Toutes les vérifications précèdent la
+première écriture. Le moteur exige notamment l’activation courante et dernière,
+une photographie version 1 dont les compteurs correspondent aux changements,
+la naissance source réellement annulée, aucune autre naissance active, la date
+réelle encore égale à celle de l’activation et, lorsqu’un plan existe, sa
+révision de sortie exacte.
+
+Chaque ligne photographiée doit encore être strictement égale à son
+`snapshot_after`, métadonnées techniques comprises. Une tâche déplacée,
+verrouillée ou résolue, une série rematérialisée, un élément recalculé, une
+correction de date ou une révision avancée provoque ainsi un refus atomique.
+Le moteur refuse également toute donnée de planning ajoutée après
+l’activation qu’il ne peut pas attribuer à la photographie.
+
+Avant de supprimer une tâche photographiée comme `insert`, le préflight
+contrôle toutes ses FK entrantes connues. Il refuse les rappels calendrier,
+commandes et audits de programmation, audits de réconciliation, commandes ad
+hoc et liens d’observation maternelle. Cette vérification inclut la FK
+`calendar_reminders` en cascade : aucune cascade n’est utilisée par la
+restauration. Seules les tâches `insert` sont hard-delete ; aucun élément ni
+aucune série ne l’est.
+
+Les tâches, séries et éléments photographiés comme `update` reprennent
+uniquement leurs valeurs métier restaurables depuis `snapshot_before`. Leur
+identité, leurs champs de création et leur historique technique ne reculent
+jamais : `revision_no` avance d’une unité, `updated_by` devient l’auteur de la
+commande d’annulation et `updated_at` suit le trigger historique. Le plan
+avance exactement une fois pour l’ensemble de la restauration. La portée
+retrouve `actual_birth_date = null`, puis l’activation courante est désactivée
+par le registre de cycle de vie existant.
+
+L’autorité transactionnelle
+`app.litter_actual_birth_plan_reversal = on` est définie exclusivement pendant
+la fonction privée. Elle autorise le trigger historique de gel de cadence de
+pesée à effacer son snapshot lorsque toutes les autres preuves de
+réversibilité ont déjà été établies. Aucun trigger ni contrainte n’est
+globalement désactivé.
+
+Deux nouveaux registres privés append-only conservent l’audit complet :
+
+- `litter_plan_actual_birth_plan_reversals` relie activation, photographie,
+  désactivation, naissance, commande d’annulation et plan éventuel, avec les
+  révisions, compteurs et résultat retourné ;
+- `litter_plan_actual_birth_plan_reversal_changes` conserve une ligne par
+  changement consommé, l’état avant restauration, la cible, l’état réellement
+  obtenu et les révisions monotones. Son `entity_id` n’a volontairement pas de
+  FK métier afin que l’audit survive au hard-delete des tâches créées.
+
+Les deux tables ont la RLS active, aucune policy et aucun grant client.
+`UPDATE` et `DELETE` sont refusés, hors hard-delete de fixture avec utilisateur
+Auth nul et `app.fixture_cleanup = on`. Le rejeu de la même commande et de la
+même activation retourne l’audit existant avant de vérifier l’état courant,
+sans nouvelle désactivation, écriture, révision ou modification de timestamp.
+Toute réutilisation divergente est refusée.
+
+Une activation sans plan est restaurée avec des compteurs et révisions de plan
+nuls. Une activation legacy sans photographie est explicitement refusée avec
+`first-birth reversal snapshot missing`. Un échec du moteur, y compris après
+les mutations et avant l’audit final, annule aussi l’annulation historique,
+l’événement, les projections, la désactivation et toutes les restaurations.
+
+Le raccordement public reste volontairement absent. Le garde de
+`cancel_whelping_birth` continue donc de répondre
+`birth_has_downstream_data` pour l’unique naissance portant l’activation
+courante. Le prochain lot attendu est
+`LITTER-SINGLE-BIRTH-CANCELLATION-REVERSAL-WIRING-01`, qui composera
+publiquement le cœur historique et ce moteur privé dans une même transaction.
+
+## Correctif du 2026-07-31 — Données de planning postérieures hors photographie
+
+La migration additive
+`202607310010_litter_actual_birth_plan_reversal_post_activation_guard` corrige
+la frontière de préflight du moteur privé sans modifier sa signature, son OID,
+son propriétaire, sa configuration, son ACL ou son statut `security definer`.
+Avant ce correctif, la recherche des tâches postérieures était limitée aux
+tâches dont `litter_plan_item_id` appartenait au plan actif. Cette frontière
+n’incluait pas les tâches manuelles ou générées sans élément de plan.
+
+L’audit des chemins d’écriture donne les classifications suivantes :
+
+- `create_litter_care_task` écrit directement une tâche `source = 'manual'`,
+  sans plan, sans série, sans `litter_plan_item_id` et sans ancre. La commande
+  est portée uniquement par `creation_command_id` sur la tâche ; aucun registre
+  photographié ni aucune révision du plan n’avance.
+- `litter_care_task_generation_commands` peut créer des tâches sans élément de
+  plan depuis des modèles `actual_birth` ou `offspring_age`. Ce chemin possède
+  son registre de commande, mais n’avance pas la révision d’un plan actif et ce
+  registre ne fait pas partie de la photographie.
+- `litter_plan_ad_hoc_commands` crée un élément ad hoc et une tâche reliée, puis
+  avance la révision du plan. Son contrat public fixe directement une date ou
+  une fenêtre et n’expose pas une ancre `actual_birth`/`offspring_age`.
+- `litter_plan_application_commands` peut matérialiser des tâches ancrées sur
+  `actual_birth` ou `offspring_age`, avec ou sans matérialisation immédiate, et
+  avance la révision du plan.
+- `litter_plan_anchor_recalculation_commands` réconcilie éléments, séries et
+  tâches ancrés ; il avance la révision du plan et modifie des entités
+  photographiées lorsqu’elles appartiennent à l’activation.
+- `litter_plan_series_materialization_commands` peut insérer de nouvelles
+  occurrences de série. Les tâches créées sont nouvelles par rapport à la
+  photographie ; les séries et le plan associés portent aussi leurs révisions.
+- `litter_plan_series_state_commands` peut changer l’état d’une série et de ses
+  tâches. Il avance les révisions concernées et peut modifier des entités
+  photographiées.
+- une écriture SQL de `litter_care_tasks` reste enfin possible depuis les
+  orchestrateurs privés ; la seule appartenance au plan ne permet donc jamais
+  de démontrer l’indépendance vis-à-vis de la naissance réelle.
+
+La règle retenue est volontairement conservatrice : pour toute activation,
+avec ou sans plan, toute tâche de la même organisation et de la même portée dont
+`created_at > activation.created_at` doit avoir une ligne
+`litter_care_task` dans les changements de sa photographie. À défaut, le
+moteur lève `post-activation planning data is not reversible` avant sa première
+écriture. La règle ne tente pas de déduire l’indépendance depuis
+`anchor_type`, `litter_plan_item_id`, le type de commande ou la série : ces
+signaux ne couvrent pas tous les chemins d’écriture.
+
+Le test adverse crée par le service métier normal une tâche manuelle sans
+`litter_plan_item_id` après la première naissance. Il prouve que la révision du
+plan ne bouge pas et qu’aucun `snapshot_change_id` ne la représente, puis
+vérifie le refus et le rollback de la commande d’annulation.
+
+Le scénario de naissance tardive conserve le cas
+`activation.created_task_count = 7` et `snapshot.task_insert_count = 11` :
+sept tâches postnatales et quatre occurrences pré-mise-bas des 10 et 11 août.
+Une occurrence pré-mise-bas future contrôlée est en outre rendue
+`not_applicable` par l’activation, afin de prouver sa restauration complète.
+Le test compare les onze identifiants de changements consommés aux onze tâches
+hard-delete et vérifie qu’aucune ne subsiste.
+
+Les détails de restauration sont vérifiés exhaustivement. Pour
+`delete_inserted`, la cible est la ligne photographiée, le résultat est `null`
+et l’entité est absente. Pour `restore_updated`, le résultat complet est égal
+à la cible après retrait exclusif de `revision`, `revision_no`, `updated_at` et
+`updated_by`. Cette preuve couvre séparément tâches, séries et éléments.
+
+La concurrence n’utilise plus un simple départ simultané. Une transaction de
+contrôle prend un verrou advisory ; le premier appel est observé en attente
+après la véritable annulation, puis le second en attente sur le verrou
+canonique de la commande historique. Après libération de la barrière, le
+premier résultat porte `replayed = false`, le second `replayed = true`, avec
+une seule restauration, une seule désactivation et aucun détail dupliqué.
