@@ -234,20 +234,20 @@ test("partage le Journal, reste autonome, installable et online-only", async ({ 
     await page.setViewportSize({ width: 375, height: 812 });
     await page.goto("/whelping");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await expect(page.locator('link[rel="manifest"][href="/whelping.webmanifest"]')).toHaveCount(1);
+    await expect(page.locator('link[rel="manifest"][href="/manifest.webmanifest"]')).toHaveCount(1);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
 
-    const manifestResponse = await request.get("/whelping.webmanifest");
+    const manifestResponse = await request.get("/manifest.webmanifest");
     expect(manifestResponse.status()).toBe(200);
     expect(manifestResponse.headers()["content-type"]).toMatch(/json|manifest/);
     const manifest = await manifestResponse.json();
     expect(manifest).toMatchObject({
-      id: "/whelping", name: "SaaS Élevage – Mise-bas", short_name: "Mise-bas",
-      start_url: "/whelping", scope: "/", display: "standalone", lang: "fr",
+      id: "/whelping", name: "Mise-bas — SaaS Élevage", short_name: "Mise-bas",
+      start_url: "/whelping", scope: "/", display: "standalone", lang: "fr-FR",
     });
     expect(JSON.stringify(manifest)).not.toMatch(/Users\/|secret|localhost|127\.0\.0\.1/i);
-    expect(manifest.icons).toHaveLength(2);
-    for (const [index, size] of [192, 512].entries()) {
+    expect(manifest.icons).toHaveLength(3);
+    for (const [index, size] of [192, 512, 512].entries()) {
       const iconResponse = await request.get(manifest.icons[index].src);
       expect(iconResponse.status()).toBe(200);
       expect(iconResponse.headers()["content-type"]).toContain("image/png");

@@ -1,10 +1,11 @@
-import type { Metadata, Viewport } from "next";
+import type { Metadata } from "next";
+
+import { WhelpingPwaClient } from "@/features/whelping/whelping-pwa-client";
 
 export const metadata: Metadata = {
-  title: "Mise-bas mobile | SaaS Élevage",
-  description:
-    "Interface mobile sécurisée pour le suivi en ligne d’une mise-bas.",
-  manifest: "/whelping.webmanifest",
+  title: "Mise-bas — SaaS Élevage",
+  description: "Enregistrement mobile sécurisé des mises-bas et des naissances.",
+  applicationName: "Mise-bas",
   robots: {
     index: false,
     follow: false,
@@ -14,17 +15,34 @@ export const metadata: Metadata = {
     title: "Mise-bas",
     statusBarStyle: "default",
   },
-  icons: {
-    apple: [{ url: "/whelping-icon-192.png", sizes: "192x192", type: "image/png" }],
+  other: {
+    "apple-mobile-web-app-capable": "yes",
   },
-};
-
-export const viewport: Viewport = {
-  themeColor: "#315c43",
+  icons: {
+    icon: [
+      {
+        url: "/pwa/whelping-icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+    ],
+    apple: [
+      {
+        url: "/pwa/apple-touch-icon-180.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
 };
 
 export default function WhelpingLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
-  return children;
+  return (
+    <>
+      <WhelpingPwaClient />
+      {children}
+    </>
+  );
 }

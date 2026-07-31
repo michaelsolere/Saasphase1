@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { getLitterJournalStatusLabel } from "@/features/litter-journal/stage";
 import { loadLitterJournalCatalog } from "@/features/litter-journal/loader";
+import { WhelpingInstallationPanel } from "@/features/whelping/whelping-installation-panel";
 import {
   WhelpingMobileSelectionBoundary,
   WhelpingMobileSelector,
@@ -63,6 +64,7 @@ export default async function WhelpingMobilePage({
     return (
       <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <MobileLoadError />
+        <WhelpingInstallationPanel />
       </main>
     );
   }
@@ -81,6 +83,7 @@ export default async function WhelpingMobilePage({
             Ouvrir le Journal complet
           </Link>
         </section>
+        <WhelpingInstallationPanel />
       </main>
     );
   }
@@ -104,7 +107,9 @@ export default async function WhelpingMobilePage({
   }));
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl overflow-x-hidden px-4 py-5 sm:px-6 sm:py-8">
+    <main
+      className="mx-auto min-h-screen w-full max-w-5xl overflow-x-hidden px-4 py-5 sm:px-6 sm:py-8"
+    >
       <WhelpingMobileSelectionBoundary key={selectedIndex}>
         <header className="border-b pb-5">
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
@@ -129,13 +134,7 @@ export default async function WhelpingMobilePage({
         </div>
         </header>
 
-        <details className="my-5 rounded-xl border bg-surface px-4 py-3 text-sm">
-        <summary className="cursor-pointer font-semibold">Installer sur l’écran d’accueil</summary>
-        <p className="mt-2 leading-6 text-muted">
-          Ouvrez le menu de votre navigateur puis choisissez « Installer l’application » ou « Ajouter à l’écran d’accueil ».
-        </p>
-        <p className="mt-2 leading-6 text-muted">Une connexion réseau est requise pour consulter ou enregistrer les données.</p>
-        </details>
+        <WhelpingInstallationPanel />
 
         <WhelpingPanel {...workspace} displayMode="mobile" />
       </WhelpingMobileSelectionBoundary>

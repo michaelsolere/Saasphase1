@@ -1584,3 +1584,38 @@ Le mode mobile conserve une synthèse compacte et un détail repliable.
 
 Ce lot est sans migration : aucune table, colonne, RPC, fonction SQL, politique
 RLS, ACL ou type Supabase généré n’est modifié.
+
+## Lot du 2026-07-31 — Installabilité PWA du mode mise-bas
+
+Le mode privé `/whelping` possède désormais un manifeste Web App généré par
+Next.js. L’application installée porte le nom **Mise-bas**, démarre directement
+sur `/whelping`, utilise l’identifiant `/whelping`, l’affichage `standalone` et
+le scope `/`. Ce scope conserve dans la même application la sélection mobile,
+la connexion et le retour vers le Journal complet, sans placer de portée, de
+paramètre de suivi ou d’information utilisateur dans l’URL de démarrage.
+
+Quatre icônes PNG locales, opaques et reproductibles avec `sharp` couvrent les
+formats standard 192 et 512 pixels, maskable 512 pixels et Apple 180 pixels.
+Les métadonnées dédiées fournissent le titre, la description, l’icône Web,
+l’icône Apple, la capacité Web App Apple et la couleur de thème. Le panneau
+d’aide distingue après montage le navigateur du mode autonome au moyen de
+`display-mode: standalone` et du signal Apple historique, sans user-agent ni
+stockage navigateur.
+
+Le service worker `/whelping-sw.js`, enregistré au scope `/` uniquement depuis
+le layout `/whelping`, appelle `skipWaiting()` et `clients.claim()`.
+Son gestionnaire `fetch` reconnaît exclusivement les navigations même origine
+`/whelping` et `/whelping/**`, mais n’appelle pas `respondWith` : le navigateur
+reste donc seul responsable de la requête réseau et de son erreur normale si
+la connexion manque. L’authentification, les Server Actions, Supabase et les
+assets ne sont pas interceptés. Le worker ne crée, ne lit et ne supprime aucun
+cache, n’utilise ni IndexedDB, ni file locale, ni Background Sync, ni Push, et
+ne fournit aucun fallback hors ligne.
+
+Une connexion réseau reste obligatoire pour consulter ou enregistrer les
+données. Aucune saisie n’est conservée ou rejouée localement. Après connexion,
+le retour `/whelping` passe par la route de sélection existante afin de
+renouveler la sélection autorisée puis se termine sur l’URL canonique ; le
+cookie `HttpOnly` existant, son format, son chemin et sa validation restent la
+source de vérité. Ce lot n’ajoute aucune migration et ne modifie aucune table,
+colonne, RPC, fonction SQL, RLS, ACL ou donnée métier.
