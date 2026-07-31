@@ -295,7 +295,7 @@ export function WhelpingQuickCompletion({
   if (sortedItems.length === 0) return null;
 
   return (
-    <section className="mt-4 rounded-xl border border-accent/30 bg-surface p-3 sm:p-4" aria-labelledby="quick-completion-title">
+    <section id="whelping-quick-completion" className="mt-4 scroll-mt-4 rounded-xl border border-accent/30 bg-surface p-3 sm:p-4" aria-labelledby="quick-completion-title">
       <h3 id="quick-completion-title" className="font-semibold">Naissances à compléter</h3>
       <div className="mt-3 space-y-2">
         {sortedItems.map((item) => (

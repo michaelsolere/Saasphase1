@@ -40,6 +40,8 @@ import {
   WhelpingQuickCompletion,
   type WhelpingQuickCompletionItem,
 } from "./whelping-quick-completion";
+import { buildWhelpingSessionSummary } from "./whelping-session-summary";
+import { WhelpingSessionSummaryCard } from "./whelping-session-summary-card";
 
 type SimpleAction = (
   previousState: WhelpingActionState,
@@ -1725,6 +1727,9 @@ export function WhelpingPanel({
         })),
       action: quickActionsByBirthId.get(birth.id)!,
     }));
+  const sessionSummary = session
+    ? buildWhelpingSessionSummary({ session, events, births })
+    : { status: "unavailable" as const };
 
   return (
     <section className="min-w-0 rounded-2xl border bg-surface p-5 sm:p-6">
@@ -1770,6 +1775,16 @@ export function WhelpingPanel({
         <p role="status" className="mt-4 whitespace-pre-line rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950">
           {confirmation}
         </p>
+      ) : null}
+
+      {!loadError && session ? (
+        <WhelpingSessionSummaryCard
+          summary={sessionSummary}
+          timezoneName={session.timezoneName}
+          displayMode={displayMode}
+          completionHref={displayMode === "journal" && quickCompletionItems.length > 0 ? "#whelping-quick-completion" : null}
+          weighingHref={displayMode === "journal" && activeBirths.length > 0 ? "#litter-weights" : null}
+        />
       ) : null}
 
       {!loadError && !session && canWrite && openAction ? (
@@ -1830,6 +1845,17 @@ export function WhelpingPanel({
             <p className="mt-5 rounded-xl border bg-background px-4 py-3 text-sm text-muted">
               La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés. Rouvrez la session pour ajouter une nouvelle naissance ou un nouvel événement.
             </p>
+          ) : null}
+
+          {!sessionIsOpen && quickCompletionItems.length > 0 ? (
+            <WhelpingQuickCompletion
+              key={`closed-quick-completion:${quickCompletionItems
+                .map(({ birthOrder, occurredAt, sex }) => `${birthOrder}:${occurredAt}:${sex}`)
+                .join("|")}`}
+              items={quickCompletionItems}
+              timezoneName={session.timezoneName}
+              onSuccess={setConfirmation}
+            />
           ) : null}
 
           <div className="mt-6">

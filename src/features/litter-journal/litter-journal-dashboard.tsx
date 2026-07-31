@@ -73,6 +73,7 @@ import {
   WhelpingPanel,
   type WhelpingBirthAdjustmentAction,
   type WhelpingBirthWeightAction,
+  type WhelpingQuickCompletionAction,
 } from "@/features/whelping/whelping-panel";
 import {
   getLitterJournalContextualAge,
@@ -251,6 +252,7 @@ export function LitterJournalDashboard({
   recordWhelpingBirthAction,
   recordWhelpingBirthWeightActions,
   whelpingBirthAdjustmentActions,
+  whelpingQuickCompletionActions,
   whelpingBirthAdjustmentHistory,
   whelpingBirthAdjustmentHistoryLoadError,
   closeWhelpingSessionAction,
@@ -361,6 +363,7 @@ export function LitterJournalDashboard({
   ) => Promise<WhelpingBirthActionState>) | null;
   recordWhelpingBirthWeightActions: WhelpingBirthWeightAction[];
   whelpingBirthAdjustmentActions: WhelpingBirthAdjustmentAction[];
+  whelpingQuickCompletionActions: WhelpingQuickCompletionAction[];
   whelpingBirthAdjustmentHistory: WhelpingBirthAdjustmentHistoryEntry[];
   whelpingBirthAdjustmentHistoryLoadError: boolean;
   closeWhelpingSessionAction: ((
@@ -524,6 +527,7 @@ export function LitterJournalDashboard({
         expressFemaleBirthAction={null}
         birthAction={recordWhelpingBirthAction}
         birthWeightActions={recordWhelpingBirthWeightActions}
+        quickCompletionActions={whelpingQuickCompletionActions}
         birthAdjustmentActions={whelpingBirthAdjustmentActions}
         adjustmentHistory={whelpingBirthAdjustmentHistory}
         adjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoadError}
