@@ -2,9 +2,11 @@ import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  correctWhelpingBirthCore,
   openWhelpingSessionCore,
   recordWhelpingBirthCore,
 } from "../../src/features/whelping/whelping-core";
+import { createLitterCareTaskCore } from "../../src/features/litter-journal/litter-care-tasks-core";
 import type { Database, Json } from "../../src/types/database.types";
 import {
   createAuthenticatedSupabaseClient,
@@ -31,36 +33,66 @@ const ids = {
   dependencyMother: `${prefix}000000000006`,
   legacyMother: `${prefix}000000000007`,
   rollbackMother: `${prefix}000000000008`,
+  postActivationMother: `${prefix}000000000101`,
+  lateBirthMother: `${prefix}000000000102`,
+  correctionMother: `${prefix}000000000103`,
+  missingEntityMother: `${prefix}000000000104`,
   planLitter: `${prefix}000000000011`,
   noPlanLitter: `${prefix}000000000012`,
   divergenceLitter: `${prefix}000000000013`,
   dependencyLitter: `${prefix}000000000014`,
   legacyLitter: `${prefix}000000000015`,
   rollbackLitter: `${prefix}000000000016`,
+  postActivationLitter: `${prefix}000000000111`,
+  lateBirthLitter: `${prefix}000000000112`,
+  correctionLitter: `${prefix}000000000113`,
+  missingEntityLitter: `${prefix}000000000114`,
   importCommand: `${prefix}000000000020`,
   planPreApply: `${prefix}000000000021`,
   planPostApply: `${prefix}000000000022`,
   divergencePostApply: `${prefix}000000000023`,
   dependencyPostApply: `${prefix}000000000024`,
   rollbackPostApply: `${prefix}000000000025`,
+  postActivationPostApply: `${prefix}000000000121`,
+  lateBirthPreApply: `${prefix}000000000122`,
+  lateBirthPostApply: `${prefix}000000000123`,
+  correctionPreApply: `${prefix}000000000124`,
+  correctionPostApply: `${prefix}000000000125`,
+  missingEntityPostApply: `${prefix}000000000126`,
   planOpen: `${prefix}000000000031`,
   noPlanOpen: `${prefix}000000000032`,
   divergenceOpen: `${prefix}000000000033`,
   dependencyOpen: `${prefix}000000000034`,
   legacyOpen: `${prefix}000000000035`,
   rollbackOpen: `${prefix}000000000036`,
+  postActivationOpen: `${prefix}000000000131`,
+  lateBirthOpen: `${prefix}000000000132`,
+  correctionOpen: `${prefix}000000000133`,
+  missingEntityOpen: `${prefix}000000000134`,
   planBirth: `${prefix}000000000041`,
   noPlanBirth: `${prefix}000000000042`,
   divergenceBirth: `${prefix}000000000043`,
   dependencyBirth: `${prefix}000000000044`,
   legacyBirth: `${prefix}000000000045`,
   rollbackBirth: `${prefix}000000000046`,
+  postActivationBirth: `${prefix}000000000141`,
+  lateBirthBirth: `${prefix}000000000142`,
+  correctionBirth: `${prefix}000000000143`,
+  missingEntityBirth: `${prefix}000000000144`,
   planCancel: `${prefix}000000000051`,
   noPlanCancel: `${prefix}000000000052`,
   divergenceCancel: `${prefix}000000000053`,
   dependencyCancel: `${prefix}000000000054`,
   legacyCancel: `${prefix}000000000055`,
   rollbackCancel: `${prefix}000000000056`,
+  postActivationCancel: `${prefix}000000000151`,
+  lateBirthCancel: `${prefix}000000000152`,
+  correctionCancel: `${prefix}000000000153`,
+  missingEntityCancel: `${prefix}000000000154`,
+  postActivationTaskCommand: `${prefix}000000000161`,
+  correctionCommand: `${prefix}000000000162`,
+  lateFutureTask: `${prefix}000000000163`,
+  lateFutureTaskCommand: `${prefix}000000000164`,
   reminder: `${prefix}000000000061`,
 } as const;
 
@@ -88,6 +120,20 @@ function cleanup() {
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_plan_reversals
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_reconciliation_task_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or task_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_reconciliations
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_series_actual_birth_reconciliation_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or task_id::text like ${q(like)};
+    delete from public.litter_plan_series_actual_birth_reconciliation_commands
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or birth_adjustment_client_command_id::text like ${q(like)};
@@ -119,6 +165,12 @@ function cleanup() {
     delete from public.litter_plan_series_materialization_commands
     where organization_id = ${q(ids.organization)}::uuid;
     delete from public.litter_plan_series_state_commands
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_plan_anchor_recalculation_commands
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_plan_ad_hoc_commands
+    where organization_id = ${q(ids.organization)}::uuid;
+    delete from public.litter_care_task_generation_commands
     where organization_id = ${q(ids.organization)}::uuid;
     delete from public.litter_care_tasks
     where organization_id = ${q(ids.organization)}::uuid;
@@ -178,6 +230,10 @@ function fixtureCounts() {
     select json_build_object(
       'reversalChanges', (select count(*) from public.litter_plan_actual_birth_plan_reversal_changes where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'reversals', (select count(*) from public.litter_plan_actual_birth_plan_reversals where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or birth_adjustment_client_command_id::text like ${q(like)}),
+      'planReconciliationChanges', (select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
+      'planReconciliations', (select count(*) from public.litter_plan_actual_birth_reconciliations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or birth_adjustment_client_command_id::text like ${q(like)}),
+      'seriesReconciliationChanges', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
+      'seriesReconciliations', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or birth_adjustment_client_command_id::text like ${q(like)}),
       'snapshotChanges', (select count(*) from public.litter_plan_actual_birth_activation_reversal_changes where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'snapshots', (select count(*) from public.litter_plan_actual_birth_activation_reversal_snapshots where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'deactivations', (select count(*) from public.litter_plan_actual_birth_activation_deactivations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
@@ -185,6 +241,9 @@ function fixtureCounts() {
       'activations', (select count(*) from public.litter_plan_actual_birth_activations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'reminders', (select count(*) from public.calendar_reminders where organization_id = ${q(ids.organization)}::uuid or id = ${q(ids.reminder)}::uuid),
       'tasks', (select count(*) from public.litter_care_tasks where organization_id = ${q(ids.organization)}::uuid),
+      'generationCommands', (select count(*) from public.litter_care_task_generation_commands where organization_id = ${q(ids.organization)}::uuid),
+      'adHocCommands', (select count(*) from public.litter_plan_ad_hoc_commands where organization_id = ${q(ids.organization)}::uuid),
+      'anchorCommands', (select count(*) from public.litter_plan_anchor_recalculation_commands where organization_id = ${q(ids.organization)}::uuid),
       'series', (select count(*) from public.litter_plan_series where organization_id = ${q(ids.organization)}::uuid),
       'items', (select count(*) from public.litter_plan_items where organization_id = ${q(ids.organization)}::uuid),
       'plans', (select count(*) from public.litter_plans where organization_id = ${q(ids.organization)}::uuid),
@@ -229,7 +288,11 @@ function seedScope() {
       (${q(ids.divergenceMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère divergence humaine', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.dependencyMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère dépendance externe', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.legacyMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère activation legacy', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.rollbackMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère rollback audit', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.rollbackMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère rollback audit', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.postActivationMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère tâche post-activation', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lateBirthMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère naissance tardive', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.correctionMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère correction de date', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.missingEntityMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère entité disparue', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status,
       mating_date, expected_birth_date, created_by, updated_by
@@ -239,7 +302,11 @@ function seedScope() {
       (${q(ids.divergenceLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée divergence humaine', 'dog', 'Golden Retriever', ${q(ids.divergenceMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-10', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.dependencyLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée dépendance externe', 'dog', 'Golden Retriever', ${q(ids.dependencyMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-11', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.legacyLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée activation legacy', 'dog', 'Golden Retriever', ${q(ids.legacyMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-12', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.rollbackLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée rollback audit', 'dog', 'Golden Retriever', ${q(ids.rollbackMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-13', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.rollbackLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée rollback audit', 'dog', 'Golden Retriever', ${q(ids.rollbackMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-13', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.postActivationLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée tâche post-activation', 'dog', 'Golden Retriever', ${q(ids.postActivationMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-14', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.lateBirthLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée naissance tardive', 'dog', 'Golden Retriever', ${q(ids.lateBirthMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.correctionLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée correction de date', 'dog', 'Golden Retriever', ${q(ids.correctionMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-16', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.missingEntityLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée entité disparue', 'dog', 'Golden Retriever', ${q(ids.missingEntityMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-17', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -349,6 +416,7 @@ function reverseStatement(
   cancelCommandId: string,
   cancelledAt: string,
   afterCancellationSql = "",
+  expectedBirthRevisionNo = 0,
 ) {
   const activation = activationId(litterId);
   return `
@@ -358,12 +426,13 @@ function reverseStatement(
     do $block$
     declare
       v_cancel record;
+      v_result jsonb;
     begin
       select * into v_cancel
       from public.cancel_whelping_birth_core_internal(
         ${q(birthId)}::uuid,
         ${q(cancelCommandId)}::uuid,
-        0,
+        ${expectedBirthRevisionNo},
         ${q(cancelledAt)}::timestamptz,
         'Annulation fixture restauration'
       );
@@ -371,14 +440,24 @@ function reverseStatement(
         raise exception 'historical cancellation failed: %', v_cancel.reason;
       end if;
       ${afterCancellationSql}
-      perform public.reverse_litter_plan_after_cancelled_first_birth_internal(
+      v_result :=
+        public.reverse_litter_plan_after_cancelled_first_birth_internal(
         ${q(ids.organization)}::uuid,
         ${q(litterId)}::uuid,
         ${q(activation)}::uuid,
         ${q(cancelCommandId)}::uuid
       );
+      perform pg_catalog.set_config(
+        'app.e2e_litter_plan_reversal_result',
+        v_result::text,
+        true
+      );
     end;
     $block$;
+    select pg_catalog.current_setting(
+      'app.e2e_litter_plan_reversal_result',
+      true
+    );
     commit;
   `;
 }
@@ -389,6 +468,7 @@ function reverseTransaction(
   cancelCommandId: string,
   cancelledAt: string,
   afterCancellationSql = "",
+  expectedBirthRevisionNo = 0,
 ) {
   sql(reverseStatement(
     birthId,
@@ -396,7 +476,35 @@ function reverseTransaction(
     cancelCommandId,
     cancelledAt,
     afterCancellationSql,
+    expectedBirthRevisionNo,
   ));
+}
+
+function jsonFromSqlOutput<T>(output: string): T {
+  for (const line of output.trim().split(/\r?\n/).reverse()) {
+    try {
+      return JSON.parse(line) as T;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(`E2E SQL did not return JSON: ${output}`);
+}
+
+function withoutMonotoneMetadata(value: unknown) {
+  const copy = structuredClone(value) as Record<string, unknown>;
+  for (const key of ["revision", "revision_no", "updated_at", "updated_by"]) {
+    delete copy[key];
+  }
+  return copy;
+}
+
+async function waitForSqlCondition(statement: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (sql(statement) === "t") return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error(`Timed out waiting for SQL condition: ${statement}`);
 }
 
 function birthState(litterId: string) {
@@ -530,6 +638,69 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       previousPlanRevision: beforeCounts.planRevision,
       resultPlanRevision: beforeCounts.planRevision + 1,
     });
+    const exactDetails = jsonSql<Array<{
+      entityKind: string;
+      entityId: string;
+      action: "delete_inserted" | "restore_updated";
+      snapshotBeforeReversal: Record<string, unknown>;
+      snapshotTarget: Record<string, unknown>;
+      snapshotAfterReversal: Record<string, unknown> | null;
+      activationSnapshotBefore: Record<string, unknown> | null;
+      entityExists: boolean;
+    }>>(`
+      select json_agg(
+        json_build_object(
+          'entityKind', detail.entity_kind,
+          'entityId', detail.entity_id,
+          'action', detail.reversal_action,
+          'snapshotBeforeReversal', detail.snapshot_before_reversal,
+          'snapshotTarget', detail.snapshot_target,
+          'snapshotAfterReversal', detail.snapshot_after_reversal,
+          'activationSnapshotBefore', source.snapshot_before,
+          'entityExists', case detail.entity_kind
+            when 'litter_care_task' then exists (
+              select 1 from public.litter_care_tasks row
+              where row.id = detail.entity_id
+            )
+            when 'litter_plan_series' then exists (
+              select 1 from public.litter_plan_series row
+              where row.id = detail.entity_id
+            )
+            when 'litter_plan_item' then exists (
+              select 1 from public.litter_plan_items row
+              where row.id = detail.entity_id
+            )
+          end
+        )
+        order by detail.sequence_no
+      )::text
+      from public.litter_plan_actual_birth_plan_reversal_changes detail
+      join public.litter_plan_actual_birth_activation_reversal_changes source
+        on source.id = detail.snapshot_change_id
+      where detail.activation_id = ${q(planActivation)}::uuid
+    `);
+    expect(new Set(
+      exactDetails
+        .filter((detail) => detail.action === "restore_updated")
+        .map((detail) => detail.entityKind),
+    )).toEqual(new Set([
+      "litter_care_task",
+      "litter_plan_series",
+      "litter_plan_item",
+    ]));
+    for (const detail of exactDetails) {
+      if (detail.action === "delete_inserted") {
+        expect(detail.entityExists).toBe(false);
+        expect(detail.snapshotAfterReversal).toBeNull();
+        expect(detail.snapshotTarget).toEqual(detail.snapshotBeforeReversal);
+        expect(detail.activationSnapshotBefore).toBeNull();
+      } else {
+        expect(detail.entityExists).toBe(true);
+        expect(detail.snapshotTarget).toEqual(detail.activationSnapshotBefore);
+        expect(withoutMonotoneMetadata(detail.snapshotAfterReversal))
+          .toEqual(withoutMonotoneMetadata(detail.snapshotTarget));
+      }
+    }
 
     const stableBeforeReplay = jsonSql<Record<string, unknown>>(`
       select json_build_object(
@@ -576,19 +747,62 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.noPlanBirth,
       "2026-08-09T03:00:00+02:00",
     );
-    await Promise.all([
-      runE2eSql(reverseStatement(
-        noPlanBirthId,
-        ids.noPlanLitter,
-        ids.noPlanCancel,
-        "2026-08-09T04:00:00+02:00",
-      )),
-      runE2eSql(reverseStatement(
-        noPlanBirthId,
-        ids.noPlanLitter,
-        ids.noPlanCancel,
-        "2026-08-09T04:00:00+02:00",
-      )),
+    const concurrencyApplicationName = "e7310009_reversal_controller";
+    const controller = runE2eSql(`
+      set application_name = ${q(concurrencyApplicationName)};
+      begin;
+      select pg_catalog.pg_advisory_xact_lock(7310009);
+      select pg_catalog.pg_sleep(10);
+      commit;
+    `);
+    await waitForSqlCondition(`
+      select exists (
+        select 1
+        from pg_catalog.pg_locks lock
+        join pg_catalog.pg_stat_activity activity
+          on activity.pid = lock.pid
+        where activity.application_name = ${q(concurrencyApplicationName)}
+          and lock.locktype = 'advisory'
+          and lock.granted
+      )
+    `);
+    const firstConcurrentReversal = runE2eSql(reverseStatement(
+      noPlanBirthId,
+      ids.noPlanLitter,
+      ids.noPlanCancel,
+      "2026-08-09T04:00:00+02:00",
+      "perform pg_catalog.pg_advisory_xact_lock(7310009);",
+    ));
+    await waitForSqlCondition(`
+      select exists (
+        select 1
+        from pg_catalog.pg_locks lock
+        where lock.locktype = 'advisory'
+          and not lock.granted
+      )
+    `);
+    const secondConcurrentReversal = runE2eSql(reverseStatement(
+      noPlanBirthId,
+      ids.noPlanLitter,
+      ids.noPlanCancel,
+      "2026-08-09T04:00:00+02:00",
+    ));
+    await waitForSqlCondition(`
+      select count(*) >= 2
+      from pg_catalog.pg_locks lock
+      where lock.locktype = 'advisory'
+        and not lock.granted
+    `);
+    await controller;
+    const concurrentResults = await Promise.all([
+      firstConcurrentReversal,
+      secondConcurrentReversal,
+    ]);
+    expect(concurrentResults.map((output) =>
+      jsonFromSqlOutput<Record<string, unknown>>(output),
+    )).toEqual([
+      expect.objectContaining({ outcome: "success", replayed: false }),
+      expect.objectContaining({ outcome: "success", replayed: true }),
     ]);
     expect(jsonSql<Record<string, unknown>>(`
       select json_build_object(
@@ -599,7 +813,27 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
         'deleted', reversal.deleted_task_count,
         'restoredTasks', reversal.restored_task_count,
         'restoredSeries', reversal.restored_series_count,
-        'restoredItems', reversal.restored_item_count
+        'restoredItems', reversal.restored_item_count,
+        'reversalCount', (
+          select count(*)
+          from public.litter_plan_actual_birth_plan_reversals row
+          where row.activation_id = reversal.activation_id
+        ),
+        'deactivationCount', (
+          select count(*)
+          from public.litter_plan_actual_birth_activation_deactivations row
+          where row.activation_id = reversal.activation_id
+        ),
+        'detailCount', (
+          select count(*)
+          from public.litter_plan_actual_birth_plan_reversal_changes row
+          where row.reversal_id = reversal.id
+        ),
+        'distinctSnapshotChangeCount', (
+          select count(distinct row.snapshot_change_id)
+          from public.litter_plan_actual_birth_plan_reversal_changes row
+          where row.reversal_id = reversal.id
+        )
       )::text
       from public.litters litter
       join public.litter_plan_actual_birth_plan_reversals reversal
@@ -614,6 +848,497 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       restoredTasks: 0,
       restoredSeries: 0,
       restoredItems: 0,
+      reversalCount: 1,
+      deactivationCount: 1,
+      detailCount: 0,
+      distinctSnapshotChangeCount: 0,
+    });
+
+    await applyModel(
+      owner,
+      ids.postActivationLitter,
+      postModelCode,
+      ids.postActivationPostApply,
+      null,
+    );
+    const postActivationBirthId = await createBirth(
+      owner,
+      ids.postActivationLitter,
+      ids.postActivationOpen,
+      ids.postActivationBirth,
+      "2026-08-14T03:00:00+02:00",
+    );
+    const postActivationId = activationId(ids.postActivationLitter);
+    const postActivationPlanRevision = planRevision(ids.postActivationLitter);
+    const adHocTask = await createLitterCareTaskCore(
+      {
+        litterId: ids.postActivationLitter,
+        clientCommandId: ids.postActivationTaskCommand,
+        category: "other",
+        targetScope: "litter",
+        title: "Contrôle ad hoc après première naissance",
+        description: "Tâche métier normale hors photographie d’activation",
+        plannedFor: "2026-08-15",
+      },
+      owner,
+    );
+    expect(adHocTask).toMatchObject({
+      outcome: "success",
+      replayed: false,
+    });
+    if (adHocTask.outcome !== "success") {
+      throw new Error("Post-activation task creation failed");
+    }
+    expect(planRevision(ids.postActivationLitter))
+      .toBe(postActivationPlanRevision);
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'source', task.source,
+        'anchorType', task.anchor_type,
+        'planItemId', task.litter_plan_item_id,
+        'planSeriesId', task.litter_plan_series_id,
+        'createdAfterActivation', task.created_at > activation.created_at,
+        'snapshotChangeId', change.id,
+        'activationTaskChangeCount', (
+          select count(*)
+          from public.litter_plan_actual_birth_activation_reversal_changes row
+          where row.activation_id = activation.id
+            and row.entity_id = task.id
+        )
+      )::text
+      from public.litter_care_tasks task
+      join public.litter_plan_actual_birth_activations activation
+        on activation.id = ${q(postActivationId)}::uuid
+      left join public.litter_plan_actual_birth_activation_reversal_changes change
+        on change.activation_id = activation.id
+       and change.entity_id = task.id
+      where task.id = ${q(adHocTask.taskId)}::uuid
+    `)).toEqual({
+      source: "manual",
+      anchorType: null,
+      planItemId: null,
+      planSeriesId: null,
+      createdAfterActivation: true,
+      snapshotChangeId: null,
+      activationTaskChangeCount: 0,
+    });
+    expect(() => reverseTransaction(
+      postActivationBirthId,
+      ids.postActivationLitter,
+      ids.postActivationCancel,
+      "2026-08-14T04:00:00+02:00",
+    )).toThrow(/post-activation planning data is not reversible/);
+    expect(birthState(ids.postActivationLitter)).toMatchObject({
+      actualBirthDate: "2026-08-14",
+      activeBirths: 1,
+      adjustments: 0,
+      reversals: 0,
+      deactivations: 0,
+      currentActivationId: postActivationId,
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'taskStillPresent', exists (
+          select 1 from public.litter_care_tasks
+          where id = ${q(adHocTask.taskId)}::uuid
+        ),
+        'cancelCommandCount', (
+          select count(*) from public.whelping_birth_adjustment_commands
+          where client_command_id = ${q(ids.postActivationCancel)}::uuid
+        ),
+        'planRevision', (
+          select revision from public.litter_plans
+          where litter_id = ${q(ids.postActivationLitter)}::uuid
+            and status = 'active'
+        )
+      )::text
+    `)).toEqual({
+      taskStillPresent: true,
+      cancelCommandCount: 0,
+      planRevision: postActivationPlanRevision,
+    });
+
+    await applyModel(
+      owner,
+      ids.lateBirthLitter,
+      preModelCode,
+      ids.lateBirthPreApply,
+      null,
+    );
+    await applyModel(
+      owner,
+      ids.lateBirthLitter,
+      postModelCode,
+      ids.lateBirthPostApply,
+      planRevision(ids.lateBirthLitter),
+    );
+    sql(`
+      with source as (
+        select to_jsonb(task) as body
+        from public.litter_care_tasks task
+        join public.litter_plan_series series
+          on series.id = task.litter_plan_series_id
+        where task.organization_id = ${q(ids.organization)}::uuid
+          and task.litter_id = ${q(ids.lateBirthLitter)}::uuid
+          and series.end_kind = 'actual_birth'
+        order by task.planned_for desc, task.slot_no desc
+        limit 1
+      )
+      insert into public.litter_care_tasks
+      select (
+        pg_catalog.jsonb_populate_record(
+          null::public.litter_care_tasks,
+          source.body || jsonb_build_object(
+            'id', ${q(ids.lateFutureTask)},
+            'occurrence_no', 99,
+            'recurrence_day_no', 99,
+            'planned_for', '2026-08-12',
+            'suggested_for', '2026-08-12',
+            'creation_command_id', ${q(ids.lateFutureTaskCommand)},
+            'created_at', statement_timestamp(),
+            'updated_at', statement_timestamp()
+          )
+        )
+      ).*
+      from source
+    `);
+    const lateBirthId = await createBirth(
+      owner,
+      ids.lateBirthLitter,
+      ids.lateBirthOpen,
+      ids.lateBirthBirth,
+      "2026-08-11T03:00:00+02:00",
+    );
+    const lateActivation = activationId(ids.lateBirthLitter);
+    const lateSnapshot = jsonSql<{
+      activationCreatedTaskCount: number;
+      taskInsertCount: number;
+      taskUpdateCount: number;
+      inserted: Array<{
+        snapshotChangeId: string;
+        taskId: string;
+        seriesId: string | null;
+        plannedFor: string;
+      }>;
+      updated: Array<{
+        taskId: string;
+        snapshotBefore: Record<string, unknown>;
+      }>;
+      preBirthSeriesId: string;
+    }>(`
+      with snapshot as (
+        select row.*
+        from public.litter_plan_actual_birth_activation_reversal_snapshots row
+        where row.activation_id = ${q(lateActivation)}::uuid
+      ),
+      pre_series as (
+        select series.id
+        from public.litter_plan_series series
+        join public.litter_plan_items item on item.id = series.litter_plan_item_id
+        where series.litter_id = ${q(ids.lateBirthLitter)}::uuid
+          and series.end_kind = 'actual_birth'
+          and item.anchor_type = 'expected_birth'
+      )
+      select json_build_object(
+        'activationCreatedTaskCount', activation.created_task_count,
+        'taskInsertCount', snapshot.task_insert_count,
+        'taskUpdateCount', snapshot.task_update_count,
+        'inserted', (
+          select json_agg(json_build_object(
+            'snapshotChangeId', change.id,
+            'taskId', change.entity_id,
+            'seriesId', change.snapshot_after ->> 'litter_plan_series_id',
+            'plannedFor', change.snapshot_after ->> 'planned_for'
+          ) order by change.sequence_no)
+          from public.litter_plan_actual_birth_activation_reversal_changes change
+          where change.snapshot_id = snapshot.id
+            and change.entity_kind = 'litter_care_task'
+            and change.change_kind = 'insert'
+        ),
+        'updated', (
+          select coalesce(json_agg(json_build_object(
+            'taskId', change.entity_id,
+            'snapshotBefore', change.snapshot_before
+          ) order by change.sequence_no), '[]'::json)
+          from public.litter_plan_actual_birth_activation_reversal_changes change
+          where change.snapshot_id = snapshot.id
+            and change.entity_kind = 'litter_care_task'
+            and change.change_kind = 'update'
+        ),
+        'preBirthSeriesId', (select id from pre_series)
+      )::text
+      from snapshot
+      join public.litter_plan_actual_birth_activations activation
+        on activation.id = snapshot.activation_id
+    `);
+    expect(lateSnapshot.activationCreatedTaskCount).toBe(7);
+    expect(lateSnapshot.taskInsertCount).toBe(11);
+    expect(lateSnapshot.inserted).toHaveLength(11);
+    expect(lateSnapshot.inserted.filter(
+      (change) => change.seriesId === lateSnapshot.preBirthSeriesId,
+    ).map((change) => change.plannedFor)).toEqual([
+      "2026-08-10",
+      "2026-08-10",
+      "2026-08-11",
+      "2026-08-11",
+    ]);
+    expect(lateSnapshot.inserted.filter(
+      (change) => change.seriesId !== lateSnapshot.preBirthSeriesId,
+    )).toHaveLength(7);
+    expect(lateSnapshot.updated.map((change) => change.taskId))
+      .toContain(ids.lateFutureTask);
+    reverseTransaction(
+      lateBirthId,
+      ids.lateBirthLitter,
+      ids.lateBirthCancel,
+      "2026-08-11T04:00:00+02:00",
+    );
+    const lateRestoration = jsonSql<{
+      deletedTaskIds: string[];
+      consumedSnapshotChangeIds: string[];
+      insertedRemaining: number;
+      futureTask: Record<string, unknown>;
+      restoredItems: number;
+      restoredSeries: number;
+    }>(`
+      select json_build_object(
+        'deletedTaskIds', (
+          select json_agg(detail.entity_id order by detail.entity_id)
+          from public.litter_plan_actual_birth_plan_reversal_changes detail
+          where detail.activation_id = ${q(lateActivation)}::uuid
+            and detail.reversal_action = 'delete_inserted'
+        ),
+        'consumedSnapshotChangeIds', (
+          select json_agg(detail.snapshot_change_id order by detail.snapshot_change_id)
+          from public.litter_plan_actual_birth_plan_reversal_changes detail
+          where detail.activation_id = ${q(lateActivation)}::uuid
+            and detail.reversal_action = 'delete_inserted'
+        ),
+        'insertedRemaining', (
+          select count(*)
+          from public.litter_plan_actual_birth_activation_reversal_changes change
+          join public.litter_care_tasks task on task.id = change.entity_id
+          where change.activation_id = ${q(lateActivation)}::uuid
+            and change.change_kind = 'insert'
+        ),
+        'futureTask', (
+          select to_jsonb(task)
+          from public.litter_care_tasks task
+          where task.id = ${q(ids.lateFutureTask)}::uuid
+        ),
+        'restoredItems', reversal.restored_item_count,
+        'restoredSeries', reversal.restored_series_count
+      )::text
+      from public.litter_plan_actual_birth_plan_reversals reversal
+      where reversal.activation_id = ${q(lateActivation)}::uuid
+    `);
+    expect(lateRestoration.deletedTaskIds).toEqual(
+      lateSnapshot.inserted.map((change) => change.taskId).sort(),
+    );
+    expect(lateRestoration.consumedSnapshotChangeIds).toEqual(
+      lateSnapshot.inserted.map((change) => change.snapshotChangeId).sort(),
+    );
+    expect(lateRestoration.insertedRemaining).toBe(0);
+    expect(lateRestoration.restoredItems).toBeGreaterThan(0);
+    expect(lateRestoration.restoredSeries).toBeGreaterThan(0);
+    const lateFutureBefore = lateSnapshot.updated.find(
+      (change) => change.taskId === ids.lateFutureTask,
+    );
+    expect(lateFutureBefore).toBeDefined();
+    expect(withoutMonotoneMetadata(lateRestoration.futureTask))
+      .toEqual(withoutMonotoneMetadata(lateFutureBefore?.snapshotBefore));
+    expect(birthState(ids.lateBirthLitter)).toMatchObject({
+      actualBirthDate: null,
+      activeBirths: 0,
+      reversals: 1,
+      deactivations: 1,
+      currentActivationId: null,
+    });
+
+    await applyModel(
+      owner,
+      ids.correctionLitter,
+      preModelCode,
+      ids.correctionPreApply,
+      null,
+    );
+    await applyModel(
+      owner,
+      ids.correctionLitter,
+      postModelCode,
+      ids.correctionPostApply,
+      planRevision(ids.correctionLitter),
+    );
+    const correctionBirthId = await createBirth(
+      owner,
+      ids.correctionLitter,
+      ids.correctionOpen,
+      ids.correctionBirth,
+      "2026-08-16T03:00:00+02:00",
+    );
+    const correctionActivation = activationId(ids.correctionLitter);
+    const correctionPlanRevisionBefore =
+      planRevision(ids.correctionLitter);
+    const corrected = await correctWhelpingBirthCore(
+      {
+        birthId: correctionBirthId,
+        clientCommandId: ids.correctionCommand,
+        expectedRevisionNo: 0,
+        occurredAt: "2026-08-17T03:00:00+02:00",
+        sex: "female",
+        viability: "alive",
+        initialCollarColor: null,
+        birthNote: "Fixture moteur de restauration",
+        weightGrams: null,
+        weightMeasuredAt: null,
+        weightNote: null,
+        reason: "Correction de date adverse avant restauration",
+      },
+      owner,
+    );
+    expect(corrected).toMatchObject({
+      outcome: "success",
+      revisionNo: 1,
+      replayed: false,
+    });
+    const correctionReconciled = jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'actualBirthDate', litter.actual_birth_date,
+        'birthOccurredAt', birth.occurred_at,
+        'birthRevision', birth.revision_no,
+        'planRevision', plan.revision,
+        'reconciliationCount', (
+          select count(*)
+          from public.litter_plan_actual_birth_reconciliations row
+          where row.litter_id = litter.id
+        ),
+        'seriesReconciliationCount', (
+          select count(*)
+          from public.litter_plan_series_actual_birth_reconciliation_commands row
+          where row.litter_id = litter.id
+        )
+      )::text
+      from public.litters litter
+      join public.litter_plans plan
+        on plan.litter_id = litter.id and plan.status = 'active'
+      join public.whelping_sessions session on session.litter_id = litter.id
+      join public.whelping_births birth
+        on birth.session_id = session.id and birth.id = ${q(correctionBirthId)}::uuid
+      where litter.id = ${q(ids.correctionLitter)}::uuid
+    `);
+    expect(correctionReconciled).toMatchObject({
+      actualBirthDate: "2026-08-17",
+      birthRevision: 1,
+      planRevision: correctionPlanRevisionBefore + 1,
+    });
+    expect(
+      Number(correctionReconciled.reconciliationCount) +
+      Number(correctionReconciled.seriesReconciliationCount),
+    ).toBeGreaterThan(0);
+    expect(() => reverseTransaction(
+      correctionBirthId,
+      ids.correctionLitter,
+      ids.correctionCancel,
+      "2026-08-17T04:00:00+02:00",
+      "",
+      1,
+    )).toThrow(
+      /first-birth activation reversal invariant failed|first-birth reversal plan revision diverged|first-birth reversal entity state diverged/,
+    );
+    expect(birthState(ids.correctionLitter)).toMatchObject({
+      actualBirthDate: "2026-08-17",
+      activeBirths: 1,
+      adjustments: 1,
+      reversals: 0,
+      deactivations: 0,
+      currentActivationId: correctionActivation,
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'birthOccurredAt', birth.occurred_at,
+        'birthRevision', birth.revision_no,
+        'planRevision', plan.revision,
+        'cancelCommandCount', (
+          select count(*) from public.whelping_birth_adjustment_commands
+          where client_command_id = ${q(ids.correctionCancel)}::uuid
+        )
+      )::text
+      from public.whelping_births birth
+      join public.whelping_sessions session on session.id = birth.session_id
+      join public.litter_plans plan
+        on plan.litter_id = session.litter_id and plan.status = 'active'
+      where birth.id = ${q(correctionBirthId)}::uuid
+    `)).toEqual({
+      birthOccurredAt: "2026-08-17T01:00:00+00:00",
+      birthRevision: 1,
+      planRevision: correctionPlanRevisionBefore + 1,
+      cancelCommandCount: 0,
+    });
+
+    await applyModel(
+      owner,
+      ids.missingEntityLitter,
+      postModelCode,
+      ids.missingEntityPostApply,
+      null,
+    );
+    const missingEntityBirthId = await createBirth(
+      owner,
+      ids.missingEntityLitter,
+      ids.missingEntityOpen,
+      ids.missingEntityBirth,
+      "2026-08-17T03:00:00+02:00",
+    );
+    const missingEntityActivation = activationId(ids.missingEntityLitter);
+    const missingTaskId = sql(`
+      select change.entity_id
+      from public.litter_plan_actual_birth_activation_reversal_changes change
+      where change.activation_id = ${q(missingEntityActivation)}::uuid
+        and change.entity_kind = 'litter_care_task'
+        and change.change_kind = 'insert'
+        and change.snapshot_after ->> 'litter_plan_series_id' is null
+      order by change.sequence_no
+      limit 1
+    `);
+    sql(`
+      delete from public.litter_care_tasks
+      where id = ${q(missingTaskId)}::uuid
+    `);
+    expect(() => reverseTransaction(
+      missingEntityBirthId,
+      ids.missingEntityLitter,
+      ids.missingEntityCancel,
+      "2026-08-17T04:00:00+02:00",
+    )).toThrow(/first-birth reversal entity state diverged/);
+    expect(birthState(ids.missingEntityLitter)).toMatchObject({
+      actualBirthDate: "2026-08-17",
+      activeBirths: 1,
+      adjustments: 0,
+      reversals: 0,
+      deactivations: 0,
+      currentActivationId: missingEntityActivation,
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'taskStillMissing', not exists (
+          select 1 from public.litter_care_tasks
+          where id = ${q(missingTaskId)}::uuid
+        ),
+        'cancelCommandCount', (
+          select count(*) from public.whelping_birth_adjustment_commands
+          where client_command_id = ${q(ids.missingEntityCancel)}::uuid
+        ),
+        'snapshotChangeStillPresent', exists (
+          select 1
+          from public.litter_plan_actual_birth_activation_reversal_changes
+          where activation_id = ${q(missingEntityActivation)}::uuid
+            and entity_id = ${q(missingTaskId)}::uuid
+        )
+      )::text
+    `)).toEqual({
+      taskStillMissing: true,
+      cancelCommandCount: 0,
+      snapshotChangeStillPresent: true,
     });
 
     await applyModel(
