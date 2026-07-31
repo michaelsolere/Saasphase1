@@ -535,6 +535,7 @@ export function LitterJournalDashboard({
         reopenAction={reopenWhelpingSessionAction}
       />
       <LitterWeightPanel
+        litterId={litter.id}
         animals={litterWeightAnimals}
         sessions={litterWeightSessions}
         measurements={litterWeightMeasurements}
