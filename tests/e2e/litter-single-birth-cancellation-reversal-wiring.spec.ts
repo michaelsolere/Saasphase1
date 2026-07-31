@@ -22,8 +22,8 @@ test.setTimeout(360_000);
 type TypedClient = SupabaseClient<Database>;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const prefix = "e7310011-0000-4000-8000-";
-const like = "e7310011-%";
+const prefix = "e7310013-0000-4000-8000-";
+const like = "e7310013-%";
 const preModelCode = "dog-pre-whelping-temperature-monitoring";
 const postModelCode = "dog-postnatal-essential-care";
 
@@ -41,6 +41,8 @@ const ids = {
   correctionMother: `${prefix}000000000103`,
   missingEntityMother: `${prefix}000000000104`,
   distinctMother: `${prefix}000000000105`,
+  preservedMother: `${prefix}000000000106`,
+  noChangeMother: `${prefix}000000000107`,
   planLitter: `${prefix}000000000011`,
   noPlanLitter: `${prefix}000000000012`,
   divergenceLitter: `${prefix}000000000013`,
@@ -52,6 +54,8 @@ const ids = {
   correctionLitter: `${prefix}000000000113`,
   missingEntityLitter: `${prefix}000000000114`,
   distinctLitter: `${prefix}000000000115`,
+  preservedLitter: `${prefix}000000000116`,
+  noChangeLitter: `${prefix}000000000117`,
   importCommand: `${prefix}000000000020`,
   planPreApply: `${prefix}000000000021`,
   planPostApply: `${prefix}000000000022`,
@@ -64,6 +68,7 @@ const ids = {
   correctionPreApply: `${prefix}000000000124`,
   correctionPostApply: `${prefix}000000000125`,
   missingEntityPostApply: `${prefix}000000000126`,
+  preservedPostApply: `${prefix}000000000127`,
   planOpen: `${prefix}000000000031`,
   noPlanOpen: `${prefix}000000000032`,
   divergenceOpen: `${prefix}000000000033`,
@@ -75,6 +80,8 @@ const ids = {
   correctionOpen: `${prefix}000000000133`,
   missingEntityOpen: `${prefix}000000000134`,
   distinctOpen: `${prefix}000000000135`,
+  preservedOpen: `${prefix}000000000136`,
+  noChangeOpen: `${prefix}000000000137`,
   planBirth: `${prefix}000000000041`,
   noPlanBirth: `${prefix}000000000042`,
   divergenceBirth: `${prefix}000000000043`,
@@ -86,6 +93,9 @@ const ids = {
   correctionBirth: `${prefix}000000000143`,
   missingEntityBirth: `${prefix}000000000144`,
   distinctBirth: `${prefix}000000000145`,
+  preservedSourceBirth: `${prefix}000000000146`,
+  preservedLaterBirth: `${prefix}000000000147`,
+  noChangeBirth: `${prefix}000000000148`,
   planCancel: `${prefix}000000000051`,
   noPlanCancel: `${prefix}000000000052`,
   divergenceCancel: `${prefix}000000000053`,
@@ -107,6 +117,9 @@ const ids = {
   lateFutureTask: `${prefix}000000000163`,
   lateFutureTaskCommand: `${prefix}000000000164`,
   unknownDetailCancel: `${prefix}000000000165`,
+  preservedLaterCancel: `${prefix}000000000166`,
+  preservedSourceCancel: `${prefix}000000000167`,
+  noChangeCancel: `${prefix}000000000168`,
   reminder: `${prefix}000000000061`,
 } as const;
 
@@ -263,6 +276,7 @@ function fixtureCounts() {
       'plans', (select count(*) from public.litter_plans where organization_id = ${q(ids.organization)}::uuid),
       'adjustments', (select count(*) from public.whelping_birth_adjustment_commands where organization_id = ${q(ids.organization)}::uuid),
       'commands', (select count(*) from public.whelping_commands where organization_id = ${q(ids.organization)}::uuid),
+      'weights', (select count(*) from public.animal_weight_measurements where organization_id = ${q(ids.organization)}::uuid),
       'births', (select count(*) from public.whelping_births where organization_id = ${q(ids.organization)}::uuid),
       'events', (select count(*) from public.whelping_events where organization_id = ${q(ids.organization)}::uuid),
       'sessions', (select count(*) from public.whelping_sessions where organization_id = ${q(ids.organization)}::uuid),
@@ -279,8 +293,8 @@ function seedScope() {
     insert into public.organizations (id, name, slug)
     values (
       ${q(ids.organization)}::uuid,
-      'Raccordement annulation restauration e7310011',
-      'raccordement-annulation-restauration-e7310011'
+      'Raccordement annulation restauration e7310013',
+      'raccordement-annulation-restauration-e7310013'
     );
     insert into public.memberships (
       id, organization_id, profile_id, role, status, created_by, updated_by
@@ -307,7 +321,9 @@ function seedScope() {
       (${q(ids.lateBirthMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère naissance tardive', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.correctionMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère correction de date', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.missingEntityMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère entité disparue', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.distinctMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère concurrence distincte', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.distinctMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère concurrence distincte', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.preservedMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère succès préservé', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.noChangeMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère succès sans planning', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status,
       mating_date, expected_birth_date, created_by, updated_by
@@ -322,7 +338,9 @@ function seedScope() {
       (${q(ids.lateBirthLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée naissance tardive', 'dog', 'Golden Retriever', ${q(ids.lateBirthMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.correctionLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée correction de date', 'dog', 'Golden Retriever', ${q(ids.correctionMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-16', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.missingEntityLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée entité disparue', 'dog', 'Golden Retriever', ${q(ids.missingEntityMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-17', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.distinctLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée concurrence distincte', 'dog', 'Golden Retriever', ${q(ids.distinctMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-18', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.distinctLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée concurrence distincte', 'dog', 'Golden Retriever', ${q(ids.distinctMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-18', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.preservedLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée succès préservé', 'dog', 'Golden Retriever', ${q(ids.preservedMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-19', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.noChangeLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée succès sans planning', 'dog', 'Golden Retriever', ${q(ids.noChangeMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-20', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -621,18 +639,21 @@ function rollbackState(litterId: string, birthId: string) {
 test("la migration capture les OID au runtime sans allocation locale figée", () => {
   const migration = readFileSync(resolve(
     process.cwd(),
-    "supabase/migrations/202607310012_whelping_birth_cancellation_diagnostics.sql",
+    "supabase/migrations/202607310013_whelping_birth_cancellation_success_feedback.sql",
   ), "utf8");
 
   expect(migration).not.toMatch(/\b(?:23891|21411|25110)\b/);
   expect(migration).not.toMatch(/::oid\s*(?:<>|=)\s*\d+/);
   expect(migration).toContain(
-    "create temporary table pg_temp.whelping_birth_cancellation_diagnostic_contracts",
+    "create temporary table pg_temp.whelping_birth_cancellation_success_contracts",
   );
   expect(migration).toContain("on commit drop");
   expect(migration).toContain("procedure.oid is distinct from captured.function_oid");
-  expect(migration).toContain("v_error_detail = pg_exception_detail");
-  expect(migration).toContain("WHELPING_REVERSAL_STATE_INCONSISTENT");
+  expect(migration).toContain("v_command.snapshot_after ->> 'cancellation_success_reason'");
+  expect(migration).toContain("app.whelping_birth_cancellation_success_reason");
+  expect(migration).toContain("birth_cancellation_planning_restored");
+  expect(migration).toContain("birth_cancellation_planning_preserved");
+  expect(migration).toContain("birth_cancellation_no_planning_change");
   expect(sql(`
     select position(
       'reason := v_error_detail'
@@ -749,6 +770,24 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       birthId: planBirthId,
       revisionNo: 1,
       replayed: false,
+      successReason: "birth_cancellation_planning_restored",
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'successReason', snapshot_after ->> 'cancellation_success_reason',
+        'birthIsObject', jsonb_typeof(snapshot_after -> 'birth') = 'object',
+        'animalIsObject', jsonb_typeof(snapshot_after -> 'animal') = 'object',
+        'weightIsPreserved', snapshot_after ? 'birth_weight',
+        'litterIsObject', jsonb_typeof(snapshot_after -> 'litter') = 'object'
+      )::text
+      from public.whelping_birth_adjustment_commands
+      where client_command_id = ${q(ids.planCancel)}::uuid
+    `)).toEqual({
+      successReason: "birth_cancellation_planning_restored",
+      birthIsObject: true,
+      animalIsObject: true,
+      weightIsPreserved: true,
+      litterIsObject: true,
     });
     expect(birthState(ids.planLitter)).toMatchObject({
       actualBirthDate: null,
@@ -885,7 +924,11 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       },
       owner,
     );
-    expect(replay).toMatchObject({ outcome: "success", replayed: true });
+    expect(replay).toMatchObject({
+      outcome: "success",
+      replayed: true,
+      successReason: "birth_cancellation_planning_restored",
+    });
     const divergentReplay = await cancelWhelpingBirthCore(
       {
         birthId: planBirthId,
@@ -922,7 +965,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       ids.noPlanBirth,
       "2026-08-09T03:00:00+02:00",
     );
-    const concurrencyApplicationName = "e7310011_cancellation_controller";
+    const concurrencyApplicationName = "e7310013_cancellation_controller";
     const controller = runE2eSql(`
       set application_name = ${q(concurrencyApplicationName)};
       begin;
@@ -953,7 +996,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
           return new;
         end;
         $trigger$;
-        create trigger e7310011_wait_before_public_cancel_audit
+        create trigger e7310013_wait_before_public_cancel_audit
         before insert on public.whelping_birth_adjustment_commands
         for each row
         when (new.client_command_id = ${q(ids.noPlanCancel)}::uuid)
@@ -987,8 +1030,16 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
     expect(concurrentResults.map((output) =>
       jsonFromSqlOutput<Record<string, unknown>>(output),
     )).toEqual([
-      expect.objectContaining({ outcome: "success", replayed: false }),
-      expect.objectContaining({ outcome: "success", replayed: true }),
+      expect.objectContaining({
+        outcome: "success",
+        replayed: false,
+        reason: "birth_cancellation_planning_restored",
+      }),
+      expect.objectContaining({
+        outcome: "success",
+        replayed: true,
+        reason: "birth_cancellation_planning_restored",
+      }),
     ]);
     expect(jsonSql<Record<string, unknown>>(`
       select json_build_object(
@@ -1047,7 +1098,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       ids.distinctBirth,
       "2026-08-18T03:00:00+02:00",
     );
-    const distinctControllerName = "e7310011_distinct_controller";
+    const distinctControllerName = "e7310013_distinct_controller";
     const distinctController = runE2eSql(`
       set application_name = ${q(distinctControllerName)};
       begin;
@@ -1079,7 +1130,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
             return new;
           end;
           $trigger$;
-          create trigger e7310011_wait_before_distinct_cancel_audit
+          create trigger e7310013_wait_before_distinct_cancel_audit
           before insert on public.whelping_birth_adjustment_commands
           for each row
           when (new.client_command_id = ${q(ids.distinctCancelA)}::uuid)
@@ -1128,6 +1179,217 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       deactivations: 1,
       currentActivationId: null,
     });
+
+    await applyModel(
+      owner,
+      ids.preservedLitter,
+      postModelCode,
+      ids.preservedPostApply,
+      null,
+    );
+    const preservedSourceBirthId = await createBirth(
+      owner,
+      ids.preservedLitter,
+      ids.preservedOpen,
+      ids.preservedSourceBirth,
+      "2026-08-19T03:00:00+02:00",
+    );
+    const preservedActivationId = activationId(ids.preservedLitter);
+    const preservedSessionId = sql(`
+      select session_id::text from public.whelping_births
+      where id = ${q(preservedSourceBirthId)}::uuid
+    `);
+    const preservedLaterBirth = await recordWhelpingBirthCore(
+      {
+        sessionId: preservedSessionId,
+        clientCommandId: ids.preservedLaterBirth,
+        occurredAt: "2026-08-19T03:30:00+02:00",
+        sex: "male",
+        viability: "alive",
+        note: "Naissance ultérieure à annuler",
+      },
+      owner,
+    );
+    expect(preservedLaterBirth).toMatchObject({ outcome: "success" });
+    if (preservedLaterBirth.outcome !== "success") {
+      throw new Error("Preserved later birth creation failed");
+    }
+    const preservedPlanningBefore = jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'plan', (select to_jsonb(row) from public.litter_plans row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'items', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_plan_items row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'series', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_plan_series row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'tasks', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_care_tasks row where row.litter_id = ${q(ids.preservedLitter)}::uuid)
+      )::text
+    `);
+    const preservedCancellation = await cancelWhelpingBirthCore(
+      {
+        birthId: preservedLaterBirth.birthId,
+        clientCommandId: ids.preservedLaterCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-19T04:00:00+02:00",
+        reason: "Annulation de la naissance ultérieure",
+      },
+      owner,
+    );
+    expect(preservedCancellation).toMatchObject({
+      outcome: "success",
+      replayed: false,
+      successReason: "birth_cancellation_planning_preserved",
+    });
+    expect(birthState(ids.preservedLitter)).toMatchObject({
+      actualBirthDate: "2026-08-19",
+      activeBirths: 1,
+      adjustments: 1,
+      reversals: 0,
+      deactivations: 0,
+      currentActivationId: preservedActivationId,
+    });
+    expect(jsonSql<Record<string, unknown>>(`
+      select json_build_object(
+        'plan', (select to_jsonb(row) from public.litter_plans row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'items', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_plan_items row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'series', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_plan_series row where row.litter_id = ${q(ids.preservedLitter)}::uuid),
+        'tasks', (select jsonb_agg(to_jsonb(row) order by row.id) from public.litter_care_tasks row where row.litter_id = ${q(ids.preservedLitter)}::uuid)
+      )::text
+    `)).toEqual(preservedPlanningBefore);
+    const preservedCommandSnapshot = sql(`
+      select snapshot_after::text
+      from public.whelping_birth_adjustment_commands
+      where client_command_id = ${q(ids.preservedLaterCancel)}::uuid
+        and snapshot_after ->> 'cancellation_success_reason' =
+          'birth_cancellation_planning_preserved'
+    `);
+    expect(preservedCommandSnapshot).not.toBe("");
+
+    const restoredSourceCancellation = await cancelWhelpingBirthCore(
+      {
+        birthId: preservedSourceBirthId,
+        clientCommandId: ids.preservedSourceCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-19T04:30:00+02:00",
+        reason: "Annulation de la naissance source",
+      },
+      owner,
+    );
+    expect(restoredSourceCancellation).toMatchObject({
+      outcome: "success",
+      replayed: false,
+      successReason: "birth_cancellation_planning_restored",
+    });
+    expect(birthState(ids.preservedLitter)).toMatchObject({
+      actualBirthDate: null,
+      activeBirths: 0,
+      adjustments: 2,
+      reversals: 1,
+      deactivations: 1,
+      currentActivationId: null,
+    });
+    const preservedReplayAfterRestoration = await cancelWhelpingBirthCore(
+      {
+        birthId: preservedLaterBirth.birthId,
+        clientCommandId: ids.preservedLaterCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-19T04:00:00+02:00",
+        reason: "Annulation de la naissance ultérieure",
+      },
+      owner,
+    );
+    expect(preservedReplayAfterRestoration).toMatchObject({
+      outcome: "success",
+      replayed: true,
+      successReason: "birth_cancellation_planning_preserved",
+    });
+    expect(sql(`
+      select snapshot_after::text
+      from public.whelping_birth_adjustment_commands
+      where client_command_id = ${q(ids.preservedLaterCancel)}::uuid
+    `)).toBe(preservedCommandSnapshot);
+
+    const noChangeBirthId = await createBirth(
+      owner,
+      ids.noChangeLitter,
+      ids.noChangeOpen,
+      ids.noChangeBirth,
+      "2026-08-20T03:00:00+02:00",
+    );
+    const noChangeActivationId = activationId(ids.noChangeLitter);
+    sql(`
+      begin;
+      set local session_replication_role = replica;
+      select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
+      delete from public.litter_plan_actual_birth_activation_reversal_changes
+      where activation_id = ${q(noChangeActivationId)}::uuid;
+      delete from public.litter_plan_actual_birth_activation_reversal_snapshots
+      where activation_id = ${q(noChangeActivationId)}::uuid;
+      delete from public.litter_plan_actual_birth_activation_states
+      where litter_id = ${q(ids.noChangeLitter)}::uuid;
+      delete from public.litter_plan_actual_birth_activations
+      where id = ${q(noChangeActivationId)}::uuid;
+      commit;
+    `);
+    const noChangeCancellation = await cancelWhelpingBirthCore(
+      {
+        birthId: noChangeBirthId,
+        clientCommandId: ids.noChangeCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-20T04:00:00+02:00",
+        reason: "Annulation sans activation courante",
+      },
+      owner,
+    );
+    expect(noChangeCancellation).toMatchObject({
+      outcome: "success",
+      replayed: false,
+      successReason: "birth_cancellation_no_planning_change",
+    });
+    expect(birthState(ids.noChangeLitter)).toMatchObject({
+      actualBirthDate: "2026-08-20",
+      activeBirths: 0,
+      adjustments: 1,
+      reversals: 0,
+      deactivations: 0,
+      currentActivationId: null,
+    });
+    expect(sql(`
+      select snapshot_after ->> 'cancellation_success_reason'
+      from public.whelping_birth_adjustment_commands
+      where client_command_id = ${q(ids.noChangeCancel)}::uuid
+    `)).toBe("birth_cancellation_no_planning_change");
+
+    sql(`
+      set session_replication_role = replica;
+      update public.whelping_birth_adjustment_commands
+      set snapshot_after = snapshot_after - 'cancellation_success_reason'
+      where client_command_id = ${q(ids.noChangeCancel)}::uuid;
+      set session_replication_role = origin;
+    `);
+    const historicalBeforeReplay = rollbackState(
+      ids.noChangeLitter,
+      noChangeBirthId,
+    );
+    const historicalReplay = await cancelWhelpingBirthCore(
+      {
+        birthId: noChangeBirthId,
+        clientCommandId: ids.noChangeCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-20T04:00:00+02:00",
+        reason: "Annulation sans activation courante",
+      },
+      owner,
+    );
+    expect(historicalReplay).toMatchObject({
+      outcome: "success",
+      replayed: true,
+      successReason: "birth_cancellation_no_planning_change",
+    });
+    expect(rollbackState(ids.noChangeLitter, noChangeBirthId))
+      .toEqual(historicalBeforeReplay);
+    expect(sql(`
+      select snapshot_after ? 'cancellation_success_reason'
+      from public.whelping_birth_adjustment_commands
+      where client_command_id = ${q(ids.noChangeCancel)}::uuid
+    `)).toBe("f");
 
     await applyModel(
       owner,
@@ -1910,7 +2172,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
               detail = 'WHELPING_REVERSAL_UNKNOWN_TEST_DETAIL';
         end;
         $trigger$;
-        create trigger e7310011_unknown_plan_reversal_detail
+        create trigger e7310013_unknown_plan_reversal_detail
         before delete on public.litter_care_tasks
         for each row execute function pg_temp.fail_plan_reversal_with_unknown_detail();
       `,
@@ -1932,7 +2194,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
           raise exception 'forced plan reversal audit failure';
         end;
         $trigger$;
-        create trigger e7310011_forced_plan_reversal_audit
+        create trigger e7310013_forced_plan_reversal_audit
         before insert on public.litter_plan_actual_birth_plan_reversals
         for each row execute function pg_temp.fail_plan_reversal_audit();
       `,
@@ -1952,7 +2214,7 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       .toEqual(beforeForcedFailure);
     expect(Number(sql(`
       select count(*) from pg_catalog.pg_trigger
-      where tgname = 'e7310011_forced_plan_reversal_audit'
+      where tgname = 'e7310013_forced_plan_reversal_audit'
     `))).toBe(0);
 
     const security = jsonSql<Record<string, unknown>>(`

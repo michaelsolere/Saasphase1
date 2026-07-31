@@ -1520,3 +1520,39 @@ Le contrat de succès, le rejeu, la concurrence et le cas
 `later_active_birth_exists` restent inchangés. La limite assumée de ce lot est
 de ne pas enrichir le succès et de ne pas révéler l’élément, la tâche ou la
 dépendance précise à l’origine du refus.
+
+## Lot du 2026-07-31 — Retour autoritatif du succès d’annulation
+
+La migration additive
+`202607310013_whelping_birth_cancellation_success_feedback` enrichit la valeur
+historique `reason` uniquement lorsque `cancel_whelping_birth` réussit. Elle
+distingue trois effets autoritatifs :
+
+- `birth_cancellation_planning_restored` lorsque l’annulation retire la date
+  réelle, désactive l’activation courante et restaure l’état antérieur ;
+- `birth_cancellation_planning_preserved` lorsqu’une autre naissance active
+  maintient la date réelle et le suivi postnatal ;
+- `birth_cancellation_no_planning_change` lorsqu’aucune activation courante ne
+  demande de restauration et qu’aucun état de planning n’est modifié.
+
+Le code retenu lors de la première exécution est conservé au premier niveau de
+la photographie immuable `whelping_birth_adjustment_commands.snapshot_after`,
+dans `cancellation_success_reason`. Les sous-objets historiques `birth`,
+`animal` et `weight` restent inchangés. Un rejeu exact lit d’abord cette valeur
+persistée : son résultat demeure donc stable même si une annulation ultérieure
+restaure ensuite l’activation de la portée. Les anciennes commandes dépourvues
+de cette métadonnée restent rejouables sans réécriture rétroactive ; elles
+utilisent le contexte autoritatif courant et l’application conserve un message
+générique si le succès historique ne fournit aucun code reconnu.
+
+Aucune table ni colonne n’est ajoutée. La RPC publique garde exactement ses
+neuf champs, ses arguments, son OID et ses ACL ; seule la sémantique de
+`reason` en cas de succès est enrichie. Les fonctions privées conservent aussi
+leurs signatures et restent inaccessibles aux rôles clients. Le contexte entre
+l’enveloppe publique et le cœur privé passe par un paramètre transactionnel
+privé, fermé aux trois valeurs autorisées et jamais alimenté par le client.
+
+L’interface traduit exclusivement le code structuré en une phrase métier. Elle
+ne révèle ni code interne, ni identifiant, ni détail SQL. La limite volontaire
+reste l’absence de détail et de décompte sur les tâches restaurées ou
+conservées.

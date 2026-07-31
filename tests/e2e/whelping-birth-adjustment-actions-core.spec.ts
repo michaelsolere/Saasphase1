@@ -7,6 +7,9 @@ import {
   type WhelpingBirthAdjustmentActionDependencies,
   type WhelpingBirthAdjustmentIntention,
 } from "../../src/features/whelping/whelping-actions-core";
+import type {
+  WhelpingBirthCancellationSuccessReason,
+} from "../../src/features/whelping/whelping-core";
 
 const ids = {
   litter: "9f220001-0000-4000-8000-000000000001",
@@ -52,6 +55,7 @@ function harness(options: {
   cancellationError?: string;
   errorMessage?: string;
   replayed?: boolean;
+  successReason?: WhelpingBirthCancellationSuccessReason | null;
   throws?: boolean;
 } = {}) {
   const calls: unknown[] = [];
@@ -60,7 +64,7 @@ function harness(options: {
     outcome: "error" as const,
     error: { code: code as never, message: options.errorMessage ?? "sql secret" },
   });
-  const success = {
+  const correctionSuccess = {
     outcome: "success" as const,
     birthId: ids.birth,
     animalId: ids.animal,
@@ -70,16 +74,24 @@ function harness(options: {
     eventSequenceNo: 8,
     replayed: options.replayed ?? false,
   };
+  const cancellationSuccess = {
+    ...correctionSuccess,
+    successReason: options.successReason ?? null,
+  };
   const dependencies: WhelpingBirthAdjustmentActionDependencies = {
     correctBirth: async (input) => {
       calls.push(input);
       if (options.throws) throw new Error("sql secret");
-      return options.correctionError ? failure(options.correctionError) : success;
+      return options.correctionError
+        ? failure(options.correctionError)
+        : correctionSuccess;
     },
     cancelBirth: async (input) => {
       calls.push(input);
       if (options.throws) throw new Error("sql secret");
-      return options.cancellationError ? failure(options.cancellationError) : success;
+      return options.cancellationError
+        ? failure(options.cancellationError)
+        : cancellationSuccess;
     },
     revalidatePath: (path) => paths.push(path),
   };
@@ -189,7 +201,7 @@ test("annule avec un motif et l’horodatage soumis", async () => {
   );
   expect(state).toEqual({
     status: "success",
-    message: "La saisie de naissance a été annulée.",
+    message: "Les données actives de la portée ont été recalculées.",
     replayed: false,
   });
   expect(testHarness.calls).toEqual([{
@@ -203,7 +215,10 @@ test("annule avec un motif et l’horodatage soumis", async () => {
 });
 
 test("conserve le rejeu idempotent dans l’état de succès", async () => {
-  const testHarness = harness({ replayed: true });
+  const testHarness = harness({
+    replayed: true,
+    successReason: "birth_cancellation_planning_preserved",
+  });
   const state = await cancelWhelpingBirthActionCore(
     intention,
     initialWhelpingBirthAdjustmentActionState,
@@ -213,11 +228,45 @@ test("conserve le rejeu idempotent dans l’état de succès", async () => {
 
   expect(state).toEqual({
     status: "success",
-    message: "La saisie de naissance a été annulée.",
+    message: "Une autre naissance reste active. La date réelle de naissance et le suivi postnatal de la portée ont été conservés.",
     replayed: true,
   });
   expect(testHarness.calls).toHaveLength(1);
 });
+
+for (const [successReason, expectedMessage] of [
+  [
+    "birth_cancellation_planning_restored",
+    "La date réelle de naissance a été retirée et le suivi de la portée a été remis dans son état antérieur.",
+  ],
+  [
+    "birth_cancellation_planning_preserved",
+    "Une autre naissance reste active. La date réelle de naissance et le suivi postnatal de la portée ont été conservés.",
+  ],
+  [
+    "birth_cancellation_no_planning_change",
+    "Cette annulation n’a nécessité aucune modification de la date réelle ni du planning de la portée.",
+  ],
+] as const) {
+  test(`présente le message de succès structuré ${successReason}`, async () => {
+    const testHarness = harness({ successReason });
+    const state = await cancelWhelpingBirthActionCore(
+      intention,
+      initialWhelpingBirthAdjustmentActionState,
+      form({
+        cancelled_at: "2026-07-22T12:00:00+02:00",
+        reason: "Doublon",
+      }),
+      testHarness.dependencies,
+    );
+
+    expect(state).toEqual({
+      status: "success",
+      message: expectedMessage,
+      replayed: false,
+    });
+  });
+}
 
 test("refuse une annulation sans motif ou horodatage valide", async () => {
   const testHarness = harness();
