@@ -67,6 +67,13 @@ export type WhelpingServiceErrorCode =
   | "no_change"
   | "later_active_birth_exists"
   | "birth_has_downstream_data"
+  | "birth_planning_modified"
+  | "birth_planning_task_added"
+  | "birth_planning_dependency_exists"
+  | "birth_date_changed_after_activation"
+  | "birth_planning_history_incomplete"
+  | "birth_planning_entity_missing"
+  | "birth_planning_state_inconsistent"
   | "birth_time_out_of_order"
   | "birth_weight_inconsistent"
   | "birth_color_already_recorded"
@@ -734,6 +741,20 @@ function commandFailure(reason: string | null): ErrorResult {
       return failure("later_active_birth_exists", "Seule la dernière naissance active peut être annulée.");
     case "birth_has_downstream_data":
       return failure("birth_has_downstream_data", "Cette naissance possède des données ultérieures et ne peut pas être annulée.");
+    case "birth_planning_modified":
+      return failure("birth_planning_modified", "Le planning a été modifié après cette naissance.");
+    case "birth_planning_task_added":
+      return failure("birth_planning_task_added", "Une tâche a été ajoutée au planning après cette naissance.");
+    case "birth_planning_dependency_exists":
+      return failure("birth_planning_dependency_exists", "Une tâche du planning possède maintenant une dépendance.");
+    case "birth_date_changed_after_activation":
+      return failure("birth_date_changed_after_activation", "La date de naissance utilisée par le planning a été corrigée.");
+    case "birth_planning_history_incomplete":
+      return failure("birth_planning_history_incomplete", "L’historique du planning est incomplet.");
+    case "birth_planning_entity_missing":
+      return failure("birth_planning_entity_missing", "Un élément attendu du planning n’existe plus.");
+    case "birth_planning_state_inconsistent":
+      return failure("birth_planning_state_inconsistent", "L’état d’activation du planning est incohérent.");
     case "birth_time_out_of_order":
       return failure("birth_time_out_of_order", "L’heure de naissance est incompatible avec la chronologie.");
     case "measured_before_birth":

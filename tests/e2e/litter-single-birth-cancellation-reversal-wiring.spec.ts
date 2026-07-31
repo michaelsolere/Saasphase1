@@ -99,10 +99,14 @@ const ids = {
   distinctCancelA: `${prefix}000000000155`,
   distinctCancelB: `${prefix}000000000156`,
   staleCancel: `${prefix}000000000157`,
+  snapshotCounterCancel: `${prefix}000000000158`,
+  planRevisionCancel: `${prefix}000000000159`,
+  stateInconsistentCancel: `${prefix}000000000160`,
   postActivationTaskCommand: `${prefix}000000000161`,
   correctionCommand: `${prefix}000000000162`,
   lateFutureTask: `${prefix}000000000163`,
   lateFutureTaskCommand: `${prefix}000000000164`,
+  unknownDetailCancel: `${prefix}000000000165`,
   reminder: `${prefix}000000000061`,
 } as const;
 
@@ -585,6 +589,16 @@ function rollbackState(litterId: string, birthId: string) {
         from public.litter_plan_actual_birth_activations row
         where row.litter_id = ${q(litterId)}::uuid
       ),
+      'activationSnapshots', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activation_reversal_snapshots row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'activationSnapshotChanges', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activation_reversal_changes row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
       'deactivations', (
         select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
         from public.litter_plan_actual_birth_activation_deactivations row
@@ -607,16 +621,27 @@ function rollbackState(litterId: string, birthId: string) {
 test("la migration capture les OID au runtime sans allocation locale figée", () => {
   const migration = readFileSync(resolve(
     process.cwd(),
-    "supabase/migrations/202607310011_litter_single_birth_cancellation_reversal_wiring.sql",
+    "supabase/migrations/202607310012_whelping_birth_cancellation_diagnostics.sql",
   ), "utf8");
 
   expect(migration).not.toMatch(/\b(?:23891|21411|25110)\b/);
   expect(migration).not.toMatch(/::oid\s*(?:<>|=)\s*\d+/);
   expect(migration).toContain(
-    "create temporary table pg_temp.litter_birth_cancellation_function_contracts",
+    "create temporary table pg_temp.whelping_birth_cancellation_diagnostic_contracts",
   );
   expect(migration).toContain("on commit drop");
   expect(migration).toContain("procedure.oid is distinct from captured.function_oid");
+  expect(migration).toContain("v_error_detail = pg_exception_detail");
+  expect(migration).toContain("WHELPING_REVERSAL_STATE_INCONSISTENT");
+  expect(sql(`
+    select position(
+      'reason := v_error_detail'
+      in procedure.prosrc
+    ) = 0
+    from pg_catalog.pg_proc procedure
+    where procedure.oid =
+      'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure
+  `)).toBe("t");
 
   const runtimeIdentity = jsonFromSqlOutput<Record<string, string>>(sql(`
     begin;
@@ -1172,15 +1197,21 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       snapshotChangeId: null,
       activationTaskChangeCount: 0,
     });
+    const beforePostActivationRefusal = rollbackState(
+      ids.postActivationLitter,
+      postActivationBirthId,
+    );
     expect(publicCancellationTransaction(
       postActivationBirthId,
       ids.postActivationCancel,
       "2026-08-14T04:00:00+02:00",
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_planning_task_added",
       replayed: false,
     });
+    expect(rollbackState(ids.postActivationLitter, postActivationBirthId))
+      .toEqual(beforePostActivationRefusal);
     expect(birthState(ids.postActivationLitter)).toMatchObject({
       actualBirthDate: "2026-08-14",
       activeBirths: 1,
@@ -1491,6 +1522,10 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       Number(correctionReconciled.reconciliationCount) +
       Number(correctionReconciled.seriesReconciliationCount),
     ).toBeGreaterThan(0);
+    const beforeCorrectedDateRefusal = rollbackState(
+      ids.correctionLitter,
+      correctionBirthId,
+    );
     expect(publicCancellationTransaction(
       correctionBirthId,
       ids.correctionCancel,
@@ -1499,9 +1534,11 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       1,
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_date_changed_after_activation",
       replayed: false,
     });
+    expect(rollbackState(ids.correctionLitter, correctionBirthId))
+      .toEqual(beforeCorrectedDateRefusal);
     expect(birthState(ids.correctionLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
       activeBirths: 1,
@@ -1561,15 +1598,21 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       delete from public.litter_care_tasks
       where id = ${q(missingTaskId)}::uuid
     `);
+    const beforeMissingEntityRefusal = rollbackState(
+      ids.missingEntityLitter,
+      missingEntityBirthId,
+    );
     expect(publicCancellationTransaction(
       missingEntityBirthId,
       ids.missingEntityCancel,
       "2026-08-17T04:00:00+02:00",
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_planning_entity_missing",
       replayed: false,
     });
+    expect(rollbackState(ids.missingEntityLitter, missingEntityBirthId))
+      .toEqual(beforeMissingEntityRefusal);
     expect(birthState(ids.missingEntityLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
       activeBirths: 1,
@@ -1600,6 +1643,29 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       cancelCommandCount: 0,
       snapshotChangeStillPresent: true,
     });
+
+    sql(`
+      set session_replication_role = replica;
+      update public.litter_plan_actual_birth_activation_reversal_snapshots
+      set task_insert_count = task_insert_count + 1
+      where activation_id = ${q(missingEntityActivation)}::uuid;
+      set session_replication_role = origin;
+    `);
+    const beforeCounterRefusal = rollbackState(
+      ids.missingEntityLitter,
+      missingEntityBirthId,
+    );
+    expect(publicCancellationTransaction(
+      missingEntityBirthId,
+      ids.snapshotCounterCancel,
+      "2026-08-17T04:10:00+02:00",
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_planning_history_incomplete",
+      replayed: false,
+    });
+    expect(rollbackState(ids.missingEntityLitter, missingEntityBirthId))
+      .toEqual(beforeCounterRefusal);
 
     await applyModel(
       owner,
@@ -1651,15 +1717,21 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
         limit 1
       )
     `);
+    const beforeDivergenceRefusal = rollbackState(
+      ids.divergenceLitter,
+      divergenceBirthId,
+    );
     expect(publicCancellationTransaction(
       divergenceBirthId,
       ids.divergenceCancel,
       "2026-08-10T04:00:00+02:00",
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_planning_modified",
       replayed: false,
     });
+    expect(rollbackState(ids.divergenceLitter, divergenceBirthId))
+      .toEqual(beforeDivergenceRefusal);
     expect(birthState(ids.divergenceLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1703,21 +1775,72 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       order by change.sequence_no
       limit 1
     `);
+    const beforeDependencyRefusal = rollbackState(
+      ids.dependencyLitter,
+      dependencyBirthId,
+    );
     expect(publicCancellationTransaction(
       dependencyBirthId,
       ids.dependencyCancel,
       "2026-08-11T04:00:00+02:00",
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_planning_dependency_exists",
       replayed: false,
     });
+    expect(rollbackState(ids.dependencyLitter, dependencyBirthId))
+      .toEqual(beforeDependencyRefusal);
     expect(birthState(ids.dependencyLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
       reversals: 0,
       deactivations: 0,
     });
+
+    sql(`
+      update public.litter_plans
+      set revision = revision + 1
+      where litter_id = ${q(ids.dependencyLitter)}::uuid
+        and status = 'active';
+    `);
+    const beforePlanRevisionRefusal = rollbackState(
+      ids.dependencyLitter,
+      dependencyBirthId,
+    );
+    expect(publicCancellationTransaction(
+      dependencyBirthId,
+      ids.planRevisionCancel,
+      "2026-08-11T04:10:00+02:00",
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_planning_modified",
+      replayed: false,
+    });
+    expect(rollbackState(ids.dependencyLitter, dependencyBirthId))
+      .toEqual(beforePlanRevisionRefusal);
+
+    sql(`
+      set session_replication_role = replica;
+      update public.litter_plan_actual_birth_activations
+      set whelping_client_command_id = ${q(ids.dependencyOpen)}::uuid
+      where litter_id = ${q(ids.dependencyLitter)}::uuid;
+      set session_replication_role = origin;
+    `);
+    const beforeStateRefusal = rollbackState(
+      ids.dependencyLitter,
+      dependencyBirthId,
+    );
+    expect(publicCancellationTransaction(
+      dependencyBirthId,
+      ids.stateInconsistentCancel,
+      "2026-08-11T04:20:00+02:00",
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_planning_state_inconsistent",
+      replayed: false,
+    });
+    expect(rollbackState(ids.dependencyLitter, dependencyBirthId))
+      .toEqual(beforeStateRefusal);
 
     const legacyBirthId = await createBirth(
       owner,
@@ -1733,15 +1856,21 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       where activation_id = ${q(activationId(ids.legacyLitter))}::uuid;
       commit
     `);
+    const beforeLegacyRefusal = rollbackState(
+      ids.legacyLitter,
+      legacyBirthId,
+    );
     expect(publicCancellationTransaction(
       legacyBirthId,
       ids.legacyCancel,
       "2026-08-12T04:00:00+02:00",
     )).toMatchObject({
       outcome: "error",
-      reason: "birth_has_downstream_data",
+      reason: "birth_planning_history_incomplete",
       replayed: false,
     });
+    expect(rollbackState(ids.legacyLitter, legacyBirthId))
+      .toEqual(beforeLegacyRefusal);
     expect(birthState(ids.legacyLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1767,6 +1896,31 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       ids.rollbackLitter,
       rollbackBirthId,
     );
+    expect(publicCancellationTransaction(
+      rollbackBirthId,
+      ids.unknownDetailCancel,
+      "2026-08-13T03:50:00+02:00",
+      `
+        create function pg_temp.fail_plan_reversal_with_unknown_detail()
+        returns trigger language plpgsql as $trigger$
+        begin
+          raise exception 'private detail intentionally unknown'
+            using
+              errcode = '23514',
+              detail = 'WHELPING_REVERSAL_UNKNOWN_TEST_DETAIL';
+        end;
+        $trigger$;
+        create trigger e7310011_unknown_plan_reversal_detail
+        before delete on public.litter_care_tasks
+        for each row execute function pg_temp.fail_plan_reversal_with_unknown_detail();
+      `,
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
+    expect(rollbackState(ids.rollbackLitter, rollbackBirthId))
+      .toEqual(beforeForcedFailure);
     expect(publicCancellationTransaction(
       rollbackBirthId,
       ids.rollbackCancel,

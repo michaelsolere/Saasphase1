@@ -927,7 +927,9 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.postActivationLitter,
       ids.postActivationCancel,
       "2026-08-14T04:00:00+02:00",
-    )).toThrow(/post-activation planning data is not reversible/);
+    )).toThrow(
+      /post-activation planning task is not reversible[\s\S]*WHELPING_REVERSAL_TASK_ADDED/,
+    );
     expect(birthState(ids.postActivationLitter)).toMatchObject({
       actualBirthDate: "2026-08-14",
       activeBirths: 1,
@@ -1243,7 +1245,7 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       "",
       1,
     )).toThrow(
-      /first-birth activation reversal invariant failed|first-birth reversal plan revision diverged|first-birth reversal entity state diverged/,
+      /first-birth activation date diverged[\s\S]*WHELPING_REVERSAL_BIRTH_DATE_CHANGED/,
     );
     expect(birthState(ids.correctionLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
@@ -1309,7 +1311,9 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.missingEntityLitter,
       ids.missingEntityCancel,
       "2026-08-17T04:00:00+02:00",
-    )).toThrow(/first-birth reversal entity state diverged/);
+    )).toThrow(
+      /first-birth reversal entity is missing[\s\S]*WHELPING_REVERSAL_ENTITY_MISSING/,
+    );
     expect(birthState(ids.missingEntityLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
       activeBirths: 1,
