@@ -73,6 +73,13 @@ export type WhelpingBirthAdjustmentUxReason =
   | "stale_revision"
   | "later_active_birth"
   | "protected_downstream"
+  | "birth_planning_modified"
+  | "birth_planning_task_added"
+  | "birth_planning_dependency_exists"
+  | "birth_date_changed_after_activation"
+  | "birth_planning_history_incomplete"
+  | "birth_planning_entity_missing"
+  | "birth_planning_state_inconsistent"
   | "already_cancelled"
   | "conflict"
   | "technical";
@@ -387,6 +394,41 @@ function adjustmentServiceMessage(
       return {
         message: "Des informations ont été ajoutées ou modifiées depuis cette naissance.\nLe SaaS ne peut pas annuler la saisie sans risquer d’effacer un travail effectué ensuite.\n\nAucune donnée n’a été modifiée.",
         uxReason: "protected_downstream" as const,
+      };
+    case "birth_planning_modified":
+      return {
+        message: "Le planning a été modifié après cette naissance.\n\nL’annulation automatique risquerait d’effacer un choix ou une action\nenregistrée ensuite.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_modified" as const,
+      };
+    case "birth_planning_task_added":
+      return {
+        message: "Une tâche a été ajoutée au planning après cette naissance.\n\nLe SaaS ne peut pas déterminer automatiquement si cette tâche doit être\nconservée ou supprimée.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_task_added" as const,
+      };
+    case "birth_planning_dependency_exists":
+      return {
+        message: "Une tâche créée lors de la naissance est maintenant utilisée par un rappel\nou une autre action du SaaS.\n\nCette dépendance doit être examinée avant de pouvoir annuler la saisie.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_dependency_exists" as const,
+      };
+    case "birth_date_changed_after_activation":
+      return {
+        message: "La date de naissance utilisée pour activer le planning a été corrigée.\n\nL’ancien état du planning ne peut plus être restauré automatiquement\navec suffisamment de sécurité.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_date_changed_after_activation" as const,
+      };
+    case "birth_planning_history_incomplete":
+      return {
+        message: "Cette naissance ne possède pas tout l’historique nécessaire à une\nrestauration automatique du planning.\n\nL’annulation reste protégée afin de préserver les données existantes.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_history_incomplete" as const,
+      };
+    case "birth_planning_entity_missing":
+      return {
+        message: "Un élément attendu du planning n’existe plus.\n\nLe SaaS ne peut pas reconstituer automatiquement un état complet et fiable.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_entity_missing" as const,
+      };
+    case "birth_planning_state_inconsistent":
+      return {
+        message: "L’historique de cette activation ne permet pas une annulation automatique sûre.\n\nAucune donnée n’a été modifiée.",
+        uxReason: "birth_planning_state_inconsistent" as const,
       };
     case "birth_time_out_of_order":
       return { message: "L’heure indiquée est incompatible avec l’ordre des naissances." };

@@ -1472,3 +1472,51 @@ après la véritable annulation, puis le second en attente sur le verrou
 canonique de la commande historique. Après libération de la barrière, le
 premier résultat porte `replayed = false`, le second `replayed = true`, avec
 une seule restauration, une seule désactivation et aucun détail dupliqué.
+
+## Correctif du 2026-07-31 — Diagnostics d’annulation d’une naissance
+
+La migration additive
+`202607310012_whelping_birth_cancellation_diagnostics` affine les refus sûrs
+de `cancel_whelping_birth` sans changer sa signature publique, son OID, son
+propriétaire, sa configuration, son ACL, son statut `security definer` ou son
+DTO historique à neuf champs. Les deux fonctions privées de restauration
+conservent également leur identité et leur surface d’accès.
+
+Le moteur privé classe désormais ses invariants fermés avec des détails SQL
+internes distincts. Le point d’entrée public les réduit à sept raisons stables :
+
+- `birth_planning_modified` lorsque le plan ou une entité photographiée a été
+  modifié après l’activation ;
+- `birth_planning_task_added` lorsqu’une tâche postérieure ne figure pas dans
+  la photographie ;
+- `birth_planning_dependency_exists` lorsqu’une dépendance métier empêche la
+  restauration ;
+- `birth_date_changed_after_activation` lorsque la date réelle de la portée a
+  changé depuis l’activation ;
+- `birth_planning_history_incomplete` lorsque la photographie ou son historique
+  est incomplet ;
+- `birth_planning_entity_missing` lorsqu’une entité attendue a disparu ;
+- `birth_planning_state_inconsistent` lorsque les compteurs, sources,
+  activations ou états liés sont incohérents.
+
+Cette taxonomie reste volontairement fermée. Un détail interne connu du refus
+historique mais non classé est ramené à `birth_has_downstream_data`. Toute
+erreur inattendue reste `technical_error`. Aucun diagnostic ne dépend d’une
+analyse de texte côté TypeScript et aucun détail SQL, identifiant ou structure
+interne n’est exposé à l’interface.
+
+Il n’existe aucun prédiagnostic : la raison apparaît uniquement après la
+tentative réelle d’annulation et provient de la branche autoritative du moteur
+privé qui refuse la restauration.
+
+Les sept raisons ont chacune un message utilisateur exact. Elles conservent la
+même présentation protégée et les mêmes actions que le refus historique :
+fermer le dialogue ou revenir à la fiche de portée. Les scénarios de refus
+vérifient l’absence de mutation de la naissance, du planning, de la date réelle
+et des commandes d’ajustement ; le bloc de sous-transaction continue donc à
+garantir le rollback global.
+
+Le contrat de succès, le rejeu, la concurrence et le cas
+`later_active_birth_exists` restent inchangés. La limite assumée de ce lot est
+de ne pas enrichir le succès et de ne pas révéler l’élément, la tâche ou la
+dépendance précise à l’origine du refus.

@@ -234,6 +234,13 @@ for (const [code, uxReason, expected, stale] of [
   ["stale_revision", "stale_revision", "Cette naissance a été modifiée depuis l’ouverture de cette fenêtre.\nAucune donnée n’a été changée.", true],
   ["later_active_birth_exists", "later_active_birth", "Cette naissance ne peut pas être annulée tant qu’une naissance enregistrée après elle reste active.\n\nLa naissance la plus récente doit être traitée en premier.", false],
   ["birth_has_downstream_data", "protected_downstream", "Des informations ont été ajoutées ou modifiées depuis cette naissance.\nLe SaaS ne peut pas annuler la saisie sans risquer d’effacer un travail effectué ensuite.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_modified", "birth_planning_modified", "Le planning a été modifié après cette naissance.\n\nL’annulation automatique risquerait d’effacer un choix ou une action\nenregistrée ensuite.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_task_added", "birth_planning_task_added", "Une tâche a été ajoutée au planning après cette naissance.\n\nLe SaaS ne peut pas déterminer automatiquement si cette tâche doit être\nconservée ou supprimée.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_dependency_exists", "birth_planning_dependency_exists", "Une tâche créée lors de la naissance est maintenant utilisée par un rappel\nou une autre action du SaaS.\n\nCette dépendance doit être examinée avant de pouvoir annuler la saisie.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_date_changed_after_activation", "birth_date_changed_after_activation", "La date de naissance utilisée pour activer le planning a été corrigée.\n\nL’ancien état du planning ne peut plus être restauré automatiquement\navec suffisamment de sécurité.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_history_incomplete", "birth_planning_history_incomplete", "Cette naissance ne possède pas tout l’historique nécessaire à une\nrestauration automatique du planning.\n\nL’annulation reste protégée afin de préserver les données existantes.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_entity_missing", "birth_planning_entity_missing", "Un élément attendu du planning n’existe plus.\n\nLe SaaS ne peut pas reconstituer automatiquement un état complet et fiable.\n\nAucune donnée n’a été modifiée.", false],
+  ["birth_planning_state_inconsistent", "birth_planning_state_inconsistent", "L’historique de cette activation ne permet pas une annulation automatique sûre.\n\nAucune donnée n’a été modifiée.", false],
   ["birth_cancelled", "already_cancelled", "Cette naissance est déjà annulée.\nRechargez le Journal pour afficher son état actuel.", false],
   ["conflict", "conflict", "Cette tentative entre en conflit avec une tentative précédente.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.", false],
   ["database_error", "technical", "Un problème technique empêche momentanément l’annulation.\nAucune donnée n’a été modifiée.\n\nRechargez le Journal avant de réessayer.", false],
@@ -282,6 +289,26 @@ test("ne déduit jamais le motif UX depuis le texte de l’erreur", async () => 
   });
   expect(JSON.stringify(states)).not.toContain("stale_revision");
   expect(JSON.stringify(states)).not.toContain("détail interne");
+});
+
+test("ne déduit aucun diagnostic détaillé depuis le texte d’une erreur générique", async () => {
+  const testHarness = harness({
+    cancellationError: "birth_has_downstream_data",
+    errorMessage: "birth_planning_dependency_exists WHELPING_REVERSAL_TASK_ADDED",
+  });
+  const state = await cancelWhelpingBirthActionCore(
+    intention,
+    initialWhelpingBirthAdjustmentActionState,
+    form({ cancelled_at: "2026-07-22T12:00:00+02:00", reason: "Doublon" }),
+    testHarness.dependencies,
+  );
+
+  expect(state).toMatchObject({
+    status: "error",
+    uxReason: "protected_downstream",
+  });
+  expect(JSON.stringify(state)).not.toContain("WHELPING_REVERSAL_TASK_ADDED");
+  expect(JSON.stringify(state)).not.toContain("birth_planning_dependency_exists");
 });
 
 test("masque une exception et ne divulgue aucun identifiant", async () => {

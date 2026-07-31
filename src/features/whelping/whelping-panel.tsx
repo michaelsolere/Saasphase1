@@ -1170,8 +1170,16 @@ function BirthCancellationDialog({
     return nextState;
   }, [action, birth.birthOrder, onSuccess, router, setOpen]);
   const [state, formAction] = useActionState(submitAction, initialWhelpingBirthAdjustmentActionState);
-  const protectedDownstream =
-    state.status === "error" && state.uxReason === "protected_downstream";
+  const protectedDownstream = state.status === "error" && (
+    state.uxReason === "protected_downstream" ||
+    state.uxReason === "birth_planning_modified" ||
+    state.uxReason === "birth_planning_task_added" ||
+    state.uxReason === "birth_planning_dependency_exists" ||
+    state.uxReason === "birth_date_changed_after_activation" ||
+    state.uxReason === "birth_planning_history_incomplete" ||
+    state.uxReason === "birth_planning_entity_missing" ||
+    state.uxReason === "birth_planning_state_inconsistent"
+  );
   const openPlanning = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
     setOpen(false);

@@ -9,8 +9,10 @@ import {
   recordWhelpingBirthWeightCore,
   recordWhelpingEventCore,
 } from "../../src/features/whelping/whelping-core";
+import { createLitterCareTaskCore } from "../../src/features/litter-journal/litter-care-tasks-core";
+import type { Json } from "../../src/types/database.types";
 import { createTestAnimal, createTestLitter, createTestOrganization } from "./helpers/fixtures/breeding-fixtures";
-import { createE2eFixtureRegistry } from "./helpers/fixtures/fixture-registry";
+import { createE2eFixtureRegistry, type FixtureTable } from "./helpers/fixtures/fixture-registry";
 import { registerActualWhelpingCommands } from "./helpers/fixtures/whelping-fixtures";
 import { createAuthenticatedSupabaseClient, E2E_OWNER_EMAIL, E2E_OWNER_PASSWORD, runE2eSqlSync } from "./helpers/supabase";
 
@@ -22,6 +24,7 @@ const ids = {
   mother: "9f220002-0000-4000-8000-000000000001", father: "9f220002-0000-4000-8000-000000000002", litter: "9f220002-0000-4000-8000-000000000011",
   open: "9f220002-0000-4000-8000-000000000021", event: "9f220002-0000-4000-8000-000000000022", first: "9f220002-0000-4000-8000-000000000023", firstWeight: "9f220002-0000-4000-8000-000000000024", second: "9f220002-0000-4000-8000-000000000025", concurrent: "9f220002-0000-4000-8000-000000000026", replacement: "9f220002-0000-4000-8000-000000000027", close: "9f220002-0000-4000-8000-000000000028", downstreamWeight: "9f220002-0000-4000-8000-000000000029",
   foreignOrganization: "9f220002-0000-4000-8000-000000000041", foreignMembership: "9f220002-0000-4000-8000-000000000042", foreignMother: "9f220002-0000-4000-8000-000000000043", foreignLitter: "9f220002-0000-4000-8000-000000000044", foreignOpen: "9f220002-0000-4000-8000-000000000045", foreignBirth: "9f220002-0000-4000-8000-000000000046",
+  diagnosticMother: "9f220002-0000-4000-8000-000000000061", diagnosticLitter: "9f220002-0000-4000-8000-000000000062", diagnosticTemplate: "9f220002-0000-4000-8000-000000000063", diagnosticModelCommand: "9f220002-0000-4000-8000-000000000064", diagnosticApplyCommand: "9f220002-0000-4000-8000-000000000065", diagnosticOpen: "9f220002-0000-4000-8000-000000000066", diagnosticBirth: "9f220002-0000-4000-8000-000000000067", diagnosticManualTask: "9f220002-0000-4000-8000-000000000068",
 } as const;
 const label = "E2E whelping adjustment registry";
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -33,6 +36,28 @@ async function login(page: Page) { await page.goto("/login"); await page.getByLa
 function panel(page: Page) { return page.getByRole("heading", { name: "Mise-bas", exact: true }).locator("xpath=ancestor::section[1]"); }
 async function dialogFrom(entry: Locator, name: string | RegExp) { await entry.getByRole("button", { name }).click(); const dialog = entry.page().getByRole("dialog"); await expect(dialog).toBeVisible(); return dialog; }
 async function register(registry: ReturnType<typeof createE2eFixtureRegistry>, commandIds: string[], adjustments: { birthId: string; resultingRevisionNo: number }[] = []) { await registerActualWhelpingCommands(execute, registry, { organizationId, litterId: ids.litter, commandIds, adjustments }); }
+function registerRows(registry: ReturnType<typeof createE2eFixtureRegistry>, table: FixtureTable, where: string) {
+  const rows = JSON.parse(sql(`select coalesce(json_agg(id::text order by id), '[]'::json)::text from public.${table} where ${where}`)) as string[];
+  for (const id of rows) if (!registry.has(table, id)) registry.register(table, id);
+  return rows;
+}
+async function expectProtectedDiagnostic(page: Page, expectedMessage: string) {
+  const whelping = panel(page);
+  const card = whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first();
+  const dialog = await dialogFrom(card, "Annuler cette saisie");
+  await dialog.getByLabel("Motif de l’annulation").fill("Vérification du diagnostic métier");
+  await dialog.getByRole("button", { name: "Annuler cette saisie" }).click();
+  await expect(dialog.getByRole("heading", { name: "Annulation protégée" })).toBeVisible();
+  await expect(dialog).toContainText(expectedMessage);
+  await expect(dialog).toContainText("Aucune donnée n’a été modifiée.");
+  await expect(dialog.getByRole("link", { name: "Voir le planning" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Corriger la naissance" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Fermer" })).toBeVisible();
+  const dom = await dialog.evaluate((element) => element.outerHTML);
+  expect(dom).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  expect(dom).not.toMatch(/WHELPING_REVERSAL_|birth_planning_|pg_exception|sqlstate|litter_care_tasks/i);
+  await dialog.getByRole("button", { name: "Fermer" }).click();
+}
 
 test("corrige et annule une naissance sans exposer les intentions techniques", async ({ page }) => {
   const registry = createE2eFixtureRegistry(execute, "e2e-whelping-birth-adjustment-ui");
@@ -182,6 +207,62 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     setOwnerRole("viewer"); await page.reload(); whelping = panel(page); await whelping.getByText("Historique des compléments et rectifications").click(); await expect(whelping.getByText("Naissance corrigée").first()).toBeVisible(); await expect(whelping.getByRole("button", { name: "Corriger" })).toHaveCount(0);
     await expect(whelping.getByRole("button", { name: /Corriger ou annuler cette saisie|Annuler cette saisie|Compléter la naissance/ })).toHaveCount(0);
     setOwnerRole("owner"); const closed = await closeWhelpingSessionCore({ sessionId: opened.sessionId, clientCommandId: ids.close, endedAt: "2026-07-22T10:30:00+02:00" }, owner); expect(closed.outcome).toBe("success"); if (closed.outcome === "success") registry.register("whelping_events", closed.eventId); await register(registry, [ids.close]);
+
+    const diagnosticMother = await createTestAnimal(execute, registry, { id: ids.diagnosticMother, organizationId, ownerId, callName: `${label} mère diagnostics`, sex: "female" });
+    await createTestLitter(execute, registry, { id: ids.diagnosticLitter, organizationId, ownerId, motherId: diagnosticMother, name: `${label} portée diagnostics`, status: "birth_expected", expectedBirthDate: "2026-08-24" });
+    await execute(`insert into public.litter_care_task_templates(id,organization_id,title,description,category,target_scope,anchor_type,offset_days,species,breed,is_active,sort_order,created_by,updated_by) values(${q(ids.diagnosticTemplate)}::uuid,${q(organizationId)}::uuid,'Contrôle postnatal diagnostic','Fixture navigateur des refus protégés','offspring_health','all_offspring','actual_birth',1,'dog','Golden Retriever',true,0,${q(ownerId)}::uuid,${q(ownerId)}::uuid)`);
+    registry.register("litter_care_task_templates", ids.diagnosticTemplate);
+    const model = await owner.rpc("create_litter_planning_model", {
+      p_organization_id: organizationId,
+      p_client_command_id: ids.diagnosticModelCommand,
+      p_title: "Modèle diagnostics annulation E2E",
+      p_description: null,
+      p_species: "dog",
+      p_breed: "Golden Retriever",
+      p_is_active: true,
+      p_items: [{ organizationTemplateId: ids.diagnosticTemplate, itemKind: "task", priority: "important", anchorType: "actual_birth", pointOffsetDays: 1, displayOrder: 0, isRequired: true, isSelectedByDefault: true }] as unknown as Json,
+    });
+    expect(model.error).toBeNull(); expect(model.data?.[0]?.outcome).toBe("success");
+    const modelId = model.data?.[0]?.model_id; if (!modelId) throw new Error("diagnostic model fixture failed");
+    registry.register("litter_planning_models", modelId);
+    registerRows(registry, "litter_planning_model_commands", `client_command_id=${q(ids.diagnosticModelCommand)}::uuid`);
+    registerRows(registry, "litter_planning_model_items", `model_id=${q(modelId)}::uuid`);
+    const applied = await owner.rpc("apply_litter_planning_model", { p_litter_id: ids.diagnosticLitter, p_planning_model_id: modelId, p_client_command_id: ids.diagnosticApplyCommand, p_expected_model_revision: 1, p_expected_plan_revision: null, p_selected_model_item_ids: null, p_timezone_name: "Europe/Paris" });
+    expect(applied.error).toBeNull(); expect(applied.data?.[0]?.outcome).toBe("success");
+    const diagnosticPlanId = applied.data?.[0]?.litter_plan_id; if (!diagnosticPlanId) throw new Error("diagnostic plan fixture failed");
+    registry.register("litter_plans", diagnosticPlanId);
+    registerRows(registry, "litter_plan_application_commands", `client_command_id=${q(ids.diagnosticApplyCommand)}::uuid`);
+    registerRows(registry, "litter_plan_items", `litter_plan_id=${q(diagnosticPlanId)}::uuid`);
+    const diagnosticOpened = await openWhelpingSessionCore({ litterId: ids.diagnosticLitter, clientCommandId: ids.diagnosticOpen, startedAt: "2026-08-24T08:00:00+02:00", timezoneName: "Europe/Paris" }, owner);
+    expect(diagnosticOpened.outcome).toBe("success"); if (diagnosticOpened.outcome !== "success") throw new Error("diagnostic open fixture failed");
+    registry.register("whelping_sessions", diagnosticOpened.sessionId);
+    await registerActualWhelpingCommands(execute, registry, { organizationId, litterId: ids.diagnosticLitter, commandIds: [ids.diagnosticOpen] });
+    const diagnosticBirth = await recordWhelpingBirthCore({ sessionId: diagnosticOpened.sessionId, clientCommandId: ids.diagnosticBirth, occurredAt: "2026-08-24T09:00:00+02:00", sex: "female", viability: "alive" }, owner);
+    expect(diagnosticBirth.outcome).toBe("success"); if (diagnosticBirth.outcome !== "success") throw new Error("diagnostic birth fixture failed");
+    registry.register("whelping_births", diagnosticBirth.birthId); registry.register("animals", diagnosticBirth.animalId); registry.register("whelping_events", diagnosticBirth.eventId);
+    await registerActualWhelpingCommands(execute, registry, { organizationId, litterId: ids.diagnosticLitter, commandIds: [ids.diagnosticBirth] });
+    const diagnosticTaskIds = registerRows(registry, "litter_care_tasks", `litter_id=${q(ids.diagnosticLitter)}::uuid`);
+    const diagnosticTaskId = diagnosticTaskIds[0]; if (!diagnosticTaskId) throw new Error("diagnostic task fixture failed");
+    const activationId = sql(`select id::text from public.litter_plan_actual_birth_activations where litter_id=${q(ids.diagnosticLitter)}::uuid`);
+    const taskSnapshot = sql(`select snapshot_after::text from public.litter_plan_actual_birth_activation_reversal_changes where activation_id=${q(activationId)}::uuid and entity_id=${q(diagnosticTaskId)}::uuid`);
+    const adjustmentCount = () => Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.diagnosticLitter)}::uuid`));
+    const expectNoPartialCancellation = () => {
+      expect(sql(`select cancelled_at is null from public.whelping_births where id=${q(diagnosticBirth.birthId)}::uuid`)).toBe("t");
+      expect(adjustmentCount()).toBe(0);
+      expect(sql(`select actual_birth_date::text from public.litters where id=${q(ids.diagnosticLitter)}::uuid`)).toBe("2026-08-24");
+    };
+
+    await execute(`update public.litter_care_tasks set planned_for=planned_for+1,suggested_for=suggested_for+1,revision_no=revision_no+1,updated_by=${q(ownerId)}::uuid where id=${q(diagnosticTaskId)}::uuid`);
+    await page.setViewportSize({ width: 1280, height: 900 }); await page.goto(`/litters/journal?litter=${ids.diagnosticLitter}`);
+    await expectProtectedDiagnostic(page, "Le planning a été modifié après cette naissance."); expectNoPartialCancellation();
+
+    await execute(`set session_replication_role=replica; delete from public.litter_care_tasks where id=${q(diagnosticTaskId)}::uuid; insert into public.litter_care_tasks select (pg_catalog.jsonb_populate_record(null::public.litter_care_tasks,${q(taskSnapshot)}::jsonb)).*; set session_replication_role=origin;`);
+    const manualTask = await createLitterCareTaskCore({ litterId: ids.diagnosticLitter, clientCommandId: ids.diagnosticManualTask, category: "other", targetScope: "litter", title: "Tâche ajoutée après activation", description: null, plannedFor: "2026-08-26" }, owner);
+    expect(manualTask.outcome).toBe("success"); if (manualTask.outcome !== "success") throw new Error("diagnostic manual task fixture failed"); registry.register("litter_care_tasks", manualTask.taskId);
+    await page.reload(); await expectProtectedDiagnostic(page, "Une tâche a été ajoutée au planning après cette naissance."); expectNoPartialCancellation();
+
+    await execute(`delete from public.litter_care_tasks where id=${q(manualTask.taskId)}::uuid; begin; set local session_replication_role=replica; set local app.fixture_cleanup='on'; delete from public.litter_plan_actual_birth_activation_reversal_changes where activation_id=${q(activationId)}::uuid; delete from public.litter_plan_actual_birth_activation_reversal_snapshots where activation_id=${q(activationId)}::uuid; commit;`);
+    await page.reload(); await expectProtectedDiagnostic(page, "Cette naissance ne possède pas tout l’historique nécessaire à une restauration automatique du planning."); expectNoPartialCancellation();
   } finally {
     setOwnerRole("owner"); await registry.cleanup(); const remaining = await registry.assertEmpty(); console.info(JSON.stringify({ whelpingBirthAdjustmentUiCleanup: { remaining } })); expect(Object.values(remaining).every((count) => count === 0)).toBe(true);
   }
