@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   cancelWhelpingBirthCore,
@@ -601,6 +603,65 @@ function rollbackState(litterId: string, birthId: string) {
     )::text
   `);
 }
+
+test("la migration capture les OID au runtime sans allocation locale figée", () => {
+  const migration = readFileSync(resolve(
+    process.cwd(),
+    "supabase/migrations/202607310011_litter_single_birth_cancellation_reversal_wiring.sql",
+  ), "utf8");
+
+  expect(migration).not.toMatch(/\b(?:23891|21411|25110)\b/);
+  expect(migration).not.toMatch(/::oid\s*(?:<>|=)\s*\d+/);
+  expect(migration).toContain(
+    "create temporary table pg_temp.litter_birth_cancellation_function_contracts",
+  );
+  expect(migration).toContain("on commit drop");
+  expect(migration).toContain("procedure.oid is distinct from captured.function_oid");
+
+  const runtimeIdentity = jsonFromSqlOutput<Record<string, string>>(sql(`
+    begin;
+    create temporary table pg_temp.oid_portability_probe on commit drop as
+    select procedure.proname, procedure.oid as before_oid
+    from pg_catalog.pg_proc procedure
+    where procedure.oid in (
+      'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+      'public.cancel_whelping_birth_core_internal(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+      'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure
+    );
+    do $probe$
+    declare
+      v_definition text;
+    begin
+      select pg_catalog.pg_get_functiondef(
+        'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure
+      ) into v_definition;
+      execute v_definition;
+    end;
+    $probe$;
+    select json_build_object(
+      'publicBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'cancel_whelping_birth'
+      ),
+      'publicAfter', 'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure::oid::text,
+      'coreBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'cancel_whelping_birth_core_internal'
+      ),
+      'coreAfter', 'public.cancel_whelping_birth_core_internal(uuid,uuid,integer,timestamptz,text)'::regprocedure::oid::text,
+      'reversalBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'reverse_litter_plan_after_cancelled_first_birth_internal'
+      ),
+      'reversalAfter', 'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure::oid::text
+    )::text;
+    rollback;
+  `));
+
+  expect(runtimeIdentity.publicBefore).toBe(runtimeIdentity.publicAfter);
+  expect(runtimeIdentity.coreBefore).toBe(runtimeIdentity.coreAfter);
+  expect(runtimeIdentity.reversalBefore).toBe(runtimeIdentity.reversalAfter);
+});
 
 test("raccordement public atomique, prudent, audité et idempotent", async () => {
   cleanup();

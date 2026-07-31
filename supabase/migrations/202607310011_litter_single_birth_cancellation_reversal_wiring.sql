@@ -4,6 +4,61 @@ begin;
 -- engine without changing the historical core or either public/private
 -- signature.
 
+create temporary table pg_temp.litter_birth_cancellation_function_contracts (
+  function_name text primary key,
+  function_oid oid not null,
+  owner_name name not null,
+  security_definer boolean not null,
+  function_config text[],
+  function_acl aclitem[],
+  identity_arguments text not null,
+  all_arguments text not null,
+  function_result text not null,
+  argument_defaults text,
+  normalized_body_fingerprint text not null
+) on commit drop;
+
+insert into pg_temp.litter_birth_cancellation_function_contracts (
+  function_name,
+  function_oid,
+  owner_name,
+  security_definer,
+  function_config,
+  function_acl,
+  identity_arguments,
+  all_arguments,
+  function_result,
+  argument_defaults,
+  normalized_body_fingerprint
+)
+select
+  procedure.proname,
+  procedure.oid,
+  pg_catalog.pg_get_userbyid(procedure.proowner),
+  procedure.prosecdef,
+  procedure.proconfig,
+  procedure.proacl,
+  pg_catalog.pg_get_function_identity_arguments(procedure.oid),
+  pg_catalog.pg_get_function_arguments(procedure.oid),
+  pg_catalog.pg_get_function_result(procedure.oid),
+  pg_catalog.pg_get_expr(procedure.proargdefaults, 0),
+  encode(
+    digest(
+      convert_to(
+        regexp_replace(procedure.prosrc, '\s+', ' ', 'g'),
+        'UTF8'
+      ),
+      'sha256'
+    ),
+    'hex'
+  )
+from pg_catalog.pg_proc procedure
+where procedure.oid in (
+  'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+  'public.cancel_whelping_birth_core_internal(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+  'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure
+);
+
 do $guard$
 declare
   v_public regprocedure :=
@@ -45,11 +100,12 @@ begin
     raise exception 'birth cancellation wiring overload contract diverged';
   end if;
 
-  if v_public::oid <> 23891
-    or v_core::oid <> 21411
-    or v_reversal::oid <> 25110
+  if (
+    select count(*)
+    from pg_temp.litter_birth_cancellation_function_contracts
+  ) <> 3
   then
-    raise exception 'birth cancellation wiring OID contract diverged';
+    raise exception 'birth cancellation wiring runtime capture failed';
   end if;
 
   if exists (
@@ -564,7 +620,42 @@ declare
   v_reversal regprocedure :=
     'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure;
 begin
-  if v_public::oid <> 23891
+  if exists (
+    select 1
+    from pg_catalog.pg_proc procedure
+    join pg_temp.litter_birth_cancellation_function_contracts captured
+      on captured.function_name = procedure.proname
+    where procedure.oid in (v_public, v_core, v_reversal)
+      and (
+        procedure.oid is distinct from captured.function_oid
+        or pg_catalog.pg_get_userbyid(procedure.proowner) is distinct from
+          captured.owner_name
+        or procedure.prosecdef is distinct from captured.security_definer
+        or procedure.proconfig is distinct from captured.function_config
+        or procedure.proacl is distinct from captured.function_acl
+        or pg_catalog.pg_get_function_identity_arguments(procedure.oid)
+          is distinct from captured.identity_arguments
+        or pg_catalog.pg_get_function_arguments(procedure.oid)
+          is distinct from captured.all_arguments
+        or pg_catalog.pg_get_function_result(procedure.oid)
+          is distinct from captured.function_result
+        or pg_catalog.pg_get_expr(procedure.proargdefaults, 0)
+          is distinct from captured.argument_defaults
+        or (
+          procedure.oid in (v_core, v_reversal)
+          and encode(
+            digest(
+              convert_to(
+                regexp_replace(procedure.prosrc, '\s+', ' ', 'g'),
+                'UTF8'
+              ),
+              'sha256'
+            ),
+            'hex'
+          ) is distinct from captured.normalized_body_fingerprint
+        )
+      )
+  )
     or (
       select pg_catalog.pg_get_userbyid(procedure.proowner) <> 'postgres'
         or not procedure.prosecdef
