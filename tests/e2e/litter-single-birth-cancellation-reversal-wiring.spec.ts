@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
+  cancelWhelpingBirthCore,
   correctWhelpingBirthCore,
   openWhelpingSessionCore,
   recordWhelpingBirthCore,
@@ -19,8 +22,8 @@ test.setTimeout(360_000);
 type TypedClient = SupabaseClient<Database>;
 
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const prefix = "e7310009-0000-4000-8000-";
-const like = "e7310009-%";
+const prefix = "e7310011-0000-4000-8000-";
+const like = "e7310011-%";
 const preModelCode = "dog-pre-whelping-temperature-monitoring";
 const postModelCode = "dog-postnatal-essential-care";
 
@@ -37,6 +40,7 @@ const ids = {
   lateBirthMother: `${prefix}000000000102`,
   correctionMother: `${prefix}000000000103`,
   missingEntityMother: `${prefix}000000000104`,
+  distinctMother: `${prefix}000000000105`,
   planLitter: `${prefix}000000000011`,
   noPlanLitter: `${prefix}000000000012`,
   divergenceLitter: `${prefix}000000000013`,
@@ -47,6 +51,7 @@ const ids = {
   lateBirthLitter: `${prefix}000000000112`,
   correctionLitter: `${prefix}000000000113`,
   missingEntityLitter: `${prefix}000000000114`,
+  distinctLitter: `${prefix}000000000115`,
   importCommand: `${prefix}000000000020`,
   planPreApply: `${prefix}000000000021`,
   planPostApply: `${prefix}000000000022`,
@@ -69,6 +74,7 @@ const ids = {
   lateBirthOpen: `${prefix}000000000132`,
   correctionOpen: `${prefix}000000000133`,
   missingEntityOpen: `${prefix}000000000134`,
+  distinctOpen: `${prefix}000000000135`,
   planBirth: `${prefix}000000000041`,
   noPlanBirth: `${prefix}000000000042`,
   divergenceBirth: `${prefix}000000000043`,
@@ -79,6 +85,7 @@ const ids = {
   lateBirthBirth: `${prefix}000000000142`,
   correctionBirth: `${prefix}000000000143`,
   missingEntityBirth: `${prefix}000000000144`,
+  distinctBirth: `${prefix}000000000145`,
   planCancel: `${prefix}000000000051`,
   noPlanCancel: `${prefix}000000000052`,
   divergenceCancel: `${prefix}000000000053`,
@@ -89,6 +96,9 @@ const ids = {
   lateBirthCancel: `${prefix}000000000152`,
   correctionCancel: `${prefix}000000000153`,
   missingEntityCancel: `${prefix}000000000154`,
+  distinctCancelA: `${prefix}000000000155`,
+  distinctCancelB: `${prefix}000000000156`,
+  staleCancel: `${prefix}000000000157`,
   postActivationTaskCommand: `${prefix}000000000161`,
   correctionCommand: `${prefix}000000000162`,
   lateFutureTask: `${prefix}000000000163`,
@@ -265,8 +275,8 @@ function seedScope() {
     insert into public.organizations (id, name, slug)
     values (
       ${q(ids.organization)}::uuid,
-      'Moteur restauration planning e7310009',
-      'moteur-restauration-planning-e7310009'
+      'Raccordement annulation restauration e7310011',
+      'raccordement-annulation-restauration-e7310011'
     );
     insert into public.memberships (
       id, organization_id, profile_id, role, status, created_by, updated_by
@@ -292,7 +302,8 @@ function seedScope() {
       (${q(ids.postActivationMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère tâche post-activation', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.lateBirthMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère naissance tardive', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.correctionMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère correction de date', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.missingEntityMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère entité disparue', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.missingEntityMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère entité disparue', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.distinctMother)}::uuid, ${q(ids.organization)}::uuid, 'Mère concurrence distincte', 'dog', 'Golden Retriever', 'female', 'breeding', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
     insert into public.litters (
       id, organization_id, name, species, breed, mother_id, status,
       mating_date, expected_birth_date, created_by, updated_by
@@ -306,7 +317,8 @@ function seedScope() {
       (${q(ids.postActivationLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée tâche post-activation', 'dog', 'Golden Retriever', ${q(ids.postActivationMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-14', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.lateBirthLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée naissance tardive', 'dog', 'Golden Retriever', ${q(ids.lateBirthMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-08', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
       (${q(ids.correctionLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée correction de date', 'dog', 'Golden Retriever', ${q(ids.correctionMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-16', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
-      (${q(ids.missingEntityLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée entité disparue', 'dog', 'Golden Retriever', ${q(ids.missingEntityMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-17', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
+      (${q(ids.missingEntityLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée entité disparue', 'dog', 'Golden Retriever', ${q(ids.missingEntityMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-17', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid),
+      (${q(ids.distinctLitter)}::uuid, ${q(ids.organization)}::uuid, 'Portée concurrence distincte', 'dog', 'Golden Retriever', ${q(ids.distinctMother)}::uuid, 'birth_expected', '2026-06-07', '2026-08-18', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid);
   `);
 }
 
@@ -410,74 +422,45 @@ function activationId(litterId: string) {
   `);
 }
 
-function reverseStatement(
+function publicCancellationStatement(
   birthId: string,
-  litterId: string,
   cancelCommandId: string,
   cancelledAt: string,
-  afterCancellationSql = "",
+  beforeCancellationSql = "",
   expectedBirthRevisionNo = 0,
 ) {
-  const activation = activationId(litterId);
   return `
     begin;
     set local request.jwt.claims =
       '{"sub":"${ownerId}","role":"authenticated"}';
-    do $block$
-    declare
-      v_cancel record;
-      v_result jsonb;
-    begin
-      select * into v_cancel
-      from public.cancel_whelping_birth_core_internal(
-        ${q(birthId)}::uuid,
-        ${q(cancelCommandId)}::uuid,
-        ${expectedBirthRevisionNo},
-        ${q(cancelledAt)}::timestamptz,
-        'Annulation fixture restauration'
-      );
-      if v_cancel.outcome is distinct from 'success' then
-        raise exception 'historical cancellation failed: %', v_cancel.reason;
-      end if;
-      ${afterCancellationSql}
-      v_result :=
-        public.reverse_litter_plan_after_cancelled_first_birth_internal(
-        ${q(ids.organization)}::uuid,
-        ${q(litterId)}::uuid,
-        ${q(activation)}::uuid,
-        ${q(cancelCommandId)}::uuid
-      );
-      perform pg_catalog.set_config(
-        'app.e2e_litter_plan_reversal_result',
-        v_result::text,
-        true
-      );
-    end;
-    $block$;
-    select pg_catalog.current_setting(
-      'app.e2e_litter_plan_reversal_result',
-      true
-    );
+    ${beforeCancellationSql}
+    select row_to_json(result)::text
+    from public.cancel_whelping_birth(
+      ${q(birthId)}::uuid,
+      ${q(cancelCommandId)}::uuid,
+      ${expectedBirthRevisionNo},
+      ${q(cancelledAt)}::timestamptz,
+      'Annulation fixture raccordement public'
+    ) result;
     commit;
   `;
 }
 
-function reverseTransaction(
+function publicCancellationTransaction(
   birthId: string,
-  litterId: string,
   cancelCommandId: string,
   cancelledAt: string,
-  afterCancellationSql = "",
+  beforeCancellationSql = "",
   expectedBirthRevisionNo = 0,
 ) {
-  sql(reverseStatement(
+  return jsonFromSqlOutput<Record<string, unknown>>(sql(
+    publicCancellationStatement(
     birthId,
-    litterId,
     cancelCommandId,
     cancelledAt,
-    afterCancellationSql,
+    beforeCancellationSql,
     expectedBirthRevisionNo,
-  ));
+  )));
 }
 
 function jsonFromSqlOutput<T>(output: string): T {
@@ -539,7 +522,148 @@ function birthState(litterId: string) {
   `);
 }
 
-test("restauration atomique, prudente, auditée, idempotente et privée", async () => {
+function rollbackState(litterId: string, birthId: string) {
+  return jsonSql<Record<string, unknown>>(`
+    select json_build_object(
+      'litter', (
+        select to_jsonb(row) from public.litters row
+        where row.id = ${q(litterId)}::uuid
+      ),
+      'birth', (
+        select to_jsonb(row) from public.whelping_births row
+        where row.id = ${q(birthId)}::uuid
+      ),
+      'animal', (
+        select to_jsonb(animal)
+        from public.animals animal
+        join public.whelping_births birth on birth.animal_id = animal.id
+        where birth.id = ${q(birthId)}::uuid
+      ),
+      'weights', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.animal_weight_measurements row
+        where row.source_birth_id = ${q(birthId)}::uuid
+      ),
+      'events', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.whelping_events row
+        join public.whelping_sessions session on session.id = row.session_id
+        where session.litter_id = ${q(litterId)}::uuid
+      ),
+      'adjustments', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.whelping_birth_adjustment_commands row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'plan', (
+        select to_jsonb(row) from public.litter_plans row
+        where row.litter_id = ${q(litterId)}::uuid
+          and row.status = 'active'
+      ),
+      'items', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_items row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'series', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_series row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'tasks', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_care_tasks row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'activationState', (
+        select to_jsonb(row)
+        from public.litter_plan_actual_birth_activation_states row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'activations', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activations row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'deactivations', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activation_deactivations row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'reversals', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_plan_reversals row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'reversalDetails', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_plan_reversal_changes row
+        where row.litter_id = ${q(litterId)}::uuid
+      )
+    )::text
+  `);
+}
+
+test("la migration capture les OID au runtime sans allocation locale figée", () => {
+  const migration = readFileSync(resolve(
+    process.cwd(),
+    "supabase/migrations/202607310011_litter_single_birth_cancellation_reversal_wiring.sql",
+  ), "utf8");
+
+  expect(migration).not.toMatch(/\b(?:23891|21411|25110)\b/);
+  expect(migration).not.toMatch(/::oid\s*(?:<>|=)\s*\d+/);
+  expect(migration).toContain(
+    "create temporary table pg_temp.litter_birth_cancellation_function_contracts",
+  );
+  expect(migration).toContain("on commit drop");
+  expect(migration).toContain("procedure.oid is distinct from captured.function_oid");
+
+  const runtimeIdentity = jsonFromSqlOutput<Record<string, string>>(sql(`
+    begin;
+    create temporary table pg_temp.oid_portability_probe on commit drop as
+    select procedure.proname, procedure.oid as before_oid
+    from pg_catalog.pg_proc procedure
+    where procedure.oid in (
+      'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+      'public.cancel_whelping_birth_core_internal(uuid,uuid,integer,timestamptz,text)'::regprocedure,
+      'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure
+    );
+    do $probe$
+    declare
+      v_definition text;
+    begin
+      select pg_catalog.pg_get_functiondef(
+        'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure
+      ) into v_definition;
+      execute v_definition;
+    end;
+    $probe$;
+    select json_build_object(
+      'publicBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'cancel_whelping_birth'
+      ),
+      'publicAfter', 'public.cancel_whelping_birth(uuid,uuid,integer,timestamptz,text)'::regprocedure::oid::text,
+      'coreBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'cancel_whelping_birth_core_internal'
+      ),
+      'coreAfter', 'public.cancel_whelping_birth_core_internal(uuid,uuid,integer,timestamptz,text)'::regprocedure::oid::text,
+      'reversalBefore', (
+        select before_oid::text from pg_temp.oid_portability_probe
+        where proname = 'reverse_litter_plan_after_cancelled_first_birth_internal'
+      ),
+      'reversalAfter', 'public.reverse_litter_plan_after_cancelled_first_birth_internal(uuid,uuid,uuid,uuid)'::regprocedure::oid::text
+    )::text;
+    rollback;
+  `));
+
+  expect(runtimeIdentity.publicBefore).toBe(runtimeIdentity.publicAfter);
+  expect(runtimeIdentity.coreBefore).toBe(runtimeIdentity.coreAfter);
+  expect(runtimeIdentity.reversalBefore).toBe(runtimeIdentity.reversalAfter);
+});
+
+test("raccordement public atomique, prudent, audité et idempotent", async () => {
   cleanup();
   for (const count of Object.values(fixtureCounts())) expect(count).toBe(0);
   let fixtureManifest: Record<string, unknown> = {};
@@ -585,12 +709,22 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       group by plan.revision
     `);
 
-    reverseTransaction(
-      planBirthId,
-      ids.planLitter,
-      ids.planCancel,
-      "2026-08-08T04:00:00+02:00",
+    const publicPlanCancellation = await cancelWhelpingBirthCore(
+      {
+        birthId: planBirthId,
+        clientCommandId: ids.planCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-08T04:00:00+02:00",
+        reason: "Annulation fixture raccordement public",
+      },
+      owner,
     );
+    expect(publicPlanCancellation).toMatchObject({
+      outcome: "success",
+      birthId: planBirthId,
+      revisionNo: 1,
+      replayed: false,
+    });
     expect(birthState(ids.planLitter)).toMatchObject({
       actualBirthDate: null,
       activeBirths: 0,
@@ -716,15 +850,31 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       join public.litter_plans plan on plan.id = reversal.litter_plan_id
       where reversal.activation_id = ${q(planActivation)}::uuid
     `);
-    const replay = jsonSql<Record<string, unknown>>(`
-      select public.reverse_litter_plan_after_cancelled_first_birth_internal(
-        ${q(ids.organization)}::uuid,
-        ${q(ids.planLitter)}::uuid,
-        ${q(planActivation)}::uuid,
-        ${q(ids.planCancel)}::uuid
-      )::text
-    `);
+    const replay = await cancelWhelpingBirthCore(
+      {
+        birthId: planBirthId,
+        clientCommandId: ids.planCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-08T04:00:00+02:00",
+        reason: "Annulation fixture raccordement public",
+      },
+      owner,
+    );
     expect(replay).toMatchObject({ outcome: "success", replayed: true });
+    const divergentReplay = await cancelWhelpingBirthCore(
+      {
+        birthId: planBirthId,
+        clientCommandId: ids.planCancel,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-08T04:00:00+02:00",
+        reason: "Charge divergente",
+      },
+      owner,
+    );
+    expect(divergentReplay).toMatchObject({
+      outcome: "error",
+      error: { code: "conflict" },
+    });
     expect(jsonSql<Record<string, unknown>>(`
       select json_build_object(
         'reversal', to_jsonb(reversal),
@@ -747,11 +897,11 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.noPlanBirth,
       "2026-08-09T03:00:00+02:00",
     );
-    const concurrencyApplicationName = "e7310009_reversal_controller";
+    const concurrencyApplicationName = "e7310011_cancellation_controller";
     const controller = runE2eSql(`
       set application_name = ${q(concurrencyApplicationName)};
       begin;
-      select pg_catalog.pg_advisory_xact_lock(7310009);
+      select pg_catalog.pg_advisory_xact_lock(7310011);
       select pg_catalog.pg_sleep(10);
       commit;
     `);
@@ -766,12 +916,24 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
           and lock.granted
       )
     `);
-    const firstConcurrentReversal = runE2eSql(reverseStatement(
+    const firstConcurrentReversal = runE2eSql(publicCancellationStatement(
       noPlanBirthId,
-      ids.noPlanLitter,
       ids.noPlanCancel,
       "2026-08-09T04:00:00+02:00",
-      "perform pg_catalog.pg_advisory_xact_lock(7310009);",
+      `
+        create function pg_temp.wait_before_public_cancel_audit()
+        returns trigger language plpgsql as $trigger$
+        begin
+          perform pg_catalog.pg_advisory_xact_lock(7310011);
+          return new;
+        end;
+        $trigger$;
+        create trigger e7310011_wait_before_public_cancel_audit
+        before insert on public.whelping_birth_adjustment_commands
+        for each row
+        when (new.client_command_id = ${q(ids.noPlanCancel)}::uuid)
+        execute function pg_temp.wait_before_public_cancel_audit();
+      `,
     ));
     await waitForSqlCondition(`
       select exists (
@@ -781,9 +943,8 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
           and not lock.granted
       )
     `);
-    const secondConcurrentReversal = runE2eSql(reverseStatement(
+    const secondConcurrentReversal = runE2eSql(publicCancellationStatement(
       noPlanBirthId,
-      ids.noPlanLitter,
       ids.noPlanCancel,
       "2026-08-09T04:00:00+02:00",
     ));
@@ -854,6 +1015,95 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       distinctSnapshotChangeCount: 0,
     });
 
+    const distinctBirthId = await createBirth(
+      owner,
+      ids.distinctLitter,
+      ids.distinctOpen,
+      ids.distinctBirth,
+      "2026-08-18T03:00:00+02:00",
+    );
+    const distinctControllerName = "e7310011_distinct_controller";
+    const distinctController = runE2eSql(`
+      set application_name = ${q(distinctControllerName)};
+      begin;
+      select pg_catalog.pg_advisory_xact_lock(7310012);
+      select pg_catalog.pg_sleep(10);
+      commit;
+    `);
+    await waitForSqlCondition(`
+      select exists (
+        select 1
+        from pg_catalog.pg_locks lock
+        join pg_catalog.pg_stat_activity activity
+          on activity.pid = lock.pid
+        where activity.application_name = ${q(distinctControllerName)}
+          and lock.locktype = 'advisory'
+          and lock.granted
+      )
+    `);
+    const firstDistinctCancellation = runE2eSql(
+      publicCancellationStatement(
+        distinctBirthId,
+        ids.distinctCancelA,
+        "2026-08-18T04:00:00+02:00",
+        `
+          create function pg_temp.wait_before_distinct_cancel_audit()
+          returns trigger language plpgsql as $trigger$
+          begin
+            perform pg_catalog.pg_advisory_xact_lock(7310012);
+            return new;
+          end;
+          $trigger$;
+          create trigger e7310011_wait_before_distinct_cancel_audit
+          before insert on public.whelping_birth_adjustment_commands
+          for each row
+          when (new.client_command_id = ${q(ids.distinctCancelA)}::uuid)
+          execute function pg_temp.wait_before_distinct_cancel_audit();
+        `,
+      ),
+    );
+    await waitForSqlCondition(`
+      select exists (
+        select 1 from pg_catalog.pg_locks lock
+        where lock.locktype = 'advisory' and not lock.granted
+      )
+    `);
+    const secondDistinctCancellation = runE2eSql(
+      publicCancellationStatement(
+        distinctBirthId,
+        ids.distinctCancelB,
+        "2026-08-18T04:01:00+02:00",
+      ),
+    );
+    await waitForSqlCondition(`
+      select count(*) >= 2
+      from pg_catalog.pg_locks lock
+      where lock.locktype = 'advisory' and not lock.granted
+    `);
+    await distinctController;
+    const distinctResults = await Promise.all([
+      firstDistinctCancellation,
+      secondDistinctCancellation,
+    ]);
+    expect(distinctResults.map((output) =>
+      jsonFromSqlOutput<Record<string, unknown>>(output),
+    )).toEqual([
+      expect.objectContaining({ outcome: "success", replayed: false }),
+      expect.objectContaining({
+        outcome: "error",
+        reason: "birth_cancelled",
+        replayed: false,
+      }),
+    ]);
+    expect(birthState(ids.distinctLitter)).toMatchObject({
+      actualBirthDate: null,
+      activeBirths: 0,
+      adjustments: 1,
+      reversals: 1,
+      deactivations: 1,
+      currentActivationId: null,
+    });
+
     await applyModel(
       owner,
       ids.postActivationLitter,
@@ -922,12 +1172,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       snapshotChangeId: null,
       activationTaskChangeCount: 0,
     });
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       postActivationBirthId,
-      ids.postActivationLitter,
       ids.postActivationCancel,
       "2026-08-14T04:00:00+02:00",
-    )).toThrow(/post-activation planning data is not reversible/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.postActivationLitter)).toMatchObject({
       actualBirthDate: "2026-08-14",
       activeBirths: 1,
@@ -1087,12 +1340,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
     )).toHaveLength(7);
     expect(lateSnapshot.updated.map((change) => change.taskId))
       .toContain(ids.lateFutureTask);
-    reverseTransaction(
+    expect(publicCancellationTransaction(
       lateBirthId,
-      ids.lateBirthLitter,
       ids.lateBirthCancel,
       "2026-08-11T04:00:00+02:00",
-    );
+    )).toMatchObject({
+      outcome: "success",
+      birth_id: lateBirthId,
+      replayed: false,
+    });
     const lateRestoration = jsonSql<{
       deletedTaskIds: string[];
       consumedSnapshotChangeIds: string[];
@@ -1235,16 +1491,17 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       Number(correctionReconciled.reconciliationCount) +
       Number(correctionReconciled.seriesReconciliationCount),
     ).toBeGreaterThan(0);
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       correctionBirthId,
-      ids.correctionLitter,
       ids.correctionCancel,
       "2026-08-17T04:00:00+02:00",
       "",
       1,
-    )).toThrow(
-      /first-birth activation reversal invariant failed|first-birth reversal plan revision diverged|first-birth reversal entity state diverged/,
-    );
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.correctionLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
       activeBirths: 1,
@@ -1304,12 +1561,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       delete from public.litter_care_tasks
       where id = ${q(missingTaskId)}::uuid
     `);
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       missingEntityBirthId,
-      ids.missingEntityLitter,
       ids.missingEntityCancel,
       "2026-08-17T04:00:00+02:00",
-    )).toThrow(/first-birth reversal entity state diverged/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.missingEntityLitter)).toMatchObject({
       actualBirthDate: "2026-08-17",
       activeBirths: 1,
@@ -1355,6 +1615,26 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.divergenceBirth,
       "2026-08-10T03:00:00+02:00",
     );
+    const staleCancellation = await cancelWhelpingBirthCore(
+      {
+        birthId: divergenceBirthId,
+        clientCommandId: ids.staleCancel,
+        expectedRevisionNo: 99,
+        cancelledAt: "2026-08-10T03:30:00+02:00",
+        reason: "Révision obsolète",
+      },
+      owner,
+    );
+    expect(staleCancellation).toMatchObject({
+      outcome: "error",
+      error: { code: "stale_revision" },
+    });
+    expect(birthState(ids.divergenceLitter)).toMatchObject({
+      activeBirths: 1,
+      adjustments: 0,
+      reversals: 0,
+      deactivations: 0,
+    });
     sql(`
       update public.litter_care_tasks task
       set
@@ -1371,12 +1651,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
         limit 1
       )
     `);
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       divergenceBirthId,
-      ids.divergenceLitter,
       ids.divergenceCancel,
       "2026-08-10T04:00:00+02:00",
-    )).toThrow(/first-birth reversal entity state diverged/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.divergenceLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1420,12 +1703,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       order by change.sequence_no
       limit 1
     `);
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       dependencyBirthId,
-      ids.dependencyLitter,
       ids.dependencyCancel,
       "2026-08-11T04:00:00+02:00",
-    )).toThrow(/activation-created task has an external dependency/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.dependencyLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1447,12 +1733,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       where activation_id = ${q(activationId(ids.legacyLitter))}::uuid;
       commit
     `);
-    expect(() => reverseTransaction(
+    expect(publicCancellationTransaction(
       legacyBirthId,
-      ids.legacyLitter,
       ids.legacyCancel,
       "2026-08-12T04:00:00+02:00",
-    )).toThrow(/first-birth reversal snapshot missing/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "birth_has_downstream_data",
+      replayed: false,
+    });
     expect(birthState(ids.legacyLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1474,9 +1763,12 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       ids.rollbackBirth,
       "2026-08-13T03:00:00+02:00",
     );
-    expect(() => reverseTransaction(
-      rollbackBirthId,
+    const beforeForcedFailure = rollbackState(
       ids.rollbackLitter,
+      rollbackBirthId,
+    );
+    expect(publicCancellationTransaction(
+      rollbackBirthId,
       ids.rollbackCancel,
       "2026-08-13T04:00:00+02:00",
       `
@@ -1486,11 +1778,15 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
           raise exception 'forced plan reversal audit failure';
         end;
         $trigger$;
-        create trigger e7310009_forced_plan_reversal_audit
+        create trigger e7310011_forced_plan_reversal_audit
         before insert on public.litter_plan_actual_birth_plan_reversals
         for each row execute function pg_temp.fail_plan_reversal_audit();
       `,
-    )).toThrow(/forced plan reversal audit failure/);
+    )).toMatchObject({
+      outcome: "error",
+      reason: "technical_error",
+      replayed: false,
+    });
     expect(birthState(ids.rollbackLitter)).toMatchObject({
       activeBirths: 1,
       adjustments: 0,
@@ -1498,9 +1794,11 @@ test("restauration atomique, prudente, auditée, idempotente et privée", async 
       deactivations: 0,
       currentActivationId: activationId(ids.rollbackLitter),
     });
+    expect(rollbackState(ids.rollbackLitter, rollbackBirthId))
+      .toEqual(beforeForcedFailure);
     expect(Number(sql(`
       select count(*) from pg_catalog.pg_trigger
-      where tgname = 'e7310009_forced_plan_reversal_audit'
+      where tgname = 'e7310011_forced_plan_reversal_audit'
     `))).toBe(0);
 
     const security = jsonSql<Record<string, unknown>>(`

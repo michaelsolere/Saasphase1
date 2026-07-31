@@ -1352,6 +1352,53 @@ courante. Le prochain lot attendu est
 `LITTER-SINGLE-BIRTH-CANCELLATION-REVERSAL-WIRING-01`, qui composera
 publiquement le cœur historique et ce moteur privé dans une même transaction.
 
+## Lot du 2026-07-31 — Raccordement public de l’annulation et de la restauration
+
+Le garde transitoire systématique de l’unique naissance activée est terminé.
+La RPC publique `cancel_whelping_birth` conserve son OID, sa signature, son
+retour historique, ses paramètres, sa configuration de sécurité et ses ACL.
+Ni le DTO ni le client TypeScript ne changent. Son enveloppe compose désormais
+`cancel_whelping_birth_core_internal` puis
+`reverse_litter_plan_after_cancelled_first_birth_internal` dans un même bloc
+PL/pgSQL protégé par `EXCEPTION`. Une erreur du moteur restaure donc aussi
+l’annulation historique, l’Animal, le poids, l’événement, les compteurs, le
+planning, l’ancre, la désactivation et tous les audits.
+
+La naissance source n’est jamais déduite du seul nombre de naissances actives.
+Sous le verrou canonique du planning, l’enveloppe verrouille la portée puis
+toutes ses naissances, la projection d’activation, l’activation et sa commande
+source. Elle exige une commande `record_birth`, un `birth_id` non nul, une
+organisation et une portée identiques, et la même activation comme
+`current_activation_id` et `last_activation_id`. La composition réversible
+n’est autorisée que si la cible est cette naissance source et qu’aucune autre
+naissance active ne subsiste. Cette règle couvre aussi le rejeu contrôlé d’une
+commande d’annulation déjà écrite alors que l’activation serait encore
+courante.
+
+Avec plusieurs naissances, le comportement historique demeure inchangé :
+`later_active_birth_exists` protège une naissance antérieure, l’annulation de
+la dernière naissance non source ne restaure pas le plan, puis l’annulation de
+la naissance source redevenue unique déclenche la restauration. Sans
+activation courante, les validations, refus, conflits, rejeux et succès restent
+exclusivement ceux du cœur historique.
+
+Les refus prévisibles du moteur privé — photographie absente, divergence
+humaine, plan ou date révisés, tâche postérieure non photographiée, dépendance
+externe, activation non courante ou état legacy — sont rendus au contrat
+public comme `birth_has_downstream_data`, sans détail SQL. Une erreur technique
+inattendue reste `technical_error`. Dans les deux cas, le bloc de
+sous-transaction assure le rollback global.
+
+Le rejeu public après succès complet retourne le DTO historique avec
+`replayed = true`, sans nouvelle restauration, désactivation, révision,
+horodatage ou ligne d’audit. Les annulations concurrentes sont sérialisées par
+le verrou canonique ; les tests utilisent une barrière SQL contrôlée pour une
+même commande et pour deux commandes distinctes. La première seule produit la
+restauration et la désactivation.
+
+Ce lot achève le socle backend de réversibilité de la première naissance. Une
+explication UI plus fine des causes de blocage reste volontairement différée.
+
 ## Correctif du 2026-07-31 — Données de planning postérieures hors photographie
 
 La migration additive

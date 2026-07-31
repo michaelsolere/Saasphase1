@@ -24,7 +24,7 @@ const ids = {
   removeWeight: `${prefix}44`, restoreWeight: `${prefix}45`, noChange: `${prefix}46`,
   stale: `${prefix}47`, cancelNotLast: `${prefix}48`, cancelTwo: `${prefix}49`,
   cancelBlocked: `${prefix}50`, cancelOne: `${prefix}51`, cancelThree: `${prefix}52`,
-  concurrentOne: `${prefix}53`, concurrentTwo: `${prefix}54`, routine: `${prefix}61`,
+  concurrentOne: `${prefix}53`, concurrentTwo: `${prefix}54`, cancelThreeFinal: `${prefix}55`, routine: `${prefix}61`,
   admin: `${prefix}71`, member: `${prefix}72`, viewer: `${prefix}73`, outsider: `${prefix}74`,
   adminMembership: `${prefix}81`, memberMembership: `${prefix}82`, viewerMembership: `${prefix}83`,
   foreignOrganization: `${prefix}84`, outsiderMembership: `${prefix}85`,
@@ -47,6 +47,16 @@ function cleanup() {
     begin;
     set local session_replication_role = replica;
     select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
+    delete from public.litter_plan_actual_birth_plan_reversal_changes
+      where litter_id=${q(ids.litter)}::uuid
+        or reversal_id in (
+          select id from public.litter_plan_actual_birth_plan_reversals
+          where litter_id=${q(ids.litter)}::uuid
+             or birth_adjustment_client_command_id::text like '9f200005-%'
+        );
+    delete from public.litter_plan_actual_birth_plan_reversals
+      where litter_id=${q(ids.litter)}::uuid
+         or birth_adjustment_client_command_id::text like '9f200005-%';
     delete from public.litter_plan_actual_birth_reconciliation_task_changes
       where organization_id=${q(organizationId)}::uuid
         and command_id in (
@@ -97,6 +107,8 @@ function cleanup() {
     delete from auth.mfa_factors where user_id::text like '9f200005-%';
     delete from auth.flow_state where user_id::text like '9f200005-%';
     delete from auth.sessions where user_id::text like '9f200005-%';
+    delete from auth.audit_log_entries
+      where payload ->> 'actor_id' like '9f200005-%';
     delete from auth.identities where user_id::text like '9f200005-%';
     delete from auth.users where id::text like '9f200005-%';
     delete from public.organizations where id=${q(ids.foreignOrganization)}::uuid;
@@ -106,6 +118,8 @@ function cleanup() {
 
 function remaining() {
   return JSON.parse(sql(`select json_build_object(
+    'plan_reversal_changes',(select count(*) from public.litter_plan_actual_birth_plan_reversal_changes where litter_id=${q(ids.litter)}::uuid or reversal_id in (select id from public.litter_plan_actual_birth_plan_reversals where birth_adjustment_client_command_id::text like '9f200005-%')),
+    'plan_reversals',(select count(*) from public.litter_plan_actual_birth_plan_reversals where litter_id=${q(ids.litter)}::uuid or birth_adjustment_client_command_id::text like '9f200005-%'),
     'plan_changes',(select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where organization_id=${q(organizationId)}::uuid and command_id in (select id from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid)),
     'plan_audits',(select count(*) from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid or birth_adjustment_client_command_id::text like '9f200005-%'),
     'reversal_changes',(select count(*) from public.litter_plan_actual_birth_activation_reversal_changes where litter_id=${q(ids.litter)}::uuid),
@@ -125,6 +139,7 @@ function remaining() {
     'profiles',(select count(*) from public.profiles where id::text like '9f200005-%'),
     'auth_refresh_tokens',(select count(*) from auth.refresh_tokens where user_id like '9f200005-%' or session_id in (select id from auth.sessions where user_id::text like '9f200005-%')),
     'auth_sessions',(select count(*) from auth.sessions where user_id::text like '9f200005-%'),
+    'auth_audit_logs',(select count(*) from auth.audit_log_entries where payload ->> 'actor_id' like '9f200005-%'),
     'users',(select count(*) from auth.users where id::text like '9f200005-%'),
     'organizations',(select count(*) from public.organizations where id=${q(ids.foreignOrganization)}::uuid)
   )::text;`)) as Record<string, number>;
@@ -333,11 +348,13 @@ test("corrects and cancels births atomically while preserving every source row",
     for (const result of correctionCancellationRace) if (result.outcome === "success") created.events.push(result.eventId);
     if (sql(`select cancelled_at is null from public.whelping_births where id=${q(three.birthId)}::uuid;`) === "t") {
       const finalRevision = Number(sql(`select revision_no from public.whelping_births where id=${q(three.birthId)}::uuid;`));
-      const cancelledThree = await cancelWhelpingBirthCore({ birthId: three.birthId, clientCommandId: crypto.randomUUID(), expectedRevisionNo: finalRevision, cancelledAt: "2026-07-21T21:01:00Z", reason: "Nettoyage fonctionnel" }, owner);
+      const cancelledThree = await cancelWhelpingBirthCore({ birthId: three.birthId, clientCommandId: ids.cancelThreeFinal, expectedRevisionNo: finalRevision, cancelledAt: "2026-07-21T21:01:00Z", reason: "Nettoyage fonctionnel" }, owner);
       expect(cancelledThree).toMatchObject({
-        outcome: "error",
-        error: { code: "birth_has_downstream_data" },
+        outcome: "success",
+        revisionNo: finalRevision + 1,
+        replayed: false,
       });
+      if (cancelledThree.outcome === "success") created.events.push(cancelledThree.eventId);
     }
 
     const audit = JSON.parse(sql(`select json_build_object('count',count(*),'snapshots',bool_and(snapshot_before ? 'birth' and snapshot_after ? 'litter'),'types',array_agg(distinct command_type)) from public.whelping_birth_adjustment_commands where client_command_id::text like '9f200005-%';`));

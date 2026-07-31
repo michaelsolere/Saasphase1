@@ -73,6 +73,9 @@ const ids = {
   viewerProbe: `${prefix}000000000074`,
   foreignProbe: `${prefix}000000000075`,
   guardLockProbe: `${prefix}000000000076`,
+  adminProbe: `${prefix}000000000077`,
+  memberProbe: `${prefix}000000000078`,
+  safeNoPlanCancellation: `${prefix}000000000079`,
   missingBirth: `${prefix}000000000091`,
 } as const;
 
@@ -123,6 +126,20 @@ function cleanup() {
        or command_id::text like ${q(like)}
        or task_id::text like ${q(like)};
     delete from public.litter_plan_series_actual_birth_reconciliation_commands
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_plan_reversal_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or reversal_id in (
+         select id
+         from public.litter_plan_actual_birth_plan_reversals
+         where organization_id = ${q(ids.organization)}::uuid
+            or litter_id::text like ${q(like)}
+            or birth_adjustment_client_command_id::text like ${q(like)}
+       );
+    delete from public.litter_plan_actual_birth_plan_reversals
     where organization_id = ${q(ids.organization)}::uuid
        or litter_id::text like ${q(like)}
        or birth_adjustment_client_command_id::text like ${q(like)};
@@ -268,6 +285,8 @@ function fixtureCounts() {
       'plan_audits', (select count(*) from public.litter_plan_actual_birth_reconciliations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'series_change_audits', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
       'series_audits', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_commands where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
+      'plan_reversal_changes', (select count(*) from public.litter_plan_actual_birth_plan_reversal_changes where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
+      'plan_reversals', (select count(*) from public.litter_plan_actual_birth_plan_reversals where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)} or birth_adjustment_client_command_id::text like ${q(like)}),
       'activation_deactivations', (select count(*) from public.litter_plan_actual_birth_activation_deactivations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'activation_states', (select count(*) from public.litter_plan_actual_birth_activation_states where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'activations', (select count(*) from public.litter_plan_actual_birth_activations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
@@ -563,6 +582,12 @@ function activationState(litterId: string) {
         where activation.organization_id = litter.organization_id
           and activation.litter_id = litter.id
       ),
+      'currentActivationId', (
+        select state.current_activation_id::text
+        from public.litter_plan_actual_birth_activation_states state
+        where state.organization_id = litter.organization_id
+          and state.litter_id = litter.id
+      ),
       'materializedItems', (
         select count(*) from public.litter_plan_items item
         where item.organization_id = litter.organization_id
@@ -825,7 +850,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   ]);
 }
 
-test("bloque atomiquement l’annulation irréversible de l’unique naissance", async () => {
+test("préserve le garde résiduel, les permissions et les cas multi-naissances", async () => {
   cleanup();
   expectCleanupAtZero();
   const durableBefore = durableCounts();
@@ -1012,39 +1037,79 @@ test("bloque atomiquement l’annulation irréversible de l’unique naissance",
     });
     expect(completeFingerprint(ids.plannedLitter)).toEqual(securityBefore);
 
+    sql(`
+      begin;
+      set local session_replication_role = replica;
+      update public.memberships
+      set role = 'admin', updated_by = ${q(ownerId)}::uuid
+      where id = ${q(ids.ownerMembership)}::uuid;
+      set local session_replication_role = origin;
+      commit
+    `);
+    expect(await cancelWhelpingBirthCore(
+      {
+        birthId: plannedFirst.birthId,
+        clientCommandId: ids.adminProbe,
+        expectedRevisionNo: 99,
+        cancelledAt: "2026-08-08T05:58:00+02:00",
+        reason: "Permission administrateur",
+      },
+      owner,
+    )).toMatchObject({
+      outcome: "error",
+      error: { code: "stale_revision" },
+    });
+    sql(`
+      begin;
+      set local session_replication_role = replica;
+      update public.memberships
+      set role = 'member', updated_by = ${q(ownerId)}::uuid
+      where id = ${q(ids.ownerMembership)}::uuid;
+      set local session_replication_role = origin;
+      commit
+    `);
+    expect(await cancelWhelpingBirthCore(
+      {
+        birthId: plannedFirst.birthId,
+        clientCommandId: ids.memberProbe,
+        expectedRevisionNo: 99,
+        cancelledAt: "2026-08-08T05:59:00+02:00",
+        reason: "Permission membre",
+      },
+      owner,
+    )).toMatchObject({
+      outcome: "error",
+      error: { code: "stale_revision" },
+    });
+    sql(`
+      begin;
+      set local session_replication_role = replica;
+      update public.memberships
+      set role = 'owner', updated_by = ${q(ownerId)}::uuid
+      where id = ${q(ids.ownerMembership)}::uuid;
+      set local session_replication_role = origin;
+      commit
+    `);
+
     const guardedProbe = cancellationLockProbe({
       profileId: ownerId,
       birthId: plannedFirst.birthId,
       commandId: ids.guardLockProbe,
     });
-    expect(guardedProbe).toEqual({
-      result: historicalErrorRow(
-        plannedFirst.birthId,
-        "birth_has_downstream_data",
-      ),
-      targetLockCount: 1,
-      backendAdvisoryLockCount: 1,
-      taskOrSeriesRelationLockCount: 0,
-    });
-    expect(persistentTargetLockCount()).toBe(0);
-    expect(completeFingerprint(ids.plannedLitter)).toEqual(securityBefore);
-
-    const plannedBlocked = await cancelWhelpingBirthCore(
-      {
-        birthId: plannedFirst.birthId,
-        clientCommandId: ids.blockedPlannedCancellation,
-        expectedRevisionNo: 0,
-        cancelledAt: "2026-08-08T06:01:00+02:00",
-        reason: "Annulation unique dangereuse",
+    expect(guardedProbe).toMatchObject({
+      result: {
+        outcome: "success",
+        birth_id: plannedFirst.birthId,
+        revision_no: 1,
+        replayed: false,
+        reason: null,
       },
-      owner,
-    );
-    expect(plannedBlocked).toMatchObject({
-      outcome: "error",
-      error: { code: "birth_has_downstream_data" },
+      targetLockCount: 1,
+      backendAdvisoryLockCount: 2,
     });
-    expect(completeFingerprint(ids.plannedLitter)).toEqual(securityBefore);
+    expect(guardedProbe.taskOrSeriesRelationLockCount).toBeGreaterThan(0);
     expect(persistentTargetLockCount()).toBe(0);
+    expect(completeFingerprint(ids.plannedLitter)).toEqual(securityBefore);
 
     const noPlanFirst = await recordBirth(
       owner,
@@ -1061,22 +1126,27 @@ test("bloque atomiquement l’annulation irréversible de l’unique naissance",
       postTasks: 0,
       completedPreSeries: 0,
     });
-    const noPlanBefore = completeFingerprint(ids.noPlanLitter);
-    const noPlanBlocked = await cancelWhelpingBirthCore(
+    const noPlanCancellation = await cancelWhelpingBirthCore(
       {
         birthId: noPlanFirst.birthId,
-        clientCommandId: ids.blockedNoPlanCancellation,
+        clientCommandId: ids.safeNoPlanCancellation,
         expectedRevisionNo: 0,
         cancelledAt: "2026-08-08T06:02:00+02:00",
-        reason: "Activation sans plan toujours irréversible",
+        reason: "Activation sans plan réversible",
       },
       owner,
     );
-    expect(noPlanBlocked).toMatchObject({
-      outcome: "error",
-      error: { code: "birth_has_downstream_data" },
+    expect(noPlanCancellation).toMatchObject({
+      outcome: "success",
+      revisionNo: 1,
+      replayed: false,
     });
-    expect(completeFingerprint(ids.noPlanLitter)).toEqual(noPlanBefore);
+    expect(activationState(ids.noPlanLitter)).toMatchObject({
+      actualBirthDate: null,
+      activeBirths: 0,
+      activationCount: 1,
+      currentActivationId: null,
+    });
 
     const plannedSecond = await recordBirth(
       owner,
@@ -1275,6 +1345,51 @@ test("bloque atomiquement l’annulation irréversible de l’unique naissance",
       `)),
     ).toBeGreaterThanOrEqual(1);
     expect(persistentTargetLockCount()).toBe(0);
+
+    if (concurrent[1].outcome !== "success") {
+      throw new Error("Concurrent birth unexpectedly failed");
+    }
+    const cancelledConcurrentBirth = await cancelWhelpingBirthCore(
+      {
+        birthId: concurrent[1].birthId,
+        clientCommandId: ids.blockedPlannedCancellation,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-08T06:06:30+02:00",
+        reason: "Dernière naissance active non source",
+      },
+      owner,
+    );
+    expect(cancelledConcurrentBirth).toMatchObject({
+      outcome: "success",
+      replayed: false,
+    });
+    expect(activationState(ids.plannedLitter)).toMatchObject({
+      actualBirthDate: "2026-08-08",
+      activeBirths: 1,
+      currentActivationId: expect.any(String),
+    });
+
+    const cancelledSourceBirth = await cancelWhelpingBirthCore(
+      {
+        birthId: plannedFirst.birthId,
+        clientCommandId: ids.concurrentCancellation,
+        expectedRevisionNo: 0,
+        cancelledAt: "2026-08-08T06:06:00+02:00",
+        reason: "Course annulation et nouvelle naissance",
+      },
+      owner,
+    );
+    expect(cancelledSourceBirth).toMatchObject({
+      outcome: "success",
+      replayed: false,
+    });
+    expect(activationState(ids.plannedLitter)).toMatchObject({
+      actualBirthDate: null,
+      activeBirths: 0,
+      currentActivationId: null,
+      postTasks: 0,
+      completedPreSeries: 0,
+    });
 
     const interfaceResult = await cancelWhelpingBirthActionCore(
       {

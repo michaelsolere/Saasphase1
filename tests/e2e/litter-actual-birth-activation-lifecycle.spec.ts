@@ -189,6 +189,21 @@ async function discoverLifecycleFixtures(
 
   const litterList = litterIds.map((id) => `${q(id)}::uuid`).join(", ");
   const tableQueries = {
+    litter_plan_actual_birth_plan_reversal_changes: `
+      select change.id::text
+      from public.litter_plan_actual_birth_plan_reversal_changes change
+      join public.litter_plan_actual_birth_plan_reversals reversal
+        on reversal.organization_id = change.organization_id
+       and reversal.id = change.reversal_id
+      where reversal.organization_id = ${q(organizationId)}::uuid
+        and reversal.litter_id in (${litterList})
+    `,
+    litter_plan_actual_birth_plan_reversals: `
+      select id::text
+      from public.litter_plan_actual_birth_plan_reversals
+      where organization_id = ${q(organizationId)}::uuid
+        and litter_id in (${litterList})
+    `,
     litter_plan_actual_birth_reconciliation_task_changes: `
       select change.id::text
       from public.litter_plan_actual_birth_reconciliation_task_changes change
@@ -280,6 +295,7 @@ test("audite le cycle activation, désactivation et activation suivante", async 
     ids.nextDayCorrection,
     ids.nonSourceCancellation,
     ids.privateCancellation,
+    ids.secondBlockedCancellation,
     ids.rollbackPrivateCancellation,
   ];
   const litterIds = [ids.litter, ids.concurrentLitter, ids.rollbackLitter];
@@ -613,19 +629,36 @@ test("audite le cycle activation, désactivation et activation suivante", async 
         });
         expect(lineage.deactivations).toEqual(inactiveState.deactivations);
 
-        const secondBlocked = await cancelWhelpingBirthCore(
+        const secondCancellation = await cancelWhelpingBirthCore(
           {
             birthId: second.birthId,
             clientCommandId: ids.secondBlockedCancellation,
             expectedRevisionNo: 0,
             cancelledAt: "2026-07-31T11:05:00+02:00",
-            reason: "Le nouveau courant réactive le garde",
+            reason: "Le nouveau courant est restauré",
           },
           owner,
         );
-        expect(secondBlocked).toMatchObject({
-          outcome: "error",
-          error: { code: "birth_has_downstream_data" },
+        expect(secondCancellation).toMatchObject({
+          outcome: "success",
+          revisionNo: 1,
+          replayed: false,
+        });
+        expect(activationSnapshot(ids.litter)).toMatchObject({
+          state: {
+            currentActivationId: null,
+            lastActivationId: lineage.activations[1]!.id,
+            revision: 3,
+          },
+          deactivations: [
+            inactiveState.deactivations[0],
+            expect.objectContaining({
+              activationId: lineage.activations[1]!.id,
+              commandId: ids.secondBlockedCancellation,
+              previousRevision: 2,
+              resultingRevision: 3,
+            }),
+          ],
         });
 
         await createTestAnimal(sql, fixtures, {
