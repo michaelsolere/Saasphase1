@@ -14,6 +14,9 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
   const returnPath = validateLoginReturnPath(params.next);
+  const loginReturnPath = returnPath === "/whelping"
+    ? "/whelping/selection"
+    : returnPath;
   const supabase = await createClient();
   const {
     data: { user },
@@ -61,7 +64,7 @@ export default async function LoginPage({
             </p>
           ) : null}
 
-          <LoginForm returnPath={returnPath} />
+          <LoginForm returnPath={loginReturnPath} />
 
           <p className="mt-6 text-xs leading-5 text-muted">
             L’inscription et la récupération de mot de passe ne sont pas encore

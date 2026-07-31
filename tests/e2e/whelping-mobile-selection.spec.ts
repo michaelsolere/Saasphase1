@@ -67,6 +67,7 @@ test("donne la priorité à la session ouverte la plus récemment démarrée", (
 
 test("autorise uniquement les retours de connexion vers le mode mise-bas", () => {
   expect(validateLoginReturnPath("/whelping")).toBe("/whelping");
+  expect(validateLoginReturnPath("/whelping/selection")).toBe("/whelping/selection");
   expect(validateLoginReturnPath("/whelping?litter=0")).toBe("/whelping?litter=0");
   expect(validateLoginReturnPath("/whelping?litter=42")).toBe("/whelping?litter=42");
 

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { PrivateAppShell } from "@/components/private-app-shell";
 import { createClient } from "@/lib/supabase/server";
@@ -8,6 +8,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "SaaS Élevage",
   description: "Socle technique du SaaS de gestion d’élevage.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#315c43",
+  colorScheme: "light",
 };
 
 export const dynamic = "force-dynamic";
