@@ -337,6 +337,15 @@ export type CancelWhelpingBirthInput = {
   reason: string;
 };
 
+export const WHELPING_BIRTH_CANCELLATION_SUCCESS_REASONS = [
+  "birth_cancellation_planning_restored",
+  "birth_cancellation_planning_preserved",
+  "birth_cancellation_no_planning_change",
+] as const;
+
+export type WhelpingBirthCancellationSuccessReason =
+  (typeof WHELPING_BIRTH_CANCELLATION_SUCCESS_REASONS)[number];
+
 export type WhelpingBirthAdjustmentResult =
   | {
       outcome: "success";
@@ -347,6 +356,20 @@ export type WhelpingBirthAdjustmentResult =
       revisionNo: number;
       eventSequenceNo: number;
       replayed: boolean;
+    }
+  | ErrorResult;
+
+export type CancelWhelpingBirthResult =
+  | {
+      outcome: "success";
+      birthId: string;
+      animalId: string;
+      eventId: string;
+      weightMeasurementId: string | null;
+      revisionNo: number;
+      eventSequenceNo: number;
+      replayed: boolean;
+      successReason: WhelpingBirthCancellationSuccessReason | null;
     }
   | ErrorResult;
 
@@ -1231,6 +1254,49 @@ function mapBirthAdjustmentResult(result: {
   };
 }
 
+function mapCancelWhelpingBirthResult(result: {
+  outcome: string;
+  birth_id: string | null;
+  animal_id: string | null;
+  event_id: string | null;
+  weight_measurement_id: string | null;
+  revision_no: number | null;
+  event_sequence_no: number | null;
+  replayed: boolean;
+  reason: string | null;
+} | undefined): CancelWhelpingBirthResult {
+  if (result?.outcome !== "success" && result?.reason === "birth_weight_inconsistent") {
+    return failure(
+      "birth_weight_inconsistent",
+      "Les données de poids liées à cette naissance sont incohérentes.",
+    );
+  }
+  if (
+    !result || result.outcome !== "success" || !result.birth_id ||
+    !result.animal_id || !result.event_id || result.revision_no === null ||
+    result.event_sequence_no === null
+  ) {
+    if (result?.reason === "technical_error") {
+      console.error("whelping_birth_adjustment_command_failed");
+    }
+    return commandFailure(result?.reason ?? null);
+  }
+  const successReason = WHELPING_BIRTH_CANCELLATION_SUCCESS_REASONS.find(
+    (candidate) => candidate === result.reason,
+  ) ?? null;
+  return {
+    outcome: "success",
+    birthId: result.birth_id,
+    animalId: result.animal_id,
+    eventId: result.event_id,
+    weightMeasurementId: result.weight_measurement_id,
+    revisionNo: result.revision_no,
+    eventSequenceNo: result.event_sequence_no,
+    replayed: result.replayed === true,
+    successReason,
+  };
+}
+
 export async function correctWhelpingBirthCore(
   input: CorrectWhelpingBirthInput,
   supabase: Supabase,
@@ -1388,7 +1454,7 @@ export async function quickCompleteWhelpingBirthCore(
 export async function cancelWhelpingBirthCore(
   input: CancelWhelpingBirthInput,
   supabase: Supabase,
-): Promise<WhelpingBirthAdjustmentResult> {
+): Promise<CancelWhelpingBirthResult> {
   const birthId = normalizeUuid(input.birthId);
   const clientCommandId = normalizeUuid(input.clientCommandId);
   const cancelledAt = normalizeTimestamp(input.cancelledAt);
@@ -1406,7 +1472,7 @@ export async function cancelWhelpingBirthCore(
     p_reason: reason,
   });
   if (adjusted.error) return databaseFailure("whelping_birth_cancellation_failed", adjusted.error);
-  return mapBirthAdjustmentResult(adjusted.data?.[0]);
+  return mapCancelWhelpingBirthResult(adjusted.data?.[0]);
 }
 
 export async function listWhelpingBirthAdjustmentHistoryCore(

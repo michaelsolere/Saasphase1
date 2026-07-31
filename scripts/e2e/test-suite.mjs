@@ -75,6 +75,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/routine-weight-eligibility.spec.ts",
   "tests/e2e/whelping-actions-core.spec.ts",
   "tests/e2e/whelping-birth-adjustment-actions-core.spec.ts",
+  "tests/e2e/whelping-birth-cancellation-service-core.spec.ts",
   "tests/e2e/whelping-fixtures.spec.ts",
   "tests/e2e/whelping-mobile-selection.spec.ts",
   "tests/e2e/whelping-quick-completion-actions-core.spec.ts",

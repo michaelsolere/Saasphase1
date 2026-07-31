@@ -1163,7 +1163,7 @@ function BirthCancellationDialog({
     if (nextState.status === "success") {
       setOpen(false);
       onSuccess(
-        `Naissance n° ${birth.birthOrder} annulée.\nLes données actives de la portée ont été recalculées.\nLe Journal a été actualisé.`,
+        `Naissance n° ${birth.birthOrder} annulée.\n${nextState.message ?? "Les données actives de la portée ont été recalculées."}\nLe Journal a été actualisé.`,
       );
       router.refresh();
     }

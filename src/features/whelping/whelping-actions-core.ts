@@ -4,6 +4,7 @@ import type {
   CloseWhelpingSessionInput,
   CloseWhelpingSessionResult,
   CancelWhelpingBirthInput,
+  CancelWhelpingBirthResult,
   CorrectWhelpingBirthInput,
   GenericWhelpingEventType,
   OpenWhelpingSessionInput,
@@ -22,6 +23,7 @@ import type {
   WhelpingBirthViability,
   WhelpingServiceError,
   WhelpingBirthAdjustmentResult,
+  WhelpingBirthCancellationSuccessReason,
 } from "./whelping-core";
 
 const UUID_PATTERN =
@@ -155,7 +157,7 @@ export type WhelpingBirthAdjustmentActionDependencies = {
   ) => Promise<WhelpingBirthAdjustmentResult>;
   cancelBirth: (
     input: CancelWhelpingBirthInput,
-  ) => Promise<WhelpingBirthAdjustmentResult>;
+  ) => Promise<CancelWhelpingBirthResult>;
   revalidatePath: (path: string) => void;
 };
 
@@ -558,6 +560,21 @@ function revalidateBirthAdjustment(
   dependencies.revalidatePath(`/animals/${intention.animalId}`);
 }
 
+function cancellationSuccessMessage(
+  successReason: WhelpingBirthCancellationSuccessReason | null,
+) {
+  switch (successReason) {
+    case "birth_cancellation_planning_restored":
+      return "La date réelle de naissance a été retirée et le suivi de la portée a été remis dans son état antérieur.";
+    case "birth_cancellation_planning_preserved":
+      return "Une autre naissance reste active. La date réelle de naissance et le suivi postnatal de la portée ont été conservés.";
+    case "birth_cancellation_no_planning_change":
+      return "Cette annulation n’a nécessité aucune modification de la date réelle ni du planning de la portée.";
+    default:
+      return "Les données actives de la portée ont été recalculées.";
+  }
+}
+
 export async function correctWhelpingBirthActionCore(
   intention: WhelpingBirthAdjustmentIntention,
   _previousState: WhelpingBirthAdjustmentActionState,
@@ -646,7 +663,7 @@ export async function cancelWhelpingBirthActionCore(
     revalidateBirthAdjustment(dependencies, intention);
     return {
       status: "success",
-      message: "La saisie de naissance a été annulée.",
+      message: cancellationSuccessMessage(result.successReason),
       replayed: result.replayed,
     };
   } catch {
