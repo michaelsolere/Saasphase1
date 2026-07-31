@@ -78,6 +78,51 @@ export type BuildLitterGrowthVigilanceInput = {
   weighingSchedule: LitterWeighingScheduleResult | null;
 };
 
+const CIVIL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function civilDateAtInstant(value: string, timezoneName: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezoneName,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(new Date(timestamp));
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((candidate) => candidate.type === type)?.value;
+    const year = part("year");
+    const month = part("month");
+    const day = part("day");
+    return year && month && day ? `${year}-${month}-${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isRoutineWeightEligibleAtSessionByDeathDate({
+  deathDate,
+  sessionMeasuredAt,
+  sessionTimezoneName,
+}: {
+  deathDate: string | null;
+  sessionMeasuredAt: string;
+  sessionTimezoneName: string;
+}) {
+  if (deathDate === null || !CIVIL_DATE_PATTERN.test(deathDate)) return true;
+  const sessionCivilDate = civilDateAtInstant(
+    sessionMeasuredAt,
+    sessionTimezoneName,
+  );
+  if (sessionCivilDate === null) return true;
+
+  // Mirrors record_litter_routine_weights: reject only when the session's
+  // civil date in its own timezone is strictly later than the death date.
+  return sessionCivilDate <= deathDate;
+}
+
 function compareAnimals(
   left: LitterWeightHistoryAnimal,
   right: LitterWeightHistoryAnimal,
@@ -225,6 +270,11 @@ export function buildLitterGrowthVigilance({
     if (measuredAnimalIds.size > 0) {
       const missingAnimalLabels = orderedAnimals.flatMap((animal) =>
         getRoutineWeightEligibility(animal).eligible &&
+        isRoutineWeightEligibleAtSessionByDeathDate({
+          deathDate: animal.deathDate,
+          sessionMeasuredAt: latestSession.measuredAt,
+          sessionTimezoneName: latestSession.timezoneName,
+        }) &&
         !measuredAnimalIds.has(animal.id)
           ? [litterWeightAnimalName(animal)]
           : [],

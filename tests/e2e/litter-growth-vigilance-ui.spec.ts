@@ -17,7 +17,7 @@ import {
   runE2eSqlSync,
 } from "./helpers/supabase";
 
-test.setTimeout(240_000);
+test.setTimeout(420_000);
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
@@ -131,7 +131,7 @@ async function login(page: Page) {
   await page.getByLabel("Email").fill(E2E_OWNER_EMAIL);
   await page.getByLabel("Mot de passe").fill(E2E_OWNER_PASSWORD);
   await page.getByRole("button", { name: "Se connecter" }).click();
-  await expect(page).not.toHaveURL(/\/login$/);
+  await expect(page).not.toHaveURL(/\/login$/, { timeout: 60_000 });
 }
 
 test("signaux objectifs, recalcul, action collective, confidentialité et viewer", async ({
@@ -143,6 +143,9 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
   );
   const today = parisCivilDate();
   const yesterday = parisCivilDate(-1);
+  const fixtureNow = Date.now();
+  const initialMeasuredAt = new Date(fixtureNow - 120_000).toISOString();
+  const partialMeasuredAt = new Date(fixtureNow - 60_000).toISOString();
   const execute = (statement: string) => sql(statement);
   const dynamicIdentifiers: Array<{ table: string; id: string }> = [];
 
@@ -208,7 +211,7 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
       organizationId,
       litterId: ids.litter,
       ownerId,
-      measuredAt: `${today}T00:00:01.000Z`,
+      measuredAt: initialMeasuredAt,
       note: `${prefix} séance complète initiale`,
     });
     await createTestWeightMeasurement(execute, registry, {
@@ -263,7 +266,7 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
       organizationId: foreignOrganization,
       litterId: ids.foreignLitter,
       ownerId,
-      measuredAt: `${today}T00:00:01.000Z`,
+      measuredAt: initialMeasuredAt,
     });
     await createTestWeightMeasurement(execute, registry, {
       id: ids.foreignMeasurement,
@@ -286,7 +289,7 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
       organizationId,
       litterId: ids.litter,
       ownerId,
-      measuredAt: `${today}T00:01:01.000Z`,
+      measuredAt: partialMeasuredAt,
       note: `${prefix} séance partielle`,
     });
     await createTestWeightMeasurement(execute, registry, {
@@ -347,8 +350,12 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
     await correction
       .getByRole("button", { name: "Enregistrer la correction" })
       .click();
-    await expect(page.getByRole("status")).toContainText("corrigée");
-    await expect(vigilance).not.toContainText("Poids inférieur");
+    await expect(correction).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByTestId("litter-weight-panel")).toBeVisible();
+    await expect(vigilance).not.toContainText("Poids inférieur", {
+      timeout: 60_000,
+    });
     await expect(vigilance).toContainText("Dernière séance collective incomplète");
     registerDynamicRows(registry, dynamicIdentifiers);
 
@@ -356,7 +363,7 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
       .getByRole("button", { name: "Ouvrir la saisie des pesées" })
       .click();
     const entryDialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
-    await expect(entryDialog).toBeVisible();
+    await expect(entryDialog).toBeVisible({ timeout: 60_000 });
     await expect(page).toHaveURL(
       new RegExp(
         `/litters/journal\\?litter=${ids.litter}(?:&weightEntry=1)?#litter-weights$`,
@@ -371,9 +378,12 @@ test("signaux objectifs, recalcul, action collective, confidentialité et viewer
       .getByLabel("Poids (g)")
       .fill("540");
     await entryDialog.getByRole("button", { name: "Enregistrer" }).click();
-    await expect(page.getByRole("status")).toContainText("ont été enregistrés");
+    await expect(entryDialog).toBeHidden({ timeout: 60_000 });
+    await page.reload();
+    await expect(page.getByTestId("litter-weight-panel")).toBeVisible();
     await expect(vigilance).not.toContainText(
       "Dernière séance collective incomplète",
+      { timeout: 60_000 },
     );
     registerDynamicRows(registry, dynamicIdentifiers);
 

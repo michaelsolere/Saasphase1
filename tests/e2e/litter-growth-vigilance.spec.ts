@@ -448,6 +448,113 @@ test.describe("projection pure des points de vigilance de croissance", () => {
     ).toEqual([]);
   });
 
+  test("un animal décédé avant la date locale de la dernière séance est exclu des manquants", () => {
+    const latest = session("s", "2026-07-03T00:30:00Z", {
+      timezoneName: "Europe/Paris",
+    });
+    expect(
+      project({
+        animals: [
+          animal("measured", { birthOrder: 1 }),
+          animal("deceased", {
+            birthOrder: 2,
+            callName: "Décédé avant",
+            deathDate: "2026-07-02",
+          }),
+        ],
+        sessions: [latest],
+        measurements: [
+          measurement("m", "measured", latest.measuredAt, 400, {
+            sessionId: latest.id,
+          }),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  test("un animal décédé le jour civil de la séance reste éligible selon la règle serveur", () => {
+    const latest = session("s", "2026-07-03T00:30:00Z", {
+      timezoneName: "America/Los_Angeles",
+    });
+    expect(
+      project({
+        animals: [
+          animal("measured", { birthOrder: 1 }),
+          animal("same-day", {
+            birthOrder: 2,
+            callName: "Décédé le même jour",
+            deathDate: "2026-07-02",
+          }),
+        ],
+        sessions: [latest],
+        measurements: [
+          measurement("m", "measured", latest.measuredAt, 400, {
+            sessionId: latest.id,
+          }),
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        code: "latest_session_incomplete",
+        missingAnimalLabels: ["Décédé le même jour"],
+      }),
+    ]);
+  });
+
+  test("un décès postérieur à la séance conserve l’animal dans les manquants", () => {
+    const latest = session("s", "2026-07-03T08:00:00Z");
+    expect(
+      project({
+        animals: [
+          animal("measured", { birthOrder: 1 }),
+          animal("later", {
+            birthOrder: 2,
+            callName: "Décédé après",
+            deathDate: "2026-07-04",
+          }),
+        ],
+        sessions: [latest],
+        measurements: [
+          measurement("m", "measured", latest.measuredAt, 400, {
+            sessionId: latest.id,
+          }),
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        code: "latest_session_incomplete",
+        missingAnimalLabels: ["Décédé après"],
+      }),
+    ]);
+  });
+
+  test("un animal vivant reste compté comme manquant", () => {
+    const latest = session("s", "2026-07-03T08:00:00Z");
+    expect(
+      project({
+        animals: [
+          animal("measured", { birthOrder: 1 }),
+          animal("living", {
+            birthOrder: 2,
+            callName: "Vivant",
+            deathDate: null,
+          }),
+        ],
+        sessions: [latest],
+        measurements: [
+          measurement("m", "measured", latest.measuredAt, 400, {
+            sessionId: latest.id,
+          }),
+        ],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        code: "latest_session_incomplete",
+        missingAnimalLabels: ["Vivant"],
+      }),
+    ]);
+  });
+
   test("le retrait d’une séance ou d’une mesure active recalcule la complétude", () => {
     const animals = [animal("a"), animal("b", { birthOrder: 2 })];
     const active = session("active", "2026-07-02T08:00:00Z");
@@ -528,7 +635,10 @@ test.describe("projection pure des points de vigilance de croissance", () => {
 
   test("la projection ne mute aucun modèle d’entrée", () => {
     const input: BuildLitterGrowthVigilanceInput = {
-      animals: [animal("b", { birthOrder: 2 }), animal("a", { birthOrder: 1 })],
+      animals: [
+        animal("b", { birthOrder: 2, deathDate: "2026-07-04" }),
+        animal("a", { birthOrder: 1 }),
+      ],
       measurements: [
         measurement("m2", "a", "2026-07-02T08:00:00Z", 390),
         measurement("m1", "a", "2026-07-01T08:00:00Z", 400),
