@@ -1,7 +1,7 @@
 "use client";
 
 import { Baby, Clock3, Pencil, Plus, Trash2 } from "lucide-react";
-import { useActionState, useCallback, useRef, useState } from "react";
+import { useActionState, useCallback, useRef, useState, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
@@ -1139,6 +1139,7 @@ function BirthCancellationDialog({
   onOpenChange,
   showTrigger = true,
   onRequestCorrection,
+  planningHref,
 }: {
   birth: WhelpingBirthSummary;
   action: BirthAdjustmentAction;
@@ -1147,6 +1148,7 @@ function BirthCancellationDialog({
   onOpenChange?: (open: boolean) => void;
   showTrigger?: boolean;
   onRequestCorrection?: () => void;
+  planningHref: "#litter-planning" | "/litters/journal#litter-planning";
 }) {
   const router = useRouter();
   const [internalOpen, setInternalOpen] = useState(false);
@@ -1170,6 +1172,11 @@ function BirthCancellationDialog({
   const [state, formAction] = useActionState(submitAction, initialWhelpingBirthAdjustmentActionState);
   const protectedDownstream =
     state.status === "error" && state.uxReason === "protected_downstream";
+  const openPlanning = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    setOpen(false);
+    router.push(planningHref);
+  };
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       {showTrigger ? (
@@ -1197,7 +1204,7 @@ function BirthCancellationDialog({
             <AdjustmentMessage state={state} />
             <DialogFooter className="sm:justify-between">
               <Button asChild variant="outline">
-                <a href="#litter-planning" onClick={() => setOpen(false)}>
+                <a href={planningHref} onClick={openPlanning}>
                   Voir le planning
                 </a>
               </Button>
@@ -1338,6 +1345,7 @@ function BirthAdjustmentControls({
             onOpenChange={setCancellationOpen}
             showTrigger={false}
             onRequestCorrection={openCorrection}
+            planningHref="/litters/journal#litter-planning"
           />
         ) : null}
       </div>
@@ -1353,6 +1361,7 @@ function BirthAdjustmentControls({
           action={adjustment.cancelAction}
           onSuccess={onSuccess}
           onRequestCorrection={openCorrection}
+          planningHref="#litter-planning"
         />
       ) : (
         <div className="max-w-md space-y-2">

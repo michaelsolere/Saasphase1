@@ -140,10 +140,37 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await dialog.getByRole("button", { name: "Annuler" }).click();
     dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie");
     await expect(dialog.getByRole("heading", { name: "Annulation protégée" })).toBeVisible();
-    await dialog.getByRole("link", { name: "Voir le planning" }).click();
+    const journalPlanningLink = dialog.getByRole("link", { name: "Voir le planning" });
+    await expect(journalPlanningLink).toHaveAttribute("href", "#litter-planning");
+    await journalPlanningLink.click();
+    await expect(page).toHaveURL(new RegExp(`/litters/journal\\?litter=${ids.litter}#litter-planning$`));
     await expect(page.locator("#litter-planning")).toBeVisible();
+
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(mobileHref!);
+    whelping = panel(page);
+    const protectedMobilePanelDom = await whelping.evaluate((element) => element.outerHTML);
+    const protectedMobileCard = whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first();
+    dialog = await dialogFrom(protectedMobileCard, "Corriger ou annuler cette saisie");
+    await dialog.getByRole("button", { name: "Annuler cette saisie" }).click();
+    dialog = page.getByRole("dialog");
+    await dialog.getByLabel("Motif de l’annulation").fill("Vérification du refus protégé sur mobile");
+    await dialog.getByRole("button", { name: "Annuler cette saisie" }).click();
+    await expect(dialog.getByRole("heading", { name: "Annulation protégée" })).toBeVisible();
+    const mobilePlanningLink = dialog.getByRole("link", { name: "Voir le planning" });
+    await expect(mobilePlanningLink).toHaveAttribute("href", "/litters/journal#litter-planning");
+    const protectedMobileDom = [
+      protectedMobilePanelDom,
+      await dialog.evaluate((element) => element.outerHTML),
+    ].join("");
+    expect(protectedMobileDom).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    await mobilePlanningLink.click();
+    await expect(page).toHaveURL(/\/litters\/journal#litter-planning$/);
+    await expect(page.locator("#litter-planning")).toBeVisible();
+    expect(Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`))).toBe(protectedCountBefore);
+
     await execute(`delete from public.animal_weight_measurements where id=${q(ids.downstreamWeight)}::uuid`);
-    await page.reload(); whelping = panel(page); dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Annuler cette saisie" }).click(); await expect(dialog).toBeHidden(); await register(registry, [], [{ birthId: second.birthId, resultingRevisionNo: 1 }]);
+    await page.goto(`/litters/journal?litter=${ids.litter}`); whelping = panel(page); dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Annuler cette saisie" }).click(); await expect(dialog).toBeHidden(); await register(registry, [], [{ birthId: second.birthId, resultingRevisionNo: 1 }]);
     await expect(whelping.getByRole("status")).toContainText("Naissance n° 2 annulée.\nLes données actives de la portée ont été recalculées.\nLe Journal a été actualisé.");
     await expect(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2 annulée" }).first()).toBeVisible();
     expect(sql(`select count(*) from public.whelping_births where id=${q(second.birthId)}::uuid`)).toBe("1");
