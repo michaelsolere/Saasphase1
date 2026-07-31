@@ -257,6 +257,7 @@ async function main() {
       "tests/e2e/litter-actual-birth-plan-reconciliation.spec.ts",
       "tests/e2e/litter-actual-birth-series-reconciliation-engine.spec.ts",
       "tests/e2e/litter-single-birth-cancellation-safety-guard.spec.ts",
+      "tests/e2e/litter-single-birth-cancellation-reversal-wiring.spec.ts",
       "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
       "tests/e2e/maternal-temperature-planning-link.spec.ts",
       "tests/e2e/planning-fact-link-visibility.spec.ts",

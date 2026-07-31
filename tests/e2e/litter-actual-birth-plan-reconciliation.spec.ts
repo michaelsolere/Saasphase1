@@ -131,6 +131,13 @@ function cleanup() {
     set local session_replication_role = replica;
     select pg_catalog.set_config('app.fixture_cleanup', 'on', true);
 
+    delete from public.litter_plan_actual_birth_plan_reversal_changes
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)};
+    delete from public.litter_plan_actual_birth_plan_reversals
+    where organization_id = ${q(ids.organization)}::uuid
+       or litter_id::text like ${q(like)}
+       or birth_adjustment_client_command_id::text like ${q(like)};
     delete from public.litter_plan_actual_birth_reconciliation_task_changes
     where organization_id = ${q(ids.organization)}::uuid
        or command_id::text like ${q(like)}
@@ -281,6 +288,8 @@ function cleanup() {
 function fixtureCounts() {
   return jsonSql<Record<string, number>>(`
     select json_build_object(
+      'reversal_changes', (select count(*) from public.litter_plan_actual_birth_plan_reversal_changes where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
+      'reversals', (select count(*) from public.litter_plan_actual_birth_plan_reversals where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'plan_change_audits', (select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
       'plan_audits', (select count(*) from public.litter_plan_actual_birth_reconciliations where organization_id = ${q(ids.organization)}::uuid or litter_id::text like ${q(like)}),
       'series_change_audits', (select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes where organization_id = ${q(ids.organization)}::uuid or task_id::text like ${q(like)}),
@@ -1527,7 +1536,6 @@ test("réconcilie atomiquement le plan après correction de la naissance réelle
       ids.cancelFirstBirth,
       "2026-08-08T03:00:00+02:00",
     );
-    const cancelBefore = completeFingerprint(ids.cancelLitter);
     const cancelled = await cancelWhelpingBirthCore(
       {
         birthId: cancelBirth.birthId,
@@ -1539,14 +1547,36 @@ test("réconcilie atomiquement le plan après correction de la naissance réelle
       owner,
     );
     expect(cancelled).toMatchObject({
-      outcome: "error",
-      error: { code: "birth_has_downstream_data" },
+      outcome: "success",
+      revisionNo: 1,
+      replayed: false,
     });
-    expect(completeFingerprint(ids.cancelLitter)).toEqual(cancelBefore);
     expect(sql(`
       select actual_birth_date::text from public.litters
       where id = ${q(ids.cancelLitter)}::uuid;
-    `)).toBe("2026-08-08");
+    `)).toBe("");
+    expect(jsonSql<Record<string, number>>(`
+      select json_build_object(
+        'activeBirths', (
+          select count(*) from public.whelping_births birth
+          join public.whelping_sessions session on session.id = birth.session_id
+          where session.litter_id = ${q(ids.cancelLitter)}::uuid
+            and birth.cancelled_at is null
+        ),
+        'reversals', (
+          select count(*) from public.litter_plan_actual_birth_plan_reversals
+          where litter_id = ${q(ids.cancelLitter)}::uuid
+        ),
+        'deactivations', (
+          select count(*) from public.litter_plan_actual_birth_activation_deactivations
+          where litter_id = ${q(ids.cancelLitter)}::uuid
+        )
+      )::text
+    `)).toEqual({
+      activeBirths: 0,
+      reversals: 1,
+      deactivations: 1,
+    });
     expect(planAuditCount(ids.cancelLitter)).toBe(0);
 
     const invalidProbe = deniedCorrectionLockProbe({
