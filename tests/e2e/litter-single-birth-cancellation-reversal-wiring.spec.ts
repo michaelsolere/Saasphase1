@@ -520,6 +520,88 @@ function birthState(litterId: string) {
   `);
 }
 
+function rollbackState(litterId: string, birthId: string) {
+  return jsonSql<Record<string, unknown>>(`
+    select json_build_object(
+      'litter', (
+        select to_jsonb(row) from public.litters row
+        where row.id = ${q(litterId)}::uuid
+      ),
+      'birth', (
+        select to_jsonb(row) from public.whelping_births row
+        where row.id = ${q(birthId)}::uuid
+      ),
+      'animal', (
+        select to_jsonb(animal)
+        from public.animals animal
+        join public.whelping_births birth on birth.animal_id = animal.id
+        where birth.id = ${q(birthId)}::uuid
+      ),
+      'weights', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.animal_weight_measurements row
+        where row.source_birth_id = ${q(birthId)}::uuid
+      ),
+      'events', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.whelping_events row
+        join public.whelping_sessions session on session.id = row.session_id
+        where session.litter_id = ${q(litterId)}::uuid
+      ),
+      'adjustments', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.whelping_birth_adjustment_commands row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'plan', (
+        select to_jsonb(row) from public.litter_plans row
+        where row.litter_id = ${q(litterId)}::uuid
+          and row.status = 'active'
+      ),
+      'items', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_items row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'series', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_series row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'tasks', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_care_tasks row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'activationState', (
+        select to_jsonb(row)
+        from public.litter_plan_actual_birth_activation_states row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'activations', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activations row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'deactivations', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_activation_deactivations row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'reversals', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_plan_reversals row
+        where row.litter_id = ${q(litterId)}::uuid
+      ),
+      'reversalDetails', (
+        select coalesce(jsonb_agg(to_jsonb(row) order by row.id), '[]'::jsonb)
+        from public.litter_plan_actual_birth_plan_reversal_changes row
+        where row.litter_id = ${q(litterId)}::uuid
+      )
+    )::text
+  `);
+}
+
 test("raccordement public atomique, prudent, audité et idempotent", async () => {
   cleanup();
   for (const count of Object.values(fixtureCounts())) expect(count).toBe(0);
@@ -1620,6 +1702,10 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       ids.rollbackBirth,
       "2026-08-13T03:00:00+02:00",
     );
+    const beforeForcedFailure = rollbackState(
+      ids.rollbackLitter,
+      rollbackBirthId,
+    );
     expect(publicCancellationTransaction(
       rollbackBirthId,
       ids.rollbackCancel,
@@ -1647,6 +1733,8 @@ test("raccordement public atomique, prudent, audité et idempotent", async () =>
       deactivations: 0,
       currentActivationId: activationId(ids.rollbackLitter),
     });
+    expect(rollbackState(ids.rollbackLitter, rollbackBirthId))
+      .toEqual(beforeForcedFailure);
     expect(Number(sql(`
       select count(*) from pg_catalog.pg_trigger
       where tgname = 'e7310011_forced_plan_reversal_audit'
