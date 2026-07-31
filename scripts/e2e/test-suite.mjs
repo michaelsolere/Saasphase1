@@ -79,6 +79,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/whelping-fixtures.spec.ts",
   "tests/e2e/whelping-mobile-selection.spec.ts",
   "tests/e2e/whelping-quick-completion-actions-core.spec.ts",
+  "tests/e2e/whelping-session-summary.spec.ts",
   "tests/e2e/weighing-fixtures.spec.ts",
 ]);
 

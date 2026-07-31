@@ -644,6 +644,7 @@ export default async function LitterJournalPage({
             recordWhelpingEventAction={whelpingWorkspaceLoaded?.eventAction ?? null}
             recordWhelpingBirthAction={whelpingWorkspaceLoaded?.birthAction ?? null}
             recordWhelpingBirthWeightActions={whelpingWorkspaceLoaded?.birthWeightActions ?? []}
+            whelpingQuickCompletionActions={whelpingWorkspaceLoaded?.quickCompletionActions ?? []}
             whelpingBirthAdjustmentActions={whelpingWorkspaceLoaded?.birthAdjustmentActions ?? []}
             whelpingBirthAdjustmentHistory={whelpingWorkspaceLoaded?.adjustmentHistory ?? []}
             whelpingBirthAdjustmentHistoryLoadError={

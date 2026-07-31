@@ -29,12 +29,16 @@ type CreatedIds = {
   whelpingCommands: string[];
   birthAdjustmentCommands: string[];
   litterWeightCommands: string[];
+  actualBirthActivations: string[];
+  actualBirthActivationStates: string[];
+  actualBirthReversalSnapshots: string[];
 };
 
 const created: CreatedIds = {
   sessions: [], events: [], births: [], animals: [], measurements: [],
   weighingSessions: [], whelpingCommands: [], birthAdjustmentCommands: [],
-  litterWeightCommands: [],
+  litterWeightCommands: [], actualBirthActivations: [],
+  actualBirthActivationStates: [], actualBirthReversalSnapshots: [],
 };
 
 function q(value: string) {
@@ -64,6 +68,35 @@ function cleanup() {
   sql(`
     begin;
     set local app.fixture_cleanup = 'on';
+    set local session_replication_role = replica;
+    delete from public.litter_plan_actual_birth_plan_reversal_changes
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_plan_reversals
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_reconciliation_task_changes
+      where command_id in (
+        select id from public.litter_plan_actual_birth_reconciliations
+        where litter_id=${q(ids.litter)}::uuid
+      );
+    delete from public.litter_plan_actual_birth_reconciliations
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_series_actual_birth_reconciliation_changes
+      where command_id in (
+        select id from public.litter_plan_series_actual_birth_reconciliation_commands
+        where litter_id=${q(ids.litter)}::uuid
+      );
+    delete from public.litter_plan_series_actual_birth_reconciliation_commands
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activation_reversal_changes
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activation_reversal_snapshots
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activation_deactivations
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activation_states
+      where litter_id=${q(ids.litter)}::uuid;
+    delete from public.litter_plan_actual_birth_activations
+      where litter_id=${q(ids.litter)}::uuid;
     delete from public.litter_weight_adjustment_commands where litter_id=${q(ids.litter)}::uuid;
     delete from public.litter_weight_commands where litter_id=${q(ids.litter)}::uuid;
     delete from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid;
@@ -81,7 +114,6 @@ function cleanup() {
     delete from public.litters where id=${q(ids.litter)}::uuid or name like ${q(`${labelPrefix}%`)};
     delete from public.animals where id in (${q(ids.mother)}::uuid,${q(ids.father)}::uuid)
       or call_name like ${q(`${labelPrefix}%`)};
-    set local session_replication_role = replica;
     update public.memberships set role='owner'
       where id=${q(ownerMembershipId)}::uuid
         and organization_id=${q(organizationId)}::uuid
@@ -94,6 +126,17 @@ function cleanup() {
 function remainingCounts() {
   return json<Record<string, number>>(`select json_build_object(
     'litter_weight_adjustments',(select count(*) from public.litter_weight_adjustment_commands where litter_id=${q(ids.litter)}::uuid),
+    'plan_reversal_changes',(select count(*) from public.litter_plan_actual_birth_plan_reversal_changes where litter_id=${q(ids.litter)}::uuid),
+    'plan_reversals',(select count(*) from public.litter_plan_actual_birth_plan_reversals where litter_id=${q(ids.litter)}::uuid),
+    'plan_reconciliation_changes',(select count(*) from public.litter_plan_actual_birth_reconciliation_task_changes where command_id in (select id from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid)),
+    'plan_reconciliations',(select count(*) from public.litter_plan_actual_birth_reconciliations where litter_id=${q(ids.litter)}::uuid),
+    'series_reconciliation_changes',(select count(*) from public.litter_plan_series_actual_birth_reconciliation_changes where command_id in (select id from public.litter_plan_series_actual_birth_reconciliation_commands where litter_id=${q(ids.litter)}::uuid)),
+    'series_reconciliations',(select count(*) from public.litter_plan_series_actual_birth_reconciliation_commands where litter_id=${q(ids.litter)}::uuid),
+    'activation_reversal_changes',(select count(*) from public.litter_plan_actual_birth_activation_reversal_changes where litter_id=${q(ids.litter)}::uuid),
+    'activation_reversal_snapshots',(select count(*) from public.litter_plan_actual_birth_activation_reversal_snapshots where litter_id=${q(ids.litter)}::uuid),
+    'activation_deactivations',(select count(*) from public.litter_plan_actual_birth_activation_deactivations where litter_id=${q(ids.litter)}::uuid),
+    'activation_states',(select count(*) from public.litter_plan_actual_birth_activation_states where litter_id=${q(ids.litter)}::uuid),
+    'activations',(select count(*) from public.litter_plan_actual_birth_activations where litter_id=${q(ids.litter)}::uuid),
     'litter_weight_commands',(select count(*) from public.litter_weight_commands where litter_id=${q(ids.litter)}::uuid),
     'weights',(select count(*) from public.animal_weight_measurements where animal_id in (select id from public.animals where litter_id=${q(ids.litter)}::uuid) or litter_weighing_session_id in (select id from public.litter_weighing_sessions where litter_id=${q(ids.litter)}::uuid)),
     'weighing_sessions',(select count(*) from public.litter_weighing_sessions where litter_id=${q(ids.litter)}::uuid),
@@ -130,6 +173,9 @@ function collectCreatedIds() {
     'whelpingCommands',coalesce((select json_agg(id::text order by created_at) from public.whelping_commands where litter_id=${q(ids.litter)}::uuid),'[]'::json),
     'birthAdjustmentCommands',coalesce((select json_agg(id::text order by created_at) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid),'[]'::json),
     'litterWeightCommands',coalesce((select json_agg(id::text order by created_at) from public.litter_weight_commands where litter_id=${q(ids.litter)}::uuid),'[]'::json)
+    ,'actualBirthActivations',coalesce((select json_agg(id::text order by id) from public.litter_plan_actual_birth_activations where litter_id=${q(ids.litter)}::uuid),'[]'::json)
+    ,'actualBirthActivationStates',coalesce((select json_agg(id::text order by id) from public.litter_plan_actual_birth_activation_states where litter_id=${q(ids.litter)}::uuid),'[]'::json)
+    ,'actualBirthReversalSnapshots',coalesce((select json_agg(id::text order by id) from public.litter_plan_actual_birth_activation_reversal_snapshots where litter_id=${q(ids.litter)}::uuid),'[]'::json)
   )::text;`);
   Object.assign(created, inventory);
   return inventory;
@@ -244,11 +290,41 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
 
     await recordBirth(whelping, { sex: "female", weight: "410", note: "Première naissance initiale" });
     await recordBirth(whelping, { sex: "male", note: "Deuxième naissance sans poids" });
+    await expect(whelping.getByTestId("whelping-session-summary")).toHaveCount(0);
     await expect(whelping.getByText("Naissances enregistrées")).toContainText("2");
     expect(businessState()).toMatchObject({
       sessionCount: 1, sessionStatus: "open", activeAnimals: 2, activeBirths: 2,
       counters: { total: 2, male: 1, female: 1, alive: 2 },
     });
+
+    const firstBirth = json<{ id: string; eventId: string; animalId: string }>(`select json_build_object('id',id,'eventId',event_id,'animalId',animal_id)::text from public.whelping_births where session_id=(select id from public.whelping_sessions where litter_id=${q(ids.litter)}::uuid) and birth_order=1 and cancelled_at is null;`);
+    const originalBirthEvent = sql(`select row_to_json(event)::text from public.whelping_events event where id=${q(firstBirth.eventId)}::uuid;`);
+    const originalSessionId = businessState().sessionId;
+
+    await closeSession(whelping, "Première clôture");
+    let closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toBeVisible();
+    await expect(closureSummary).toContainText("Bilan de la mise-bas");
+    await expect(closureSummary).toContainText("Naissances actives2");
+    await expect(closureSummary).toContainText("1 femelle · 1 mâle");
+    await expect(closureSummary).toContainText("2 vivants");
+    await expect(closureSummary).toContainText("1 sur 2");
+    await expect(closureSummary).toContainText("1 poids de naissance reste à compléter.");
+    await expect(closureSummary).toContainText("2 chiots sont disponibles pour le suivi des pesées.");
+    await expect(closureSummary).toContainText("Interventions0");
+    await expect(closureSummary).toContainText("Appels vétérinaires0");
+    const completionLink = closureSummary.getByRole("link", { name: "Compléter les naissances" });
+    const weighingLink = closureSummary.getByRole("link", { name: "Ouvrir les pesées" });
+    await expect(completionLink).toHaveAttribute("href", "#whelping-quick-completion");
+    await completionLink.click();
+    await expect(page.locator("#whelping-quick-completion")).toBeInViewport();
+    await expect(weighingLink).toHaveAttribute("href", "#litter-weights");
+    await weighingLink.click();
+    await expect(weightPanel(page)).toBeInViewport();
+    await page.evaluate(() => history.replaceState(null, "", `${location.pathname}${location.search}`));
+    await whelping.scrollIntoViewIfNeeded();
+    await expect(whelping).toContainText("La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés.");
+    await expect(whelping).not.toContainText("Seuls les poids de naissance manquants peuvent encore être renseignés");
 
     dialog = await openDialogFrom(birthCard(whelping, 2), "Renseigner le poids");
     await dialog.getByLabel("Poids en grammes").fill("420");
@@ -256,16 +332,18 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     await dialog.getByRole("button", { name: "Enregistrer le poids" }).click();
     await expect(dialog).toBeHidden();
     await expect(birthCard(whelping, 2)).toContainText("420 g");
+    closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toContainText("2 sur 2");
+    await expect(closureSummary).toContainText("Poids moyen415 g");
+    await expect(closureSummary).not.toContainText("poids de naissance reste à compléter");
 
-    const firstBirth = json<{ id: string; eventId: string; animalId: string }>(`select json_build_object('id',id,'eventId',event_id,'animalId',animal_id)::text from public.whelping_births where session_id=(select id from public.whelping_sessions where litter_id=${q(ids.litter)}::uuid) and birth_order=1 and cancelled_at is null;`);
-    const originalBirthEvent = sql(`select row_to_json(event)::text from public.whelping_events event where id=${q(firstBirth.eventId)}::uuid;`);
-    const originalSessionId = businessState().sessionId;
-
-    await closeSession(whelping, "Première clôture");
-    await expect(whelping).toContainText("La session est clôturée. Les informations des naissances peuvent encore être rectifiées et les poids manquants renseignés.");
-    await expect(whelping).not.toContainText("Seuls les poids de naissance manquants peuvent encore être renseignés");
     await correctFirstBirth(whelping, { weight: "430", viability: "unknown", reason: "Première rectification fermée", note: "État effectif intermédiaire" });
+    closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toContainText("2 mâles");
+    await expect(closureSummary).toContainText("1 vivant · 1 état à confirmer");
+    await expect(closureSummary).toContainText("Poids moyen425 g");
     await correctFirstBirth(whelping, { weight: "435", viability: "alive", reason: "Seconde rectification fermée", note: "État effectif final" });
+    await expect(whelping.getByTestId("whelping-session-summary")).toContainText("Poids moyen428 g");
 
     const afterCorrections = businessState();
     expect(afterCorrections).toMatchObject({ sessionId: originalSessionId, sessionStatus: "closed", activeAnimals: 2, activeBirths: 2, counters: { total: 2, male: 2, female: 0, alive: 2 } });
@@ -285,13 +363,14 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     expect(auditItems[1]).toContain("Première rectification fermée");
 
     await reopenSession(whelping, "Reprise après contrôle");
+    await expect(whelping.getByTestId("whelping-session-summary")).toHaveCount(0);
     expect(businessState()).toMatchObject({ sessionCount: 1, sessionId: originalSessionId, sessionStatus: "open" });
     await recordBirth(whelping, { sex: "female", weight: "390", note: "Naissance à annuler" });
     await closeSession(whelping, "Deuxième clôture");
     const cancelledCandidate = json<{ id: string; eventId: string; animalId: string }>(`select json_build_object('id',id,'eventId',event_id,'animalId',animal_id)::text from public.whelping_births where session_id=${q(originalSessionId)}::uuid and birth_order=3 and cancelled_at is null;`);
-    dialog = await openDialogFrom(birthCard(whelping, 3), "Annuler la naissance");
+    dialog = await openDialogFrom(birthCard(whelping, 3), /Annuler (?:la naissance|cette saisie)/);
     await dialog.getByLabel("Motif de l’annulation").fill("Doublon confirmé");
-    await dialog.getByRole("button", { name: "Confirmer l’annulation" }).click();
+    await dialog.getByRole("button", { name: "Annuler cette saisie", exact: true }).click();
     await expect(dialog).toBeHidden();
     await expect(whelping).toContainText("Naissance n° 3 annulée");
     expect(json<{ birthRows: number; deleted: boolean; weightRows: number; activeWeights: number }>(`select json_build_object(
@@ -301,6 +380,10 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
       'activeWeights',(select count(*) from public.animal_weight_measurements where source_birth_id=${q(cancelledCandidate.id)}::uuid and cancelled_at is null)
     )::text;`)).toEqual({ birthRows: 1, deleted: true, weightRows: 1, activeWeights: 0 });
     expect(businessState()).toMatchObject({ sessionStatus: "closed", activeAnimals: 2, activeBirths: 2, counters: { total: 2, male: 2, female: 0, alive: 2 } });
+    closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toContainText("Naissances actives2");
+    await expect(closureSummary).toContainText("2 mâles");
+    await expect(closureSummary).toContainText("Poids moyen428 g");
 
     await reopenSession(whelping, "Remplacement de l’ordre libéré");
     await recordBirth(whelping, { sex: "female", weight: "400", note: "Naissance de remplacement" });
@@ -320,37 +403,31 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     const timeline = whelping.locator("h3", { hasText: "Chronologie" }).locator("xpath=following-sibling::ol[1]");
     await expect(timeline.locator("li").filter({ hasText: "Naissance corrigée" })).toHaveCount(2);
     await expect(timeline.locator(":scope > li").nth(9)).toContainText("Naissance annulée");
+    closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toContainText("Naissances actives3");
+    await expect(closureSummary).toContainText("1 femelle · 2 mâles");
+    await expect(closureSummary).toContainText("Poids moyen418 g");
 
     let weights = weightPanel(page);
     await expect(weights.getByTestId("litter-weight-main-view-table")).toContainText("435 g");
     await expect(weights.getByTestId("litter-weight-main-view-table")).toContainText("420 g");
     await expect(weights.getByTestId("litter-weight-main-view-table")).toContainText("400 g");
-    const eventStateBeforeRoutine = JSON.stringify({ types: finalState.eventTypes, sequence: finalState.sequenceNos });
-    dialog = await openDialogFrom(weights, "Nouvelle pesée");
-    const fields = dialog.locator("fieldset");
-    await expect(fields).toHaveCount(3);
-    await expect(dialog).not.toContainText("Naissance à annuler");
-    for (let index = 0; index < 3; index += 1) {
-      await fields.nth(index).getByLabel("Poids en grammes").fill(String(500 + index * 10));
-    }
-    await dialog.getByLabel("Note commune (facultative)").fill("Routine après consolidation");
-    await dialog.getByRole("button", { name: "Enregistrer la pesée" }).click();
-    await expect(dialog).toBeHidden();
-    weights = weightPanel(page);
-    await expect(weights).toContainText("Routine après consolidation");
-    await expect(weights).toContainText("500 g");
-    expect(JSON.stringify({ types: businessState().eventTypes, sequence: businessState().sequenceNos })).toBe(eventStateBeforeRoutine);
-    expect(sql(`select count(*) from public.animal_weight_measurements where litter_weighing_session_id in (select id from public.litter_weighing_sessions where litter_id=${q(ids.litter)}::uuid) and measurement_kind='routine' and cancelled_at is null;`)).toBe("3");
+    await expect(weights.getByTestId("litter-weight-main-view-table")).not.toContainText("390 g");
+    expect(sql(`select count(*) from public.animal_weight_measurements where litter_weighing_session_id in (select id from public.litter_weighing_sessions where litter_id=${q(ids.litter)}::uuid) and measurement_kind='routine';`)).toBe("0");
     expect(sql(`select count(*) from public.animal_weight_measurements where animal_id=${q(cancelledCandidate.animalId)}::uuid and measurement_kind='routine';`)).toBe("0");
 
     setOwnerRole("viewer");
     await page.reload();
     whelping = whelpingPanel(page);
     weights = weightPanel(page);
+    closureSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(closureSummary).toBeVisible();
+    await expect(closureSummary).toContainText("Naissances actives3");
+    await expect(closureSummary.getByRole("link", { name: "Compléter les naissances" })).toHaveCount(0);
     await expect(whelping).toContainText("Naissance n° 3 annulée");
     await whelping.getByText("Historique des compléments et rectifications").click();
     await expect(whelping).toContainText("Doublon confirmé");
-    await expect(weights).toContainText("Routine après consolidation");
+    await expect(weights.getByTestId("litter-weight-main-view-table")).toContainText("435 g");
     for (const button of [/ENREGISTRER UNE NAISSANCE/, "Ajouter un événement", "Clôturer la mise-bas", "Rouvrir la session", "Renseigner le poids", /Corriger|Compléter la naissance/, "Annuler la naissance"]) {
       await expect(whelping.getByRole("button", { name: button })).toHaveCount(0);
     }
@@ -364,6 +441,23 @@ test("consolide le workflow transversal du Journal, des rectifications et de la 
     }
     expect(page.url()).toBe(`http://127.0.0.1:3100/litters/journal?litter=${ids.litter}`);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
+    await page.getByRole("link", { name: "Ouvrir le mode mobile de mise-bas" }).click();
+    await expect(page).toHaveURL("http://127.0.0.1:3100/whelping");
+    whelping = whelpingPanel(page);
+    const mobileSummary = whelping.getByTestId("whelping-session-summary");
+    await expect(mobileSummary).toBeVisible();
+    await expect(mobileSummary).toContainText("Durée");
+    await expect(mobileSummary).toContainText("Naissances3");
+    await expect(mobileSummary).toContainText("1 femelle · 2 mâles");
+    await expect(mobileSummary).toContainText("Poids renseignés3 sur 3");
+    await expect(mobileSummary).toContainText("Interventions / appels0 / 0");
+    await expect(mobileSummary.locator("details")).not.toHaveAttribute("open", "");
+    await mobileSummary.getByText("Voir le bilan détaillé").click();
+    await expect(mobileSummary).toContainText("Poids moyen418 g");
+    await expect(whelping.getByRole("button", { name: /Corriger|Annuler|Rouvrir|Enregistrer|Ajouter/ })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await whelping.evaluate((element) => element.outerHTML)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
 
     console.info(JSON.stringify({ finalConsolidationFixtures: { prefix, staticIds: ids, created: collectCreatedIds() } }));
   } finally {

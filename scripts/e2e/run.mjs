@@ -263,6 +263,7 @@ async function main() {
       "tests/e2e/planning-fact-link-visibility.spec.ts",
       "tests/e2e/whelping-birth-adjustment-foundation.spec.ts",
       "tests/e2e/whelping-birth-adjustment-ui.spec.ts",
+      "tests/e2e/whelping-journal-final-consolidation.spec.ts",
     ]);
     const permitted = playwrightArgs.every((arg) => allowedSpecs.has(arg) || /^--(workers=1|retries=0)$/.test(arg));
     if (mode !== "reuse" || target.length !== 1 || !allowedSpecs.has(target[0]) || !permitted) {

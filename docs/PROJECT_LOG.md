@@ -1556,3 +1556,31 @@ L’interface traduit exclusivement le code structuré en une phrase métier. El
 ne révèle ni code interne, ni identifiant, ni détail SQL. La limite volontaire
 reste l’absence de détail et de décompte sur les tâches restaurées ou
 conservées.
+
+## Lot du 2026-07-31 — Bilan de clôture de la mise-bas
+
+Le Journal complet et le mode mobile présentent désormais un **Bilan de la
+mise-bas** uniquement lorsque la session sélectionnée est clôturée et possède
+une date de fin exploitable. Une session ouverte ou rouverte ne présente pas ce
+bilan comme définitif.
+
+La synthèse est une projection TypeScript pure, calculée au rendu depuis la
+session, ses événements et ses naissances déjà chargés. Elle n’est pas stockée
+et n’effectue aucune requête. Les naissances annulées restent visibles dans la
+chronologie et l’historique, mais sont exclues du total actif, des heures de
+première et dernière naissance, des répartitions par sexe et viabilité, des
+statistiques de poids et de la continuité vers les pesées. Une complétion ou une
+rectification autorisée recalcule donc automatiquement le bilan au prochain
+rendu, sans routine de synchronisation dédiée.
+
+Le bilan détaille les durées disponibles, les naissances actives, les poids de
+naissance renseignés ou manquants, la moyenne et les bornes, ainsi que les
+interventions et appels vétérinaires. Il indique séparément les chiots disposant
+de leur fiche Animal et prêts pour le suivi des pesées. Le Journal réutilise la
+file existante **Naissances à compléter** via l’ancre
+`#whelping-quick-completion` et la zone existante de pesée via
+`#litter-weights`; aucune nouvelle route ni action d’écriture n’est introduite.
+Le mode mobile conserve une synthèse compacte et un détail repliable.
+
+Ce lot est sans migration : aucune table, colonne, RPC, fonction SQL, politique
+RLS, ACL ou type Supabase généré n’est modifié.
