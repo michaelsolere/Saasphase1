@@ -46,12 +46,15 @@ import {
 } from "./litter-weight-animal-identity";
 import { LitterGrowthCharts } from "./litter-growth-charts";
 import { LitterGrowthTable } from "./litter-growth-table";
+import { buildLitterGrowthVigilance } from "./litter-growth-vigilance";
+import { LitterGrowthVigilancePanel } from "./litter-growth-vigilance-panel";
 import {
   getRoutineWeightEligibility,
   type RoutineWeightEligibilityReason,
 } from "./routine-weight-eligibility";
 import {
   buildLitterRoutineWeightEntries,
+  buildLitterWeightEntryHref,
   getLitterRoutineWeightEntryProgress,
   removeWeightEntryFromUrl,
 } from "./litter-routine-weight-entry";
@@ -770,6 +773,7 @@ function LatestWeightBanner({
 }
 
 export function LitterWeightPanel({
+  litterId,
   animals,
   sessions,
   measurements,
@@ -785,6 +789,7 @@ export function LitterWeightPanel({
   loadError,
   initialWeightEntryOpen = false,
 }: {
+  litterId: string | null;
   animals: LitterWeightHistoryAnimal[];
   sessions: LitterWeightHistorySession[];
   measurements: LitterWeightHistoryMeasurement[];
@@ -818,6 +823,22 @@ export function LitterWeightPanel({
     eligibleAnimals.length >= 1 &&
     eligibleAnimals.length <= 30;
   const lastSession = sessions[0] ?? null;
+  const vigilanceSignals = useMemo(
+    () =>
+      buildLitterGrowthVigilance({
+        animals,
+        measurements,
+        sessions,
+        weighingSchedule,
+      }),
+    [animals, measurements, sessions, weighingSchedule],
+  );
+  const vigilanceWeightEntryHref =
+    canWrite &&
+    litterId !== null &&
+    vigilanceSignals.some((signal) => signal.suggestsWeightEntry)
+      ? buildLitterWeightEntryHref(litterId)
+      : null;
 
   if (loadError) {
     return (
@@ -869,6 +890,10 @@ export function LitterWeightPanel({
           {confirmation}
         </p>
       ) : null}
+      <LitterGrowthVigilancePanel
+        signals={vigilanceSignals}
+        weightEntryHref={vigilanceWeightEntryHref}
+      />
       <nav className="mt-5 flex w-fit max-w-full overflow-x-auto rounded-lg border p-1" aria-label="Vue poids et croissance">
         {(["table", "charts", "schedule"] as const).map((view) => (
           <button

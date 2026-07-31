@@ -1619,3 +1619,49 @@ renouveler la sélection autorisée puis se termine sur l’URL canonique ; le
 cookie `HttpOnly` existant, son format, son chemin et sa validation restent la
 source de vérité. Ce lot n’ajoute aucune migration et ne modifie aucune table,
 colonne, RPC, fonction SQL, RLS, ACL ou donnée métier.
+
+## Lot du 2026-07-31 — Points de vigilance descriptifs de croissance
+
+Le panneau **Points de vigilance** de **Poids et croissance** est construit au
+rendu par la projection TypeScript pure `buildLitterGrowthVigilance`. Il
+utilise exclusivement les animaux, mesures actives, séances actives et le
+planning effectif déjà chargés par le Journal. Il n’effectue aucune requête,
+n’écrit et ne stocke aucun signal, et ne maintient aucun état dérivé. Une
+nouvelle pesée, une correction ou une annulation de mesure ou de séance est
+donc reflétée au rendu suivant depuis les données actives relues.
+
+Le contrat est fermé à cinq codes :
+
+- `weight_decrease` décrit strictement une dernière mesure réelle `birth` ou
+  `routine` inférieure à la précédente du même animal ; la différence conservée
+  est signée et l’intervalle provient des deux horodatages réels ;
+- `weight_stagnation` décrit uniquement trois dernières mesures actives
+  consécutives dont les grammes sont exactement identiques, sans tolérance ;
+- `weighing_due_today` reprend exclusivement un élément `due_today` du planning
+  effectif ;
+- `weighing_overdue` agrège tous les éléments `overdue` et conserve leur nombre,
+  la plus ancienne date et l’âge J associé ;
+- `latest_session_incomplete` examine uniquement la dernière séance active,
+  triée par heure de mesure, création puis identifiant, et liste les animaux
+  actuellement éligibles qui n’y possèdent aucune mesure `routine` active.
+
+L’ordre de présentation est retard, baisse, stagnation, dernière séance
+incomplète, puis échéance du jour. À code égal, les animaux suivent l’ordre de
+naissance, le libellé public puis l’identifiant interne utilisé seulement comme
+dernier départage React et jamais rendu. Les identités publiques et
+l’éligibilité réutilisent les moteurs existants. Le panneau est absent sans
+signal et reste consultable par `viewer`, sans contrôle d’écriture. Une action
+commune **Ouvrir la saisie des pesées** n’apparaît que lorsqu’un signal de
+planning ou de séance la suggère et que la saisie collective existante est
+réellement disponible ; elle réutilise `buildLitterWeightEntryHref`.
+
+Ces conventions sont descriptives. Elles n’ajoutent aucun seuil médical ou
+statistique, aucune valeur faible ou élevée, comparaison à la moyenne,
+détection d’erreur probable, interprétation de santé ou conseil automatisé.
+Ce lot est sans migration et ne modifie aucune table, colonne, RPC, fonction
+SQL, RLS, ACL, Server Action, règle de pesée ou type Supabase généré.
+
+Décision fonctionnelle validée pour la suite : le futur planning de
+socialisation sera collectif au niveau de la portée ou de l’ensemble des
+chiots. Il ne suivra pas les chiots individuellement. La socialisation n’est
+pas implémentée dans ce lot.
