@@ -62,21 +62,98 @@ test("corrige et annule une naissance sans exposer les intentions techniques", a
     await login(page); await page.goto(`/litters/journal?litter=${ids.litter}`); let whelping = panel(page);
     await expect(whelping).toContainText("Naissance n° 1"); await expect(whelping).toContainText("Naissance n° 2"); await expect(whelping).toContainText("09:00"); await expect(whelping).toContainText("Femelle"); await expect(whelping).toContainText("410 g"); await expect(whelping).not.toContainText("999"); await expect(whelping).not.toContainText("étrangère");
     expect(await listWhelpingBirthsForSessionCore({ sessionId: foreignOpened.sessionId }, owner)).toMatchObject({ outcome: "error", error: { code: "not_found" } });
+    const firstCard = whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first();
+    const secondCard = whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first();
+    await expect(firstCard.getByRole("button", { name: "Annuler cette saisie" })).toBeDisabled();
+    await expect(firstCard).toContainText("Annulation indisponible : une naissance plus récente est encore active.");
+    await expect(firstCard).toContainText("La naissance la plus récente doit être traitée en premier.");
+    await expect(secondCard.getByRole("button", { name: "Annuler cette saisie" })).toBeEnabled();
+
+    const adjustmentCountBeforeDialogs = Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`));
+    let dialog = await dialogFrom(secondCard, "Annuler cette saisie");
+    await expect(dialog.getByRole("heading", { name: "Annuler la saisie de la naissance n° 2 ?" })).toBeVisible();
+    for (const text of [
+      "Cette action sert uniquement à corriger une naissance enregistrée par erreur.",
+      "Pour modifier l’heure, le sexe, le poids, le collier ou l’état du nouveau-né, utilisez plutôt « Corriger ».",
+      "Ce qui va se passer",
+      "La naissance et le nouveau-né ne seront plus comptés parmi les données actives.",
+      "L’enregistrement initial restera conservé dans l’historique.",
+      "Le poids de naissance éventuel sera neutralisé.",
+      "Les compteurs de la portée seront recalculés.",
+      "Si cette naissance a déclenché le planning postnatal, le SaaS vérifiera s’il peut remettre le planning dans son état précédent.",
+      "L’annulation sera refusée si elle risque d’effacer une modification, une tâche ou un rappel enregistré depuis la naissance.",
+      "Dans ce cas, aucune donnée ne sera modifiée.",
+    ]) await expect(dialog).toContainText(text);
+    await expect(dialog.getByRole("button", { name: "Conserver la naissance" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Annuler cette saisie" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Conserver la naissance" }).click();
+    await expect(dialog).toBeHidden();
+    expect(Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`))).toBe(adjustmentCountBeforeDialogs);
+
+    const mobileHref = await page.getByRole("link", { name: "Ouvrir le mode mobile de mise-bas" }).getAttribute("href");
+    expect(mobileHref).toBeTruthy();
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(mobileHref!);
+    whelping = panel(page);
+    const mobileFirstCard = whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first();
+    const mobileSecondCard = whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first();
+    await expect(mobileFirstCard.getByRole("button", { name: "Corriger ou annuler cette saisie" })).toHaveCount(1);
+    await expect(mobileFirstCard.getByRole("button", { name: "Annuler cette saisie", exact: true })).toHaveCount(0);
+    dialog = await dialogFrom(mobileFirstCard, "Corriger ou annuler cette saisie");
+    await expect(dialog.getByRole("button", { name: "Corriger les informations" })).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Annuler cette saisie" })).toBeDisabled();
+    await expect(dialog).toContainText("La naissance la plus récente doit être traitée en premier.");
+    await dialog.getByRole("button", { name: "Fermer" }).click();
+    await expect(mobileSecondCard.getByRole("button", { name: "Corriger ou annuler cette saisie" })).toHaveCount(1);
+    await expect(mobileSecondCard.getByRole("button", { name: "Annuler cette saisie", exact: true })).toHaveCount(0);
+    dialog = await dialogFrom(mobileSecondCard, "Corriger ou annuler cette saisie");
+    await expect(dialog.getByRole("button", { name: "Corriger les informations" })).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Annuler cette saisie" })).toBeEnabled();
+    await dialog.getByRole("button", { name: "Fermer" }).click();
+    expect(Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`))).toBe(adjustmentCountBeforeDialogs);
+
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(`/litters/journal?litter=${ids.litter}`);
+    whelping = panel(page);
     const originalEvent = sql(`select row_to_json(e)::text from public.whelping_events e where id=${q(first.eventId)}::uuid`);
-    let dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first(), "Corriger");
+    dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first(), "Corriger");
     await expect(dialog).toContainText("Le numéro d’ordre ne changera pas"); await expect(dialog.getByLabel("Date et heure de naissance")).not.toHaveValue(""); await expect(dialog.getByLabel("Poids de naissance (g)")).toHaveValue("410");
     await dialog.getByLabel("Date et heure de naissance").fill("2026-07-22T09:05"); await dialog.getByLabel("Sexe").selectOption("male"); await dialog.getByLabel("Viabilité").selectOption("unknown"); await dialog.getByLabel("Couleur ou collier initial").fill("Violet"); await dialog.getByLabel("Note de naissance").fill("État corrigé"); await dialog.getByLabel("Poids de naissance (g)").fill("425"); await dialog.getByLabel("Date et heure de pesée").fill("2026-07-22T09:06"); await dialog.getByLabel("Note du poids").fill("Poids corrigé"); await dialog.getByLabel("Motif de la correction").fill("Erreur de saisie complète"); await dialog.getByRole("button", { name: "Enregistrer la correction" }).click(); await expect(dialog).toBeHidden();
     await register(registry, [], [{ birthId: first.birthId, resultingRevisionNo: 1 }]); await expect(whelping.getByText("État corrigé", { exact: true })).toBeVisible(); await expect(whelping.getByText("425 g", { exact: false }).first()).toBeVisible(); expect(sql(`select row_to_json(e)::text from public.whelping_events e where id=${q(first.eventId)}::uuid`)).toBe(originalEvent);
     await whelping.getByText("Historique des compléments et rectifications").click(); await expect(whelping.getByText("Motif : Erreur de saisie complète", { exact: true })).toBeVisible(); await expect(whelping.getByText("Femelle → Mâle")).toBeVisible(); await expect(whelping.getByText("410 g → 425 g")).toBeVisible();
     await page.reload(); whelping = panel(page); dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 1" }).first(), "Compléter la naissance");
     const revision = Number(sql(`select revision_no from public.whelping_births where id=${q(first.birthId)}::uuid`)); const concurrent = await correctWhelpingBirthCore({ birthId: first.birthId, clientCommandId: ids.concurrent, expectedRevisionNo: revision, occurredAt: "2026-07-22T09:06:00+02:00", sex: "male", viability: "unknown", initialCollarColor: "Violet", birthNote: "Modification concurrente", weightGrams: 425, weightMeasuredAt: "2026-07-22T09:06:00+02:00", weightNote: "Poids corrigé", reason: "Seconde session" }, owner); expect(concurrent.outcome).toBe("success"); await register(registry, [], [{ birthId: first.birthId, resultingRevisionNo: revision + 1 }]);
-    await dialog.getByLabel("Note de naissance").fill("Ne doit pas écraser"); await dialog.getByLabel("Motif de la correction").fill("Tentative périmée"); await dialog.getByRole("button", { name: "Enregistrer la correction" }).click(); await expect(dialog.getByRole("alert")).toContainText("modifiée depuis son affichage"); expect(sql(`select note from public.whelping_births where id=${q(first.birthId)}::uuid`)).toBe("Modification concurrente"); await dialog.getByRole("button", { name: "Annuler" }).click();
+    await dialog.getByLabel("Note de naissance").fill("Ne doit pas écraser"); await dialog.getByLabel("Motif de la correction").fill("Tentative périmée"); await dialog.getByRole("button", { name: "Enregistrer la correction" }).click(); await expect(dialog.getByRole("alert")).toContainText("modifiée depuis l’ouverture de cette fenêtre"); await expect(dialog.getByRole("button", { name: "Recharger les données" })).toBeVisible(); expect(sql(`select note from public.whelping_births where id=${q(first.birthId)}::uuid`)).toBe("Modification concurrente"); await dialog.getByRole("button", { name: "Annuler" }).click();
     await execute(`insert into public.animal_weight_measurements(id,organization_id,animal_id,measured_at,grams,measurement_kind,created_by) values(${q(ids.downstreamWeight)}::uuid,${q(organizationId)}::uuid,${q(second.animalId)}::uuid,'2026-07-22T10:00:00Z',450,'clinical',${q(ownerId)}::uuid)`); registry.register("animal_weight_measurements", ids.downstreamWeight);
-    dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler la naissance"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Confirmer l’annulation" }).click(); await expect(dialog.getByRole("alert")).toContainText("données ultérieures"); await execute(`delete from public.animal_weight_measurements where id=${q(ids.downstreamWeight)}::uuid`);
-    await page.reload(); whelping = panel(page); dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler la naissance"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Confirmer l’annulation" }).click(); await expect(dialog).toBeHidden(); await register(registry, [], [{ birthId: second.birthId, resultingRevisionNo: 1 }]); await expect(whelping.getByText("Naissance n° 2 annulée")).toBeVisible();
+    const protectedCountBefore = Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`));
+    dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Annuler cette saisie" }).click();
+    await expect(dialog.getByRole("heading", { name: "Annulation protégée" })).toBeVisible();
+    await expect(dialog).toContainText("Des informations ont été ajoutées ou modifiées depuis cette naissance.");
+    await expect(dialog).toContainText("Aucune donnée n’a été modifiée.");
+    await expect(dialog.getByRole("link", { name: "Voir le planning" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Corriger la naissance" })).toBeVisible();
+    expect(Number(sql(`select count(*) from public.whelping_birth_adjustment_commands where litter_id=${q(ids.litter)}::uuid`))).toBe(protectedCountBefore);
+    expect(sql(`select cancelled_at is null from public.whelping_births where id=${q(second.birthId)}::uuid`)).toBe("t");
+    await dialog.getByRole("button", { name: "Corriger la naissance" }).click();
+    dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: /Corriger la naissance n° 2/ })).toBeVisible();
+    await dialog.getByRole("button", { name: "Annuler" }).click();
+    dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie");
+    await expect(dialog.getByRole("heading", { name: "Annulation protégée" })).toBeVisible();
+    await dialog.getByRole("link", { name: "Voir le planning" }).click();
+    await expect(page.locator("#litter-planning")).toBeVisible();
+    await execute(`delete from public.animal_weight_measurements where id=${q(ids.downstreamWeight)}::uuid`);
+    await page.reload(); whelping = panel(page); dialog = await dialogFrom(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2" }).first(), "Annuler cette saisie"); await dialog.getByLabel("Motif de l’annulation").fill("Naissance enregistrée par erreur"); await dialog.getByRole("button", { name: "Annuler cette saisie" }).click(); await expect(dialog).toBeHidden(); await register(registry, [], [{ birthId: second.birthId, resultingRevisionNo: 1 }]);
+    await expect(whelping.getByRole("status")).toContainText("Naissance n° 2 annulée.\nLes données actives de la portée ont été recalculées.\nLe Journal a été actualisé.");
+    await expect(whelping.locator("ol > li").filter({ hasText: "Naissance n° 2 annulée" }).first()).toBeVisible();
+    expect(sql(`select count(*) from public.whelping_births where id=${q(second.birthId)}::uuid`)).toBe("1");
+    expect(sql(`select born_total_count from public.litters where id=${q(ids.litter)}::uuid`)).toBe("1");
+    await whelping.getByText("Historique des compléments et rectifications").click();
+    await expect(whelping.getByText("Motif : Naissance enregistrée par erreur", { exact: true })).toBeVisible();
     const replacement = await recordWhelpingBirthCore({ sessionId: opened.sessionId, clientCommandId: ids.replacement, occurredAt: "2026-07-22T10:00:00+02:00", sex: "female", viability: "alive" }, owner); expect(replacement).toMatchObject({ outcome: "success", birthOrder: 2 }); if (replacement.outcome === "success") { registry.register("whelping_births", replacement.birthId); registry.register("animals", replacement.animalId); registry.register("whelping_events", replacement.eventId); } await register(registry, [ids.replacement]);
-    await page.reload(); whelping = panel(page); expect(await whelping.evaluate((element) => element.outerHTML)).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+    await page.reload(); whelping = panel(page); const publicDom = await whelping.evaluate((element) => element.outerHTML); expect(publicDom).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i); expect(publicDom).not.toMatch(/whelping_births|animal_weight_measurements|cancel_whelping_birth|sql secret/i);
     setOwnerRole("viewer"); await page.reload(); whelping = panel(page); await whelping.getByText("Historique des compléments et rectifications").click(); await expect(whelping.getByText("Naissance corrigée").first()).toBeVisible(); await expect(whelping.getByRole("button", { name: "Corriger" })).toHaveCount(0);
+    await expect(whelping.getByRole("button", { name: /Corriger ou annuler cette saisie|Annuler cette saisie|Compléter la naissance/ })).toHaveCount(0);
     setOwnerRole("owner"); const closed = await closeWhelpingSessionCore({ sessionId: opened.sessionId, clientCommandId: ids.close, endedAt: "2026-07-22T10:30:00+02:00" }, owner); expect(closed.outcome).toBe("success"); if (closed.outcome === "success") registry.register("whelping_events", closed.eventId); await register(registry, [ids.close]);
   } finally {
     setOwnerRole("owner"); await registry.cleanup(); const remaining = await registry.assertEmpty(); console.info(JSON.stringify({ whelpingBirthAdjustmentUiCleanup: { remaining } })); expect(Object.values(remaining).every((count) => count === 0)).toBe(true);
