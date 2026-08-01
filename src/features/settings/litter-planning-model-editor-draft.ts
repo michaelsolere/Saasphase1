@@ -28,6 +28,7 @@ export type LitterPlanningModelEditorMode = "create" | "edit" | "duplicate";
 export type LitterPlanningModelEditorTemplateOption = {
   id: string;
   title: string;
+  description: string | null;
   category: LitterCareTaskCategory | string;
   targetScope: LitterCareTaskTargetScope | string;
   anchorType: LitterCareTaskAnchorType | LitterPlanningModelAnchor | string;
@@ -1155,6 +1156,7 @@ export function templateOptionFromSummary(
   return {
     id: template.id,
     title: template.title,
+    description: template.description,
     category: template.category,
     targetScope: template.targetScope,
     anchorType: template.anchorType,

@@ -21,6 +21,10 @@ import {
   type LitterPlanningModelEditorTemplateOption,
 } from "../../src/features/settings/litter-planning-model-editor-draft";
 import {
+  normalizeLitterPlanningModelTemplateSearch,
+  projectLitterPlanningModelTemplatePicker,
+} from "../../src/features/settings/litter-planning-model-template-picker";
+import {
   canManageLitterPlanningModels,
   LITTER_PLANNING_MODEL_EDITOR_INDEPENDENCE_MESSAGE,
 } from "../../src/features/settings/litter-planning-model-labels";
@@ -30,6 +34,7 @@ import { parseLitterPlanningModelItems } from "../../src/features/litter-journal
 const templateA: LitterPlanningModelEditorTemplateOption = {
   id: "11111111-1111-4111-8111-111111111111",
   title: "Température",
+  description: "Surveiller la santé de la mère",
   category: "maternal_health",
   targetScope: "mother",
   anchorType: "expected_birth",
@@ -42,6 +47,7 @@ const templateA: LitterPlanningModelEditorTemplateOption = {
 const templateB: LitterPlanningModelEditorTemplateOption = {
   id: "22222222-2222-4222-8222-222222222222",
   title: "Pesée",
+  description: "Contrôle collectif de la portée",
   category: "offspring_weight",
   targetScope: "all_offspring",
   anchorType: "actual_birth",
@@ -54,6 +60,7 @@ const templateB: LitterPlanningModelEditorTemplateOption = {
 const templateInactive: LitterPlanningModelEditorTemplateOption = {
   id: "33333333-3333-4333-8333-333333333333",
   title: "Ancien jalon",
+  description: null,
   category: "other",
   targetScope: "litter",
   anchorType: "expected_birth",
@@ -66,6 +73,7 @@ const templateInactive: LitterPlanningModelEditorTemplateOption = {
 const templateCat: LitterPlanningModelEditorTemplateOption = {
   id: "44444444-4444-4444-8444-444444444444",
   title: "Jalon chat",
+  description: null,
   category: "other",
   targetScope: "litter",
   anchorType: "expected_birth",
@@ -439,6 +447,60 @@ test("duplication d’élément et message d’indépendance éditeur", () => {
   expect(LITTER_PLANNING_MODEL_EDITOR_INDEPENDENCE_MESSAGE).toContain(
     "ne modifie aucun planning déjà créé",
   );
+});
+
+test("recherche et filtres locaux des jalons compatibles", () => {
+  const socializationTemplate: LitterPlanningModelEditorTemplateOption = {
+    ...templateB,
+    title: "Découverte collective",
+    description: "Explorer calmement de nouveaux environnements",
+    category: "socialization",
+  };
+  const source = [templateA, socializationTemplate, templateInactive];
+  const snapshot = structuredClone(source);
+  const project = (query = "", category = "", targetScope = "") =>
+    projectLitterPlanningModelTemplatePicker({
+      templates: source,
+      filters: { query, category, targetScope },
+    });
+
+  expect(normalizeLitterPlanningModelTemplateSearch("  SANTÉ   DE  ")).toBe(
+    "santé de",
+  );
+  expect(project("température").results.map((result) => result.templateId)).toEqual([
+    templateA.id,
+  ]);
+  expect(project("NOUVEAUX   ENVIRONNEMENTS").results.map((result) => result.templateId)).toEqual([
+    socializationTemplate.id,
+  ]);
+  expect(project("santé DE").results.map((result) => result.templateId)).toEqual([
+    templateA.id,
+  ]);
+  expect(project("socialisation").results.map((result) => result.templateId)).toEqual([
+    socializationTemplate.id,
+  ]);
+  expect(project("tous les petits").results.map((result) => result.templateId)).toEqual([
+    socializationTemplate.id,
+  ]);
+  expect(project("", "socialization").results.map((result) => result.templateId)).toEqual([
+    socializationTemplate.id,
+  ]);
+  expect(project("", "", "all_offspring").results.map((result) => result.templateId)).toEqual([
+    socializationTemplate.id,
+  ]);
+  expect(
+    project("collective", "socialization", "all_offspring").results.map(
+      (result) => result.templateId,
+    ),
+  ).toEqual([socializationTemplate.id]);
+  expect(project("introuvable", "socialization", "all_offspring").results).toEqual([]);
+  expect(source).toEqual(snapshot);
+
+  for (const result of project().results) {
+    expect(JSON.stringify(result.presentation)).not.toContain(result.templateId);
+    expect(result.presentation.optionLabel).toContain(result.presentation.categoryLabel);
+    expect(result.presentation.optionLabel).toContain(result.presentation.targetLabel);
+  }
 });
 
 test("parseur structurel du brouillon — payloads malformés et valide", () => {
