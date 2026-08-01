@@ -55,6 +55,7 @@ import {
   litterPlanningModelItemKindLabels,
   litterPlanningModelPriorityLabels,
 } from "@/features/settings/litter-planning-model-labels";
+import { projectLitterPlanningModelTemplatePicker } from "@/features/settings/litter-planning-model-template-picker";
 import type { LitterPlanningModelEditorActionState } from "@/features/settings/litter-planning-models-actions";
 
 const inputClass =
@@ -820,6 +821,9 @@ export function LitterPlanningModelEditor({
   const [baseline] = useState(() => JSON.stringify(initialDraft));
   const [showErrors, setShowErrors] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [templateCategory, setTemplateCategory] = useState("");
+  const [templateTarget, setTemplateTarget] = useState("");
   const [addKind, setAddKind] =
     useState<LitterPlanningModelItemKind>("milestone");
   const [, startTransition] = useTransition();
@@ -836,6 +840,18 @@ export function LitterPlanningModelEditor({
         draft.breed,
       ),
     [templates, draft.species, draft.breed],
+  );
+  const templatePicker = useMemo(
+    () =>
+      projectLitterPlanningModelTemplatePicker({
+        templates: addableTemplates,
+        filters: {
+          query: templateSearch,
+          category: templateCategory,
+          targetScope: templateTarget,
+        },
+      }),
+    [addableTemplates, templateSearch, templateCategory, templateTarget],
   );
   const validation = useMemo(
     () => validateLitterPlanningModelEditorDraft(draft, templates),
@@ -1022,14 +1038,18 @@ export function LitterPlanningModelEditor({
               id={`${fieldId}-species`}
               className={inputClass}
               value={draft.species}
-              onChange={(event) =>
+              onChange={(event) => {
+                setSelectedTemplateId("");
+                setTemplateSearch("");
+                setTemplateCategory("");
+                setTemplateTarget("");
                 setDraft((current) => ({
                   ...current,
                   species: event.target.value as "" | "dog" | "cat",
                   breed:
                     event.target.value === "" ? "" : current.breed,
-                }))
-              }
+                }));
+              }}
             >
               <option value="">Toutes les espèces</option>
               <option value="dog">Chien</option>
@@ -1047,9 +1067,13 @@ export function LitterPlanningModelEditor({
               disabled={!draft.species}
               value={draft.breed}
               aria-invalid={Boolean(fieldError(errors, "breed"))}
-              onChange={(event) =>
-                setDraft((current) => ({ ...current, breed: event.target.value }))
-              }
+              onChange={(event) => {
+                setSelectedTemplateId("");
+                setTemplateSearch("");
+                setTemplateCategory("");
+                setTemplateTarget("");
+                setDraft((current) => ({ ...current, breed: event.target.value }));
+              }}
             />
             {fieldError(errors, "breed") ? (
               <p role="alert" className="mt-1 text-sm text-amber-900">
@@ -1090,6 +1114,81 @@ export function LitterPlanningModelEditor({
           Les jalons actifs compatibles avec l’espèce et la race du modèle sont
           proposés en priorité.
         </p>
+        <div className="mt-4 rounded-xl border bg-background p-4">
+          <p className="text-sm leading-6 text-muted">
+            Les jalons définissent le contenu des actions. Le modèle définit leur
+            organisation, leurs dates et leurs récurrences.
+          </p>
+          <Link
+            href="/settings/litter-care-task-templates"
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex text-sm font-semibold text-accent hover:underline"
+          >
+            Créer ou modifier les jalons de suivi
+            <span className="sr-only"> (nouvel onglet)</span>
+          </Link>
+        </div>
+        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-3">
+          <div>
+            <label className={labelClass} htmlFor={`${fieldId}-template-search`}>
+              Rechercher un jalon
+            </label>
+            <input
+              id={`${fieldId}-template-search`}
+              type="search"
+              className={inputClass}
+              value={templateSearch}
+              placeholder="Titre, description, catégorie ou cible"
+              onChange={(event) => {
+                setSelectedTemplateId("");
+                setTemplateSearch(event.target.value);
+              }}
+            />
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`${fieldId}-template-category`}>
+              Catégorie
+            </label>
+            <select
+              id={`${fieldId}-template-category`}
+              className={inputClass}
+              value={templateCategory}
+              onChange={(event) => {
+                setSelectedTemplateId("");
+                setTemplateCategory(event.target.value);
+              }}
+            >
+              <option value="">Toutes les catégories</option>
+              {templatePicker.categoryOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass} htmlFor={`${fieldId}-template-target`}>
+              Cible
+            </label>
+            <select
+              id={`${fieldId}-template-target`}
+              className={inputClass}
+              value={templateTarget}
+              onChange={(event) => {
+                setSelectedTemplateId("");
+                setTemplateTarget(event.target.value);
+              }}
+            >
+              <option value="">Toutes les cibles</option>
+              {templatePicker.targetOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
         <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_12rem_auto]">
           <div>
             <label className={labelClass} htmlFor={`${fieldId}-template`}>
@@ -1102,10 +1201,9 @@ export function LitterPlanningModelEditor({
               onChange={(event) => setSelectedTemplateId(event.target.value)}
             >
               <option value="">Choisir un jalon</option>
-              {addableTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.title} ·{" "}
-                  {formatLitterCareCategoryLabel(template.category)}
+              {templatePicker.results.map((result) => (
+                <option key={result.templateId} value={result.templateId}>
+                  {result.presentation.optionLabel}
                 </option>
               ))}
             </select>
@@ -1153,10 +1251,30 @@ export function LitterPlanningModelEditor({
             </Button>
           </div>
         </div>
+        {templateSearch || templateCategory || templateTarget ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-3"
+            onClick={() => {
+              setSelectedTemplateId("");
+              setTemplateSearch("");
+              setTemplateCategory("");
+              setTemplateTarget("");
+            }}
+          >
+            Réinitialiser les critères
+          </Button>
+        ) : null}
         {addableTemplates.length === 0 ? (
           <p className="mt-3 text-sm text-muted">
             Aucun jalon actif compatible n’est disponible. Ajustez l’espèce ou
             la race, ou importez des jalons élémentaires.
+          </p>
+        ) : templatePicker.results.length === 0 ? (
+          <p className="mt-3 text-sm text-muted">
+            Aucun jalon ne correspond à ces critères.
           </p>
         ) : null}
       </section>

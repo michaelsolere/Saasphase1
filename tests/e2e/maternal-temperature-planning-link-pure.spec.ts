@@ -19,6 +19,7 @@ import {
 const template: LitterPlanningModelEditorTemplateOption = {
   id: "9f290001-0000-4000-8000-000000000001",
   title: "Surveillance de la température",
+  description: null,
   category: "maternal_health",
   targetScope: "mother",
   anchorType: "expected_birth",

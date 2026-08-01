@@ -251,6 +251,7 @@ async function main() {
       "tests/e2e/litter-growth-vigilance-ui.spec.ts",
       "tests/e2e/litter-weight-quick-entry.spec.ts",
       "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
+      "tests/e2e/litter-planning-model-editor.spec.ts",
       "tests/e2e/litter-actual-birth-plan-activation.spec.ts",
       "tests/e2e/litter-actual-birth-plan-reversal-engine.spec.ts",
       "tests/e2e/litter-actual-birth-reversal-snapshot-foundation.spec.ts",

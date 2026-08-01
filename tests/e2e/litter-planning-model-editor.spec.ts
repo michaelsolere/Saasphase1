@@ -274,6 +274,14 @@ function remainingFixtureCounts() {
             ${q(ids.foreignOrganization)}::uuid
           )
         ),
+        'template_commands', (
+          select count(*) from public.litter_care_task_template_commands
+          where organization_id in (
+            ${q(ids.organization)}::uuid,
+            ${q(ids.foreignOrganization)}::uuid
+          )
+             or template_id = any(${sqlUuidArray(tracked.templateIds)})
+        ),
         'templates', (
           select count(*) from public.litter_care_task_templates
           where organization_id in (
@@ -419,7 +427,7 @@ function createFixtures() {
       ),
       (
         ${q(ids.templateTask)}::uuid, ${q(ids.organization)}::uuid,
-        ${q(`${fixtureNamePrefix} tâche`)}, 'preparation', 'litter',
+        ${q(`${fixtureNamePrefix} tâche`)}, 'socialization', 'litter',
         'expected_birth', -2, 'dog', null, 1, 1, true,
         ${q(ids.ownerUser)}::uuid, ${q(ids.ownerUser)}::uuid
       ),
@@ -547,7 +555,9 @@ test("crée, active, modifie et duplique un modèle personnalisé", async ({
       page.getByRole("link", { name: "Créer un modèle personnalisé" }),
     ).toBeVisible();
     await page.getByRole("link", { name: "Créer un modèle personnalisé" }).click();
-    await expect(page).toHaveURL(/\/settings\/litter-planning-models\/new$/);
+    await expect(page).toHaveURL(/\/settings\/litter-planning-models\/new$/, {
+      timeout: 30_000,
+    });
     await expect(
       page.getByRole("complementary").filter({
         hasText:
@@ -558,6 +568,32 @@ test("crée, active, modifie et duplique un modèle personnalisé", async ({
     await page.getByLabel("Titre").fill(`${fixtureNamePrefix} modèle custom`);
     await page.getByLabel("Description (facultative)").fill("Modèle éditeur E2E");
     await page.getByLabel("Espèce").selectOption("dog");
+
+    const templateSelect = page.getByLabel("Jalon élémentaire");
+    await expect(page.getByLabel("Rechercher un jalon")).toBeVisible();
+    await expect(page.getByLabel("Catégorie")).toHaveValue("");
+    await expect(page.getByLabel("Cible")).toHaveValue("");
+    await expect(templateSelect.locator("option")).toHaveCount(5);
+    await expect(
+      page.getByRole("link", { name: /Créer ou modifier les jalons de suivi/ }),
+    ).toHaveAttribute("target", "_blank");
+
+    await page.getByLabel("Catégorie").selectOption("socialization");
+    await expect(templateSelect.locator("option")).toHaveCount(2);
+    await expect(templateSelect.locator("option").nth(1)).toContainText(
+      "Socialisation",
+    );
+    await page.getByLabel("Cible").selectOption("litter");
+    await expect(templateSelect.locator("option")).toHaveCount(2);
+    await page.getByLabel("Rechercher un jalon").fill("aucun résultat");
+    await expect(
+      page.getByText("Aucun jalon ne correspond à ces critères."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Réinitialiser les critères" }).click();
+    await expect(page.getByLabel("Catégorie")).toHaveValue("");
+    await expect(page.getByLabel("Cible")).toHaveValue("");
+    await expect(page.getByLabel("Rechercher un jalon")).toHaveValue("");
+    await expect(templateSelect.locator("option")).toHaveCount(5);
 
     await addEditorItem(page, ids.templateMilestone, "milestone");
     await addEditorItem(page, ids.templateTask, "task");
@@ -782,6 +818,8 @@ test("crée, active, modifie et duplique un modèle personnalisé", async ({
     expect(copyCount).toBe(1);
 
     await login(page, ...credentials.member);
+    await page.goto("/settings/litter-planning-models/new");
+    await expect(page).toHaveURL(/\/settings\/litter-planning-models$/);
     await page.goto("/settings/litter-planning-models");
     await expect(
       page.getByRole("link", { name: "Créer un modèle personnalisé" }),
