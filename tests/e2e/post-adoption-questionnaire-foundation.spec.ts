@@ -6,9 +6,6 @@ test.setTimeout(240_000);
 
 const organizationId = "20000000-0000-4000-8000-000000000001";
 const ownerId = "10000000-0000-4000-8000-000000000001";
-const contactId = "70000000-0000-4000-8000-000000000009";
-const reservationId = "90000000-0000-4000-8000-000000000004";
-const animalId = "d0000000-0000-4000-8000-000000000008";
 const prefix = "9f320001-0000-4000-8000-0000000000";
 const ids = {
   instance: `${prefix}01`,
@@ -20,7 +17,13 @@ const ids = {
   becameDueEvent: `${prefix}07`,
   invitationEvent: `${prefix}08`,
   draftStartedEvent: `${prefix}09`,
+  contact: `${prefix}10`,
+  reservation: `${prefix}11`,
+  animal: `${prefix}12`,
 } as const;
+const contactId = ids.contact;
+const reservationId = ids.reservation;
+const animalId = ids.animal;
 
 type QuestionnaireQuestion = {
   key: string;
@@ -149,17 +152,73 @@ function cleanup() {
   sql(`
     begin;
     set local app.qa_hard_delete = 'on';
+    delete from public.post_adoption_questionnaire_reconciliation_attempts
+    where reservation_id = ${q(reservationId)}::uuid;
     delete from public.post_adoption_questionnaire_events
     where id::text like '9f320001-%'
-       or instance_id = ${q(ids.instance)}::uuid;
+       or instance_id = ${q(ids.instance)}::uuid
+       or instance_id in (
+         select id from public.post_adoption_questionnaire_instances
+         where reservation_id = ${q(reservationId)}::uuid
+       );
     delete from public.post_adoption_questionnaire_response_revisions
     where id::text like '9f320001-%'
-       or instance_id = ${q(ids.instance)}::uuid;
+       or instance_id = ${q(ids.instance)}::uuid
+       or instance_id in (
+         select id from public.post_adoption_questionnaire_instances
+         where reservation_id = ${q(reservationId)}::uuid
+       );
     delete from public.post_adoption_questionnaire_drafts
     where id::text like '9f320001-%'
-       or instance_id = ${q(ids.instance)}::uuid;
+       or instance_id = ${q(ids.instance)}::uuid
+       or instance_id in (
+         select id from public.post_adoption_questionnaire_instances
+         where reservation_id = ${q(reservationId)}::uuid
+       );
     delete from public.post_adoption_questionnaire_instances
-    where id::text like '9f320001-%';
+    where id::text like '9f320001-%'
+       or reservation_id = ${q(reservationId)}::uuid;
+    delete from public.reservations
+    where id = ${q(reservationId)}::uuid;
+    delete from public.animals
+    where id = ${q(animalId)}::uuid;
+    delete from public.contacts
+    where id = ${q(contactId)}::uuid;
+    commit;
+  `);
+}
+
+function createFixture() {
+  sql(`
+    begin;
+    insert into public.contacts (
+      id, organization_id, display_name, email,
+      origin_channel, primary_status, created_by, updated_by
+    ) values (
+      ${q(contactId)}::uuid, ${q(organizationId)}::uuid,
+      'E2E questionnaire foundation family', 'e2e-questionnaire-foundation@example.test',
+      'other', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+    insert into public.animals (
+      id, organization_id, call_name, official_name, species, breed, sex,
+      birth_date, status, ownership_status, created_by, updated_by
+    ) values (
+      ${q(animalId)}::uuid, ${q(organizationId)}::uuid,
+      'E2E questionnaire foundation dog', 'E2E questionnaire foundation dog',
+      'dog', 'Golden Retriever', 'female', '2024-01-01',
+      'active', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+    set local session_replication_role = replica;
+    insert into public.reservations (
+      id, organization_id, contact_id, animal_id, species, breed,
+      status, adoption_completed_at, created_by, updated_by
+    ) values (
+      ${q(reservationId)}::uuid, ${q(organizationId)}::uuid,
+      ${q(contactId)}::uuid, ${q(animalId)}::uuid,
+      'dog', 'Golden Retriever', 'adopted', '2026-06-22 14:30:00+00',
+      ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+    );
+    set local session_replication_role = origin;
     commit;
   `);
 }
@@ -168,24 +227,54 @@ function remainingCounts() {
   return JSON.parse(
     sql(`
       select json_build_object(
+        'attempts', (
+          select count(*)
+          from public.post_adoption_questionnaire_reconciliation_attempts
+          where reservation_id = ${q(reservationId)}::uuid
+        ),
         'events', (
           select count(*) from public.post_adoption_questionnaire_events
           where id::text like '9f320001-%'
              or instance_id = ${q(ids.instance)}::uuid
+             or instance_id in (
+               select id from public.post_adoption_questionnaire_instances
+               where reservation_id = ${q(reservationId)}::uuid
+             )
         ),
         'responses', (
           select count(*) from public.post_adoption_questionnaire_response_revisions
           where id::text like '9f320001-%'
              or instance_id = ${q(ids.instance)}::uuid
+             or instance_id in (
+               select id from public.post_adoption_questionnaire_instances
+               where reservation_id = ${q(reservationId)}::uuid
+             )
         ),
         'drafts', (
           select count(*) from public.post_adoption_questionnaire_drafts
           where id::text like '9f320001-%'
              or instance_id = ${q(ids.instance)}::uuid
+             or instance_id in (
+               select id from public.post_adoption_questionnaire_instances
+               where reservation_id = ${q(reservationId)}::uuid
+             )
         ),
         'instances', (
           select count(*) from public.post_adoption_questionnaire_instances
           where id::text like '9f320001-%'
+             or reservation_id = ${q(reservationId)}::uuid
+        ),
+        'reservations', (
+          select count(*) from public.reservations
+          where id = ${q(reservationId)}::uuid
+        ),
+        'animals', (
+          select count(*) from public.animals
+          where id = ${q(animalId)}::uuid
+        ),
+        'contacts', (
+          select count(*) from public.contacts
+          where id = ${q(contactId)}::uuid
         )
       )::text;
     `),
@@ -202,6 +291,7 @@ test("post-adoption questionnaire foundation publishes immutable T1/T2 definitio
   try {
     cleanup();
     expectCleanupAtZero();
+    createFixture();
 
     const definitions = JSON.parse(
       sql(`

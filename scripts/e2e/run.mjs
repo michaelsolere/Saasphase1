@@ -263,6 +263,8 @@ async function main() {
       "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
       "tests/e2e/maternal-temperature-planning-link.spec.ts",
       "tests/e2e/planning-fact-link-visibility.spec.ts",
+      "tests/e2e/post-adoption-questionnaire-foundation.spec.ts",
+      "tests/e2e/post-adoption-questionnaire-instance-reconciliation.spec.ts",
       "tests/e2e/whelping-birth-adjustment-foundation.spec.ts",
       "tests/e2e/whelping-birth-adjustment-ui.spec.ts",
       "tests/e2e/whelping-journal-final-consolidation.spec.ts",
