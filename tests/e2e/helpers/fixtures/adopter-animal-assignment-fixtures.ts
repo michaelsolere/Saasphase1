@@ -72,6 +72,7 @@ export async function createTestAssignableProducedAnimal(
     ownerId: string;
     callName?: string;
     sex?: "female" | "male";
+    birthDate?: string | null;
   },
 ) {
   const snapshot = structuredClone(input);
@@ -90,6 +91,7 @@ export async function createTestAssignableProducedAnimal(
     species: "dog",
     breed: "Golden Retriever",
     sex: input.sex ?? "female",
+    birth_date: input.birthDate ?? null,
     status: "available",
     ownership_status: "produced",
     is_breeder: false,
@@ -161,6 +163,7 @@ export async function createTestAdopterAnimalAssignmentScenario(
     ownerId: string;
     displayName?: string;
     animalCallName?: string;
+    birthDate?: string | null;
     journeyStatus?: "pre_reservation_requested" | "active";
   },
 ) {

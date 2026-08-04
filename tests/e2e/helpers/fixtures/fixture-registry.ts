@@ -1,4 +1,11 @@
 export const fixtureTables = [
+  "post_adoption_questionnaire_reconciliation_run_results",
+  "post_adoption_questionnaire_reconciliation_attempts",
+  "post_adoption_questionnaire_reconciliation_runs",
+  "post_adoption_questionnaire_events",
+  "post_adoption_questionnaire_response_revisions",
+  "post_adoption_questionnaire_drafts",
+  "post_adoption_questionnaire_instances",
   "notes",
   "calendar_reminder_commands",
   "calendar_reminders",
@@ -60,6 +67,13 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "post_adoption_questionnaire_reconciliation_run_results",
+  "post_adoption_questionnaire_reconciliation_attempts",
+  "post_adoption_questionnaire_reconciliation_runs",
+  "post_adoption_questionnaire_events",
+  "post_adoption_questionnaire_response_revisions",
+  "post_adoption_questionnaire_drafts",
+  "post_adoption_questionnaire_instances",
   "notes",
   "calendar_reminder_commands",
   "calendar_reminders",
@@ -162,10 +176,18 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "whelping_birth_adjustment_commands"
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
+    const requiresPostAdoptionBypass =
+      table === "post_adoption_questionnaire_reconciliation_run_results"
+      || table === "post_adoption_questionnaire_reconciliation_attempts"
+      || table === "post_adoption_questionnaire_reconciliation_runs"
+      || table === "post_adoption_questionnaire_events"
+      || table === "post_adoption_questionnaire_response_revisions";
     await execute(
-      requiresAppendOnlyBypass
-        ? `begin; set local session_replication_role = replica; set local app.fixture_cleanup = 'on'; ${statement}; commit;`
-        : statement,
+      requiresPostAdoptionBypass
+        ? `begin; set local app.qa_hard_delete = 'on'; ${statement}; commit;`
+        : requiresAppendOnlyBypass
+          ? `begin; set local session_replication_role = replica; set local app.fixture_cleanup = 'on'; ${statement}; commit;`
+          : statement,
     );
   } }
     if (animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)})`);

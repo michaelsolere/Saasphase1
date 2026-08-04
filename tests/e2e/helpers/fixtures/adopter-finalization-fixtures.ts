@@ -114,6 +114,7 @@ export async function createTestAdopterFinalizationReadyScenario(
     ownerId: string;
     displayName?: string;
     animalCallName?: string;
+    birthDate?: string | null;
   },
 ) {
   const snapshot = structuredClone(input);
