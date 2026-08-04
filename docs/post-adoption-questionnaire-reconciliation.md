@@ -21,7 +21,7 @@ Le trigger de réservation appelle le même moteur que la réconciliation lors :
 
 Une erreur de provisioning est enregistrée dans `post_adoption_questionnaire_reconciliation_attempts` sans annuler l’adoption. Si la trace durable ne peut pas être écrite, la transaction d’adoption échoue.
 
-Après la création d’une instance, les champs qui fixent son ancre ou son périmètre ne peuvent plus être modifiés silencieusement. Une correction doit faire l’objet d’un workflow explicite et audité.
+Dès que l’adoption est effective, les champs qui fixent son ancre ou son périmètre ne peuvent plus être modifiés silencieusement, même si le provisioning n’a créé aucune instance. Une date de naissance absente peut uniquement être renseignée une première fois avant un rejeu ; toute autre correction doit faire l’objet d’un workflow explicite et audité.
 
 ## Réconciliation opérateur
 
@@ -61,4 +61,6 @@ Le curseur et la borne haute sont des couples `(adoption_completed_at, reservati
 - `post_adoption_questionnaire_reconciliation_attempts` : un résultat immuable par réservation et jalon.
 - `post_adoption_questionnaire_events` : création de l’instance et passage éventuel à `due`.
 
-Ces tables sont lisibles uniquement par les `owner` et `admin` actifs de l’organisation. Elles ne sont pas modifiables via les rôles applicatifs. Les suppressions physiques présentes dans les specs E2E sont réservées au cleanup QA sous le compte PostgreSQL de test.
+La matérialisation verrouille les lignes parentes dans l’ordre réservation → contact → animal avec `FOR NO KEY UPDATE NOWAIT`. Réciproquement, une mutation structurante d’un contact ou d’un animal verrouille d’abord ses réservations liées sans attendre : elle ne peut donc pas passer son contrôle pendant qu’une adoption non validée par son snapshot transactionnel devient effective. Toute contention devient un échec rejouable, sans inversion entre verrou de ligne et advisory lock. Les administrateurs voient uniquement une catégorie d’erreur stable et un message générique ; les messages et détails PostgreSQL bruts, y compris ceux antérieurs à la migration corrective, ne sont jamais conservés dans l’audit RLS-visible.
+
+Ces tables sont lisibles uniquement par les `owner` et `admin` actifs de l’organisation. Elles ne sont pas modifiables via les rôles applicatifs et les privilèges directs de `service_role`, notamment `TRUNCATE`, sont révoqués ; l’exploitation passe par les fonctions bornées prévues. Les suppressions physiques présentes dans les specs E2E sont réservées au cleanup QA sous le compte PostgreSQL de test.
