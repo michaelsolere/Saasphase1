@@ -75,6 +75,7 @@ import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
 import { ReservationDocumentVariantsSection } from "@/features/reservations/reservation-document-variants-section";
+import { ReservationPostAdoptionQuestionnaireSection } from "@/features/post-adoption-questionnaire/reservation-section";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -2785,6 +2786,7 @@ export default async function ReservationDetailPage({
   const sectionNavItems = [
     { href: "#payments", label: "Paiements" },
     { href: "#documents", label: "Documents" },
+    { href: "#post-adoption-questionnaires", label: "Questionnaires" },
     { href: "#scope-and-animal", label: "Animal attribué" },
     { href: "#appointments", label: "Créneaux RV" },
     { href: "#adoption-preparation", label: "Préparation départ" },
@@ -4395,6 +4397,8 @@ export default async function ReservationDetailPage({
                     />
                   ) : null}
                 </section>
+
+                <ReservationPostAdoptionQuestionnaireSection reservationId={id} />
 
                 <section id="documents" className="order-[20] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
