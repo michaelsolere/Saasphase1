@@ -13,6 +13,7 @@ test.setTimeout(300_000);
 
 const organizationId = "9f340001-0000-4000-8000-000000000001";
 const membershipId = "9f340001-0000-4000-8000-000000000002";
+const sanitizedErrorAttemptId = "9f340001-0000-4000-8000-000000000018";
 const ownerId = "10000000-0000-4000-8000-000000000001";
 const outsiderId = "f3400000-0000-4000-8000-000000000099";
 const commandIds = {
@@ -22,6 +23,14 @@ const commandIds = {
   retry: "9f340001-0000-4000-8000-000000000011",
   concurrentA: "9f340001-0000-4000-8000-000000000012",
   concurrentB: "9f340001-0000-4000-8000-000000000013",
+  concurrentReplay: "9f340001-0000-4000-8000-000000000019",
+} as const;
+const lockReleaseOrganizationIds = {
+  reservations: "9f340001-0000-4000-8000-000000000021",
+  contacts: "9f340001-0000-4000-8000-000000000022",
+  animals: "9f340001-0000-4000-8000-000000000023",
+  contactAdoption: "9f340001-0000-4000-8000-000000000024",
+  animalAdoption: "9f340001-0000-4000-8000-000000000025",
 } as const;
 
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
@@ -30,16 +39,63 @@ function sql(statement: string) {
   return runE2eSqlSync(statement);
 }
 
-function jsonSqlLine(statement: string) {
-  return sql(statement)
+function parseJsonSqlOutput(output: string) {
+  const line = output
     .split("\n")
     .find((line) => line.trimStart().startsWith("{"));
+  if (!line) {
+    throw new Error(`Expected JSON SQL output, received: ${output.slice(0, 500)}`);
+  }
+  return line;
+}
+
+function jsonSqlLine(statement: string) {
+  return parseJsonSqlOutput(sql(statement));
 }
 
 function numericSqlLine(statement: string) {
-  return sql(statement)
+  const output = sql(statement);
+  const line = output
     .split("\n")
     .find((line) => /^\d+$/.test(line.trim()));
+  if (!line) {
+    throw new Error(`Expected numeric SQL output, received: ${output.slice(0, 500)}`);
+  }
+  return line;
+}
+
+async function waitForAdvisorySignal(label: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const held = Number(
+      numericSqlLine(`
+        select case
+          when pg_try_advisory_lock(hashtextextended(${q(label)}, 0)) then
+            case
+              when pg_advisory_unlock(hashtextextended(${q(label)}, 0)) then 0
+              else 0
+            end
+          else 1
+        end;
+      `),
+    );
+    if (held === 1) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+
+  throw new Error(`Timed out waiting for PostgreSQL lock signal ${label}`);
+}
+
+async function releaseLockHolder(releaseId: string, holder: Promise<string>) {
+  await runE2eSql(`
+    insert into public.organizations (id, name, slug)
+    values (
+      ${q(releaseId)}::uuid,
+      'E2E PostgreSQL lock release',
+      ${q(`e2e-lock-release-${releaseId.slice(-3)}`)}
+    )
+    on conflict (id) do nothing;
+  `);
+  await holder;
 }
 
 function callReconciliation(
@@ -64,7 +120,7 @@ function callReconciliation(
         ${boundary ? `${q(boundary.reservationId)}::uuid` : "null"}
       ) reconciliation;
       commit;
-    `) ?? "{}",
+    `),
   ) as {
     outcome: string;
     reason: string | null;
@@ -157,6 +213,39 @@ test(
             'releaseTable', to_regclass('public.post_adoption_questionnaire_releases') is not null,
             'runTable', to_regclass('public.post_adoption_questionnaire_reconciliation_runs') is not null,
             'attemptTable', to_regclass('public.post_adoption_questionnaire_reconciliation_attempts') is not null,
+            'reviewTriggerCount', (
+              select count(*)::integer
+              from pg_catalog.pg_trigger trigger
+              where not trigger.tgisinternal
+                and trigger.tgname in (
+                  'aa_post_adoption_questionnaire_instances_lock_anchors',
+                  'ab_reservations_protect_effective_adoption_questionnaire_anchor',
+                  'ab_contacts_protect_effective_adoption_questionnaire_anchor',
+                  'ab_animals_protect_effective_adoption_questionnaire_anchor',
+                  'aa_post_adoption_questionnaire_attempts_sanitize_error'
+                )
+            ),
+            'advisoryAnchorFunctionAbsent',
+              to_regprocedure(
+                'public.acquire_post_adoption_questionnaire_anchor_lock(text,uuid)'
+              ) is null,
+            'tupleLockInstalled', position(
+              'for no key update of reservation nowait'
+              in lower(pg_get_functiondef(
+                'public.lock_post_adoption_questionnaire_instance_anchors()'::regprocedure
+              ))
+            ) > 0,
+            'serviceRoleMutationPrivilegeCount', (
+              select count(*)::integer
+              from unnest(array[
+                'public.post_adoption_questionnaire_releases',
+                'public.post_adoption_questionnaire_reconciliation_runs',
+                'public.post_adoption_questionnaire_reconciliation_attempts',
+                'public.post_adoption_questionnaire_reconciliation_run_results'
+              ]) table_name
+              cross join unnest(array['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) privilege_name
+              where has_table_privilege('service_role', table_name, privilege_name)
+            ),
             'operatorFunction', to_regprocedure(
               'public.reconcile_post_adoption_questionnaire_instances(uuid,uuid,integer,timestamptz,uuid,timestamptz,uuid)'
             ) is not null
@@ -167,8 +256,23 @@ test(
         releaseTable: true,
         runTable: true,
         attemptTable: true,
+        reviewTriggerCount: 5,
+        advisoryAnchorFunctionAbsent: true,
+        tupleLockInstalled: true,
+        serviceRoleMutationPrivilegeCount: 0,
         operatorFunction: true,
       });
+
+      for (const statement of [
+        "insert into public.post_adoption_questionnaire_releases default values",
+        "update public.post_adoption_questionnaire_reconciliation_runs set batch_size = batch_size where false",
+        "delete from public.post_adoption_questionnaire_reconciliation_attempts where false",
+        "truncate table public.post_adoption_questionnaire_reconciliation_run_results",
+      ]) {
+        expect(() =>
+          sql(`begin; set local role service_role; ${statement}; rollback;`),
+        ).toThrow(/permission denied/i);
+      }
 
       expect(
         JSON.parse(
@@ -178,13 +282,73 @@ test(
               'version', questionnaire_version,
               'effectiveAt', effective_at::text
             ) order by questionnaire_code)::text
-            from public.post_adoption_questionnaire_releases;
+            from public.post_adoption_questionnaire_releases
+            where questionnaire_version = 1
+              and questionnaire_code in ('post-adoption-t1', 'post-adoption-t2');
           `),
         ),
       ).toEqual([
         { code: "post-adoption-t1", version: 1, effectiveAt: "-infinity" },
         { code: "post-adoption-t2", version: 1, effectiveAt: "-infinity" },
       ]);
+
+      fixtures.register(
+        "post_adoption_questionnaire_reconciliation_attempts",
+        sanitizedErrorAttemptId,
+      );
+      await runE2eSql(`
+        insert into public.post_adoption_questionnaire_reconciliation_attempts (
+          id,
+          organization_id,
+          reservation_id,
+          milestone,
+          source,
+          outcome,
+          reason,
+          error_sqlstate,
+          error_message,
+          details
+        ) values (
+          ${q(sanitizedErrorAttemptId)}::uuid,
+          ${q(organizationId)}::uuid,
+          ${q(historical.journey.id)}::uuid,
+          't1',
+          'manual_retry',
+          'error',
+          'instance_creation_failed',
+          '23514',
+          'sensitive relation and offending value',
+          jsonb_build_object(
+            'databaseMessage', 'sensitive relation and offending value',
+            'databaseContext', 'private schema detail'
+          )
+        );
+      `);
+      expect(
+        JSON.parse(
+          jsonSqlLine(`
+            begin;
+            set local role authenticated;
+            set local request.jwt.claim.sub = ${q(ownerId)};
+            select json_build_object(
+              'sqlstate', error_sqlstate,
+              'message', error_message,
+              'details', details,
+              'rawDiagnosticPresent',
+                row_to_json(post_adoption_questionnaire_reconciliation_attempts)::text
+                  like '%sensitive relation%'
+            )::text
+            from public.post_adoption_questionnaire_reconciliation_attempts
+            where id = ${q(sanitizedErrorAttemptId)}::uuid;
+            rollback;
+          `),
+        ),
+      ).toEqual({
+        sqlstate: "23514",
+        message: "Post-adoption questionnaire provisioning failed.",
+        details: { errorCategory: "integrity_error" },
+        rawDiagnosticPresent: false,
+      });
 
       sql(`
         begin;
@@ -196,6 +360,169 @@ test(
         where id = ${q(historical.journey.id)}::uuid;
         commit;
       `);
+
+      expect(
+        Number(
+          sql(`
+            select count(*)
+            from public.post_adoption_questionnaire_instances
+            where reservation_id = ${q(historical.journey.id)}::uuid;
+          `),
+        ),
+      ).toBe(0);
+      expect(() =>
+        sql(`
+          update public.reservations
+          set adoption_completed_at = adoption_completed_at + interval '1 day'
+          where id = ${q(historical.journey.id)}::uuid;
+        `),
+      ).toThrow(/effective adoption questionnaire anchor/i);
+      expect(() =>
+        sql(`
+          update public.contacts
+          set deleted_at = statement_timestamp()
+          where id = ${q(historical.contact.id)}::uuid;
+        `),
+      ).toThrow(/effective adoption questionnaire contact/i);
+      expect(() =>
+        sql(`
+          update public.animals
+          set birth_date = birth_date + 1
+          where id = ${q(historical.animal.id)}::uuid;
+        `),
+      ).toThrow(/effective adoption questionnaire animal/i);
+
+      const directInstanceInsert = `
+        insert into public.post_adoption_questionnaire_instances (
+          organization_id,
+          questionnaire_code,
+          questionnaire_version,
+          contact_id,
+          reservation_id,
+          animal_id,
+          due_at,
+          status,
+          created_by,
+          updated_by
+        )
+        select
+          reservation.organization_id,
+          definition.code,
+          definition.version,
+          reservation.contact_id,
+          reservation.id,
+          reservation.animal_id,
+          reservation.adoption_completed_at + definition.anchor_offset,
+          'planned',
+          ${q(ownerId)}::uuid,
+          ${q(ownerId)}::uuid
+        from public.reservations reservation
+        join public.post_adoption_questionnaire_definitions definition
+          on definition.code = 'post-adoption-t1'
+         and definition.version = 1
+        where reservation.id = ${q(historical.journey.id)}::uuid;
+      `;
+      const assertParentContentionIsRetryable = async (
+        table: "reservations" | "contacts" | "animals",
+        id: string,
+      ) => {
+        const signal = `post-adoption-parent-lock:${table}`;
+        const releaseId = lockReleaseOrganizationIds[table];
+        fixtures.register("organizations", releaseId);
+        const holder = runE2eSql(`
+          begin;
+          set local application_name = ${q(signal)};
+          select 1 from public.${table} where id = ${q(id)}::uuid for update;
+          select pg_advisory_xact_lock(hashtextextended(${q(signal)}, 0));
+          do $lock_wait$
+          declare
+            deadline timestamptz := clock_timestamp() + interval '120 seconds';
+          begin
+            while not exists (
+              select 1 from public.organizations
+              where id = ${q(releaseId)}::uuid
+            ) loop
+              if clock_timestamp() >= deadline then
+                raise exception 'timed out waiting for E2E lock release';
+              end if;
+              perform pg_sleep(0.05);
+            end loop;
+          end
+          $lock_wait$;
+          rollback;
+        `);
+        try {
+          await waitForAdvisorySignal(signal);
+          await expect(runE2eSql(directInstanceInsert)).rejects.toThrow(
+            /could not obtain lock|55P03/i,
+          );
+        } finally {
+          await releaseLockHolder(releaseId, holder);
+        }
+      };
+
+      await assertParentContentionIsRetryable(
+        "reservations",
+        historical.journey.id,
+      );
+      await assertParentContentionIsRetryable("contacts", historical.contact.id);
+      await assertParentContentionIsRetryable("animals", historical.animal.id);
+
+      const assertAdoptionLockRejectsParentMutation = async (
+        label: string,
+        releaseId: string,
+        mutation: string,
+      ) => {
+        fixtures.register("organizations", releaseId);
+        const holder = runE2eSql(`
+          begin;
+          set local application_name = ${q(label)};
+          select 1
+          from public.reservations
+          where id = ${q(future.journey.id)}::uuid
+          for no key update;
+          select pg_advisory_xact_lock(hashtextextended(${q(label)}, 0));
+          do $lock_wait$
+          declare
+            deadline timestamptz := clock_timestamp() + interval '120 seconds';
+          begin
+            while not exists (
+              select 1 from public.organizations
+              where id = ${q(releaseId)}::uuid
+            ) loop
+              if clock_timestamp() >= deadline then
+                raise exception 'timed out waiting for E2E lock release';
+              end if;
+              perform pg_sleep(0.05);
+            end loop;
+          end
+          $lock_wait$;
+          rollback;
+        `);
+        try {
+          await waitForAdvisorySignal(label);
+          await expect(
+            runE2eSql(`begin; ${mutation}; rollback;`),
+          ).rejects.toThrow(/could not obtain lock|55P03/i);
+        } finally {
+          await releaseLockHolder(releaseId, holder);
+        }
+      };
+
+      await assertAdoptionLockRejectsParentMutation(
+        "post-adoption-contact-versus-adoption",
+        lockReleaseOrganizationIds.contactAdoption,
+        `update public.contacts
+         set deleted_at = statement_timestamp()
+         where id = ${q(future.contact.id)}::uuid`,
+      );
+      await assertAdoptionLockRejectsParentMutation(
+        "post-adoption-animal-versus-adoption",
+        lockReleaseOrganizationIds.animalAdoption,
+        `update public.animals
+         set breed = 'Temporary incompatible breed'
+         where id = ${q(future.animal.id)}::uuid`,
+      );
 
       sql(`
         begin;
@@ -567,10 +894,51 @@ test(
         ) reconciliation;
         commit;
       `;
-      await Promise.all([
+      const distinctCommandResults = (await Promise.all([
         runE2eSql(concurrentSql(commandIds.concurrentA)),
         runE2eSql(concurrentSql(commandIds.concurrentB)),
+      ])).map((output) => JSON.parse(parseJsonSqlOutput(output)));
+      expect(distinctCommandResults).toEqual([
+        expect.objectContaining({ outcome: "success", replayed: false }),
+        expect.objectContaining({ outcome: "success", replayed: false }),
       ]);
+
+      const sameCommandResults = (await Promise.all([
+        runE2eSql(concurrentSql(commandIds.concurrentReplay)),
+        runE2eSql(concurrentSql(commandIds.concurrentReplay)),
+      ])).map((output) => JSON.parse(parseJsonSqlOutput(output)));
+      expect(sameCommandResults).toEqual([
+        expect.objectContaining({ outcome: "success" }),
+        expect.objectContaining({ outcome: "success" }),
+      ]);
+      expect(
+        sameCommandResults
+          .map((result) => result.replayed as boolean)
+          .sort((left, right) => Number(left) - Number(right)),
+      ).toEqual([false, true]);
+      expect(
+        JSON.parse(
+          sql(`
+            select json_build_object(
+              'runs', (
+                select count(*)
+                from public.post_adoption_questionnaire_reconciliation_runs
+                where organization_id = ${q(organizationId)}::uuid
+                  and client_command_id = ${q(commandIds.concurrentReplay)}::uuid
+              ),
+              'results', (
+                select count(*)
+                from public.post_adoption_questionnaire_reconciliation_run_results result
+                join public.post_adoption_questionnaire_reconciliation_runs run
+                  on run.organization_id = result.organization_id
+                 and run.id = result.run_id
+                where run.organization_id = ${q(organizationId)}::uuid
+                  and run.client_command_id = ${q(commandIds.concurrentReplay)}::uuid
+              )
+            )::text;
+          `),
+        ),
+      ).toEqual({ runs: 1, results: 1 });
 
       expect(
         JSON.parse(
@@ -624,7 +992,7 @@ test(
               null
             ) reconciliation;
             rollback;
-          `) ?? "{}",
+          `),
         ),
       ).toMatchObject({ outcome: "error", reason: "not_found" });
 
