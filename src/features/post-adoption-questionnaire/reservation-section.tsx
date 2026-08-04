@@ -1,5 +1,7 @@
 import { listPublicAccessSummaries } from "./internal-service";
 import { buildInternalQuestionnaireSections } from "./internal-read-model";
+import { buildPostAdoptionIndividualVisualization } from "./individual-visualization-model";
+import { PostAdoptionIndividualVisualization } from "./individual-visualization";
 import { PublicQuestionnaireAccessManager } from "./public-access-manager";
 import type {
   PublicQuestionnaireQuestion,
@@ -116,6 +118,28 @@ export async function ReservationPostAdoptionQuestionnaireSection({
   reservationId: string;
 }) {
   const summaries = await listPublicAccessSummaries(reservationId).catch(() => null);
+  const visualization = summaries
+    ? buildPostAdoptionIndividualVisualization({
+        animalName,
+        snapshots: summaries.flatMap((summary) =>
+          summary.latestAnswers &&
+          summary.latestRevisionNo !== null &&
+          summary.latestSubmittedAt
+            ? [
+                {
+                  milestone: summary.milestone,
+                  questionnaireCode: summary.questionnaireCode,
+                  questionnaireVersion: summary.definition.version,
+                  revisionNo: summary.latestRevisionNo,
+                  submittedAt: summary.latestSubmittedAt,
+                  definition: summary.definition,
+                  answers: summary.latestAnswers,
+                },
+              ]
+            : [],
+        ),
+      })
+    : null;
   return (
     <section id="post-adoption-questionnaires" className="order-[19] rounded-2xl border bg-surface p-6 sm:p-8">
       <h2 className="text-xl font-semibold">Questionnaires post-adoption</h2>
@@ -128,6 +152,9 @@ export async function ReservationPostAdoptionQuestionnaireSection({
         <p className="mt-5 text-sm text-muted">Aucun questionnaire n’est provisionné pour ce dossier.</p>
       ) : (
         <div className="mt-6 space-y-5">
+          {visualization ? (
+            <PostAdoptionIndividualVisualization model={visualization} />
+          ) : null}
           {summaries.map((summary) => {
             const active = Boolean(summary.accessId && !summary.revokedAt);
             const sections = summary.latestAnswers
@@ -137,7 +164,11 @@ export async function ReservationPostAdoptionQuestionnaireSection({
                 )
               : [];
             return (
-              <article key={summary.instanceId} className="rounded-2xl border bg-background p-5">
+              <article
+                id={`post-adoption-responses-${summary.milestone}`}
+                key={summary.instanceId}
+                className="scroll-mt-24 rounded-2xl border bg-background p-5"
+              >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-accent">

@@ -29,6 +29,8 @@ export type PublicQuestionnaireQuestion = {
   fields?: QuestionnaireNestedField[];
   min?: number;
   max?: number;
+  observationPeriod?: string;
+  longitudinalAxis?: string;
   visibleWhen?: QuestionnaireCondition;
   requiredWhen?: QuestionnaireCondition;
 };
@@ -74,7 +76,7 @@ function conditionMatches(
 }
 
 export function isQuestionVisible(
-  question: PublicQuestionnaireQuestion,
+  question: Pick<PublicQuestionnaireQuestion, "visibleWhen">,
   answers: QuestionnaireAnswers,
 ) {
   return question.visibleWhen
