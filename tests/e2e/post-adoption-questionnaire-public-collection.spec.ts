@@ -420,9 +420,70 @@ test("collecte publique : activation, rendu guidé, session 2 h, idempotence, co
       internalSection.getByText("Questionnaire post-adoption T1"),
     ).toBeVisible();
     await expect(internalSection.getByText("Nova · T1")).toBeVisible();
-    await expect(internalSection.getByText("Révision n° 2")).toBeVisible();
+    await expect(
+      internalSection.getByText("Révision n° 2", { exact: true }),
+    ).toBeVisible();
     await expect(internalSection.getByText(/Soumise le/)).toBeVisible();
-    const answerSummary = internalSection.getByText("Lire les réponses");
+    const visualization = internalSection.getByTestId(
+      "post-adoption-individual-visualization",
+    );
+    await expect(visualization).toBeVisible();
+    await expect(
+      visualization.getByRole("heading", { name: "Évolution individuelle de Nova" }),
+    ).toBeVisible();
+    await expect(visualization.getByText("T1 · révision n° 2")).toBeVisible();
+    await expect(visualization.getByText("T2 · non disponible")).toBeVisible();
+    await expect(visualization.getByRole("img")).toHaveCount(10);
+    await expect(
+      visualization.locator('[data-milestone-marker="t1"]').first(),
+    ).toBeVisible();
+    await expect(
+      visualization.locator('[data-milestone-marker="t2"]'),
+    ).toHaveCount(0);
+    await expect(
+      visualization
+        .locator('[data-axis="novelty"]')
+        .getByText("Très à l’aise", { exact: true })
+        .first(),
+    ).toBeVisible();
+    const completeAnswersLink = visualization.getByRole("link", {
+      name: "Lire les réponses complètes T1",
+    });
+    await completeAnswersLink.focus();
+    await expect(completeAnswersLink).toBeFocused();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: "/tmp/post-adoption-individual-desktop.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(visualization).toBeVisible();
+    await expect(completeAnswersLink).toBeVisible();
+    await page.screenshot({
+      path: "/tmp/post-adoption-individual-mobile.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = "400%";
+    });
+    await expect(visualization).toBeVisible();
+    await expect(completeAnswersLink).toBeVisible();
+    await page.screenshot({
+      path: "/tmp/post-adoption-individual-zoom-400.png",
+      fullPage: true,
+    });
+    await page.evaluate(() => {
+      document.documentElement.style.zoom = "";
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    const answerSummary = internalSection.getByText("Lire les réponses", {
+      exact: true,
+    });
     await answerSummary.focus();
     await answerSummary.press("Enter");
     await expect(
