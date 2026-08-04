@@ -419,8 +419,20 @@ test("collecte publique : activation, rendu guidé, session 2 h, idempotence, co
     await expect(
       internalSection.getByText("Questionnaire post-adoption T1"),
     ).toBeVisible();
-    await expect(internalSection.getByText("n° 2")).toBeVisible();
-    await internalSection.getByText(/Lire la version courante/).click();
+    await expect(internalSection.getByText("Nova · T1")).toBeVisible();
+    await expect(internalSection.getByText("Révision n° 2")).toBeVisible();
+    await expect(internalSection.getByText(/Soumise le/)).toBeVisible();
+    const answerSummary = internalSection.getByText("Lire les réponses");
+    await answerSummary.focus();
+    await answerSummary.press("Enter");
+    await expect(
+      internalSection.getByRole("heading", { name: "Comportement" }),
+    ).toBeVisible();
+    await expect(
+      internalSection.getByRole("heading", {
+        name: "Éducation et accompagnement",
+      }),
+    ).toBeVisible();
     await expect(
       internalSection.getByText("Réponse complète E2E").first(),
     ).toBeVisible();

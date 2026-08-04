@@ -4398,7 +4398,10 @@ export default async function ReservationDetailPage({
                   ) : null}
                 </section>
 
-                <ReservationPostAdoptionQuestionnaireSection reservationId={id} />
+                <ReservationPostAdoptionQuestionnaireSection
+                  animalName={animalSummaryLabel}
+                  reservationId={id}
+                />
 
                 <section id="documents" className="order-[20] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
