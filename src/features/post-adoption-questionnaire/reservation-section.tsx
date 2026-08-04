@@ -1,4 +1,5 @@
 import { listPublicAccessSummaries } from "./internal-service";
+import { buildInternalQuestionnaireSections } from "./internal-read-model";
 import { PublicQuestionnaireAccessManager } from "./public-access-manager";
 import type {
   PublicQuestionnaireQuestion,
@@ -108,8 +109,10 @@ function AnswerValue({
 }
 
 export async function ReservationPostAdoptionQuestionnaireSection({
+  animalName,
   reservationId,
 }: {
+  animalName: string;
   reservationId: string;
 }) {
   const summaries = await listPublicAccessSummaries(reservationId).catch(() => null);
@@ -127,44 +130,55 @@ export async function ReservationPostAdoptionQuestionnaireSection({
         <div className="mt-6 space-y-5">
           {summaries.map((summary) => {
             const active = Boolean(summary.accessId && !summary.revokedAt);
+            const sections = summary.latestAnswers
+              ? buildInternalQuestionnaireSections(
+                  summary.definition,
+                  summary.latestAnswers,
+                )
+              : [];
             return (
               <article key={summary.instanceId} className="rounded-2xl border bg-background p-5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">{summary.milestone.toUpperCase()}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                      {animalName} · {summary.milestone.toUpperCase()}
+                    </p>
                     <h3 className="mt-1 font-semibold text-foreground">{summary.definition.title}</h3>
                   </div>
                   <span className="w-fit rounded-full border px-3 py-1 text-xs font-semibold text-muted">{statusLabels[summary.instanceStatus] ?? summary.instanceStatus}</span>
                 </div>
-                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
                   <div><dt className="text-xs font-semibold uppercase text-muted">Échéance</dt><dd className="mt-1">{formatDate(summary.responseDeadlineAt ?? summary.dueAt)}</dd></div>
                   <div><dt className="text-xs font-semibold uppercase text-muted">Lien</dt><dd className="mt-1">{active ? `Actif · …${summary.tokenHint}` : summary.revokedAt ? "Révoqué" : "Non créé"}</dd></div>
                   <div><dt className="text-xs font-semibold uppercase text-muted">Lecture publique</dt><dd className="mt-1">{formatDate(summary.publicReadUntil)}</dd></div>
-                  <div><dt className="text-xs font-semibold uppercase text-muted">Version reçue</dt><dd className="mt-1">{summary.latestRevisionNo ? `n° ${summary.latestRevisionNo}` : "Aucune"}</dd></div>
+                  <div><dt className="text-xs font-semibold uppercase text-muted">Version reçue</dt><dd className="mt-1">{summary.latestRevisionNo ? `Révision n° ${summary.latestRevisionNo}` : "Aucune"}</dd></div>
+                  <div><dt className="text-xs font-semibold uppercase text-muted">Soumise le</dt><dd className="mt-1">{formatDate(summary.latestSubmittedAt)}</dd></div>
                 </dl>
                 <PublicQuestionnaireAccessManager instanceId={summary.instanceId} reservationId={reservationId} hasActiveAccess={active} />
                 {summary.latestAnswers ? (
                   <details className="mt-5 border-t pt-5">
-                    <summary className="cursor-pointer text-sm font-semibold text-foreground">Lire la version courante · reçue le {formatDate(summary.latestSubmittedAt)}</summary>
-                    <div className="mt-5 space-y-6">
-                      {summary.definition.sectionOrder.map((section) => {
-                        const questions = summary.definition.questions.filter((question) => question.section === section && summary.latestAnswers && question.key in summary.latestAnswers);
-                        if (questions.length === 0) return null;
-                        return (
-                          <div key={section}>
-                            <h4 className="text-sm font-semibold uppercase tracking-wide text-muted">{section.replaceAll("_", " ")}</h4>
+                    <summary className="cursor-pointer text-sm font-semibold text-foreground">Lire les réponses</summary>
+                    {sections.length > 0 ? (
+                      <div className="mt-5 space-y-6">
+                        {sections.map((section) => (
+                          <section key={section.key}>
+                            <h4 className="text-sm font-semibold uppercase tracking-wide text-muted">{section.label}</h4>
                             <dl className="mt-3 space-y-4">
-                              {questions.map((question) => (
+                              {section.questions.map((question) => (
                                 <div key={question.key} className="rounded-xl border bg-surface p-4">
                                   <dt className="text-sm font-medium text-foreground">{question.label}</dt>
                                   <dd className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted"><AnswerValue question={question} value={summary.latestAnswers?.[question.key]} /></dd>
                                 </div>
                               ))}
                             </dl>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <p role="alert" className="mt-4 text-sm text-amber-800">
+                        Cette révision ne contient aucune réponse lisible.
+                      </p>
+                    )}
                   </details>
                 ) : null}
               </article>
