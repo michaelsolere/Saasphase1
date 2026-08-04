@@ -65,6 +65,11 @@ const sections: SidebarSection[] = [
     ],
   },
   {
+    label: "Suivi post-adoption",
+    href: "/post-adoption",
+    icon: ClipboardList,
+  },
+  {
     label: "Paiements",
     icon: Banknote,
     items: [

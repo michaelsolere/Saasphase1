@@ -1,6 +1,11 @@
 import { isQuestionVisible, type QuestionnaireCondition } from "./public-model";
+import {
+  isPostAdoptionDefinitionHomologated,
+  POST_ADOPTION_DEFINITION_CODES,
+  type PostAdoptionMilestone,
+} from "./compatibility";
 
-export type PostAdoptionMilestone = "t1" | "t2";
+export type { PostAdoptionMilestone } from "./compatibility";
 
 export type PostAdoptionQuestionnaireSnapshot = {
   milestone: PostAdoptionMilestone;
@@ -151,11 +156,6 @@ const AXIS_CONTRACTS: readonly AxisContract[] = [
   },
 ] as const;
 
-const SUPPORTED_DEFINITIONS = new Set(["post-adoption-t1@1", "post-adoption-t2@1"]);
-const MILESTONE_DEFINITION_CODES: Record<PostAdoptionMilestone, string> = {
-  t1: "post-adoption-t1",
-  t2: "post-adoption-t2",
-};
 
 type ParsedOption = { value: string; label: string };
 type ParsedQuestion = {
@@ -247,13 +247,13 @@ function projectMilestone(
   const definition = parseDefinition(snapshot.definition);
   if (
     !definition ||
-    snapshot.questionnaireCode !== MILESTONE_DEFINITION_CODES[snapshot.milestone] ||
+    snapshot.questionnaireCode !== POST_ADOPTION_DEFINITION_CODES[snapshot.milestone] ||
     definition.code !== snapshot.questionnaireCode ||
     definition.version !== snapshot.questionnaireVersion
   ) {
     return { value: unavailable("invalid", "Définition ou donnée invalide"), categories: [] };
   }
-  if (!SUPPORTED_DEFINITIONS.has(`${definition.code}@${definition.version}`)) {
+  if (!isPostAdoptionDefinitionHomologated(definition.code, definition.version)) {
     return { value: unavailable("incompatible", "Version de définition non homologuée"), categories: [] };
   }
   const matches = definition.questions.filter((question) => question.longitudinalAxis === contract.axis);

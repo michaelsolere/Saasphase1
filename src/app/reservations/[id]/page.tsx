@@ -4400,6 +4400,7 @@ export default async function ReservationDetailPage({
 
                 <ReservationPostAdoptionQuestionnaireSection
                   animalName={animalSummaryLabel}
+                  animalId={reservation.animal_id}
                   reservationId={id}
                 />
 

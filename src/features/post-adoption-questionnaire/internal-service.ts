@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
 import type { PublicQuestionnaireDefinition } from "./public-model";
+import type { PostAdoptionResultsReadRow } from "./results-model";
 
 export type PublicAccessSummary = {
   instanceId: string;
@@ -28,6 +29,95 @@ type RpcClient = { rpc: (name: string, args: Record<string, unknown>) => Promise
 
 function rpc(client: SupabaseClient) {
   return client as unknown as RpcClient;
+}
+
+function nullableString(value: unknown) {
+  return value === null || value === undefined ? null : String(value);
+}
+
+function mapResultsReadRow(value: unknown): PostAdoptionResultsReadRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    !row.litter_id ||
+    !row.litter_name ||
+    !row.litter_date ||
+    !row.reservation_id ||
+    !row.animal_id ||
+    !row.animal_name
+  ) return null;
+  const milestone = row.milestone === "t1" || row.milestone === "t2"
+    ? row.milestone
+    : null;
+  return {
+    litterId: String(row.litter_id),
+    litterName: String(row.litter_name),
+    litterDate: String(row.litter_date),
+    reservationId: String(row.reservation_id),
+    reservationLitterId: nullableString(row.reservation_litter_id),
+    animalId: String(row.animal_id),
+    animalLitterId: nullableString(row.animal_litter_id),
+    animalName: String(row.animal_name),
+    animalBirthDate: nullableString(row.animal_birth_date),
+    animalSex: nullableString(row.animal_sex),
+    instanceId: nullableString(row.instance_id),
+    milestone,
+    questionnaireCode: nullableString(row.questionnaire_code),
+    questionnaireVersion: row.questionnaire_version === null || row.questionnaire_version === undefined
+      ? null
+      : Number(row.questionnaire_version),
+    instanceStatus: nullableString(row.instance_status),
+    dueAt: nullableString(row.due_at),
+    responseDeadlineAt: nullableString(row.response_deadline_at),
+    latestRevisionNo: row.latest_revision_no === null || row.latest_revision_no === undefined
+      ? null
+      : Number(row.latest_revision_no),
+    latestSubmittedAt: nullableString(row.latest_submitted_at),
+    latestAnswers: row.latest_answers && typeof row.latest_answers === "object" && !Array.isArray(row.latest_answers)
+      ? row.latest_answers as Record<string, unknown>
+      : null,
+    definition: row.definition && typeof row.definition === "object" && !Array.isArray(row.definition)
+      ? row.definition
+      : null,
+    definitionValid: typeof row.definition_valid === "boolean" ? row.definition_valid : null,
+  };
+}
+
+async function readResultsRows(
+  client: SupabaseClient,
+  functionName: string,
+  args: Record<string, unknown>,
+) {
+  const result = await rpc(client).rpc(functionName, args);
+  if (result.error || !Array.isArray(result.data)) return null;
+  const rows = result.data.map(mapResultsReadRow);
+  return rows.every((row): row is PostAdoptionResultsReadRow => row !== null)
+    ? rows
+    : null;
+}
+
+export async function listPostAdoptionResultsRows(
+  litterId: string | null = null,
+  suppliedClient?: SupabaseClient,
+) {
+  const client = suppliedClient ?? (await createClient());
+  return readResultsRows(
+    client,
+    "list_post_adoption_questionnaire_results_overview",
+    { p_litter_id: litterId },
+  );
+}
+
+export async function readPostAdoptionIndividualResultsRows(
+  animalId: string,
+  suppliedClient?: SupabaseClient,
+) {
+  const client = suppliedClient ?? (await createClient());
+  return readResultsRows(
+    client,
+    "read_post_adoption_questionnaire_individual_results",
+    { p_animal_id: animalId },
+  );
 }
 
 export async function listPublicAccessSummaries(
