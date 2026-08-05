@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
-import { listPostAdoptionResultsRows } from "@/features/post-adoption-questionnaire/internal-service";
+import { PostAdoptionCollectiveResultsView } from "@/features/post-adoption-questionnaire/collective-results";
+import { buildPostAdoptionCollectiveResults } from "@/features/post-adoption-questionnaire/collective-results-model";
+import { readPostAdoptionCollectiveResultsRows } from "@/features/post-adoption-questionnaire/internal-service";
 import { buildPostAdoptionResultsOverview } from "@/features/post-adoption-questionnaire/results-model";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,7 +28,7 @@ export default async function PostAdoptionLitterPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const rows = await listPostAdoptionResultsRows(id, supabase).catch(() => null);
+  const rows = await readPostAdoptionCollectiveResultsRows(id, supabase).catch(() => null);
   if (rows === null) {
     return (
       <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 sm:px-10">
@@ -38,6 +40,10 @@ export default async function PostAdoptionLitterPage({
   }
   const litter = buildPostAdoptionResultsOverview(rows).litters[0];
   if (!litter) notFound();
+  const collectiveResults = {
+    t1: buildPostAdoptionCollectiveResults(rows, "t1"),
+    t2: buildPostAdoptionCollectiveResults(rows, "t2"),
+  };
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-6xl px-6 py-10 sm:px-10">
@@ -50,9 +56,11 @@ export default async function PostAdoptionLitterPage({
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{litter.name}</h1>
         <p className="mt-3 max-w-3xl leading-7 text-muted">
-          États T1 et T2 des chiots adoptés concernés. Les graphiques collectifs seront ajoutés dans une livraison séparée.
+          États individuels et répartition descriptive des réponses T1/T2 des chiots adoptés concernés.
         </p>
       </header>
+
+      <PostAdoptionCollectiveResultsView results={collectiveResults} />
 
       <section className="py-8" aria-labelledby="adopted-puppies-heading">
         <h2 id="adopted-puppies-heading" className="text-xl font-semibold">Chiots adoptés concernés</h2>

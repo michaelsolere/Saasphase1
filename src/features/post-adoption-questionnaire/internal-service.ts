@@ -35,6 +35,12 @@ function nullableString(value: unknown) {
   return value === null || value === undefined ? null : String(value);
 }
 
+function nullableFiniteNumber(value: unknown) {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function mapResultsReadRow(value: unknown): PostAdoptionResultsReadRow | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
@@ -63,18 +69,16 @@ function mapResultsReadRow(value: unknown): PostAdoptionResultsReadRow | null {
     instanceId: nullableString(row.instance_id),
     milestone,
     questionnaireCode: nullableString(row.questionnaire_code),
-    questionnaireVersion: row.questionnaire_version === null || row.questionnaire_version === undefined
-      ? null
-      : Number(row.questionnaire_version),
+    questionnaireVersion: nullableFiniteNumber(row.questionnaire_version),
     instanceStatus: nullableString(row.instance_status),
     dueAt: nullableString(row.due_at),
     responseDeadlineAt: nullableString(row.response_deadline_at),
-    latestRevisionNo: row.latest_revision_no === null || row.latest_revision_no === undefined
-      ? null
-      : Number(row.latest_revision_no),
+    latestRevisionNo: nullableFiniteNumber(row.latest_revision_no),
     latestSubmittedAt: nullableString(row.latest_submitted_at),
-    latestAnswers: row.latest_answers && typeof row.latest_answers === "object" && !Array.isArray(row.latest_answers)
-      ? row.latest_answers as Record<string, unknown>
+    latestAnswers: (row.latest_answers ?? row.latest_structured_answers) &&
+      typeof (row.latest_answers ?? row.latest_structured_answers) === "object" &&
+      !Array.isArray(row.latest_answers ?? row.latest_structured_answers)
+      ? (row.latest_answers ?? row.latest_structured_answers) as Record<string, unknown>
       : null,
     definition: row.definition && typeof row.definition === "object" && !Array.isArray(row.definition)
       ? row.definition
@@ -117,6 +121,18 @@ export async function readPostAdoptionIndividualResultsRows(
     client,
     "read_post_adoption_questionnaire_individual_results",
     { p_animal_id: animalId },
+  );
+}
+
+export async function readPostAdoptionCollectiveResultsRows(
+  litterId: string,
+  suppliedClient?: SupabaseClient,
+) {
+  const client = suppliedClient ?? (await createClient());
+  return readResultsRows(
+    client,
+    "read_post_adoption_questionnaire_collective_results",
+    { p_litter_id: litterId },
   );
 }
 
