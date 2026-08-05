@@ -72,6 +72,7 @@ import {
   ReservationDocumentsBundleConfirmDialog,
 } from "@/features/reservations/document-confirm-dialog";
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
+import { AdoptionCorrectionDialog } from "@/features/reservations/adoption-correction-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
 import { ReservationDocumentVariantsSection } from "@/features/reservations/reservation-document-variants-section";
@@ -92,6 +93,9 @@ type ReservationSearchParams = {
   activation_status?: string;
   role_status?: string;
   adoption_status?: string;
+  adoption_reason?: string;
+  adoption_correction_status?: string;
+  adoption_correction_reason?: string;
   animal_status?: string;
   cancellation_status?: string;
   withdrawal_status?: string;
@@ -200,15 +204,39 @@ type RelatedReservationNote = {
   profiles: { display_name: string | null } | null;
 };
 
+type RelatedAdoptionHandoverEvent = {
+  id: string;
+  event_type: string;
+  actor_role: string;
+  adoption_completed_at: string | null;
+  previous_adoption_completed_at: string | null;
+  exceptions: unknown;
+  reason: string | null;
+  occurred_at: string;
+  profiles: { display_name: string | null } | null;
+};
+
+const adoptionHandoverEventLabels: Record<string, string> = {
+  finalized: "Adoption finalisée",
+  date_corrected: "Date réelle rectifiée",
+  reversed: "Finalisation annulée",
+  incident_opened: "Incident de correction ouvert",
+};
+
 type RelatedAnimal = {
   id: string;
   call_name: string | null;
   official_name: string | null;
   sex: string;
   status: string;
+  ownership_status: string;
+  is_breeder: boolean;
+  is_external: boolean;
+  is_retired: boolean;
   birth_date: string | null;
   litter_id: string | null;
   species: string | null;
+  breed: string | null;
   birth_order: number | null;
   collar_color_current: string | null;
   collar_color_initial: string | null;
@@ -762,6 +790,40 @@ const successStatusMessageClassName =
 const errorStatusMessageClassName =
   "mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950";
 
+const adoptionHandoverReasonMessages: Record<string, string> = {
+  adoption_before_birth: "La date choisie est antérieure à la naissance de l’animal.",
+  adoption_date_invalid: "La date réelle de départ n’est pas valide.",
+  adoption_in_future: "Une adoption effective ne peut pas être datée dans le futur.",
+  adoption_not_effective: "Le dossier n’est plus dans un état d’adoption effective.",
+  animal_inconsistent: "L’animal attribué n’est plus compatible avec ce parcours adoptant.",
+  animal_missing: "L’animal attribué est introuvable.",
+  client_command_conflict: "Cette demande a déjà été utilisée avec d’autres informations. Rechargez la page.",
+  contact_missing: "Le contact lié au parcours adoptant est introuvable.",
+  correction_stale: "L’adoption a été modifiée depuis l’ouverture de cette confirmation. Rechargez la page.",
+  exception_authorization_required: "Des droits renforcés sont nécessaires pour accepter ces exceptions.",
+  exceptions_require_confirmation: "Tous les points d’exception doivent être confirmés et justifiés.",
+  finalization_history_missing: "L’historique de finalisation est incomplet. La correction a été refusée.",
+  invalid_input: "Les informations envoyées ne sont plus valides. Rechargez la page.",
+  invalid_adoption_date: "La nouvelle date d’adoption n’est pas valide.",
+  not_found: "Le dossier n’est plus accessible ou vos droits ont changé.",
+  post_adoption_state_inconsistent: "Un suivi post-adoption incohérent existe déjà. Aucune modification n’a été appliquée.",
+  reservation_not_ready: "Le parcours adoptant n’est plus prêt à être finalisé.",
+  reservation_stale: "Le dossier a changé depuis l’ouverture de la confirmation. Rechargez la page.",
+  unexpected_exception_confirmation: "La liste des exceptions a changé. Rechargez la page et vérifiez de nouveau le départ.",
+};
+
+function adoptionHandoverReasonMessage(
+  reason: string | undefined,
+  fallback: string,
+) {
+  if (!reason) return fallback;
+  const messages = reason
+    .split(",")
+    .map((code) => adoptionHandoverReasonMessages[code])
+    .filter(Boolean);
+  return messages.length > 0 ? messages.join(" ") : fallback;
+}
+
 function ReservationStatusMessages({
   balanceAmountLabel,
   query,
@@ -994,13 +1056,16 @@ function ReservationStatusMessages({
       when: query.adoption_status === "success",
       role: "status",
       className: successStatusMessageClassName,
-      message: "L’adoption a été finalisée.",
+      message: "L’adoption a été finalisée. Le parcours, l’animal, les rôles et l’historique ont été enregistrés ensemble.",
     },
     {
       when: query.adoption_status === "invalid_state",
       role: "alert",
       className: errorStatusMessageClassName,
-      message: "Le dossier adoptant ne peut pas être finalisé dans son état actuel.",
+      message: adoptionHandoverReasonMessage(
+        query.adoption_reason,
+        "Le dossier adoptant ne peut pas être finalisé dans son état actuel.",
+      ),
     },
     {
       when: query.adoption_status === "error",
@@ -1008,6 +1073,35 @@ function ReservationStatusMessages({
       className: errorStatusMessageClassName,
       message:
         "L’adoption n’a pas pu être finalisée. Aucune donnée n’a été modifiée.",
+    },
+    {
+      when: query.adoption_correction_status === "success",
+      role: "status",
+      className: successStatusMessageClassName,
+      message: "La correction de l’adoption a été enregistrée et historisée.",
+    },
+    {
+      when: query.adoption_correction_status === "incident",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "Le suivi familial avait déjà commencé : aucune donnée d’adoption n’a été effacée. Un incident interne a été ouvert et les accès concernés ont été suspendus.",
+    },
+    {
+      when: query.adoption_correction_status === "invalid_state",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message: adoptionHandoverReasonMessage(
+        query.adoption_correction_reason,
+        "Cette correction ne peut pas être appliquée dans l’état actuel du dossier. Aucune donnée n’a été modifiée.",
+      ),
+    },
+    {
+      when: query.adoption_correction_status === "error",
+      role: "alert",
+      className: errorStatusMessageClassName,
+      message:
+        "La correction n’a pas pu être enregistrée. Aucune donnée n’a été modifiée.",
     },
     {
       when: query.animal_status === "error",
@@ -1922,6 +2016,29 @@ export default async function ReservationDetailPage({
       })
     : resolveDepositSettings(null);
 
+  const [adoptionMembershipResult, adoptionOrganizationResult] =
+    reservation?.organization_id
+      ? await Promise.all([
+          supabase
+            .from("memberships")
+            .select("role")
+            .eq("organization_id", reservation.organization_id)
+            .eq("profile_id", user.id)
+            .eq("status", "active")
+            .is("deleted_at", null)
+            .maybeSingle(),
+          supabase
+            .from("organizations")
+            .select("name")
+            .eq("id", reservation.organization_id)
+            .is("deleted_at", null)
+            .maybeSingle(),
+        ])
+      : [{ data: null }, { data: null }];
+  const adoptionActorRole = adoptionMembershipResult.data?.role ?? null;
+  const adoptionOrganizationName =
+    adoptionOrganizationResult.data?.name ?? "Organisation non disponible";
+
   // Fetch available animals of the organization if reservation has no animal
   let availableAnimals: Array<{
     id: string;
@@ -2078,7 +2195,7 @@ export default async function ReservationDetailPage({
   const { data: rawAnimal, error: animalError } = reservation?.animal_id
     ? await supabase
         .from("animals")
-        .select("id, call_name, official_name, sex, status, birth_date, litter_id, species, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, deleted_at")
+        .select("id, call_name, official_name, sex, status, ownership_status, is_breeder, is_external, is_retired, birth_date, litter_id, species, breed, birth_order, collar_color_current, collar_color_initial, identification_number, color, coat_color, deleted_at")
         .eq("id", reservation.animal_id)
         .is("deleted_at", null)
         .maybeSingle()
@@ -2221,6 +2338,21 @@ export default async function ReservationDetailPage({
 
   const reservationNotes =
     rawReservationNotes as RelatedReservationNote[] | null;
+
+  const { data: rawAdoptionHandoverEvents, error: adoptionHandoverEventsError } =
+    reservation?.id && reservation.organization_id
+      ? await supabase
+          .from("adoption_handover_events")
+          .select(
+            "id, event_type, actor_role, adoption_completed_at, previous_adoption_completed_at, exceptions, reason, occurred_at, profiles!adoption_handover_events_actor_profile_id_fkey ( display_name )",
+          )
+          .eq("organization_id", reservation.organization_id)
+          .eq("reservation_id", reservation.id)
+          .order("occurred_at", { ascending: false })
+          .order("id", { ascending: false })
+      : { data: null, error: null };
+  const adoptionHandoverEvents =
+    rawAdoptionHandoverEvents as RelatedAdoptionHandoverEvent[] | null;
 
   // Fetch contact details scoping by organization_id
   const { data: contactDetails, error: contactDetailsError } = reservation?.contact_id && reservation?.organization_id
@@ -2743,6 +2875,10 @@ export default async function ReservationDetailPage({
     events: reservationEvents,
     fallbackPlannedAt: reservation?.adoption_planned_at,
   });
+  const defaultAdoptionCompletedAt =
+    adoptionAppointment.actualAt ??
+    adoptionAppointment.plannedAt ??
+    new Date().toISOString();
   const choiceAppointmentsCampaignTrace = reservationEvents?.find(
     (event) =>
       event.title === CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE &&
@@ -3144,12 +3280,135 @@ export default async function ReservationDetailPage({
                   {canFinalizeAdoptionManually ? (
                     <div className="mt-6 border-t pt-6">
                       <p className="max-w-2xl text-xs leading-5 text-muted">
-                        Cette action ne valide pas automatiquement le solde, les documents ou la date de départ.
+                        La confirmation relit les données, distingue les blocages des exceptions et enregistre tous les changements ensemble.
                       </p>
                       <AdoptionConfirmDialog
                         reservationId={id}
+                        expectedReservationUpdatedAt={reservation.updated_at ?? ""}
+                        organizationName={adoptionOrganizationName}
+                        contactName={
+                          reservation.contact_display_name ?? "Famille associée"
+                        }
+                        actorRole={adoptionActorRole}
+                        animal={
+                          relatedAnimal
+                            ? {
+                                id: relatedAnimal.id,
+                                name: animalSummaryLabel,
+                                birthDate: relatedAnimal.birth_date,
+                                identificationNumber:
+                                  relatedAnimal.identification_number,
+                                isConsistent:
+                                  relatedAnimal.status === "reserved" &&
+                                  relatedAnimal.ownership_status === "produced" &&
+                                  !relatedAnimal.is_breeder &&
+                                  !relatedAnimal.is_external &&
+                                  !relatedAnimal.is_retired,
+                              }
+                            : null
+                        }
+                        defaultAdoptionAt={defaultAdoptionCompletedAt}
+                        priceCents={priceCents}
+                        balanceRemainingCents={remainingBalanceCents}
+                        balanceLabel={
+                          priceCents === null
+                            ? "Solde non déterminé"
+                            : remainingBalanceCents !== null &&
+                                remainingBalanceCents > 0
+                              ? `${formatPrice(remainingBalanceCents, currency)} reste à régler`
+                              : remainingBalanceCents === 0
+                                ? "Dossier soldé"
+                                : `Trop-perçu de ${formatPrice(Math.abs(remainingBalanceCents ?? 0), currency)}`
+                        }
+                        paymentDataAvailable={!paymentsError}
+                        documentDataAvailable={!documentsError}
+                        commitmentCertificateStatus={
+                          commitmentDocument?.status ?? null
+                        }
+                        reservationContractStatus={
+                          reservationContractDocument?.status ?? null
+                        }
                         buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                       />
+                    </div>
+                  ) : null}
+
+                  {adoptionHandoverEventsError ? (
+                    <p role="alert" className="mt-6 text-sm text-amber-800">
+                      Impossible de charger l’historique de finalisation.
+                    </p>
+                  ) : adoptionHandoverEvents &&
+                    adoptionHandoverEvents.length > 0 ? (
+                    <div
+                      className="mt-6 border-t pt-6"
+                      data-testid="adoption-handover-history"
+                    >
+                      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground">
+                            Historique du départ
+                          </h3>
+                          <p className="mt-1 text-xs leading-5 text-muted">
+                            Les décisions passées restent immuables ; une correction ajoute une nouvelle trace.
+                          </p>
+                        </div>
+                        {reservation.status === "adopted" &&
+                        reservation.adoption_completed_at ? (
+                          <AdoptionCorrectionDialog
+                            reservationId={id}
+                            adoptionCompletedAt={
+                              reservation.adoption_completed_at
+                            }
+                            actorRole={adoptionActorRole}
+                          />
+                        ) : null}
+                      </div>
+
+                      <ol className="mt-4 space-y-3">
+                        {adoptionHandoverEvents.map((event) => {
+                          const exceptionCount = Array.isArray(event.exceptions)
+                            ? event.exceptions.length
+                            : 0;
+                          return (
+                            <li
+                              key={event.id}
+                              className={`rounded-xl border p-4 text-sm ${
+                                event.event_type === "incident_opened"
+                                  ? "border-rose-200 bg-rose-50"
+                                  : "bg-background"
+                              }`}
+                            >
+                              <div className="flex flex-col justify-between gap-1 sm:flex-row sm:items-start">
+                                <p className="font-semibold text-foreground">
+                                  {adoptionHandoverEventLabels[event.event_type] ??
+                                    "Événement de finalisation"}
+                                </p>
+                                <time className="text-xs text-muted">
+                                  {formatApplicationDate(event.occurred_at)}
+                                </time>
+                              </div>
+                              <p className="mt-2 text-xs leading-5 text-muted">
+                                Par {event.profiles?.display_name ?? event.actor_role}
+                                {event.adoption_completed_at
+                                  ? ` · Date réelle : ${formatApplicationDate(
+                                      event.adoption_completed_at,
+                                    )}`
+                                  : ""}
+                                {exceptionCount > 0
+                                  ? ` · ${exceptionCount} exception${
+                                      exceptionCount > 1 ? "s" : ""
+                                    } acceptée${exceptionCount > 1 ? "s" : ""}`
+                                  : ""}
+                              </p>
+                              {event.reason ? (
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                  {event.reason}
+                                </p>
+                              ) : null}
+                            </li>
+                          );
+                        })}
+                      </ol>
                     </div>
                   ) : null}
                 </section>

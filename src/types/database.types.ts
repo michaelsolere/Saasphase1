@@ -131,6 +131,109 @@ export type Database = {
           },
         ]
       }
+      adoption_handover_events: {
+        Row: {
+          actor_profile_id: string
+          actor_role: string
+          adoption_completed_at: string | null
+          animal_id: string
+          checks: Json
+          client_command_id: string
+          contact_id: string
+          details: Json
+          event_type: string
+          exceptions: Json
+          id: string
+          occurred_at: string
+          organization_id: string
+          previous_adoption_completed_at: string | null
+          previous_event_id: string | null
+          reason: string | null
+          reservation_id: string
+        }
+        Insert: {
+          actor_profile_id: string
+          actor_role: string
+          adoption_completed_at?: string | null
+          animal_id: string
+          checks?: Json
+          client_command_id: string
+          contact_id: string
+          details?: Json
+          event_type: string
+          exceptions?: Json
+          id?: string
+          occurred_at?: string
+          organization_id: string
+          previous_adoption_completed_at?: string | null
+          previous_event_id?: string | null
+          reason?: string | null
+          reservation_id: string
+        }
+        Update: {
+          actor_profile_id?: string
+          actor_role?: string
+          adoption_completed_at?: string | null
+          animal_id?: string
+          checks?: Json
+          client_command_id?: string
+          contact_id?: string
+          details?: Json
+          event_type?: string
+          exceptions?: Json
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          previous_adoption_completed_at?: string | null
+          previous_event_id?: string | null
+          reason?: string | null
+          reservation_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adoption_handover_events_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adoption_handover_events_animal_fk"
+            columns: ["organization_id", "animal_id"]
+            isOneToOne: false
+            referencedRelation: "animals"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "adoption_handover_events_contact_fk"
+            columns: ["organization_id", "contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "adoption_handover_events_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "adoption_handover_events_previous_event_fk"
+            columns: ["organization_id", "previous_event_id"]
+            isOneToOne: false
+            referencedRelation: "adoption_handover_events"
+            referencedColumns: ["organization_id", "id"]
+          },
+          {
+            foreignKeyName: "adoption_handover_events_reservation_fk"
+            columns: ["organization_id", "reservation_id"]
+            isOneToOne: false
+            referencedRelation: "reservations"
+            referencedColumns: ["organization_id", "id"]
+          },
+        ]
+      }
       animals: {
         Row: {
           birth_date: string | null
@@ -6845,6 +6948,44 @@ export type Database = {
         Returns: {
           version: number
           version_id: string
+        }[]
+      }
+      correct_adoption_handover: {
+        Args: {
+          p_client_command_id: string
+          p_correction_type: string
+          p_expected_adoption_completed_at: string
+          p_new_adoption_completed_at: string | null
+          p_reason: string
+          p_reservation_id: string
+        }
+        Returns: {
+          adoption_completed_at: string | null
+          event_id: string | null
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          result: Json
+        }[]
+      }
+      finalize_adoption_handover: {
+        Args: {
+          p_acknowledged_exception_codes: string[]
+          p_adoption_completed_at: string
+          p_client_command_id: string
+          p_exception_reason: string | null
+          p_expected_reservation_updated_at: string
+          p_reservation_id: string
+        }
+        Returns: {
+          adoption_completed_at: string | null
+          blocker_codes: string[]
+          event_id: string | null
+          exception_codes: string[]
+          outcome: string
+          reason: string | null
+          replayed: boolean
+          result: Json
         }[]
       }
       create_reservation_refund: {
