@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 import { createClient } from "@/lib/supabase/client";
-import { getSupabaseConfig } from "@/lib/supabase/config";
-import type { Tables } from "@/types/database.types";
+
 
 import {
   type ApplicationFormErrors,
@@ -14,7 +13,14 @@ import {
 } from "./types";
 import { validateApplicationForm } from "./validation";
 
-type PublicForm = Tables<"public_form_public_view">;
+type PublicForm = {
+  version_reference: string;
+  title: string | null;
+  description: string | null;
+  success_message: string | null;
+  species: string | null;
+  breed: string | null;
+};
 
 const initialValues: ApplicationFormValues = {
   firstName: "",
@@ -34,10 +40,12 @@ const initialValues: ApplicationFormValues = {
 };
 
 type PublicApplicationFormProps = {
+  organizationSlug: string;
   formSlug: string;
 };
 
 export function PublicApplicationForm({
+  organizationSlug,
   formSlug,
 }: PublicApplicationFormProps) {
   const [publicForm, setPublicForm] = useState<PublicForm | null>(null);
@@ -47,6 +55,7 @@ export function PublicApplicationForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [publicReference, setPublicReference] = useState<string | null>(null);
+  const submissionKey = useRef(globalThis.crypto.randomUUID());
 
   useEffect(() => {
     let isMounted = true;
@@ -54,12 +63,17 @@ export function PublicApplicationForm({
     async function loadPublicForm() {
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from("public_form_public_view")
-          .select("slug, title, description, species, breed")
-          .eq("slug", formSlug)
-          .limit(1)
-          .maybeSingle();
+        const { data: rows, error } = (await supabase.rpc(
+          "get_public_application_form" as never,
+          {
+            p_organization_slug: organizationSlug,
+            p_form_slug: formSlug,
+          } as never,
+        )) as unknown as {
+          data: PublicForm[] | null;
+          error: { message: string } | null;
+        };
+        const data = rows?.[0] ?? null;
 
         if (!isMounted) {
           return;
@@ -90,7 +104,7 @@ export function PublicApplicationForm({
     return () => {
       isMounted = false;
     };
-  }, [formSlug]);
+  }, [formSlug, organizationSlug]);
 
   function updateValue<Key extends keyof ApplicationFormValues>(
     key: Key,
@@ -102,6 +116,11 @@ export function PublicApplicationForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const honeypot = String(new FormData(event.currentTarget).get("website") ?? "");
+    if (!publicForm) {
+      setErrors({ form: "Ce formulaire n’est pas disponible pour le moment." });
+      return;
+    }
 
     const validationErrors = validateApplicationForm(values);
     setErrors(validationErrors);
@@ -113,11 +132,12 @@ export function PublicApplicationForm({
     try {
       setIsSubmitting(true);
 
-      const { organizationSlug } = getSupabaseConfig();
       const supabase = createClient();
-      const { data, error } = await supabase.rpc("submit_public_application", {
+      const { data, error } = await supabase.rpc("submit_public_application_v2" as never, {
         p_organization_slug: organizationSlug,
         p_form_slug: formSlug,
+        p_expected_version_reference: publicForm.version_reference,
+        p_submission_key: submissionKey.current,
         p_first_name: values.firstName.trim(),
         p_last_name: values.lastName.trim(),
         p_family_or_structure_name:
@@ -140,7 +160,11 @@ export function PublicApplicationForm({
           submitted_from: "public_application_form",
           form_slug: formSlug,
         },
-      });
+        p_honeypot: honeypot,
+      } as never) as unknown as {
+        data: Array<{ status: string; public_submission_reference: string; replayed: boolean }> | null;
+        error: { message: string } | null;
+      };
 
       if (error || !data?.[0] || data[0].status !== "accepted") {
         throw new Error("Public application submission failed");
@@ -168,7 +192,7 @@ export function PublicApplicationForm({
   if (isSubmitted) {
     return (
       <SuccessState
-        message="Votre candidature a bien été transmise. Vous pouvez maintenant fermer cette page. À très bientôt!"
+        message={publicForm.success_message ?? "Votre candidature a bien été transmise. Vous pouvez maintenant fermer cette page. À très bientôt!"}
         publicReference={publicReference}
       />
     );
@@ -210,6 +234,10 @@ export function PublicApplicationForm({
           noValidate
           onSubmit={handleSubmit}
         >
+          <label className="sr-only" aria-hidden="true">
+            Site web
+            <input name="website" tabIndex={-1} autoComplete="off" />
+          </label>
           <FormSection
             title="Vos coordonnées"
             description="Ces informations créent votre fiche de contact unique."

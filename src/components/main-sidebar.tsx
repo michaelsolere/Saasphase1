@@ -50,6 +50,7 @@ const sections: SidebarSection[] = [
       { label: "Tous les contacts", href: "/contacts" },
       { label: "Candidats", href: "/candidatures" },
       { label: "Soumissions à examiner", href: "/form-submissions" },
+      { label: "Formulaire public", href: "/settings/public-form" },
       { label: "Adoptants", comingSoon: true },
       { label: "Anciens adoptants", comingSoon: true },
       { label: "Partenaires", comingSoon: true },
