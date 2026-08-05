@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { PublicApplicationForm } from "@/features/public-application/public-application-form";
+import { getSupabaseConfig } from "@/lib/supabase/config";
 
 export const metadata: Metadata = {
   title: "Candidature Golden Retriever 2026 | SaaS Élevage",
@@ -9,5 +10,6 @@ export const metadata: Metadata = {
 };
 
 export default function GoldenRetrieverApplicationPage() {
-  return <PublicApplicationForm formSlug="golden-retriever-2026" />;
+  const { organizationSlug } = getSupabaseConfig();
+  redirect(`/candidature/${organizationSlug}/golden-retriever-2026`);
 }

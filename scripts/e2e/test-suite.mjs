@@ -77,6 +77,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/post-adoption-results-collective-model.spec.ts",
   "tests/e2e/pre-reservation-deposit.spec.ts",
   "tests/e2e/private-route-shell.spec.ts",
+  "tests/e2e/public-form-administration-core.spec.ts",
   "tests/e2e/reservation-contract-v2.spec.ts",
   "tests/e2e/reservation-pricing.spec.ts",
   "tests/e2e/reproductive-cycle-lifecycle-core.spec.ts",
