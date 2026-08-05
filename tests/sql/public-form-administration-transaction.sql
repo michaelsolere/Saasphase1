@@ -45,6 +45,23 @@ begin
   end;
   select id, draft_revision into v_form, v_revision from public.public_forms where organization_id = v_org and deleted_at is null;
 
+  if has_table_privilege('authenticated', 'public.public_forms', 'INSERT')
+    or has_table_privilege('authenticated', 'public.public_forms', 'UPDATE')
+    or has_table_privilege('authenticated', 'public.public_forms', 'DELETE')
+  then
+    raise exception 'authenticated retains a direct public_forms mutation privilege';
+  end if;
+  begin
+    update public.public_forms
+    set slug = 'adresse-contournee',
+        lifecycle_status = 'published',
+        is_active = true,
+        published_version_id = null
+    where id = v_form;
+    raise exception 'owner bypassed authoritative public form RPCs';
+  exception when insufficient_privilege then null;
+  end;
+
   perform public.save_standard_public_form_draft(
     v_org, v_revision, 'Candidature générale', 'golden-retriever-2026',
     'Présentez-nous votre projet',

@@ -52,6 +52,10 @@ test("database contract keeps versions, lifecycle commands and public retries au
     resolve(process.cwd(), "supabase/migrations/202608090001_public_form_administration_foundation.sql"),
     "utf8",
   );
+  const writeGuardMigration = readFileSync(
+    resolve(process.cwd(), "supabase/migrations/202608090002_public_form_authoritative_rpc_writes.sql"),
+    "utf8",
+  );
   expect(migration).toContain("create table public.public_form_versions");
   expect(migration).toContain("create table public.public_form_events");
   expect(migration).toContain("Public form history is append-only");
@@ -62,6 +66,10 @@ test("database contract keeps versions, lifecycle commands and public retries au
   expect(migration).toContain("Published public URL is stable");
   expect(migration).toContain("revoke select on public.public_form_public_view from anon, authenticated");
   expect(migration).not.toContain("role in (\n      'prospect',");
+  expect(writeGuardMigration).toContain("drop policy if exists public_forms_update_admin");
+  expect(writeGuardMigration).toContain(
+    "revoke insert, update, delete on table public.public_forms from authenticated",
+  );
 });
 
 test("keeps organization resolution and sharing permissions on the server", () => {
