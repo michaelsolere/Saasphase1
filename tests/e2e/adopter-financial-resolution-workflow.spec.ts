@@ -592,6 +592,7 @@ test("serializes payment writes against a concurrent negative exit", async () =>
       },
     );
     const paymentId = randomUUID();
+    const interleavingLock = `e2e-financial-payment-exit:${fixtures.namespace}`;
     fixtures.register("payments", paymentId);
     const expectedUpdatedAt = sql(
       `select updated_at::text from public.reservations where id=${q(scenario.journey.id)}::uuid;`,
@@ -619,10 +620,33 @@ test("serializes payment writes against a concurrent negative exit", async () =>
         ${q(ownerId)}::uuid,
         ${q(ownerId)}::uuid
       );
-      select pg_catalog.pg_sleep(2);
+      select pg_catalog.pg_advisory_xact_lock(
+        pg_catalog.hashtextextended(${q(interleavingLock)}, 0)
+      );
+      select pg_catalog.pg_sleep(3);
       commit;
     `);
-    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    let paymentLockHeld = false;
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const acquired = sql(`
+        select pg_catalog.pg_try_advisory_lock(
+          pg_catalog.hashtextextended(${q(interleavingLock)}, 0)
+        )::text;
+      `);
+      if (acquired === "false") {
+        paymentLockHeld = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    if (!paymentLockHeld) {
+      await paymentWrite;
+    }
+    expect(
+      paymentLockHeld,
+      "the payment transaction must hold its readiness lock before the exit starts",
+    ).toBe(true);
 
     const exit = jsonSql(`
       begin;
