@@ -34,6 +34,83 @@ export type Database = {
   }
   public: {
     Tables: {
+      adopter_financial_resolution_events: {
+        Row: {
+          actor_profile_id: string | null
+          actor_role: string
+          client_command_id: string
+          contact_id: string
+          details: Json
+          event_type: string
+          financial_resolution: string
+          id: string
+          occurred_at: string
+          organization_id: string
+          paid_cents: number
+          previous_event_id: string | null
+          previous_financial_resolution: string | null
+          reason: string | null
+          refund_payment_id: string | null
+          refundable_cents: number
+          refunded_cents: number
+          reservation_id: string
+          retained_cents: number
+          voided_payment_id: string | null
+        }
+        Insert: {
+          actor_profile_id?: string | null
+          actor_role: string
+          client_command_id: string
+          contact_id: string
+          details?: Json
+          event_type: string
+          financial_resolution: string
+          id?: string
+          occurred_at?: string
+          organization_id: string
+          paid_cents?: number
+          previous_event_id?: string | null
+          previous_financial_resolution?: string | null
+          reason?: string | null
+          refund_payment_id?: string | null
+          refundable_cents?: number
+          refunded_cents?: number
+          reservation_id: string
+          retained_cents?: number
+          voided_payment_id?: string | null
+        }
+        Update: {
+          actor_profile_id?: string | null
+          actor_role?: string
+          client_command_id?: string
+          contact_id?: string
+          details?: Json
+          event_type?: string
+          financial_resolution?: string
+          id?: string
+          occurred_at?: string
+          organization_id?: string
+          paid_cents?: number
+          previous_event_id?: string | null
+          previous_financial_resolution?: string | null
+          reason?: string | null
+          refund_payment_id?: string | null
+          refundable_cents?: number
+          refunded_cents?: number
+          reservation_id?: string
+          retained_cents?: number
+          voided_payment_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "adopter_financial_resolution_events_actor_profile_id_fkey"
+            columns: ["actor_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       animal_weight_measurements: {
         Row: {
           animal_id: string
@@ -5487,6 +5564,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           currency: string
+          current_financial_resolution_event_id: string | null
           deleted_at: string | null
           financial_resolution: string
           financial_resolution_notes: string | null
@@ -5526,6 +5604,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          current_financial_resolution_event_id?: string | null
           deleted_at?: string | null
           financial_resolution?: string
           financial_resolution_notes?: string | null
@@ -5565,6 +5644,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           currency?: string
+          current_financial_resolution_event_id?: string | null
           deleted_at?: string | null
           financial_resolution?: string
           financial_resolution_notes?: string | null
@@ -6393,6 +6473,9 @@ export type Database = {
           contact_id: string | null
           created_at: string | null
           currency: string | null
+          current_financial_resolution_event_id: string | null
+          financial_resolution: string | null
+          financial_resolution_notes: string | null
           id: string | null
           litter_group_id: string | null
           litter_group_name: string | null
@@ -7243,6 +7326,33 @@ export type Database = {
         Args: never
         Returns: Json
       }
+      record_adopter_financial_resolution: {
+        Args: {
+          p_client_command_id: string
+          p_expected_event_id: string
+          p_financial_resolution: string
+          p_paid_at: string | null
+          p_payment_method: string | null
+          p_reason: string
+          p_refund_amount_cents: number
+          p_reservation_id: string
+          p_void_refund_payment_id: string | null
+        }
+        Returns: {
+          event_id: string | null
+          financial_resolution: string | null
+          outcome: string
+          paid_cents: number | null
+          payment_id: string | null
+          reason: string | null
+          refundable_cents: number | null
+          refunded_cents: number | null
+          replayed: boolean
+          reservation_id: string | null
+          result: Json
+          retained_cents: number | null
+        }[]
+      }
       record_litter_routine_weights: {
         Args: {
           p_client_command_id: string
@@ -7335,6 +7445,27 @@ export type Database = {
           replayed: boolean
           sequence_no: number
           snapshot_count: number
+        }[]
+      }
+      transition_adopter_journey_exit: {
+        Args: {
+          p_client_command_id: string
+          p_expected_reservation_updated_at: string
+          p_reservation_id: string
+          p_target_status: string
+        }
+        Returns: {
+          event_id: string | null
+          financial_resolution: string | null
+          outcome: string
+          paid_cents: number | null
+          reason: string | null
+          refundable_cents: number | null
+          refunded_cents: number | null
+          replayed: boolean
+          reservation_id: string | null
+          result: Json
+          target_status: string | null
         }[]
       }
       update_calendar_reminder: {

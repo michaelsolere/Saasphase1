@@ -54,11 +54,15 @@ const actionCopy: Record<
 export function ReservationNegativeActionConfirmDialog({
   actionType,
   reservationId,
+  clientCommandId,
+  expectedReservationUpdatedAt,
   triggerLabel,
   triggerClassName,
 }: {
   actionType: ReservationNegativeAction;
   reservationId: string;
+  clientCommandId: string;
+  expectedReservationUpdatedAt: string;
   triggerLabel?: string;
   triggerClassName?: string;
 }) {
@@ -81,6 +85,12 @@ export function ReservationNegativeActionConfirmDialog({
           <AlertDialogFooter>
             <AlertDialogCancel type="button">Annuler</AlertDialogCancel>
             <input type="hidden" name="reservation_id" value={reservationId} />
+            <input type="hidden" name="client_command_id" value={clientCommandId} />
+            <input
+              type="hidden"
+              name="expected_reservation_updated_at"
+              value={expectedReservationUpdatedAt}
+            />
             <Button type="submit">{copy.confirmLabel}</Button>
           </AlertDialogFooter>
         </form>

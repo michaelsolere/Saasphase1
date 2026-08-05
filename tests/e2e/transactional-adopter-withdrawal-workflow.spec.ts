@@ -253,6 +253,19 @@ test("withdraws an active adopter journey through the reservation page", async (
       status: "reserved",
     });
 
+    const financialResolutionEventId = sql(`
+      select id::text
+      from public.adopter_financial_resolution_events
+      where organization_id = '${organizationId}'::uuid
+        and reservation_id = '${scenario.journey.id}'::uuid
+      order by occurred_at desc
+      limit 1;
+    `).trim();
+    fixtures.register(
+      "adopter_financial_resolution_events",
+      financialResolutionEventId,
+    );
+
     await registerActualWithdrawalEffects(sql, fixtures, {
       organizationId,
       reservationId: scenario.journey.id,

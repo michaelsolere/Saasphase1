@@ -201,7 +201,7 @@ export default async function Home() {
   // Load reservations for attention checks
   const { data: rawReservations } = await supabase
     .from("reservation_overview")
-    .select("id, organization_id, contact_id, contact_display_name, status, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
+    .select("id, organization_id, contact_id, contact_display_name, status, financial_resolution, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
     .neq("status", "pre_reservation_requested")
     .order("created_at", { ascending: false });
   const organizationIds = Array.from(
@@ -538,11 +538,20 @@ export default async function Home() {
                         ? "Pré-réservation réglée — arrhes complètes"
                         : "Pré-réservation réglée";
                     }
+                    const hasPendingFinancialResolution =
+                      res.financial_resolution === "pending";
+                    if (hasPendingFinancialResolution) {
+                      detailText = "Résolution financière à traiter";
+                    }
                     return (
                       <div key={res.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0">
                           <Link
-                            href={`/reservations/${res.id}`}
+                            href={`/reservations/${res.id}${
+                              hasPendingFinancialResolution
+                                ? "#financial-resolution"
+                                : ""
+                            }`}
                             className="block font-semibold text-accent hover:underline"
                           >
                             {res.contact_display_name ?? "Contact anonyme"}
@@ -552,7 +561,8 @@ export default async function Home() {
                           </span>
                         </div>
                         <span className={`h-fit max-w-full self-start whitespace-normal rounded border px-2 py-0.5 text-left text-[11px] font-medium sm:max-w-[170px] sm:self-center sm:text-right ${
-                          isArrhesCompleteNoAnimal || isPreReservationPaid
+                          (isArrhesCompleteNoAnimal || isPreReservationPaid) &&
+                          !hasPendingFinancialResolution
                             ? "text-emerald-700 bg-emerald-50 border-emerald-200/60"
                             : "text-amber-700 bg-amber-50 border-amber-200/60"
                         }`}>

@@ -76,7 +76,7 @@ export default async function ReservationsPage({
   let reservationQuery = supabase
     .from("reservation_overview")
     .select(
-      "id, organization_id, contact_id, contact_display_name, status, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
+      "id, organization_id, contact_id, contact_display_name, status, financial_resolution, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
     )
     .neq("status", "pre_reservation_requested")
     .order("created_at", { ascending: false });
