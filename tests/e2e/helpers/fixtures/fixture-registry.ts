@@ -1,4 +1,7 @@
 export const fixtureTables = [
+  "adoption_handover_events",
+  "post_adoption_questionnaire_public_sessions",
+  "post_adoption_questionnaire_public_accesses",
   "post_adoption_questionnaire_reconciliation_run_results",
   "post_adoption_questionnaire_reconciliation_attempts",
   "post_adoption_questionnaire_reconciliation_runs",
@@ -67,6 +70,9 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "adoption_handover_events",
+  "post_adoption_questionnaire_public_sessions",
+  "post_adoption_questionnaire_public_accesses",
   "post_adoption_questionnaire_reconciliation_run_results",
   "post_adoption_questionnaire_reconciliation_attempts",
   "post_adoption_questionnaire_reconciliation_runs",
@@ -177,7 +183,10 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
-      table === "post_adoption_questionnaire_reconciliation_run_results"
+      table === "adoption_handover_events"
+      || table === "post_adoption_questionnaire_public_sessions"
+      || table === "post_adoption_questionnaire_public_accesses"
+      || table === "post_adoption_questionnaire_reconciliation_run_results"
       || table === "post_adoption_questionnaire_reconciliation_attempts"
       || table === "post_adoption_questionnaire_reconciliation_runs"
       || table === "post_adoption_questionnaire_events"

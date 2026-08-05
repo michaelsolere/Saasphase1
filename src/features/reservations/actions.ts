@@ -15,9 +15,6 @@ import {
 } from "@/features/reservations/pre-reservation-campaign";
 import { isAssignableReservationAnimal } from "@/features/reservations/assignable-animals";
 import {
-  promoteContactJourneyRole,
-} from "@/features/contacts/roles";
-import {
   addDaysAsIsoDate,
   readDepositSettingsForOrganization,
 } from "@/features/payments/deposit-thresholds";
@@ -79,16 +76,21 @@ function preReservationEmailUrl(reservationId: string, outcome: string) {
 function adoptionUrl(
   reservationId: string,
   outcome: "success" | "invalid_state" | "error",
+  reason?: string | null,
 ) {
-  return `/reservations/${reservationId}?adoption_status=${outcome}#reservation-details`;
+  const reasonQuery = reason ? `&adoption_reason=${encodeURIComponent(reason)}` : "";
+  return `/reservations/${reservationId}?adoption_status=${outcome}${reasonQuery}#adoption-preparation`;
 }
 
-function adoptionRoleUrl(reservationId: string) {
-  return `/reservations/${reservationId}?adoption_status=success&role_status=error#reservation-details`;
-}
-
-function adoptionAnimalUrl(reservationId: string) {
-  return `/reservations/${reservationId}?adoption_status=success&animal_status=error#reservation-details`;
+function adoptionCorrectionUrl(
+  reservationId: string,
+  outcome: "success" | "incident" | "invalid_state" | "error",
+  reason?: string | null,
+) {
+  const reasonQuery = reason
+    ? `&adoption_correction_reason=${encodeURIComponent(reason)}`
+    : "";
+  return `/reservations/${reservationId}?adoption_correction_status=${outcome}${reasonQuery}#adoption-preparation`;
 }
 
 function cancellationUrl(
@@ -190,6 +192,12 @@ function normalizeOptionalText(
   }
 
   return trimmedValue.slice(0, maxLength);
+}
+
+function jsonStringField(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" ? field : null;
 }
 
 function parseOptionalDateTimeLocal(value: FormDataEntryValue | null) {
@@ -637,8 +645,31 @@ export async function activateReservation(formData: FormData) {
 
 export async function adoptReservation(formData: FormData) {
   const reservationId = formData.get("reservation_id");
+  const commandId = formData.get("client_command_id");
+  const adoptionCompletedAt = formData.get("adoption_completed_at");
+  const expectedReservationUpdatedAt = formData.get(
+    "expected_reservation_updated_at",
+  );
+  const exceptionReason = normalizeOptionalText(
+    formData.get("exception_reason"),
+    5_000,
+  );
+  const acknowledgedExceptionCodes = formData
+    .getAll("acknowledged_exception_code")
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
-  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof commandId !== "string" ||
+    !isUuid(commandId) ||
+    typeof adoptionCompletedAt !== "string" ||
+    !Number.isFinite(Date.parse(adoptionCompletedAt)) ||
+    typeof expectedReservationUpdatedAt !== "string" ||
+    !Number.isFinite(Date.parse(expectedReservationUpdatedAt))
+  ) {
     redirect("/reservations?erreur=adoption");
   }
 
@@ -651,96 +682,97 @@ export async function adoptReservation(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: reservation, error: readError } = await supabase
-    .from("reservations")
-    .select("id, organization_id, contact_id, animal_id, status, deleted_at")
-    .eq("id", reservationId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("finalize_adoption_handover", {
+    p_reservation_id: reservationId,
+    p_client_command_id: commandId,
+    p_adoption_completed_at: new Date(adoptionCompletedAt).toISOString(),
+    p_expected_reservation_updated_at: expectedReservationUpdatedAt,
+    p_acknowledged_exception_codes: acknowledgedExceptionCodes,
+    p_exception_reason: exceptionReason,
+  });
 
-  if (readError || !reservation) {
+  const response = data?.[0];
+  if (error || !response) {
     redirect(adoptionUrl(reservationId, "error"));
   }
 
-  const adoptionAllowedStatuses = ["animal_assigned"];
-  if (
-    !adoptionAllowedStatuses.includes(reservation.status) ||
-    !reservation.animal_id
-  ) {
-    redirect(adoptionUrl(reservationId, "invalid_state"));
+  if (response.outcome !== "success") {
+    redirect(adoptionUrl(reservationId, "invalid_state", response.reason));
   }
 
-  const now = new Date().toISOString();
-  const { data: updatedReservation, error: updateError } = await supabase
-    .from("reservations")
-    .update({
-      status: "adopted",
-      adoption_completed_at: now,
-      updated_at: now,
-      updated_by: user.id,
-    })
-    .eq("id", reservation.id)
-    .eq("organization_id", reservation.organization_id)
-    .in("status", adoptionAllowedStatuses)
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (updateError || !updatedReservation) {
-    redirect(adoptionUrl(reservationId, "invalid_state"));
-  }
-
-  const adopterRoleResult = await promoteContactJourneyRole({
-    supabase,
-    organizationId: reservation.organization_id,
-    contactId: reservation.contact_id,
-    role: "adopter",
-    userId: user.id,
-    now,
-  });
-
-  if (adopterRoleResult.error || adopterRoleResult.deactivationError) {
-    revalidatePath("/contacts");
-    revalidatePath(`/contacts/${reservation.contact_id}`);
-    revalidatePath("/reservations");
-    revalidatePath(`/reservations/${reservationId}`);
-    redirect(adoptionRoleUrl(reservationId));
-  }
-
-  if (reservation.animal_id) {
-    const { data: updatedAnimal, error: animalUpdateError } = await supabase
-      .from("animals")
-      .update({
-        status: "adopted",
-        ownership_status: "adopted_out",
-        updated_at: now,
-        updated_by: user.id,
-      })
-      .eq("id", reservation.animal_id)
-      .eq("organization_id", reservation.organization_id)
-      .is("deleted_at", null)
-      .select("id")
-      .maybeSingle();
-
-    if (animalUpdateError || !updatedAnimal) {
-      revalidatePath("/contacts");
-      revalidatePath(`/contacts/${reservation.contact_id}`);
-      revalidatePath("/reservations");
-      revalidatePath(`/reservations/${reservationId}`);
-      revalidatePath("/animals");
-      revalidatePath(`/animals/${reservation.animal_id}`);
-      redirect(adoptionAnimalUrl(reservationId));
-    }
-
-    revalidatePath("/animals");
-    revalidatePath(`/animals/${reservation.animal_id}`);
-  }
-
+  const contactId = jsonStringField(response.result, "contactId");
   revalidatePath("/contacts");
-  revalidatePath(`/contacts/${reservation.contact_id}`);
+  if (contactId && isUuid(contactId)) revalidatePath(`/contacts/${contactId}`);
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/animals");
   redirect(adoptionUrl(reservationId, "success"));
+}
+
+export async function correctAdoptionHandover(formData: FormData) {
+  const reservationId = formData.get("reservation_id");
+  const commandId = formData.get("client_command_id");
+  const correctionType = formData.get("correction_type");
+  const newAdoptionCompletedAt = formData.get("new_adoption_completed_at");
+  const expectedAdoptionCompletedAt = formData.get(
+    "expected_adoption_completed_at",
+  );
+  const reason = normalizeOptionalText(formData.get("reason"), 5_000);
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof commandId !== "string" ||
+    !isUuid(commandId) ||
+    (correctionType !== "date" && correctionType !== "reverse") ||
+    typeof expectedAdoptionCompletedAt !== "string" ||
+    !Number.isFinite(Date.parse(expectedAdoptionCompletedAt)) ||
+    !reason ||
+    (correctionType === "date" &&
+      (typeof newAdoptionCompletedAt !== "string" ||
+        !Number.isFinite(Date.parse(newAdoptionCompletedAt))))
+  ) {
+    redirect("/reservations?erreur=correction_adoption");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data, error } = await supabase.rpc("correct_adoption_handover", {
+    p_reservation_id: reservationId,
+    p_client_command_id: commandId,
+    p_correction_type: correctionType,
+    p_expected_adoption_completed_at: expectedAdoptionCompletedAt,
+    p_new_adoption_completed_at:
+      correctionType === "date" && typeof newAdoptionCompletedAt === "string"
+        ? new Date(newAdoptionCompletedAt).toISOString()
+        : null,
+    p_reason: reason,
+  });
+  const response = data?.[0];
+  if (error || !response) {
+    redirect(adoptionCorrectionUrl(reservationId, "error"));
+  }
+  if (response.outcome === "incident_opened") {
+    revalidatePath(`/reservations/${reservationId}`);
+    redirect(adoptionCorrectionUrl(reservationId, "incident"));
+  }
+  if (response.outcome !== "success") {
+    redirect(
+      adoptionCorrectionUrl(reservationId, "invalid_state", response.reason),
+    );
+  }
+
+  const contactId = jsonStringField(response.result, "contactId");
+  revalidatePath("/contacts");
+  if (contactId && isUuid(contactId)) revalidatePath(`/contacts/${contactId}`);
+  revalidatePath("/reservations");
+  revalidatePath(`/reservations/${reservationId}`);
+  revalidatePath("/animals");
+  redirect(adoptionCorrectionUrl(reservationId, "success"));
 }
 
 export async function cancelReservation(formData: FormData) {
