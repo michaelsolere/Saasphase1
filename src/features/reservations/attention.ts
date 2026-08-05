@@ -3,6 +3,7 @@ import { isFinalReservationStatus } from "@/features/reservations/statuses";
 
 type AttentionReservation = {
   animal_id: string | null;
+  financial_resolution?: string | null;
   status: string | null;
 };
 
@@ -12,6 +13,8 @@ export function reservationNeedsAttention(
   completeDepositCents = resolveDepositSettings(null).completeDepositCents,
 ) {
   const isPreReservationPaid = reservation.status === "pre_reservation_paid";
+  const hasPendingFinancialResolution =
+    reservation.financial_resolution === "pending";
   const isArrhesCompleteWithoutAnimal =
     paidArrhesCents >= completeDepositCents &&
     !reservation.animal_id &&
@@ -19,6 +22,7 @@ export function reservationNeedsAttention(
     !isFinalReservationStatus(reservation.status);
 
   return (
+    hasPendingFinancialResolution ||
     isPreReservationPaid ||
     isArrhesCompleteWithoutAnimal
   );

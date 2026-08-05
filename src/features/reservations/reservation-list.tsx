@@ -194,6 +194,14 @@ export function ReservationList({
                       {formatPrice(res.price_cents, res.currency)}
                     </td>
                     <td className="px-4 py-3 align-top">
+                      {res.financial_resolution === "pending" ? (
+                        <Link
+                          href={`/reservations/${res.id}#financial-resolution`}
+                          className="mb-2 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                        >
+                          Résolution financière à traiter
+                        </Link>
+                      ) : null}
                       <div
                         className={`font-medium ${getPaymentToneClassName(
                           paymentSummary.tone,

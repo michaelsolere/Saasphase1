@@ -21,6 +21,7 @@ import {
 import { evaluatePreReservationBalanceRequest } from "@/features/payments/pre-reservation-deposit";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
 import { formatPrice } from "@/features/reservations/formatters";
+import { parseEuroAmountToCents } from "@/features/reservations/financial-resolution-core";
 import { sendPreReservationEmailForApplication, sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
 import { createClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
@@ -775,169 +776,208 @@ export async function correctAdoptionHandover(formData: FormData) {
   redirect(adoptionCorrectionUrl(reservationId, "success"));
 }
 
-export async function cancelReservation(formData: FormData) {
-  const reservationId = formData.get("reservation_id");
+type NegativeExitStatus = "cancelled" | "withdrawn" | "expired";
 
-  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
-    redirect("/reservations?erreur=annulation");
+function negativeExitUrl(
+  reservationId: string,
+  targetStatus: NegativeExitStatus,
+  outcome: "success" | "invalid_state" | "error",
+) {
+  if (targetStatus === "cancelled") return cancellationUrl(reservationId, outcome);
+  if (targetStatus === "withdrawn") return withdrawalUrl(reservationId, outcome);
+  return expirationUrl(reservationId, outcome);
+}
+
+async function transitionReservationToNegativeExit(
+  formData: FormData,
+  targetStatus: NegativeExitStatus,
+) {
+  const reservationId = formData.get("reservation_id");
+  const clientCommandId = formData.get("client_command_id");
+  const expectedUpdatedAt = formData.get("expected_reservation_updated_at");
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof clientCommandId !== "string" ||
+    !isUuid(clientCommandId) ||
+    typeof expectedUpdatedAt !== "string" ||
+    Number.isNaN(Date.parse(expectedUpdatedAt))
+  ) {
+    redirect("/reservations?erreur=sortie");
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  if (!user) {
-    redirect("/login");
+  const { data, error } = await supabase.rpc("transition_adopter_journey_exit", {
+    p_reservation_id: reservationId,
+    p_client_command_id: clientCommandId,
+    p_target_status: targetStatus,
+    p_expected_reservation_updated_at: expectedUpdatedAt,
+  });
+  const result = data?.[0] ?? null;
+
+  if (error) {
+    console.error("transition_adopter_journey_exit RPC failed:", error);
+    redirect(negativeExitUrl(reservationId, targetStatus, "error"));
+  }
+  if (result?.outcome !== "success") {
+    redirect(negativeExitUrl(reservationId, targetStatus, "invalid_state"));
   }
 
-  const { data: reservation, error: readError } = await supabase
-    .from("reservations")
-    .select("id, organization_id, status, deleted_at")
-    .eq("id", reservationId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (readError || !reservation) {
-    redirect(cancellationUrl(reservationId, "error"));
-  }
-
-  if (reservation.status !== "active") {
-    redirect(cancellationUrl(reservationId, "invalid_state"));
-  }
-
-  const now = new Date().toISOString();
-  const { data: updatedReservation, error: updateError } = await supabase
-    .from("reservations")
-    .update({
-      status: "cancelled",
-      updated_at: now,
-      updated_by: user.id,
-    })
-    .eq("id", reservation.id)
-    .eq("organization_id", reservation.organization_id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (updateError || !updatedReservation) {
-    redirect(cancellationUrl(reservationId, "invalid_state"));
-  }
-
+  revalidatePath("/");
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
-  redirect(cancellationUrl(reservationId, "success"));
+  redirect(negativeExitUrl(reservationId, targetStatus, "success"));
+}
+
+export async function cancelReservation(formData: FormData) {
+  return transitionReservationToNegativeExit(formData, "cancelled");
 }
 
 export async function withdrawReservation(formData: FormData) {
-  const reservationId = formData.get("reservation_id");
-
-  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
-    redirect("/reservations?erreur=desistement");
-  }
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const { data: reservation, error: readError } = await supabase
-    .from("reservations")
-    .select("id, organization_id, status, deleted_at")
-    .eq("id", reservationId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (readError || !reservation) {
-    redirect(withdrawalUrl(reservationId, "error"));
-  }
-
-  if (reservation.status !== "active") {
-    redirect(withdrawalUrl(reservationId, "invalid_state"));
-  }
-
-  const now = new Date().toISOString();
-  const { data: updatedReservation, error: updateError } = await supabase
-    .from("reservations")
-    .update({
-      status: "withdrawn",
-      updated_at: now,
-      updated_by: user.id,
-    })
-    .eq("id", reservation.id)
-    .eq("organization_id", reservation.organization_id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (updateError || !updatedReservation) {
-    redirect(withdrawalUrl(reservationId, "invalid_state"));
-  }
-
-  revalidatePath("/reservations");
-  revalidatePath(`/reservations/${reservationId}`);
-  redirect(withdrawalUrl(reservationId, "success"));
+  return transitionReservationToNegativeExit(formData, "withdrawn");
 }
 
 export async function expireReservation(formData: FormData) {
-  const reservationId = formData.get("reservation_id");
+  return transitionReservationToNegativeExit(formData, "expired");
+}
 
-  if (typeof reservationId !== "string" || !isUuid(reservationId)) {
-    redirect("/reservations?erreur=expiration");
+export type FinancialResolutionActionState = {
+  status: "idle" | "success" | "error" | "stale";
+  message: string;
+};
+
+export async function recordAdopterFinancialResolution(
+  _previousState: FinancialResolutionActionState,
+  formData: FormData,
+): Promise<FinancialResolutionActionState> {
+  const reservationId = formData.get("reservation_id");
+  const clientCommandId = formData.get("client_command_id");
+  const expectedEventId = formData.get("expected_event_id");
+  const financialResolution = formData.get("financial_resolution");
+  const reason = formData.get("reason");
+  const refundAmountRaw = formData.get("refund_amount");
+  const paymentMethod = formData.get("payment_method");
+  const paidAtRaw = formData.get("paid_at");
+  const voidRefundPaymentId = formData.get("void_refund_payment_id");
+  const voidAttestation = formData.get("void_attestation");
+
+  const validResolution =
+    financialResolution === "full_refund" ||
+    financialResolution === "partial_refund" ||
+    financialResolution === "no_refund";
+  const amountInput = typeof refundAmountRaw === "string" ? refundAmountRaw.trim() : "";
+  const refundAmountCents = amountInput ? parseEuroAmountToCents(amountInput) : 0;
+  const voidPaymentId =
+    typeof voidRefundPaymentId === "string" && voidRefundPaymentId
+      ? voidRefundPaymentId
+      : null;
+
+  if (
+    typeof reservationId !== "string" ||
+    !isUuid(reservationId) ||
+    typeof clientCommandId !== "string" ||
+    !isUuid(clientCommandId) ||
+    typeof expectedEventId !== "string" ||
+    !isUuid(expectedEventId) ||
+    !validResolution ||
+    typeof reason !== "string" ||
+    reason.trim().length === 0 ||
+    reason.trim().length > 5000 ||
+    refundAmountCents === null ||
+    (voidPaymentId !== null &&
+      (!isUuid(voidPaymentId) || voidAttestation !== "confirmed"))
+  ) {
+    return {
+      status: "error",
+      message: "Vérifiez la décision, le montant et la justification.",
+    };
+  }
+
+  let paidAt: string | null = null;
+  let normalizedPaymentMethod: string | null = null;
+  if (refundAmountCents > 0) {
+    if (
+      typeof paymentMethod !== "string" ||
+      !["bank_transfer", "cash", "cheque", "card", "other"].includes(paymentMethod) ||
+      typeof paidAtRaw !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(paidAtRaw)
+    ) {
+      return {
+        status: "error",
+        message: "Renseignez la date réelle et le moyen du remboursement.",
+      };
+    }
+    paidAt = `${paidAtRaw}T12:00:00.000Z`;
+    if (paidAtRaw > new Date().toISOString().slice(0, 10)) {
+      return {
+        status: "error",
+        message: "La date du remboursement ne peut pas être future.",
+      };
+    }
+    normalizedPaymentMethod = paymentMethod;
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  if (!user) return { status: "error", message: "Votre session a expiré." };
 
-  if (!user) {
-    redirect("/login");
+  const { data, error } = await supabase.rpc("record_adopter_financial_resolution", {
+    p_reservation_id: reservationId,
+    p_client_command_id: clientCommandId,
+    p_financial_resolution: financialResolution,
+    p_refund_amount_cents: refundAmountCents,
+    p_payment_method: normalizedPaymentMethod,
+    p_paid_at: paidAt,
+    p_reason: reason.trim(),
+    p_expected_event_id: expectedEventId,
+    p_void_refund_payment_id: voidPaymentId,
+  });
+  const result = data?.[0] ?? null;
+
+  if (error) {
+    console.error("record_adopter_financial_resolution RPC failed:", error);
+    return {
+      status: "error",
+      message: "La résolution n’a pas été enregistrée. Réessayez sans modifier le dossier.",
+    };
+  }
+  if (result?.outcome !== "success") {
+    if (result?.reason === "resolution_stale") {
+      return {
+        status: "stale",
+        message: "La situation financière a changé. Rechargez la page avant de recommencer.",
+      };
+    }
+    if (result?.reason === "currency_mismatch") {
+      return {
+        status: "error",
+        message:
+          "Les paiements de ce parcours utilisent plusieurs devises. Corrigez-les avant de finaliser la résolution.",
+      };
+    }
+    return {
+      status: "error",
+      message: "Cette résolution n’est plus applicable à l’état actuel du parcours.",
+    };
   }
 
-  const { data: reservation, error: readError } = await supabase
-    .from("reservations")
-    .select("id, organization_id, status, deleted_at")
-    .eq("id", reservationId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (readError || !reservation) {
-    redirect(expirationUrl(reservationId, "error"));
-  }
-
-  if (reservation.status !== "active") {
-    redirect(expirationUrl(reservationId, "invalid_state"));
-  }
-
-  const now = new Date().toISOString();
-  const { data: updatedReservation, error: updateError } = await supabase
-    .from("reservations")
-    .update({
-      status: "expired",
-      updated_at: now,
-      updated_by: user.id,
-    })
-    .eq("id", reservation.id)
-    .eq("organization_id", reservation.organization_id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .select("id")
-    .maybeSingle();
-
-  if (updateError || !updatedReservation) {
-    redirect(expirationUrl(reservationId, "invalid_state"));
-  }
-
+  revalidatePath("/");
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
-  redirect(expirationUrl(reservationId, "success"));
+  return {
+    status: "success",
+    message: result.replayed
+      ? "Cette résolution était déjà enregistrée."
+      : "La résolution financière a été enregistrée.",
+  };
 }
 
 export async function assignAnimalToReservation(formData: FormData) {

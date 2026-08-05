@@ -85,6 +85,18 @@ test("create_reservation_refund enforces refundable balance including concurrenc
       amountCents: 25_000,
       displayName: `E2E refund concurrent ${suffix}`,
     });
+    const nonEur = await createTestAdopterRefundReadyScenario(sql, fixtures, {
+      organizationId,
+      ownerId,
+      amountCents: 25_000,
+      displayName: `E2E refund devise USD ${suffix}`,
+    });
+    const mixedCurrency = await createTestAdopterRefundReadyScenario(sql, fixtures, {
+      organizationId,
+      ownerId,
+      amountCents: 25_000,
+      displayName: `E2E refund devises incohérentes ${suffix}`,
+    });
     const foreignOrganizationId = await createTestOrganization(sql, fixtures, {
       name: `E2E org refund étrangère ${suffix}`,
     });
@@ -93,6 +105,47 @@ test("create_reservation_refund enforces refundable balance including concurrenc
       ownerId,
       amountCents: 25_000,
       displayName: `E2E refund étranger ${suffix}`,
+    });
+
+    sql(`
+      update public.reservations
+      set currency='USD'
+      where id in (
+        '${nonEur.journey.id}'::uuid,
+        '${mixedCurrency.journey.id}'::uuid
+      );
+      update public.payments
+      set currency='USD'
+      where id='${nonEur.payment.id}'::uuid;
+    `);
+
+    const nonEurRefund = await createRefund({
+      reservationId: nonEur.journey.id,
+      amountCents: 5_000,
+    });
+    expect(nonEurRefund.error).toBeNull();
+    expect(nonEurRefund.data?.[0]?.outcome).toBe("created");
+    fixtures.register("payments", nonEurRefund.data![0]!.payment_id!);
+    expect(
+      sql(`
+        select currency
+        from public.payments
+        where id='${nonEurRefund.data![0]!.payment_id}'::uuid;
+      `),
+    ).toBe("USD");
+
+    const mixedCurrencyRefund = await createRefund({
+      reservationId: mixedCurrency.journey.id,
+      amountCents: 5_000,
+    });
+    if (mixedCurrencyRefund.data?.[0]?.payment_id) {
+      fixtures.register("payments", mixedCurrencyRefund.data[0].payment_id);
+    }
+    expect(mixedCurrencyRefund.error).toBeNull();
+    expect(mixedCurrencyRefund.data?.[0]).toMatchObject({
+      outcome: "ineligible",
+      reason: "currency_mismatch",
+      payment_id: null,
     });
 
     const exact = await createRefund({

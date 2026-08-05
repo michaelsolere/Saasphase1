@@ -1,4 +1,5 @@
 export const fixtureTables = [
+  "adopter_financial_resolution_events",
   "adoption_handover_events",
   "post_adoption_questionnaire_public_sessions",
   "post_adoption_questionnaire_public_accesses",
@@ -70,6 +71,7 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "adopter_financial_resolution_events",
   "adoption_handover_events",
   "post_adoption_questionnaire_public_sessions",
   "post_adoption_questionnaire_public_accesses",
@@ -159,6 +161,21 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
   }))) as Record<FixtureTable, number>;
   const cleanup = async () => {
     const animalIds = [...ids.get("animals")!];
+    const reservationIds = [...ids.get("reservations")!];
+    if (reservationIds.length) {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         update public.reservations
+         set current_financial_resolution_event_id = null
+         where id in (${idsSql(reservationIds)});
+         delete from public.adopter_financial_resolution_events
+         where reservation_id in (${idsSql(reservationIds)});
+         delete from public.payments
+         where reservation_id in (${idsSql(reservationIds)});
+         commit;`,
+      );
+    }
     for (const table of cleanupOrder) { const tableIds = [...ids.get(table)!]; if (tableIds.length) {
     if (table === "animals" || table === "organizations") continue;
     if (table === "litter_care_tasks") {
@@ -167,6 +184,16 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     }
     if (table === "reproductive_cycles") {
       await execute(`update public.reproductive_cycles set litter_id = null where id in (${idsSql(tableIds)})`);
+    }
+    if (table === "adopter_financial_resolution_events") {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         update public.reservations
+         set current_financial_resolution_event_id = null
+         where current_financial_resolution_event_id in (${idsSql(tableIds)});
+         commit;`,
+      );
     }
     if (table === "litters" && animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)}) and litter_id is not null`);
     const statement = `delete from public.${table} where id in (${idsSql(tableIds)})`;
@@ -183,7 +210,8 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
-      table === "adoption_handover_events"
+      table === "adopter_financial_resolution_events"
+      || table === "adoption_handover_events"
       || table === "post_adoption_questionnaire_public_sessions"
       || table === "post_adoption_questionnaire_public_accesses"
       || table === "post_adoption_questionnaire_reconciliation_run_results"

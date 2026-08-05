@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -74,6 +76,10 @@ import {
 import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import { AdoptionCorrectionDialog } from "@/features/reservations/adoption-correction-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
+import {
+  FinancialResolutionSection,
+  type FinancialResolutionEventSummary,
+} from "@/features/reservations/financial-resolution-section";
 import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
 import { ReservationDocumentVariantsSection } from "@/features/reservations/reservation-document-variants-section";
 import { ReservationPostAdoptionQuestionnaireSection } from "@/features/post-adoption-questionnaire/reservation-section";
@@ -2354,6 +2360,46 @@ export default async function ReservationDetailPage({
   const adoptionHandoverEvents =
     rawAdoptionHandoverEvents as RelatedAdoptionHandoverEvent[] | null;
 
+  const isNegativeExit =
+    reservation?.status === "withdrawn" ||
+    reservation?.status === "cancelled" ||
+    reservation?.status === "expired";
+  const {
+    data: rawFinancialResolutionEvents,
+    error: financialResolutionEventsError,
+  } = reservation?.id && reservation.organization_id && isNegativeExit
+    ? await supabase
+        .from("adopter_financial_resolution_events")
+        .select(
+          "id, event_type, financial_resolution, previous_financial_resolution, paid_cents, refunded_cents, refundable_cents, retained_cents, reason, refund_payment_id, voided_payment_id, actor_role, occurred_at, profiles!adopter_financial_resolution_events_actor_profile_id_fkey ( display_name )",
+        )
+        .eq("organization_id", reservation.organization_id)
+        .eq("reservation_id", reservation.id)
+        .order("occurred_at", { ascending: false })
+        .order("id", { ascending: false })
+    : { data: null, error: null };
+  const financialResolutionEvents =
+    (rawFinancialResolutionEvents as FinancialResolutionEventSummary[] | null) ?? [];
+  const correctableRefundIds = new Set(
+    financialResolutionEvents.flatMap((event) =>
+      event.refund_payment_id ? [event.refund_payment_id] : [],
+    ),
+  );
+  const correctableFinancialRefunds = (reservationPayments ?? [])
+    .filter(
+      (payment) =>
+        correctableRefundIds.has(payment.id) &&
+        (payment.payment_type === "refund" ||
+          payment.payment_type === "partial_refund") &&
+        ["paid", "partially_refunded", "refunded"].includes(payment.status),
+    )
+    .map((payment) => ({
+      id: payment.id,
+      amount_cents: payment.amount_cents,
+      paid_at: payment.paid_at,
+      payment_method: payment.payment_method,
+    }));
+
   // Fetch contact details scoping by organization_id
   const { data: contactDetails, error: contactDetailsError } = reservation?.contact_id && reservation?.organization_id
     ? await supabase
@@ -3589,12 +3635,14 @@ export default async function ReservationDetailPage({
                               <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Annule manuellement le dossier adoptant sans créer
-                                  de remboursement ni modifier les paiements,
-                                  documents ou l’animal attribué.
+                                  de remboursement. Si de l’argent reste encaissé,
+                                  une résolution financière sera ouverte.
                                 </p>
                                 <ReservationNegativeActionConfirmDialog
                                   actionType="cancel"
                                   reservationId={id}
+                                  clientCommandId={randomUUID()}
+                                  expectedReservationUpdatedAt={reservation.updated_at ?? ""}
                                   triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-100/60"
                                 />
                               </div>
@@ -3602,12 +3650,14 @@ export default async function ReservationDetailPage({
                               <div>
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Enregistre le désistement sans créer de
-                                  remboursement ni modifier les paiements,
-                                  documents ou l’animal attribué.
+                                  remboursement. Si de l’argent reste encaissé,
+                                  une résolution financière sera ouverte.
                                 </p>
                                 <ReservationNegativeActionConfirmDialog
                                   actionType="withdraw"
                                   reservationId={id}
+                                  clientCommandId={randomUUID()}
+                                  expectedReservationUpdatedAt={reservation.updated_at ?? ""}
                                   triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-amber-200 bg-amber-50/50 px-4 py-2.5 text-sm font-semibold text-amber-800 transition hover:border-amber-300 hover:bg-amber-100/60"
                                 />
                               </div>
@@ -3616,11 +3666,14 @@ export default async function ReservationDetailPage({
                                 <p className="max-w-2xl text-xs leading-5 text-muted">
                                   Marque le dossier adoptant comme expiré sans
                                   automatisation liée à l’échéance de
-                                  pré-réservation.
+                                  pré-réservation. Une résolution sera ouverte si
+                                  de l’argent reste encaissé.
                                 </p>
                                 <ReservationNegativeActionConfirmDialog
                                   actionType="expire"
                                   reservationId={id}
+                                  clientCommandId={randomUUID()}
+                                  expectedReservationUpdatedAt={reservation.updated_at ?? ""}
                                   triggerClassName="mt-4 inline-flex w-fit rounded-xl border border-slate-300 bg-slate-50/70 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:bg-slate-100"
                                 />
                               </div>
@@ -4656,6 +4709,37 @@ export default async function ReservationDetailPage({
                     />
                   ) : null}
                 </section>
+
+                {isNegativeExit ? (
+                  financialResolutionEventsError ? (
+                    <section
+                      id="financial-resolution"
+                      className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-900"
+                    >
+                      Impossible de charger l’historique de résolution financière.
+                      Rechargez la page avant toute décision.
+                    </section>
+                  ) : (
+                    <FinancialResolutionSection
+                      reservationId={id}
+                      clientCommandId={randomUUID()}
+                      currentResolution={reservation.financial_resolution ?? "none"}
+                      expectedEventId={
+                        reservation.current_financial_resolution_event_id ?? null
+                      }
+                      paidCents={reservation.paid_cents ?? 0}
+                      refundedCents={reservation.refunded_cents ?? 0}
+                      currency={currency}
+                      canResolve={
+                        adoptionActorRole === "owner" ||
+                        adoptionActorRole === "admin"
+                      }
+                      events={financialResolutionEvents}
+                      correctableRefunds={correctableFinancialRefunds}
+                      today={new Date().toISOString().slice(0, 10)}
+                    />
+                  )
+                ) : null}
 
                 <ReservationPostAdoptionQuestionnaireSection
                   animalName={animalSummaryLabel}
