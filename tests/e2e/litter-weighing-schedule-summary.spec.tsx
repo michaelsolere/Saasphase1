@@ -251,5 +251,5 @@ test("la page Journal demande uniquement la date du planning", () => {
   expect(pageSource).toMatch(
     /schedule:\s*\{\s*todayDate:\s*litterJournalTodayDate,?\s*\}/,
   );
-  expect(pageSource).not.toMatch(/schedule:\s*\{[^}]*policy:/s);
+  expect(pageSource).not.toMatch(/schedule:\s*\{[^}]*policy:/);
 });

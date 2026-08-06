@@ -10,7 +10,10 @@ import {
   createTestApplication,
   createTestContact,
 } from "./helpers/fixtures/adopter-payment-fixtures";
-import { createE2eFixtureRegistry } from "./helpers/fixtures/fixture-registry";
+import {
+  createE2eFixtureRegistry,
+  extractFixtureDeleteOrder,
+} from "./helpers/fixtures/fixture-registry";
 
 const ids = {
   org: "11111111-1111-4111-8111-111111111111",
@@ -243,9 +246,7 @@ test("discovered appointment effects register events and preserve cleanup order"
 
   await registry.cleanup();
   await registry.cleanup();
-  const deleted = calls
-    .filter((call) => call.includes("delete from"))
-    .map((call) => call.match(/public\.([a-z_]+)/)?.[1]);
+  const deleted = extractFixtureDeleteOrder(calls);
   expect(deleted.indexOf("events")).toBeLessThan(deleted.indexOf("reservations"));
   expect(deleted.indexOf("contact_roles")).toBeLessThan(deleted.indexOf("contacts"));
   expect(deleted.indexOf("reservations")).toBeLessThan(deleted.indexOf("contacts"));

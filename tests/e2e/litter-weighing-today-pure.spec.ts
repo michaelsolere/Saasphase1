@@ -262,7 +262,10 @@ test("agrège deux pages stables sans doublon ni mutation", async () => {
   const sourceSnapshot = structuredClone(sourcePages);
   const ranges: Array<[number, number]> = [];
 
-  const result = await collectLitterWeighingTodayPages({
+  const result = await collectLitterWeighingTodayPages<{
+    id: string;
+    value: number;
+  }>({
     pageSize: 500,
     rowKey: (row) => row.id,
     readPage: async (from, to) => {

@@ -82,6 +82,8 @@ function task(overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary 
     resolvedTimezoneName: null,
     resolvedBy: null,
     resolutionNote: null,
+    completionOrigin: null,
+    completionFact: null,
     createdAt: "2026-01-01T00:00:00Z",
     ...overrides,
   };

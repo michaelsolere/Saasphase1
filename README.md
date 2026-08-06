@@ -39,9 +39,24 @@ production.
 Commandes de vérification :
 
 ```bash
-pnpm lint
-pnpm build
+pnpm run lint
+pnpm run typecheck
+pnpm run test:e2e:pure
+pnpm run build
 ```
+
+Le voyant `typecheck` enchaîne trois contrôles distincts :
+
+- `typecheck:app` régénère les types de routes Next.js et vérifie l’application ;
+- `typecheck:pure` vérifie strictement les specs inscrites au registre des tests purs ;
+- `typecheck:e2e:debt` compare les anciens tests Supabase/navigateur à leur inventaire
+  TypeScript et refuse toute nouvelle erreur.
+
+La commande directe `pnpm exec tsc --noEmit` vérifie le même périmètre applicatif
+stable, sans charger les tests ni le cache de types produit par `next dev`. Lorsqu’une
+erreur historique E2E est réellement corrigée, `pnpm run
+typecheck:e2e:baseline:update` réduit explicitement l’inventaire ; la commande refuse
+toute augmentation du nombre total d’erreurs.
 
 ## Développement, E2E automatisé et démonstrations durables
 

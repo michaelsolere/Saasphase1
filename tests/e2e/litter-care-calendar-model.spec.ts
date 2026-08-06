@@ -18,7 +18,7 @@ function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSum
     itemKind: "task", priority: "normal", suggestedFor: null, suggestedLocalTime: null, plannedFor: "2024-01-15", scheduledLocalTime: null, scheduleTimezoneName: "Europe/Paris",
     suggestedStartsOn: null, suggestedStartsLocalTime: null, suggestedEndsOn: null, suggestedEndsLocalTime: null,
     retainedStartsOn: null, retainedStartsLocalTime: null, retainedEndsOn: null, retainedEndsLocalTime: null,
-    scheduleSource: "suggested", isScheduleLocked: false, scheduleLockedAt: null, scheduleLockedBy: null, revisionNo: 1, status: "planned", resolvedAt: null, resolvedTimezoneName: null, resolvedBy: null, resolutionNote: null, createdAt: "2024-01-01T00:00:00Z",
+    scheduleSource: "suggested", isScheduleLocked: false, scheduleLockedAt: null, scheduleLockedBy: null, revisionNo: 1, status: "planned", resolvedAt: null, resolvedTimezoneName: null, resolvedBy: null, resolutionNote: null, completionOrigin: null, completionFact: null, createdAt: "2024-01-01T00:00:00Z",
     ...overrides,
   };
 }

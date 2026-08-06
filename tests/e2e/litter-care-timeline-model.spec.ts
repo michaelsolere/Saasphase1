@@ -94,6 +94,8 @@ function task(overrides: Partial<LitterCareTaskSummary> = {}): LitterCareTaskSum
     resolvedTimezoneName: null,
     resolvedBy: null,
     resolutionNote: null,
+    completionOrigin: null,
+    completionFact: null,
     createdAt: "2024-01-01T00:00:00Z",
     ...overrides,
   };
@@ -463,6 +465,7 @@ test("ordonne les catégories et calcule la prochaine action", () => {
     "offspring_weight",
     "offspring_health",
     "offspring_feeding",
+    "deworming",
     "socialization",
     "identification",
     "vaccination",

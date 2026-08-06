@@ -174,7 +174,7 @@ test("ignore tous les identifiants et la révision forgés dans FormData", async
 
 test("valide les champs métier, le motif et les combinaisons de poids", async () => {
   const testHarness = harness();
-  for (const values of [
+  const invalidValues: Array<Record<string, string>> = [
     { occurred_at: "invalid" },
     { sex: "forged" },
     { viability: "forged" },
@@ -185,7 +185,8 @@ test("valide les champs métier, le motif et les combinaisons de poids", async (
     { birth_weight_grams: "", weight_measured_at: "2026-07-22T10:02:00+02:00" },
     { birth_weight_grams: "", weight_measured_at: "", weight_note: "Sans poids" },
     { birth_weight_grams: "420", weight_measured_at: "" },
-  ]) {
+  ];
+  for (const values of invalidValues) {
     expect((await correctWhelpingBirthActionCore(intention, initialWhelpingBirthAdjustmentActionState, validCorrection(values), testHarness.dependencies)).status).toBe("error");
   }
   expect(testHarness.calls).toHaveLength(0);

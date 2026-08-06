@@ -1,0 +1,1057 @@
+{
+  "version": 1,
+  "totalDiagnostics": 443,
+  "totalFiles": 51,
+  "diagnostics": [
+    {
+      "file": "tests/e2e/animal-attribution-coherence.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animal_assigned_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/animal-manual-creation.spec.ts",
+      "code": "TS18047",
+      "message": "'rejectedUrlAnimal' is possibly 'null'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/animal-primary-photo-storage-foundation.spec.ts",
+      "code": "TS18047",
+      "message": "'remainingAcceptedObjects' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/animal-primary-photo.spec.ts",
+      "code": "TS18047",
+      "message": "'objects' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/animal-primary-photo.spec.ts",
+      "code": "TS18047",
+      "message": "'storageObjects' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/animal-primary-photo.spec.ts",
+      "code": "TS2531",
+      "message": "Object is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/calendar-reminders-foundation.spec.ts",
+      "code": "TS2741",
+      "message": "Property 'acknowledgedBy' is missing in type '{ id: string; organizationId: string; sourceType: \"litter_care_task\"; sourceRecordId: \"9f260013-0000-4000-8000-000000000130\"; daysBefore: any; localTime: string; timezoneName: any; revisionNo: any; acknowledgedTriggerAt: string; acknowledgedAt: string; }' but required in type 'CalendarReminderRule'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/choice-appointments-adoption-booklet-campaign.spec.ts",
+      "code": "TS18047",
+      "message": "'fixture' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/choice-appointments-adoption-booklet-campaign.spec.ts",
+      "code": "TS18047",
+      "message": "'traces' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/choice-appointments-adoption-booklet-campaign.spec.ts",
+      "code": "TS18047",
+      "message": "'updatedFirstTraces' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/choice-appointments-adoption-booklet-campaign.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type '{ id: string; status: string; }[] | null' is not assignable to parameter of type 'unknown[]'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/choice-appointments-adoption-booklet-campaign.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type '{ reservation_id: string | null; amount_cents: number; status: string; payment_type: string; }[] | null' is not assignable to parameter of type 'unknown[]'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS18047",
+      "message": "'after' is possibly 'null'.",
+      "count": 6
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS18047",
+      "message": "'before' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS18047",
+      "message": "'recalculated' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS18047",
+      "message": "'structure' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'null' is not assignable to parameter of type 'unknown[] | Record<string, unknown>'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/contact-edit.spec.ts",
+      "code": "TS2531",
+      "message": "Object is possibly 'null'.",
+      "count": 7
+    },
+    {
+      "file": "tests/e2e/document-signed-return-upload-ui.spec.ts",
+      "code": "TS2322",
+      "message": "Type '(value: void | PromiseLike<void>) => void' is not assignable to type '() => undefined'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/document-template-management-ui.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'string' is not assignable to parameter of type '\"9f140003-0000-4000-8000-000000000011\" | \"9f140003-0000-4000-8000-000000000012\" | \"9f140003-0000-4000-8000-000000000013\" | \"9f140003-0000-4000-8000-000000000014\"'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/document-template-management-ui.spec.ts",
+      "code": "TS2352",
+      "message": "Conversion of type 'Window & typeof globalThis' to type 'Window & { __revokedBlobUrls: string[]; }' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/dog-pre-whelping-temperature-model.spec.ts",
+      "code": "TS7053",
+      "message": "Element implicitly has an 'any' type because expression of type '0' can't be used to index type 'string | number | boolean | { [key: string]: Json | undefined; } | Json[]'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/form-submission-integrity.spec.ts",
+      "code": "TS18047",
+      "message": "'application' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/form-submission-integrity.spec.ts",
+      "code": "TS18047",
+      "message": "'archivedSubmission' is possibly 'null'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/form-submission-integrity.spec.ts",
+      "code": "TS18047",
+      "message": "'submission' is possibly 'null'.",
+      "count": 7
+    },
+    {
+      "file": "tests/e2e/gestation-default-auto-apply-foundation.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type '() => Promise<void>' is not assignable to parameter of type 'string'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/gestation-default-auto-apply-foundation.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type '() => void' is not assignable to parameter of type 'string'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'reservation' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animal_id' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'id' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'internal_comment' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'price_cents' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/global-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'status' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-actual-birth-activation-lifecycle.spec.ts",
+      "code": "TS2769",
+      "message": "No overload matches this call.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/litter-care-calendar.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'string | null' is not assignable to parameter of type 'string'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-group-reservation-document-batch-ui.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'Element | null' is not assignable to parameter of type 'Node'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-offspring-creation.spec.ts",
+      "code": "TS18047",
+      "message": "'createdAnimal' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/litter-offspring-creation.spec.ts",
+      "code": "TS18047",
+      "message": "'fallbackGeneratedAnimal' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-offspring-creation.spec.ts",
+      "code": "TS18047",
+      "message": "'generatedAnimal' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-plan-ad-hoc-metadata.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'extra' does not exist on type '{ title: number; version: number; operation: \"update_metadata\"; description: string | null; category: \"veterinary\"; targetScope: \"litter\"; priority: \"important\"; } | { extra: boolean; version: number; ... 5 more ...; priority: \"important\"; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-plan-anchor-recalculation-ui.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'string | undefined' is not assignable to parameter of type 'string'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-planning-model-library-gestation-foundation.spec.ts",
+      "code": "TS2322",
+      "message": "Type '({ timeSlots: never[]; libraryTemplateCode: string; libraryTemplateVersion: number; itemKind: string; priority: string; anchorType: string; windowStartsOffsetDays: number; windowEndsOffsetDays: number; displayOrder: number; isRequired: boolean; isSelectedByDefault: boolean; pointOffsetDays?: undefined; } | { ...; })[]' is not assignable to type 'LitterPlanningModelLibraryItemSummary[]'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-planning-model-library-gestation-foundation.spec.ts",
+      "code": "TS2322",
+      "message": "Type '{ timeSlots: never[]; libraryTemplateCode: string; libraryTemplateVersion: number; itemKind: string; priority: string; anchorType: string; windowStartsOffsetDays: number; windowEndsOffsetDays: number; displayOrder: number; isRequired: boolean; isSelectedByDefault: boolean; }[]' is not assignable to type 'LitterPlanningModelLibraryItemSummary[]'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-planning-model-library-gestation-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'model' does not exist on type '{ outcome: \"success\"; modelId: string; revision: number; isActive: boolean; replayed: boolean; } | { outcome: \"success\"; role: Role; model: { items: LitterPlanningModelItem[]; ... 8 more ...; libraryModelVersion: number | null; }; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-planning-model-library-gestation-foundation.spec.ts",
+      "code": "TS7006",
+      "message": "Parameter 'item' implicitly has an 'any' type.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-planning-model-library-recurrence.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'model' does not exist on type '{ outcome: \"success\"; modelId: string; revision: number; isActive: boolean; replayed: boolean; } | { outcome: \"success\"; role: Role; model: { items: LitterPlanningModelItem[]; ... 8 more ...; libraryModelVersion: number | null; }; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
+      "code": "TS18046",
+      "message": "'result' is of type 'unknown'.",
+      "count": 5
+    },
+    {
+      "file": "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'noop' does not exist on type 'string | number | boolean | { [key: string]: Json | undefined; } | Json[]'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type '\"a7270001-0000-4000-8000-000000000003\"' is not assignable to parameter of type '\"a7270001-0000-4000-8000-000000000002\"'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
+      "code": "TS2739",
+      "message": "Type 'PostgrestFilterBuilder<{ PostgrestVersion: \"12\"; }, { Tables: { adopter_financial_resolution_events: { Row: { actor_profile_id: string | null; actor_role: string; client_command_id: string; contact_id: string; ... 15 more ...; voided_payment_id: string | null; }; Insert: { ...; }; Update: { ...; }; Relationships: [....' is missing the following properties from type 'Promise<unknown>': catch, finally, [Symbol.toStringTag]",
+      "count": 6
+    },
+    {
+      "file": "tests/e2e/litter-recurring-tasks-foundation.spec.ts",
+      "code": "TS2769",
+      "message": "No overload matches this call.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/litter-reservation-document-batch-ui.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'Element | null' is not assignable to parameter of type 'Node'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/mating-confirmation-campaign.spec.ts",
+      "code": "TS18047",
+      "message": "'attempt' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'originalSettings' is possibly 'null'.",
+      "count": 8
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'savedSettings' is possibly 'null'.",
+      "count": 5
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'default_female_puppy_price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'default_male_puppy_price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'default_puppy_price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/organization-pricing-settings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_by' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/pay-config-deposit-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'afterPaid' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pay-config-deposit-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'afterRequest' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pay-config-deposit-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesAfter' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pay-config-deposit-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pay-config-deposit-settings.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesMid' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/pay-config-settings-ui.spec.ts",
+      "code": "TS18047",
+      "message": "'newPayments' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pre-reservation-brevo-email.spec.ts",
+      "code": "TS18047",
+      "message": "'attempt' is possibly 'null'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/pre-reservation-brevo-email.spec.ts",
+      "code": "TS18047",
+      "message": "'attempts' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pre-reservation-campaign-button.spec.ts",
+      "code": "TS18047",
+      "message": "'reservations' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/pre-reservation-campaign-button.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'status' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/pre-reservation-campaign-compensation.spec.ts",
+      "code": "TS2322",
+      "message": "Type 'string | undefined' is not assignable to type 'string'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/reproductive-cycle-matings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'cycle' does not exist on type 'CreateReproductiveCycleResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/reproductive-cycle-matings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'litterId' does not exist on type 'RecordReproductiveCycleMatingResult'.",
+      "count": 11
+    },
+    {
+      "file": "tests/e2e/reproductive-cycle-matings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'matingId' does not exist on type 'RecordReproductiveCycleMatingResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/reproductive-cycle-matings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'replayed' does not exist on type 'RecordReproductiveCycleMatingResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/reproductive-cycle-matings.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sequenceNo' does not exist on type 'RecordReproductiveCycleMatingResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/reservation-document-variant-management-service.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'Record<string, unknown>' is not assignable to parameter of type '{ p_breed: string; p_document_type: string; p_organization_id: string; p_reservation_id: string; p_source_template_id: string; p_source_template_version: number; p_species: string; p_template_family_id: string; p_variant_id?: string | undefined; p_version_id?: string | undefined; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/reservation-document-variant-management-service.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'Record<string, unknown>' is not assignable to parameter of type '{ p_organization_id: string; p_variant_id: string; p_version_id?: string | undefined; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/reservation-refund-overpayment-guard.spec.ts",
+      "code": "TS18047",
+      "message": "'fullPayments' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/reservation-refund-overpayment-guard.spec.ts",
+      "code": "TS2531",
+      "message": "Object is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-activation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-activation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'reservation_confirmed_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-activation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_at' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-activation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_by' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-animal-assignment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'holders' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-animal-assignment-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animal_assigned_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterAdoption' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterConfirm' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterModify' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterPropose' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'persisted' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-appointment-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-cancellation-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-cancellation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_at' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-cancellation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_by' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterPaid' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterRequest' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'payments' is possibly 'null'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesAfter' is possibly 'null'.",
+      "count": 10
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesAfterReload' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-complete-deposit-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-document-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterSent' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-document-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterSigned' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'internal_comment' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'pre_reservation_deadline' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'reservation_confirmed_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_at' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-expiration-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_by' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-finalization-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'roles' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-finalization-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'adoption_completed_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-note-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterFirst' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-note-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterSecond' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-note-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'persisted' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-note-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-note-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'display_name' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-payment-detail-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesAfter' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-payment-detail-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'paid_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-refund-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterRejected' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-refund-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterValid' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-refund-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'beforePayments' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-refund-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesBefore' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'internal_comment' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'pre_reservation_deadline' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'price_cents' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'reservation_confirmed_at' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'status' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_at' does not exist on type 'never'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'updated_by' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-pre-reservation-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'afterReplayRoles' is possibly 'null'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/transactional-pre-reservation-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'paymentAfter' is possibly 'null'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/transactional-pre-reservation-workflow.spec.ts",
+      "code": "TS18047",
+      "message": "'rolesAfter' is possibly 'null'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/transactional-pre-reservation-workflow.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'status' does not exist on type 'never'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animalId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 13
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animalId' does not exist on type 'RecordWhelpingBirthWeightResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'birthId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 27
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'births' does not exist on type 'ListWhelpingBirthsForSessionResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'CloseWhelpingSessionResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'weightMeasurementId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'weightMeasurementId' does not exist on type 'RecordWhelpingBirthWeightResult'.",
+      "count": 8
+    },
+    {
+      "file": "tests/e2e/whelping-birth-weight-completion-foundation.spec.ts",
+      "code": "TS7006",
+      "message": "Parameter 'birth' implicitly has an 'any' type.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animalId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 9
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'birthId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 6
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'birthOrder' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'births' does not exist on type 'ListWhelpingBirthsForSessionResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 5
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventSequenceNo' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'role' does not exist on type 'ListWhelpingBirthsForSessionResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'weightMeasurementId' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 6
+    },
+    {
+      "file": "tests/e2e/whelping-births-foundation.spec.ts",
+      "code": "TS7006",
+      "message": "Parameter 'birth' implicitly has an 'any' type.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'animalId' does not exist on type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'birthId' does not exist on type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }'.",
+      "count": 9
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'birthOrder' does not exist on type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'weightMeasurementId' does not exist on type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-quick-completion-foundation.spec.ts",
+      "code": "TS2345",
+      "message": "Argument of type 'ErrorResult | { outcome: \"success\"; birthId: string; eventId: string; animalId: string; weightMeasurementId: string | null; eventSequenceNo: number; birthOrder: number; replayed: boolean; }' is not assignable to parameter of type '{ birthId: string; animalId: string; }'.",
+      "count": 12
+    },
+    {
+      "file": "tests/e2e/whelping-session-reopen-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'ReopenWhelpingSessionResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-session-reopen-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventSequenceNo' does not exist on type 'RecordWhelpingBirthResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-session-reopen-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sequenceNo' does not exist on type 'CloseWhelpingSessionResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-session-reopen-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sequenceNo' does not exist on type 'ReopenWhelpingSessionResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-session-reopen-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sessionId' does not exist on type 'ReopenWhelpingSessionResult'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'CloseWhelpingSessionResult'.",
+      "count": 4
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'eventId' does not exist on type 'RecordWhelpingEventResult'.",
+      "count": 9
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'events' does not exist on type 'ListWhelpingEventsForSessionResult'.",
+      "count": 3
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'motherId' does not exist on type 'OpenWhelpingSessionResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'role' does not exist on type 'ListWhelpingEventsForSessionResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sequenceNo' does not exist on type 'CloseWhelpingSessionResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sequenceNo' does not exist on type 'RecordWhelpingEventResult'.",
+      "count": 6
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'session' does not exist on type 'GetOpenWhelpingSessionForLitterResult'.",
+      "count": 1
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sessionId' does not exist on type 'OpenWhelpingSessionResult'.",
+      "count": 24
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS2339",
+      "message": "Property 'sessions' does not exist on type 'ListWhelpingSessionsForLitterResult'.",
+      "count": 2
+    },
+    {
+      "file": "tests/e2e/whelping-sessions-events-foundation.spec.ts",
+      "code": "TS7006",
+      "message": "Parameter 'event' implicitly has an 'any' type.",
+      "count": 3
+    }
+  ]
+}
