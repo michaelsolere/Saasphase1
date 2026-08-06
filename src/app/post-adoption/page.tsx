@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { readPostAdoptionAutomationDashboard } from "@/features/post-adoption-questionnaire/automated-delivery-admin";
+import { PostAdoptionAutomatedDeliveryDashboard } from "@/features/post-adoption-questionnaire/automated-delivery-dashboard";
 import { listPostAdoptionResultsRows } from "@/features/post-adoption-questionnaire/internal-service";
 import { buildPostAdoptionResultsOverview } from "@/features/post-adoption-questionnaire/results-model";
 import { createClient } from "@/lib/supabase/server";
@@ -11,12 +13,23 @@ function coverageLabel(milestone: "T1" | "T2", received: number, concerned: numb
   return `${milestone} : ${received} questionnaire${received > 1 ? "s" : ""} reçu${received > 1 ? "s" : ""} pour ${concerned} chiot${concerned > 1 ? "s" : ""} concerné${concerned > 1 ? "s" : ""}`;
 }
 
-export default async function PostAdoptionPage() {
+export default async function PostAdoptionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ organization?: string; automation?: string; exception?: string }>;
+}) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const rows = await listPostAdoptionResultsRows(null, supabase).catch(() => null);
+  const params = await searchParams;
+  const automationDashboard = await readPostAdoptionAutomationDashboard(
+    params.organization ?? null,
+    supabase,
+  ).catch(() => null);
+  const rows = automationDashboard?.organizationId
+    ? await listPostAdoptionResultsRows(automationDashboard.organizationId, null, supabase).catch(() => null)
+    : null;
   const overview = rows ? buildPostAdoptionResultsOverview(rows) : null;
 
   return (
@@ -33,6 +46,19 @@ export default async function PostAdoptionPage() {
         </p>
       </header>
 
+      {automationDashboard ? (
+        <PostAdoptionAutomatedDeliveryDashboard
+          dashboard={automationDashboard}
+          automationStatus={params.automation}
+          exceptionStatus={params.exception}
+        />
+      ) : (
+        <p role="alert" className="border-b py-6 text-sm text-amber-900">
+          Le pilotage des invitations automatiques ne peut pas être chargé. Les résultats restent consultables ci-dessous.
+        </p>
+      )}
+
+      {automationDashboard?.organizationId ? (
       <section className="py-8" aria-labelledby="post-adoption-litters-heading">
         <h2 id="post-adoption-litters-heading" className="text-xl font-semibold">
           Portées avec des chiots adoptés
@@ -72,6 +98,7 @@ export default async function PostAdoptionPage() {
           </ul>
         )}
       </section>
+      ) : null}
     </main>
   );
 }
