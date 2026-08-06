@@ -18,7 +18,8 @@ const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary 
   retainedEndsOn: null, retainedEndsLocalTime: null, scheduleSource: "suggested",
   isScheduleLocked: false, scheduleLockedAt: null, scheduleLockedBy: null, revisionNo: 1,
   status: "planned", resolvedAt: null, resolvedTimezoneName: null, resolvedBy: null,
-  resolutionNote: null, createdAt: "2026-01-01T00:00:00Z", ...overrides,
+  resolutionNote: null, completionOrigin: null, completionFact: null,
+  createdAt: "2026-01-01T00:00:00Z", ...overrides,
 });
 
 const reference = { date: "2026-07-25", localTime: "12:00" };

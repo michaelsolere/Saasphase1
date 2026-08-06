@@ -8,6 +8,11 @@ import type {
   ReproductiveCycleBreedingCalendarEvent,
 } from "@/features/breeding-calendar/breeding-calendar-contract";
 import {
+  BREEDING_TODAY_EMPTY_MESSAGE,
+  BREEDING_TODAY_UNAVAILABLE_MESSAGE,
+  BREEDING_TODAY_WEIGHING_UNAVAILABLE_MESSAGE,
+} from "@/features/breeding-calendar/breeding-today-messages";
+import {
   filterAdopterAppointmentsForToday,
   filterReproductiveCyclesForToday,
 } from "@/features/breeding-calendar/breeding-calendar-projection";
@@ -34,13 +39,6 @@ import {
 } from "@/features/litter-journal/maternal-observation-task-link";
 import type { LitterWeighingTodayProjection } from "@/features/litter-weights/litter-weighing-today";
 import { LitterWeighingTodayCard } from "@/features/litter-weights/litter-weighing-today-card";
-
-export const BREEDING_TODAY_EMPTY_MESSAGE =
-  "Aucune action à traiter aujourd’hui pour l’élevage.";
-export const BREEDING_TODAY_UNAVAILABLE_MESSAGE =
-  "La vue Aujourd’hui de l’élevage n’est pas disponible pour le moment.";
-export const BREEDING_TODAY_WEIGHING_UNAVAILABLE_MESSAGE =
-  "Les échéances de pesée ne sont pas disponibles pour le moment.";
 
 const itemKindLabels: Record<LitterCareTaskSummary["itemKind"], string> = {
   milestone: "Jalon",

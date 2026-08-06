@@ -143,6 +143,14 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 function idsSql(ids: string[]) { return ids.map((id) => `'${id}'::uuid`).join(", "); }
 
+export function extractFixtureDeleteOrder(statements: readonly string[]) {
+  return statements.flatMap((statement) =>
+    [...statement.matchAll(/delete\s+from\s+public\.([a-z_]+)/gi)].map(
+      (match) => match[1],
+    ),
+  );
+}
+
 export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-${crypto.randomUUID()}`) {
   const ids = new Map<FixtureTable, Set<string>>(fixtureTables.map((table) => [table, new Set()]));
   const register = (table: FixtureTable, id: string) => {

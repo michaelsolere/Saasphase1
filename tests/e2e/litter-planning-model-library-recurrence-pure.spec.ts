@@ -14,6 +14,7 @@ function item(
   return {
     absolute_max_occurrences: null,
     anchor_type: "expected_birth",
+    completion_fact_kind: null,
     created_at: "2026-07-28T00:00:00Z",
     display_order: 0,
     id: itemId,

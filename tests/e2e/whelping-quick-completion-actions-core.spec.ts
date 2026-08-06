@@ -127,7 +127,7 @@ test("autorise les sauvegardes partielles et produit leur confirmation", async (
 });
 
 test("refuse une soumission vide, un poids invalide ou une heure absente", async () => {
-  for (const values of [
+  const invalidValues: Array<Record<string, string>> = [
     {},
     { initial_collar_color: " " },
     { birth_weight_grams: "0", weight_measured_at: "2026-07-22T03:20:00+02:00" },
@@ -136,7 +136,8 @@ test("refuse une soumission vide, un poids invalide ou une heure absente", async
     { birth_weight_grams: "430" },
     { weight_measured_at: "2026-07-22T03:20:00+02:00" },
     { initial_collar_color: "x".repeat(256) },
-  ]) {
+  ];
+  for (const values of invalidValues) {
     const context = harness();
     const state = await quickCompleteWhelpingBirthActionCore(
       intention,
@@ -202,6 +203,10 @@ test("masque les exceptions techniques", async () => {
     form({ initial_collar_color: "Orange" }),
     context.dependencies,
   );
-  expect(state).toEqual({ status: "error", message: "Une erreur technique empêche momentanément cette opération." });
+  expect(state).toEqual({
+    status: "error",
+    message: "Une erreur technique empêche momentanément cette opération.",
+    uxReason: "technical",
+  });
   expect(JSON.stringify(state)).not.toContain(ids.birth);
 });

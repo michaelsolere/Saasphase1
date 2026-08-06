@@ -25,7 +25,8 @@ const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary 
   retainedEndsOn: null, retainedEndsLocalTime: null, scheduleSource: "suggested",
   isScheduleLocked: false, scheduleLockedAt: null, scheduleLockedBy: null, revisionNo: 1,
   status: "planned", resolvedAt: null, resolvedTimezoneName: null, resolvedBy: null,
-  resolutionNote: null, createdAt: "2026-01-01T00:00:00Z", ...overrides,
+  resolutionNote: null, completionOrigin: null, completionFact: null,
+  createdAt: "2026-01-01T00:00:00Z", ...overrides,
 });
 
 test("projette seulement les dates persistées et sépare les ancrages en attente", () => {

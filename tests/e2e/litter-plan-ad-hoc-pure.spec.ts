@@ -104,7 +104,7 @@ test("normalise strictement les métadonnées ad hoc et refuse les clés supplé
 
 test("mappe strictement le résultat d’édition sans exposer les identifiants", () => {
   expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, litter_plan_id: "11111111-1111-4111-8111-111111111111", litter_plan_item_id: "22222222-2222-4222-8222-222222222222", task_id: "33333333-3333-4333-8333-333333333333", plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { litterPlanId: "11111111-1111-4111-8111-111111111111", litterPlanItemId: "22222222-2222-4222-8222-222222222222", taskId: "33333333-3333-4333-8333-333333333333", kind: "milestone", planRevision: 3, itemRevision: 2, taskRevision: 1 } })).toMatchObject({ outcome: "success", planRevision: 3, itemRevision: 2, taskRevision: 1 });
-  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { kind: "recurring_task", itemRevision: 2, taskRevision: 1 } }).outcome).toBe("error");
+  expect(mapUpdateLitterPlanAdHocMetadataRpcResult({ outcome: "success", reason: null, litter_plan_id: null, litter_plan_item_id: null, task_id: null, plan_revision: 3, item_revision: 2, task_revision: 1, replayed: false, result: { kind: "recurring_task", itemRevision: 2, taskRevision: 1 } }).outcome).toBe("error");
 });
 
 test("préserve stale_revision pour les formes SQL autorisées", () => {

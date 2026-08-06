@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import {
   BREEDING_TODAY_EMPTY_MESSAGE,
   BREEDING_TODAY_UNAVAILABLE_MESSAGE,
-} from "@/features/breeding-calendar/breeding-today-panel";
+} from "@/features/breeding-calendar/breeding-today-messages";
 import { projectLitterCareToday } from "@/features/litter-journal/litter-care-today";
 import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks-core";
 import { getLitterDisplayName } from "@/features/litters/formatters";
@@ -48,6 +48,8 @@ const task = (overrides: Partial<LitterCareTaskSummary>): LitterCareTaskSummary 
   resolvedTimezoneName: null,
   resolvedBy: null,
   resolutionNote: null,
+  completionOrigin: null,
+  completionFact: null,
   createdAt: "2026-01-01T00:00:00Z",
   ...overrides,
 });

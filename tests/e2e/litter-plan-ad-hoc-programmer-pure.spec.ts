@@ -403,8 +403,12 @@ test("aperçu point, période, récurrence et domaine étendu", () => {
   expect(withPreview?.items).toHaveLength(2);
   expect(withPreview?.pendingAnchorItems).toHaveLength(0);
   const geometry = buildInteractiveTimelineGeometry(withPreview!);
-  expect(geometry?.domain.startsOn <= "2026-07-30").toBe(true);
-  expect(geometry?.domain.endsOn >= "2026-07-30").toBe(true);
+  expect(geometry).not.toBeNull();
+  if (!geometry?.domain.startsOn || !geometry.domain.endsOn) {
+    throw new Error("Expected a complete preview timeline domain.");
+  }
+  expect(geometry.domain.startsOn <= "2026-07-30").toBe(true);
+  expect(geometry.domain.endsOn >= "2026-07-30").toBe(true);
 
   const withoutPlan = buildLitterPlanAdHocProgrammerDisplayTimeline(null, window);
   expect(withoutPlan?.items).toHaveLength(1);
