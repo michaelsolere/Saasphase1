@@ -58,7 +58,13 @@ function ActionButton({
   );
 }
 
-function MarkUnsuccessfulDialog({ applicationId }: { applicationId: string }) {
+function MarkUnsuccessfulDialog({
+  applicationId,
+  returnPath,
+}: {
+  applicationId: string;
+  returnPath?: string;
+}) {
   const reasonId = `${applicationId}-mark-unsuccessful-reason`;
 
   return (
@@ -79,6 +85,7 @@ function MarkUnsuccessfulDialog({ applicationId }: { applicationId: string }) {
         </DialogHeader>
         <form action={updateApplicationStatus} className="space-y-5">
           <input type="hidden" name="application_id" value={applicationId} />
+          {returnPath ? <input type="hidden" name="return_path" value={returnPath} /> : null}
           <input
             type="hidden"
             name="qualification_action"
@@ -117,12 +124,14 @@ function MarkUnsuccessfulDialog({ applicationId }: { applicationId: string }) {
 function ActionForm({
   action,
   applicationId,
+  returnPath,
 }: {
   action: QualificationAction;
   applicationId: string;
+  returnPath?: string;
 }) {
   if (action === "mark_unsuccessful") {
-    return <MarkUnsuccessfulDialog applicationId={applicationId} />;
+    return <MarkUnsuccessfulDialog applicationId={applicationId} returnPath={returnPath} />;
   }
 
   const asksForReason = actionsWithReason.has(action);
@@ -133,6 +142,7 @@ function ActionForm({
       className={asksForReason ? "w-full min-w-0 space-y-3 sm:max-w-sm" : ""}
     >
       <input type="hidden" name="application_id" value={applicationId} />
+      {returnPath ? <input type="hidden" name="return_path" value={returnPath} /> : null}
       <input type="hidden" name="qualification_action" value={action} />
       {asksForReason ? (
         <div>
@@ -159,9 +169,11 @@ function ActionForm({
 
 export function QualificationActions({
   applicationId,
+  returnPath,
   status,
 }: {
   applicationId: string;
+  returnPath?: string;
   status: string | null;
 }) {
   if (!status) {
@@ -185,6 +197,7 @@ export function QualificationActions({
           key={action}
           action={action}
           applicationId={applicationId}
+          returnPath={returnPath}
         />
       ))}
     </div>

@@ -17,6 +17,7 @@ import {
   getApplicationStatusLabel,
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
+import { normalizeCandidateReturnPath } from "@/features/applications/candidate-workbench-model";
 import { getPreReservationProgress } from "@/features/applications/pre-reservation-progress";
 import {
   ApplicationLitterScopeForm,
@@ -287,10 +288,12 @@ export default async function ApplicationDetailPage({
     role_status?: string;
     litter_status?: string;
     payment_mark_status?: string;
+    return_to?: string;
   }>;
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const returnPath = normalizeCandidateReturnPath(query.return_to);
   const supabase = await createClient();
   const {
     data: { user },
@@ -477,7 +480,7 @@ export default async function ApplicationDetailPage({
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
       <div className="flex flex-wrap gap-x-4 gap-y-1">
         <Link
-          href="/candidatures"
+          href={returnPath}
           className="text-sm font-medium text-accent hover:underline"
         >
           ← Retour aux candidats
@@ -741,6 +744,7 @@ export default async function ApplicationDetailPage({
                   </div>
                   <QualificationActions
                     applicationId={application.id}
+                    returnPath={returnPath}
                     status={application.status}
                   />
                 </div>

@@ -91,6 +91,9 @@ export default async function ApplicationsPage({
     filter?: string;
     filtre?: string;
     note_status?: string;
+    candidature?: string;
+    recherche?: string;
+    tri?: string;
   }>;
 }) {
   const params = await searchParams;
@@ -233,13 +236,8 @@ export default async function ApplicationsPage({
               Candidats
             </h1>
             <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Candidatures reçues avant entrée dans un parcours adoptant.
+              Filtrez la liste, ouvrez un dossier dans le panneau et traitez les candidatures sans perdre votre contexte.
             </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-              Lecture seule
-            </span>
           </div>
         </div>
       </header>
@@ -310,7 +308,14 @@ export default async function ApplicationsPage({
                 </Link>
               ))}
             </nav>
-            <ApplicationList applications={applications} filter={filter} />
+            <ApplicationList
+              key={`${filter}:${params.recherche ?? ""}:${params.tri ?? ""}:${params.candidature ?? ""}`}
+              applications={applications}
+              filter={filter}
+              initialSearch={params.recherche ?? ""}
+              initialSelectedId={params.candidature ?? null}
+              initialSort={params.tri === "nom" ? "name" : "newest"}
+            />
           </>
         )}
       </section>
