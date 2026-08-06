@@ -11,6 +11,7 @@ import {
   type ContactEditableValues,
 } from "@/features/contacts/contact-form-core";
 import { createClient } from "@/lib/supabase/server";
+import { runPostAdoptionAutomatedDelivery } from "@/features/post-adoption-questionnaire/automated-delivery-service";
 import {
   addActiveContactRoleIfAbsent,
   isContactComplementaryRole,
@@ -533,6 +534,10 @@ export async function updateContact(
 
   if (updateError) {
     return contactEditError("Impossible d’enregistrer le contact pour le moment.", fields);
+  }
+
+  if ((contact.email ?? null) !== values.email && values.email) {
+    await runPostAdoptionAutomatedDelivery(2, contact.organization_id).catch(() => null);
   }
 
   revalidatePath("/contacts");

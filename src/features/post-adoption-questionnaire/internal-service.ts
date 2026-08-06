@@ -101,14 +101,15 @@ async function readResultsRows(
 }
 
 export async function listPostAdoptionResultsRows(
+  organizationId: string,
   litterId: string | null = null,
   suppliedClient?: SupabaseClient,
 ) {
   const client = suppliedClient ?? (await createClient());
   return readResultsRows(
     client,
-    "list_post_adoption_questionnaire_results_overview",
-    { p_litter_id: litterId },
+    "list_post_adoption_results_for_organization",
+    { p_organization_id: organizationId, p_litter_id: litterId },
   );
 }
 
