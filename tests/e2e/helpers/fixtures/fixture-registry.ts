@@ -1,4 +1,6 @@
 export const fixtureTables = [
+  "candidate_journey_events",
+  "pre_reservation_proposals",
   "adopter_financial_resolution_events",
   "adoption_handover_events",
   "post_adoption_questionnaire_public_sessions",
@@ -71,6 +73,8 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "candidate_journey_events",
+  "pre_reservation_proposals",
   "adopter_financial_resolution_events",
   "adoption_handover_events",
   "post_adoption_questionnaire_public_sessions",
@@ -170,6 +174,7 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
   const cleanup = async () => {
     const animalIds = [...ids.get("animals")!];
     const reservationIds = [...ids.get("reservations")!];
+    const contactIds = [...ids.get("contacts")!];
     if (reservationIds.length) {
       await execute(
         `begin;
@@ -179,9 +184,25 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
          where id in (${idsSql(reservationIds)});
          delete from public.adopter_financial_resolution_events
          where reservation_id in (${idsSql(reservationIds)});
+         delete from public.candidate_journey_events
+         where reservation_id in (${idsSql(reservationIds)})
+            or proposal_id in (
+              select proposal.id
+              from public.pre_reservation_proposals proposal
+              where proposal.reservation_id in (${idsSql(reservationIds)})
+            );
+         delete from public.pre_reservation_proposals
+         where reservation_id in (${idsSql(reservationIds)});
          delete from public.payments
          where reservation_id in (${idsSql(reservationIds)});
          commit;`,
+      );
+    }
+    if (contactIds.length) {
+      await execute(
+        `delete from public.contact_roles
+         where contact_id in (${idsSql(contactIds)})
+           and role = 'pre_reservation_holder'`,
       );
     }
     for (const table of cleanupOrder) { const tableIds = [...ids.get(table)!]; if (tableIds.length) {
@@ -218,7 +239,8 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
-      table === "adopter_financial_resolution_events"
+      table === "candidate_journey_events"
+      || table === "adopter_financial_resolution_events"
       || table === "adoption_handover_events"
       || table === "post_adoption_questionnaire_public_sessions"
       || table === "post_adoption_questionnaire_public_accesses"

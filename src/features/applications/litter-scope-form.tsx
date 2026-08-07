@@ -4,6 +4,10 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { updateApplicationDesiredLitter } from "@/features/applications/actions";
+import type {
+  DesiredSeason,
+  DesiredTimingMode,
+} from "@/features/applications/candidate-positioning-pre-reservation";
 import {
   formatLitterDate,
   getLitterDisplayName,
@@ -41,7 +45,7 @@ function SubmitButton() {
       disabled={pending}
       className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      {pending ? "Enregistrement…" : "Enregistrer le rattachement"}
+      {pending ? "Enregistrement…" : "Enregistrer le souhait et le positionnement"}
     </button>
   );
 }
@@ -75,12 +79,20 @@ export function ApplicationLitterScopeForm({
   litterGroups,
   currentLitterId,
   currentGroupId,
+  currentTimingMode,
+  currentSeason,
+  currentSeasonYear,
+  currentNotBeforeDate,
 }: {
   applicationId: string;
   litters: ApplicationLitter[];
   litterGroups: ApplicationLitterGroup[];
   currentLitterId: string | null;
   currentGroupId: string | null;
+  currentTimingMode: DesiredTimingMode;
+  currentSeason: DesiredSeason | null;
+  currentSeasonYear: number | null;
+  currentNotBeforeDate: string | null;
 }) {
   // Une portée appartient à un groupe : la portée prime sur le groupe pour
   // déterminer le mode initial (les deux peuvent être renseignés ensemble).
@@ -97,6 +109,8 @@ export function ApplicationLitterScopeForm({
   const [selectedGroupId, setSelectedGroupId] = useState<string>(
     currentGroupId ?? "",
   );
+  const [timingMode, setTimingMode] =
+    useState<DesiredTimingMode>(currentTimingMode);
 
   const currentLitter = currentLitterId
     ? litters.find((litter) => litter.id === currentLitterId) ?? null
@@ -147,10 +161,93 @@ export function ApplicationLitterScopeForm({
         {currentSummary}
       </p>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <fieldset className="mt-5">
+        <legend className="text-sm font-semibold">Souhait temporel de la famille</legend>
+        <p className="mt-1 text-xs leading-5 text-muted">
+          Ce souhait guide le positionnement. Il ne réserve ni n’attribue un chiot.
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {(
+            [
+              ["unknown", "À préciser"],
+              ["earliest", "Dès que possible"],
+              ["season", "Pendant une saison"],
+              ["not_before", "Pas avant une date"],
+              ["no_preference", "Sans préférence"],
+            ] as const
+          ).map(([mode, label]) => (
+            <label
+              key={mode}
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 text-sm transition ${
+                timingMode === mode
+                  ? "border-accent bg-accent-soft"
+                  : "bg-background hover:bg-surface"
+              }`}
+            >
+              <input
+                type="radio"
+                name="desired_timing_mode"
+                value={mode}
+                checked={timingMode === mode}
+                onChange={() => setTimingMode(mode)}
+              />
+              <span className="font-medium">{label}</span>
+            </label>
+          ))}
+        </div>
+
+        {timingMode === "season" ? (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-medium">
+              Saison
+              <select
+                name="desired_season"
+                defaultValue={currentSeason ?? ""}
+                required
+                className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5"
+              >
+                <option value="" disabled>Choisir une saison</option>
+                <option value="spring">Printemps</option>
+                <option value="summer">Été</option>
+                <option value="autumn">Automne</option>
+                <option value="winter">Hiver</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium">
+              Année
+              <input
+                type="number"
+                name="desired_season_year"
+                min="2000"
+                max="2200"
+                defaultValue={currentSeasonYear ?? new Date().getFullYear()}
+                required
+                className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5"
+              />
+            </label>
+          </div>
+        ) : null}
+
+        {timingMode === "not_before" ? (
+          <label className="mt-3 block max-w-sm text-sm font-medium">
+            Date la plus proche acceptable
+            <input
+              type="date"
+              name="desired_not_before_date"
+              defaultValue={currentNotBeforeDate ?? ""}
+              required
+              className="mt-1.5 w-full rounded-xl border bg-background px-3 py-2.5"
+            />
+          </label>
+        ) : null}
+      </fieldset>
+
+      <fieldset className="mt-6">
+        <legend className="text-sm font-semibold">Positionnement souhaité</legend>
+        <div className="mt-3 flex flex-wrap gap-2">
         {(
           [
-            ["none", "Aucune portée ou période"],
+            ["none", "Période uniquement"],
             ["litter", "Choisir une portée précise"],
             ["group", "Choisir un groupe de portées"],
           ] as const
@@ -176,7 +273,8 @@ export function ApplicationLitterScopeForm({
             </button>
           );
         })}
-      </div>
+        </div>
+      </fieldset>
 
       {scopeMode === "litter" ? (
         <div className="mt-5 space-y-3">
