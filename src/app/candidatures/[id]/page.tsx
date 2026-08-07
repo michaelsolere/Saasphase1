@@ -1,16 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { JourneyTimeline, type JourneyStep } from "@/components/journey-timeline";
 import {
   formatApplicationDate,
@@ -18,6 +8,15 @@ import {
   getSexPreferenceLabel,
 } from "@/features/applications/formatters";
 import { normalizeCandidateReturnPath } from "@/features/applications/candidate-workbench-model";
+import type {
+  DesiredSeason,
+  DesiredTimingMode,
+} from "@/features/applications/candidate-positioning-pre-reservation";
+import {
+  CandidatePreReservationProposalPanel,
+  type CandidatePreReservationProposal,
+} from "@/features/applications/candidate-pre-reservation-proposal-panel";
+import { CandidatePaymentReceiptDialog } from "@/features/applications/candidate-payment-receipt-dialog";
 import { getPreReservationProgress } from "@/features/applications/pre-reservation-progress";
 import {
   ApplicationLitterScopeForm,
@@ -30,9 +29,7 @@ import type { ApplicationDetail } from "@/features/applications/types";
 import {
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
-import {
-  markPreReservationPaymentAsPaidFromApplication,
-} from "@/features/payments/actions";
+
 import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
@@ -88,6 +85,9 @@ type ActivePreReservationPayment = {
   status: string;
   due_date: string | null;
   requested_at: string | null;
+  received_amount_cents: number;
+  applied_amount_cents: number;
+  unapplied_amount_cents: number;
 };
 
 type ApplicationReservationProgressRow = ReservationOverview & {
@@ -287,6 +287,7 @@ export default async function ApplicationDetailPage({
     reservation_status?: string;
     role_status?: string;
     litter_status?: string;
+    proposal_status?: string;
     payment_mark_status?: string;
     return_to?: string;
   }>;
@@ -388,7 +389,7 @@ export default async function ApplicationDetailPage({
   const { data: rawActivePreReservationPayments } = activePreReservation?.id
     ? await supabase
         .from("payments")
-        .select("id, reservation_id, amount_cents, currency, payment_type, status, due_date, requested_at")
+        .select("id, reservation_id, amount_cents, currency, payment_type, status, due_date, requested_at, received_amount_cents, applied_amount_cents, unapplied_amount_cents")
         .eq("reservation_id", activePreReservation.id)
         .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
         .in("status", ["requested", "pending", "partially_paid"])
@@ -426,18 +427,43 @@ export default async function ApplicationDetailPage({
 
   const applicationEvents = rawEvents as RelatedEvent[] | null;
 
-  // Champs desired_litter_id et desired_litter_group_id (non présents dans application_overview)
+  // Champs de positionnement (non présents dans application_overview).
   const { data: rawAppFields } = applicationId
     ? await supabase
         .from("applications")
-        .select("desired_litter_id, desired_litter_group_id")
+        .select(
+          "desired_litter_id, desired_litter_group_id, desired_timing_mode, desired_season, desired_season_year, desired_not_before_date",
+        )
         .eq("id", applicationId)
         .is("deleted_at", null)
         .maybeSingle()
     : { data: null };
 
-  const currentLitterId = rawAppFields?.desired_litter_id ?? null;
-  const currentGroupId = rawAppFields?.desired_litter_group_id ?? null;
+  const positioningFields = rawAppFields as unknown as {
+    desired_litter_id: string | null;
+    desired_litter_group_id: string | null;
+    desired_timing_mode: DesiredTimingMode;
+    desired_season: DesiredSeason | null;
+    desired_season_year: number | null;
+    desired_not_before_date: string | null;
+  } | null;
+  const currentLitterId = positioningFields?.desired_litter_id ?? null;
+  const currentGroupId = positioningFields?.desired_litter_group_id ?? null;
+
+  const { data: rawProposals } = applicationId
+    ? await (supabase.from as typeof supabase.from)(
+        "pre_reservation_proposals" as never,
+      )
+        .select(
+          "id,version,status,recipient_email,recipient_name,expected_amount_cents,complete_deposit_cents,currency,due_date,target_litter_id,target_litter_group_id,variables_snapshot,stale_reason,prepared_at,sent_at,payment_id",
+        )
+        .eq("application_id", applicationId)
+        .order("version", { ascending: false })
+        .limit(1)
+    : { data: null };
+  const latestProposal = (rawProposals?.[0] ?? null) as unknown as
+    | CandidatePreReservationProposal
+    | null;
 
   // Portées disponibles (même organisation, non supprimées) — vue enrichie
   const { data: availableLitters } =
@@ -468,6 +494,20 @@ export default async function ApplicationDetailPage({
     []) as ApplicationLitter[];
   const desiredScopeGroups = (availableGroups ??
     []) as ApplicationLitterGroup[];
+  const targetIsBorn = Boolean(
+    currentLitterId &&
+      desiredScopeLitters.find((litter) => litter.id === currentLitterId)
+        ?.actual_birth_date,
+  );
+  const proposalTargetLabel = latestProposal?.target_litter_id
+    ? desiredScopeLitters.find(
+        (litter) => litter.id === latestProposal.target_litter_id,
+      )?.name ?? "Portée sélectionnée"
+    : latestProposal?.target_litter_group_id
+      ? desiredScopeGroups.find(
+          (group) => group.id === latestProposal.target_litter_group_id,
+        )?.name ?? "Groupe de portées sélectionné"
+      : null;
   const candidateJourneySteps = application
     ? getCandidateJourneySteps({
         application,
@@ -599,6 +639,74 @@ export default async function ApplicationDetailPage({
               </p>
             ) : null}
 
+            {query.litter_status === "conflict" ? (
+              <p
+                role="alert"
+                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+              >
+                Le positionnement a changé depuis l’ouverture de cette page ou
+                le parcours a déjà commencé. Rechargez la candidature avant de
+                décider à nouveau.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "prepared" ? (
+              <p role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                La proposition est prête. Relisez le destinataire et les montants avant l’envoi.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "sent" || query.proposal_status === "already_sent" ? (
+              <p role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                La proposition a été envoyée et sa demande de versement a été créée.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "in_progress" ? (
+              <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                L’envoi est en cours ou son résultat doit être vérifié avant toute nouvelle tentative.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "confirmed_not_sent" ? (
+              <p role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                L’absence d’envoi a été confirmée et historisée. Un nouvel essai est autorisé.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "direct_created" ? (
+              <p role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                La réservation directe et la demande d’arrhes totales ont été créées. Le parcours reste fermé jusqu’au règlement complet.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "payment_partial" ? (
+              <p role="status" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                Le versement partiel est enregistré. Le parcours adoptant reste fermé.
+              </p>
+            ) : null}
+
+            {query.proposal_status === "journey_opened" ? (
+              <p role="status" className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950">
+                Les arrhes attendues sont reçues : le parcours adoptant est maintenant ouvert.
+              </p>
+            ) : null}
+
+            {query.proposal_status && ![
+              "prepared",
+              "sent",
+              "already_sent",
+              "in_progress",
+              "confirmed_not_sent",
+              "direct_created",
+              "payment_partial",
+              "journey_opened",
+            ].includes(query.proposal_status) ? (
+              <p role="alert" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                L’opération n’a pas été appliquée. Relisez les informations puis réessayez.
+              </p>
+            ) : null}
+
             {query.payment_mark_status === "error" ? (
               <p
                 role="alert"
@@ -677,54 +785,21 @@ export default async function ApplicationDetailPage({
                     </dl>
                   </div>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
-                      >
-                        Marquer la pré-réservation de{" "}
-                        {formatPrice(
-                          activePreReservationPayment.amount_cents,
-                          activePreReservationPayment.currency,
-                        )}{" "}
-                        comme payée
-                      </button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>
-                          Confirmer le règlement de pré-réservation
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Cette action utilise la demande de paiement existante,
-                          marque la pré-réservation comme réglée et ouvre le
-                          parcours adoptant. Aucun nouveau paiement ne sera créé.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Annuler</AlertDialogCancel>
-                        <form action={markPreReservationPaymentAsPaidFromApplication}>
-                          <input
-                            type="hidden"
-                            name="application_id"
-                            value={application.id ?? ""}
-                          />
-                          <input
-                            type="hidden"
-                            name="payment_id"
-                            value={activePreReservationPayment.id}
-                          />
-                          <button
-                            type="submit"
-                            className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                          >
-                            Confirmer le règlement
-                          </button>
-                        </form>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                  <CandidatePaymentReceiptDialog
+                    applicationId={application.id ?? ""}
+                    paymentId={activePreReservationPayment.id}
+                    proposalId={
+                      latestProposal?.status === "sent" &&
+                      latestProposal.payment_id === activePreReservationPayment.id
+                        ? latestProposal.id
+                        : null
+                    }
+                    expectedAmountCents={activePreReservationPayment.amount_cents}
+                    receivedAmountCents={
+                      activePreReservationPayment.received_amount_cents
+                    }
+                    currency={activePreReservationPayment.currency}
+                  />
                 </div>
               </section>
             ) : null}
@@ -763,14 +838,13 @@ export default async function ApplicationDetailPage({
               </section>
             ) : null}
 
-            {/* ---- Portée ou période souhaitée ---- */}
+            {/* ---- Souhait temporel et positionnement ---- */}
             {application.id && application.organization_id ? (
               <section id="portee-souhaitee" className="border-b py-6">
-                <h2 className="font-semibold">Portée ou période souhaitée</h2>
+                <h2 className="font-semibold">Souhait et positionnement</h2>
                 <p className="mt-1 text-sm text-muted">
-                  Rattachez cette candidature à une portée précise ou à un
-                  groupe de portées (période) pour la retrouver lors d&apos;une
-                  campagne de pré-réservation. Le rattachement reste optionnel.
+                  Structurez la période recherchée, puis positionnez la famille
+                  sur une portée ou un groupe lorsque cela devient pertinent.
                 </p>
 
                 <ApplicationLitterScopeForm
@@ -779,8 +853,29 @@ export default async function ApplicationDetailPage({
                   litterGroups={desiredScopeGroups}
                   currentLitterId={currentLitterId}
                   currentGroupId={currentGroupId}
+                  currentTimingMode={
+                    positioningFields?.desired_timing_mode ?? "unknown"
+                  }
+                  currentSeason={positioningFields?.desired_season ?? null}
+                  currentSeasonYear={
+                    positioningFields?.desired_season_year ?? null
+                  }
+                  currentNotBeforeDate={
+                    positioningFields?.desired_not_before_date ?? null
+                  }
                 />
               </section>
+            ) : null}
+
+            {application.id ? (
+              <CandidatePreReservationProposalPanel
+                applicationId={application.id}
+                applicationStatus={application.status}
+                proposal={latestProposal}
+                targetIsBorn={targetIsBorn}
+                hasStartedJourney={Boolean(application.has_started_adopter_journey)}
+                targetLabel={proposalTargetLabel}
+              />
             ) : null}
 
             <div className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_320px]">

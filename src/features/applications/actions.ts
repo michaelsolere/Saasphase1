@@ -1,5 +1,7 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -12,6 +14,8 @@ import {
   deactivateActiveContactRoles,
   promoteContactJourneyRole,
 } from "@/features/contacts/roles";
+import { sendPreparedPreReservationProposal } from "@/features/applications/candidate-pre-reservation-proposal-send";
+import { sendPreReservationEmailForApplication } from "@/features/communications/pre-reservation-email";
 import { createClient } from "@/lib/supabase/server";
 
 const desiredSexPreferences = new Set([
@@ -22,6 +26,16 @@ const desiredSexPreferences = new Set([
   "no_preference",
   "unknown",
 ]);
+
+const desiredTimingModes = new Set([
+  "unknown",
+  "earliest",
+  "season",
+  "not_before",
+  "no_preference",
+]);
+
+const desiredSeasons = new Set(["spring", "summer", "autumn", "winter"]);
 
 function isQualificationAction(value: string): value is QualificationAction {
   return value in actionTargets;
@@ -367,7 +381,7 @@ function isUuid(value: string) {
 
 function desiredLitterUrl(
   applicationId: string,
-  outcome: "success" | "error",
+  outcome: "success" | "error" | "conflict",
 ) {
   return `/candidatures/${applicationId}?litter_status=${outcome}#portee-souhaitee`;
 }
@@ -396,10 +410,11 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
     redirect("/login");
   }
 
-  // Relire la candidature (organisation)
   const { data: application, error: readError } = await supabase
     .from("applications")
-    .select("id, organization_id")
+    .select(
+      "id, organization_id, updated_at, positioning_revision, desired_timing_mode",
+    )
     .eq("id", applicationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -408,102 +423,375 @@ export async function updateApplicationDesiredLitter(formData: FormData) {
     redirect(desiredLitterUrl(applicationId, "error"));
   }
 
-  // Valider desired_litter_id (peut être vide)
   const rawLitterId = formData.get("desired_litter_id");
-  let desiredLitterId: string | null = null;
-  // Groupe auquel appartient la portée choisie (source de vérité métier).
-  let litterGroupOfLitter: string | null = null;
-
-  if (typeof rawLitterId === "string" && rawLitterId.trim()) {
-    const trimmed = rawLitterId.trim();
-    if (!isUuid(trimmed)) {
-      redirect(desiredLitterUrl(applicationId, "error"));
-    }
-    // Vérifier que la portée appartient à la même organisation
-    const { data: litter, error: litterError } = await supabase
-      .from("litters")
-      .select("id, litter_group_id")
-      .eq("id", trimmed)
-      .eq("organization_id", application.organization_id)
-      .is("deleted_at", null)
-      .maybeSingle();
-
-    if (litterError || !litter) {
-      redirect(desiredLitterUrl(applicationId, "error"));
-    }
-    desiredLitterId = trimmed;
-    litterGroupOfLitter = litter.litter_group_id ?? null;
-  }
-
-  // Valider desired_litter_group_id (peut être vide)
   const rawGroupId = formData.get("desired_litter_group_id");
-  let desiredLitterGroupId: string | null = null;
+  const desiredLitterId =
+    typeof rawLitterId === "string" && isUuid(rawLitterId.trim())
+      ? rawLitterId.trim()
+      : null;
+  const desiredLitterGroupId =
+    typeof rawGroupId === "string" && isUuid(rawGroupId.trim())
+      ? rawGroupId.trim()
+      : null;
+  const timingModeValue = normalizeOptionalText(formData.get("desired_timing_mode"));
+  const desiredTimingMode =
+    timingModeValue && desiredTimingModes.has(timingModeValue)
+      ? timingModeValue
+      : "unknown";
+  const seasonValue = normalizeOptionalText(formData.get("desired_season"));
+  const desiredSeason =
+    seasonValue && desiredSeasons.has(seasonValue) ? seasonValue : null;
+  const seasonYearValue = normalizeOptionalText(formData.get("desired_season_year"));
+  const desiredSeasonYear = seasonYearValue ? Number.parseInt(seasonYearValue, 10) : null;
+  const desiredNotBeforeDate = normalizeOptionalText(
+    formData.get("desired_not_before_date"),
+    10,
+  );
 
-  if (typeof rawGroupId === "string" && rawGroupId.trim()) {
-    const trimmed = rawGroupId.trim();
-    if (!isUuid(trimmed)) {
-      redirect(desiredLitterUrl(applicationId, "error"));
-    }
-    // Vérifier que le groupe appartient à la même organisation
-    const { data: group, error: groupError } = await supabase
-      .from("litter_groups")
-      .select("id")
-      .eq("id", trimmed)
-      .eq("organization_id", application.organization_id)
-      .is("deleted_at", null)
-      .maybeSingle();
+  const applicationVersion = application as unknown as {
+    updated_at: string;
+    positioning_revision: number;
+  };
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{ outcome: string; reason: string | null }> | null;
+    error: unknown;
+  }>;
+  const result = await rpc("update_candidate_positioning", {
+    p_application_id: applicationId,
+    p_expected_application_updated_at: applicationVersion.updated_at,
+    p_expected_positioning_revision: applicationVersion.positioning_revision,
+    p_desired_timing_mode: desiredTimingMode,
+    p_desired_season: desiredSeason,
+    p_desired_season_year: Number.isInteger(desiredSeasonYear)
+      ? desiredSeasonYear
+      : null,
+    p_desired_not_before_date: desiredNotBeforeDate,
+    p_target_litter_id: desiredLitterId,
+    p_target_litter_group_id: desiredLitterGroupId,
+    p_client_command_id: randomUUID(),
+  });
+  const outcome = result.data?.[0]?.outcome;
 
-    if (groupError || !group) {
-      redirect(desiredLitterUrl(applicationId, "error"));
-    }
-    desiredLitterGroupId = trimmed;
-  }
-
-  // Règle métier : une portée appartient nécessairement à un groupe de portées.
-  // - Si une portée est choisie, le groupe enregistré est celui de la portée
-  //   (source de vérité), pas un groupe arbitraire envoyé par le client.
-  // - Si un groupe est aussi fourni, il doit correspondre à celui de la portée.
-  if (desiredLitterId) {
-    if (
-      desiredLitterGroupId &&
-      litterGroupOfLitter &&
-      desiredLitterGroupId !== litterGroupOfLitter
-    ) {
-      // Incohérence : la portée appartient à un autre groupe.
-      redirect(desiredLitterUrl(applicationId, "error"));
-    }
-
-    // Le groupe de la portée fait foi (peut être null si la portée n'a pas
-    // encore de groupe : on enregistre alors la portée seule, sans inventer).
-    desiredLitterGroupId = litterGroupOfLitter;
-  }
-
-  // Mettre à jour la candidature
-  const { error: updateError } = await supabase
-    .from("applications")
-    .update({
-      desired_litter_id: desiredLitterId,
-      desired_litter_group_id: desiredLitterGroupId,
-      updated_at: new Date().toISOString(),
-      updated_by: user.id,
-    })
-    .eq("id", applicationId)
-    .eq("organization_id", application.organization_id)
-    .is("deleted_at", null);
-
-  if (updateError) {
-    redirect(desiredLitterUrl(applicationId, "error"));
+  if (result.error || (outcome !== "updated" && outcome !== "already_applied")) {
+    const status = outcome === "conflict" ? "conflict" : "error";
+    redirect(desiredLitterUrl(applicationId, status));
   }
 
   revalidatePath("/candidatures");
   revalidatePath(`/candidatures/${applicationId}`);
 
-  // Revalider la fiche portée si une portée est liée
   if (desiredLitterId) {
     revalidatePath(`/litters/${desiredLitterId}`);
   }
 
   redirect(desiredLitterUrl(applicationId, "success"));
+}
+
+function proposalUrl(applicationId: string, outcome: string) {
+  return `/candidatures/${applicationId}?proposal_status=${encodeURIComponent(outcome)}#proposition-pre-reservation`;
+}
+
+export async function prepareCandidatePreReservationProposal(formData: FormData) {
+  const applicationId = formData.get("application_id");
+  if (typeof applicationId !== "string" || !isUuid(applicationId)) {
+    redirect("/candidatures?erreur=proposition");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data: rawApplication, error: readError } = await supabase
+    .from("applications")
+    .select("id, updated_at")
+    .eq("id", applicationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError || !rawApplication) {
+    redirect(proposalUrl(applicationId, "error"));
+  }
+
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{ outcome: string; reason: string | null }> | null;
+    error: unknown;
+  }>;
+  const prepared = await rpc("prepare_pre_reservation_proposal", {
+    p_application_id: applicationId,
+    p_expected_application_updated_at: rawApplication.updated_at,
+    p_client_command_id: randomUUID(),
+  });
+  const result = prepared.data?.[0];
+  if (prepared.error || !result) {
+    redirect(proposalUrl(applicationId, "error"));
+  }
+  if (!["created", "already_exists"].includes(result.outcome)) {
+    redirect(proposalUrl(applicationId, result.reason ?? result.outcome));
+  }
+
+  revalidatePath(`/candidatures/${applicationId}`);
+  redirect(proposalUrl(applicationId, "prepared"));
+}
+
+export async function sendCandidatePreReservationProposal(formData: FormData) {
+  const proposalId = formData.get("proposal_id");
+  const applicationId = formData.get("application_id");
+  if (
+    typeof proposalId !== "string" ||
+    !isUuid(proposalId) ||
+    typeof applicationId !== "string" ||
+    !isUuid(applicationId)
+  ) {
+    redirect("/candidatures?erreur=proposition");
+  }
+
+  const supabase = await createClient();
+  const result = await sendPreparedPreReservationProposal(
+    { proposalId },
+    {
+      supabase,
+      sendEmail: sendPreReservationEmailForApplication,
+      commandId: randomUUID,
+    },
+  );
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+  redirect(proposalUrl(applicationId, result.status));
+}
+
+export async function resolveUncertainCandidateProposalAsNotSent(
+  formData: FormData,
+) {
+  const proposalId = formData.get("proposal_id");
+  const applicationId = formData.get("application_id");
+  const reason = normalizeOptionalText(formData.get("reason"), 500);
+  if (
+    typeof proposalId !== "string" ||
+    !isUuid(proposalId) ||
+    typeof applicationId !== "string" ||
+    !isUuid(applicationId) ||
+    !reason ||
+    reason.length < 10
+  ) {
+    redirect("/candidatures?erreur=proposition");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{ outcome: string; reason: string | null }> | null;
+    error: unknown;
+  }>;
+  const resolved = await rpc("resolve_uncertain_pre_reservation_proposal_send", {
+    p_proposal_id: proposalId,
+    p_reason: reason,
+    p_client_command_id: randomUUID(),
+  });
+  const result = resolved.data?.[0];
+  if (
+    resolved.error ||
+    !result ||
+    !["resolved", "already_resolved"].includes(result.outcome)
+  ) {
+    redirect(proposalUrl(applicationId, result?.reason ?? "resolution_error"));
+  }
+
+  revalidatePath(`/candidatures/${applicationId}`);
+  redirect(proposalUrl(applicationId, "confirmed_not_sent"));
+}
+
+export async function createDirectCandidateReservationAfterBirth(
+  formData: FormData,
+) {
+  const applicationId = formData.get("application_id");
+  const reason = normalizeOptionalText(formData.get("reason"), 500);
+  if (
+    typeof applicationId !== "string" ||
+    !isUuid(applicationId) ||
+    !reason ||
+    reason.length < 10
+  ) {
+    redirect("/candidatures?erreur=reservation_directe");
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: application, error: readError } = await supabase
+    .from("applications")
+    .select("id, updated_at")
+    .eq("id", applicationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (readError || !application) {
+    redirect(proposalUrl(applicationId, "direct_error"));
+  }
+
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{ outcome: string; reason: string | null }> | null;
+    error: unknown;
+  }>;
+  const created = await rpc("create_direct_candidate_reservation_after_birth", {
+    p_application_id: applicationId,
+    p_expected_application_updated_at: application.updated_at,
+    p_reason: reason,
+    p_client_command_id: randomUUID(),
+  });
+  const result = created.data?.[0];
+  if (
+    created.error ||
+    !result ||
+    !["created", "already_created"].includes(result.outcome)
+  ) {
+    redirect(
+      proposalUrl(applicationId, result?.reason ?? result?.outcome ?? "direct_error"),
+    );
+  }
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+  revalidatePath("/reservations");
+  redirect(proposalUrl(applicationId, "direct_created"));
+}
+
+function parseEuroCents(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000) return null;
+  return Math.round(amount * 100);
+}
+
+function parseReceiptDate(value: FormDataEntryValue | null) {
+  if (typeof value !== "string") return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return date.toISOString();
+}
+
+export async function recordCandidateJourneyPaymentReceipt(formData: FormData) {
+  const applicationId = formData.get("application_id");
+  const paymentId = formData.get("payment_id");
+  const proposalIdValue = formData.get("proposal_id");
+  const receivedAmountCents = parseEuroCents(formData.get("received_amount"));
+  const receivedAt = parseReceiptDate(formData.get("received_date"));
+  const paymentMethod = normalizeOptionalText(formData.get("payment_method"), 50);
+  const reference = normalizeOptionalText(formData.get("reference"), 120);
+  const exceptionReason = normalizeOptionalText(formData.get("exception_reason"), 500);
+  const allowedMethods = new Set([
+    "bank_transfer",
+    "cash",
+    "card",
+    "cheque",
+    "paypal",
+    "stripe",
+    "other",
+    "unknown",
+  ]);
+  const proposalId =
+    typeof proposalIdValue === "string" && isUuid(proposalIdValue)
+      ? proposalIdValue
+      : null;
+
+  if (
+    typeof applicationId !== "string" ||
+    !isUuid(applicationId) ||
+    typeof paymentId !== "string" ||
+    !isUuid(paymentId) ||
+    receivedAmountCents === null ||
+    !receivedAt ||
+    !paymentMethod ||
+    !allowedMethods.has(paymentMethod) ||
+    (!proposalId && (!exceptionReason || exceptionReason.length < 10))
+  ) {
+    redirect(
+      typeof applicationId === "string" && isUuid(applicationId)
+        ? proposalUrl(applicationId, "payment_invalid")
+        : "/candidatures?erreur=paiement",
+    );
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{
+      outcome: string;
+      reason: string | null;
+      journey_opened: boolean;
+    }> | null;
+    error: unknown;
+  }>;
+  const recorded = await rpc("record_candidate_journey_payment_receipt", {
+    p_proposal_id: proposalId,
+    p_payment_id: paymentId,
+    p_received_amount_cents: receivedAmountCents,
+    p_received_at: receivedAt,
+    p_payment_method: paymentMethod,
+    p_reference: reference,
+    p_exception_reason: exceptionReason,
+    p_client_command_id: randomUUID(),
+  });
+  const result = recorded.data?.[0];
+  if (
+    recorded.error ||
+    !result ||
+    !["partial", "accepted", "already_recorded"].includes(result.outcome)
+  ) {
+    redirect(proposalUrl(applicationId, result?.reason ?? "payment_error"));
+  }
+
+  revalidatePath("/candidatures");
+  revalidatePath(`/candidatures/${applicationId}`);
+  revalidatePath("/reservations");
+  revalidatePath("/payments");
+  redirect(
+    proposalUrl(
+      applicationId,
+      result.journey_opened ? "journey_opened" : "payment_partial",
+    ),
+  );
 }
 
 function litterAttachUrl(litterId: string, outcome: "success" | "error") {
@@ -583,7 +871,9 @@ export async function attachApplicationToScope(formData: FormData) {
   // Relire la candidature (organisation, non supprimée).
   const { data: application, error: readError } = await supabase
     .from("applications")
-    .select("id, organization_id")
+    .select(
+      "id, organization_id, updated_at, positioning_revision, desired_timing_mode, desired_season, desired_season_year, desired_not_before_date",
+    )
     .eq("id", applicationId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -591,6 +881,9 @@ export async function attachApplicationToScope(formData: FormData) {
   if (readError || !application) {
     redirect(backUrl("error"));
   }
+  const applicationOrganizationId = (
+    application as unknown as { organization_id: string }
+  ).organization_id;
 
   let desiredLitterId: string | null = null;
   let desiredLitterGroupId: string | null = null;
@@ -601,7 +894,7 @@ export async function attachApplicationToScope(formData: FormData) {
       .from("litters")
       .select("id, litter_group_id")
       .eq("id", litterId)
-      .eq("organization_id", application.organization_id)
+      .eq("organization_id", applicationOrganizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
@@ -617,7 +910,7 @@ export async function attachApplicationToScope(formData: FormData) {
       .from("litter_groups")
       .select("id")
       .eq("id", groupId)
-      .eq("organization_id", application.organization_id)
+      .eq("organization_id", applicationOrganizationId)
       .is("deleted_at", null)
       .maybeSingle();
 
@@ -629,19 +922,39 @@ export async function attachApplicationToScope(formData: FormData) {
     desiredLitterGroupId = group.id;
   }
 
-  const { error: updateError } = await supabase
-    .from("applications")
-    .update({
-      desired_litter_id: desiredLitterId,
-      desired_litter_group_id: desiredLitterGroupId,
-      updated_at: new Date().toISOString(),
-      updated_by: user.id,
-    })
-    .eq("id", applicationId)
-    .eq("organization_id", application.organization_id)
-    .is("deleted_at", null);
+  const applicationPositioning = application as unknown as {
+    updated_at: string;
+    positioning_revision: number;
+    desired_timing_mode: string;
+    desired_season: string | null;
+    desired_season_year: number | null;
+    desired_not_before_date: string | null;
+  };
+  const rpc = supabase.rpc.bind(supabase) as unknown as (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<{
+    data: Array<{ outcome: string }> | null;
+    error: unknown;
+  }>;
+  const positioningResult = await rpc("update_candidate_positioning", {
+    p_application_id: applicationId,
+    p_expected_application_updated_at: applicationPositioning.updated_at,
+    p_expected_positioning_revision: applicationPositioning.positioning_revision,
+    p_desired_timing_mode: applicationPositioning.desired_timing_mode,
+    p_desired_season: applicationPositioning.desired_season,
+    p_desired_season_year: applicationPositioning.desired_season_year,
+    p_desired_not_before_date: applicationPositioning.desired_not_before_date,
+    p_target_litter_id: desiredLitterId,
+    p_target_litter_group_id: desiredLitterGroupId,
+    p_client_command_id: randomUUID(),
+  });
+  const positioningOutcome = positioningResult.data?.[0]?.outcome;
 
-  if (updateError) {
+  if (
+    positioningResult.error ||
+    (positioningOutcome !== "updated" && positioningOutcome !== "already_applied")
+  ) {
     redirect(backUrl("error"));
   }
 

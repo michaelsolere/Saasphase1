@@ -7,6 +7,7 @@ import { repoRoot } from "./shared.mjs";
 export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/adoption-handover-core.spec.ts",
   "tests/e2e/candidate-workbench-model.spec.ts",
+  "tests/e2e/candidate-positioning-pre-reservation-core.spec.ts",
   "tests/e2e/adopter-financial-resolution-core.spec.ts",
   "tests/e2e/adopter-activation-fixtures.spec.ts",
   "tests/e2e/adopter-animal-assignment-fixtures.spec.ts",
