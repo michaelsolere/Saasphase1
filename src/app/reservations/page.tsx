@@ -1,299 +1,78 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import {
-  readCompleteDepositCentsByOrganizationId,
-  resolveDepositSettings,
-} from "@/features/payments/deposit-thresholds";
-import { reservationNeedsAttention } from "@/features/reservations/attention";
-import { ReservationList } from "@/features/reservations/reservation-list";
-import type { ReservationOverview } from "@/features/reservations/types";
+import { AdopterWorkbench } from "@/features/reservations/adopter-workbench";
+import { loadAdopterWorkbench } from "@/features/reservations/adopter-workbench-data";
+import type {
+  AdopterActionState,
+  AdopterMilestoneKey,
+  AdopterQueue,
+  AdopterWorkbenchSort,
+  AdopterWorkbenchView,
+} from "@/features/reservations/adopter-workbench-model";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type ReservationsSearchParams = {
-  filter?: string;
-  litter_group_id?: string;
-  litter_id?: string;
+type Params = {
+  view?: string;
+  q?: string;
+  step?: string;
+  action?: string;
+  queue?: string;
+  sort?: string;
+  selected?: string;
+  contact_status?: string;
 };
 
-type LitterFilterOption = {
-  id: string;
-  name: string | null;
-  litter_group_name: string | null;
-};
+const oneOf = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T) =>
+  value && allowed.includes(value as T) ? (value as T) : fallback;
 
-type LitterGroupFilterOption = {
-  id: string;
-  name: string | null;
-};
-
-function normalizeFilterParam(value: string | undefined) {
-  return value?.trim() || null;
-}
-
-function ErrorMessage() {
-  return (
-    <div
-      role="alert"
-      className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center text-amber-950"
-    >
-      <p className="font-semibold">Impossible de charger les réservations</p>
-      <p className="mt-2 text-sm">
-        Réessayez dans quelques instants. Aucune donnée n’a été modifiée.
-      </p>
-    </div>
-  );
-}
-
-export default async function ReservationsPage({
-  searchParams,
-}: {
-  searchParams: Promise<ReservationsSearchParams>;
-}) {
+export default async function ReservationsPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
-  const selectedFilter = normalizeFilterParam(params.filter);
-  const isAttentionFilter = selectedFilter === "attention";
-  const selectedLitterGroupId = normalizeFilterParam(params.litter_group_id);
-  const selectedLitterId = normalizeFilterParam(params.litter_id);
   const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
 
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser();
+  const { data: membership } = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("profile_id", user.id)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .limit(1)
+    .maybeSingle();
+  const role = membership?.role === "owner" || membership?.role === "admin" || membership?.role === "member"
+    ? membership.role
+    : "viewer";
 
-  if (!user) {
-    redirect("/login");
+  let records = null;
+  let loadingError = false;
+  try {
+    records = await loadAdopterWorkbench(supabase);
+  } catch (error) {
+    console.error("Unable to load adopter workbench", error);
+    loadingError = true;
   }
 
-  let reservations = null;
-  let litterGroups: LitterGroupFilterOption[] = [];
-  let litters: LitterFilterOption[] = [];
-  let hasLoadingError = Boolean(authError);
+  const initial = {
+    view: oneOf<AdopterWorkbenchView>(params.view, ["current", "waiting", "finalized", "follow_up"], "current"),
+    search: params.q?.slice(0, 200) ?? "",
+    step: oneOf<AdopterMilestoneKey | "all">(params.step, ["all", "opening", "profile", "positioning", "reservation", "choice_assignment", "departure", "adoption"], "all"),
+    actionState: oneOf<AdopterActionState | "all">(params.action, ["all", "blocked", "overdue", "due", "normal", "none"], "all"),
+    queue: oneOf<AdopterQueue | "all">(params.queue, ["all", "incomplete", "flexible", "female", "male"], "all"),
+    sort: oneOf<AdopterWorkbenchSort>(params.sort, ["scope_queue_rank", "urgency", "deadline", "name", "step", "choice_appointment", "departure_appointment"], "scope_queue_rank"),
+    selectedId: params.selected && /^[0-9a-f-]{36}$/i.test(params.selected) ? params.selected : null,
+  };
 
-  let reservationQuery = supabase
-    .from("reservation_overview")
-    .select(
-      "id, organization_id, contact_id, contact_display_name, status, financial_resolution, reserved_sex_preference, rank_active, rank_initial, litter_id, litter_name, litter_group_id, litter_group_name, price_cents, paid_cents, refunded_cents, currency, animal_id, animal_display_name, created_at"
-    )
-    .neq("status", "pre_reservation_requested")
-    .order("created_at", { ascending: false });
-
-  if (selectedLitterGroupId) {
-    reservationQuery = reservationQuery.eq(
-      "litter_group_id",
-      selectedLitterGroupId,
-    );
-  }
-
-  if (selectedLitterId) {
-    reservationQuery = reservationQuery.eq("litter_id", selectedLitterId);
-  }
-
-  const [result, litterGroupsResult, littersResult] = await Promise.all([
-    reservationQuery,
-    supabase
-      .from("litter_groups")
-      .select("id, name")
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("litter_overview")
-      .select("id, name, litter_group_name")
-      .order("created_at", { ascending: false }),
-  ]);
-
-  reservations = result.data as ReservationOverview[] | null;
-  if (isAttentionFilter && reservations) {
-    const reservationIds = reservations
-      .map((reservation) => reservation.id)
-      .filter((id): id is string => Boolean(id));
-    const organizationIds = reservations
-      .map((reservation) => reservation.organization_id)
-      .filter((id): id is string => Boolean(id));
-    const paidArrhesCentsByReservationId = new Map<string, number>();
-    const completeDepositCentsByOrganizationId =
-      await readCompleteDepositCentsByOrganizationId({
-        supabase,
-        organizationIds,
-      });
-
-    if (reservationIds.length > 0) {
-      const { data: rawPaidArrhesPayments, error: paidArrhesError } =
-        await supabase
-          .from("payments")
-          .select("reservation_id, amount_cents")
-          .in("reservation_id", reservationIds)
-          .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
-          .eq("status", "paid")
-          .is("deleted_at", null);
-
-      hasLoadingError = hasLoadingError || Boolean(paidArrhesError);
-
-      for (const payment of rawPaidArrhesPayments ?? []) {
-        if (!payment.reservation_id) {
-          continue;
-        }
-
-        paidArrhesCentsByReservationId.set(
-          payment.reservation_id,
-          (paidArrhesCentsByReservationId.get(payment.reservation_id) ?? 0) +
-            payment.amount_cents,
-        );
-      }
-    }
-
-    reservations = reservations.filter((reservation) => {
-      const paidArrhesCents = reservation.id
-        ? paidArrhesCentsByReservationId.get(reservation.id) ?? 0
-        : 0;
-      const completeDepositCents = reservation.organization_id
-        ? completeDepositCentsByOrganizationId.get(reservation.organization_id) ??
-          resolveDepositSettings(null).completeDepositCents
-        : resolveDepositSettings(null).completeDepositCents;
-
-      return reservationNeedsAttention(
-        reservation,
-        paidArrhesCents,
-        completeDepositCents,
-      );
-    });
-  }
-  litterGroups = (litterGroupsResult.data ?? []) as LitterGroupFilterOption[];
-  litters = (littersResult.data ?? []) as LitterFilterOption[];
-  hasLoadingError =
-    hasLoadingError ||
-    Boolean(result.error) ||
-    Boolean(litterGroupsResult.error) ||
-    Boolean(littersResult.error);
-
-  return (
-    <main className="mx-auto min-h-screen w-full max-w-7xl px-6 py-10 sm:px-10 lg:px-12">
-      <header className="border-b pb-7">
-        <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-              Espace privé · Aperçu
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Parcours adoptants
-            </h1>
-            <p className="mt-3 max-w-2xl leading-7 text-muted">
-              Consultez les dossiers adoptants en cours, du premier engagement au départ.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            <Link
-              href="/reservations/new"
-              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white transition hover:!text-white hover:opacity-90"
-            >
-              Nouvelle réservation
-            </Link>
-            <span className="w-fit rounded-full border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-              Lecture seule
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <section className="py-8">
-        {hasLoadingError || !reservations ? (
-          <ErrorMessage />
-        ) : (
-          <>
-            {isAttentionFilter ? (
-              <div className="mb-5 flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-                <p className="font-medium">Filtre : parcours adoptants à suivre</p>
-                <Link
-                  href="/reservations"
-                  className="font-semibold text-amber-950 underline-offset-4 hover:underline"
-                >
-                  Voir tous les parcours
-                </Link>
-              </div>
-            ) : null}
-
-            <form
-              key={`${selectedFilter ?? "all"}-${selectedLitterGroupId ?? "all"}-${selectedLitterId ?? "all"}`}
-              action="/reservations"
-              className="mb-5 rounded-2xl border bg-surface p-5"
-            >
-              {isAttentionFilter ? (
-                <input type="hidden" name="filter" value="attention" />
-              ) : null}
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
-                <div>
-                  <label
-                    htmlFor="litter-group-filter"
-                    className="text-xs font-semibold uppercase tracking-wide text-muted"
-                  >
-                    Groupe de portées
-                  </label>
-                  <select
-                    id="litter-group-filter"
-                    name="litter_group_id"
-                    defaultValue={selectedLitterGroupId ?? ""}
-                    className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
-                  >
-                    <option value="">Tous les groupes</option>
-                    {litterGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name ?? `Groupe ${group.id.slice(0, 8)}`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="litter-filter"
-                    className="text-xs font-semibold uppercase tracking-wide text-muted"
-                  >
-                    Portée
-                  </label>
-                  <select
-                    id="litter-filter"
-                    name="litter_id"
-                    defaultValue={selectedLitterId ?? ""}
-                    className="mt-2 w-full rounded-xl border bg-background px-4 py-3 text-sm focus:border-accent focus:outline-none"
-                  >
-                    <option value="">Toutes les portées</option>
-                    {litters.map((litter) => (
-                      <option key={litter.id} value={litter.id}>
-                        {[
-                          litter.name ?? `Portée ${litter.id.slice(0, 8)}`,
-                          litter.litter_group_name,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="submit"
-                    className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                  >
-                    Filtrer
-                  </button>
-                  <Link
-                    href="/reservations"
-                    className="rounded-xl border bg-background px-4 py-2.5 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    Réinitialiser
-                  </Link>
-                </div>
-              </div>
-            </form>
-
-            <ReservationList reservations={reservations} />
-          </>
-        )}
-      </section>
-    </main>
-  );
+  return <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-8 sm:px-8 lg:px-10">
+    <header className="border-b pb-6">
+      <p className="text-sm font-semibold uppercase tracking-wide text-accent">Poste de travail</p>
+      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Parcours adoptants</h1>
+      <p className="mt-3 max-w-3xl leading-7 text-muted">Suivez les familles dont le premier versement a été réellement reçu et accepté. Le statut technique seul ne suffit pas.</p>
+      {params.contact_status === "conflict" ? <p role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">Le dossier a changé depuis son ouverture. Les données ont été rechargées : vérifiez-les avant de tracer à nouveau le contact.</p> : null}
+      {params.contact_status === "success" ? <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Contact manuel enregistré et historisé.</p> : null}
+      {params.contact_status === "error" ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">Le contact manuel n’a pas été enregistré. Aucune donnée n’a été modifiée.</p> : null}
+    </header>
+    <section className="py-7">{loadingError || !records ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"><p className="font-semibold">Impossible de charger le poste Parcours adoptants</p><p className="mt-2 text-sm">Réessayez après vérification de la migration. Aucune donnée n’a été modifiée.</p></div> : <AdopterWorkbench records={records} role={role} initial={initial} />}</section>
+  </main>;
 }

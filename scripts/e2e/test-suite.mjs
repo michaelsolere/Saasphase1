@@ -6,6 +6,8 @@ import { repoRoot } from "./shared.mjs";
 // only after confirming it has no dependency on the managed E2E environment.
 export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/adoption-handover-core.spec.ts",
+  "tests/e2e/adopter-workbench-core.spec.ts",
+  "tests/e2e/adopter-workbench-foundation.spec.ts",
   "tests/e2e/candidate-workbench-model.spec.ts",
   "tests/e2e/candidate-positioning-pre-reservation-core.spec.ts",
   "tests/e2e/adopter-financial-resolution-core.spec.ts",

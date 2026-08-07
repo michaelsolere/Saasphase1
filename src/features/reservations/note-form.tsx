@@ -21,8 +21,10 @@ function SubmitButton() {
 
 export function ReservationNoteForm({
   reservationId,
+  returnTo,
 }: {
   reservationId: string;
+  returnTo?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -36,6 +38,7 @@ export function ReservationNoteForm({
       className="mt-6 space-y-4"
     >
       <input type="hidden" name="reservation_id" value={reservationId} />
+      {returnTo ? <input type="hidden" name="return_to" value={returnTo} /> : null}
 
       <div>
         <label htmlFor="reservation-note-body" className="sr-only">
