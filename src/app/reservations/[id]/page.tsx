@@ -90,6 +90,7 @@ import { getContactRoleLabel } from "@/features/contacts/formatters";
 export const dynamic = "force-dynamic";
 
 type ReservationSearchParams = {
+  return_to?: string;
   comment_status?: string;
   deadline_status?: string;
   price_status?: string;
@@ -117,6 +118,18 @@ type ReservationSearchParams = {
   appointment_status?: string;
   pre_reservation_email_status?: string;
 };
+
+function safeWorkbenchReturnPath(value: string | undefined) {
+  if (!value?.startsWith("/reservations?")) return "/reservations";
+  try {
+    const url = new URL(value, "http://localhost");
+    return url.origin === "http://localhost" && url.pathname === "/reservations"
+      ? `${url.pathname}${url.search}`
+      : "/reservations";
+  } catch {
+    return "/reservations";
+  }
+}
 
 type RelatedPayment = {
   id: string;
@@ -1857,6 +1870,7 @@ export default async function ReservationDetailPage({
 }) {
   const { id } = await params;
   const query = await searchParams;
+  const workbenchReturnPath = safeWorkbenchReturnPath(query.return_to);
   const supabase = await createClient();
   const {
     data: { user },
@@ -2989,6 +3003,13 @@ export default async function ReservationDetailPage({
               balanceAmountLabel={complementRequestAmountLabel}
               query={query}
             />
+
+            <Link
+              href={workbenchReturnPath}
+              className="mb-5 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent hover:bg-accent-soft"
+            >
+              ← Retour au poste Parcours adoptants
+            </Link>
 
             <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
               <div>

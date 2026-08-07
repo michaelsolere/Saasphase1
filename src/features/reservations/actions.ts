@@ -52,7 +52,19 @@ function deadlineUrl(
 function noteUrl(
   reservationId: string,
   outcome: "success" | "error",
+  returnTo?: FormDataEntryValue | null,
 ) {
+  if (typeof returnTo === "string" && returnTo.startsWith("/reservations?")) {
+    try {
+      const url = new URL(returnTo, "http://localhost");
+      if (url.origin === "http://localhost" && url.pathname === "/reservations") {
+        url.searchParams.set("note_status", outcome);
+        return `${url.pathname}${url.search}`;
+      }
+    } catch {
+      // Fall back to the complete journey below.
+    }
+  }
   return `/reservations/${reservationId}?note_status=${outcome}#notes`;
 }
 
@@ -411,6 +423,7 @@ export async function updateReservationPreReservationDeadline(
 export async function createReservationNote(formData: FormData) {
   const reservationId = formData.get("reservation_id");
   const body = formData.get("body");
+  const returnTo = formData.get("return_to");
 
   if (
     typeof reservationId !== "string" ||
@@ -420,7 +433,7 @@ export async function createReservationNote(formData: FormData) {
     body.trim().length > 2_000
   ) {
     if (typeof reservationId === "string" && isUuid(reservationId)) {
-      redirect(noteUrl(reservationId, "error"));
+      redirect(noteUrl(reservationId, "error", returnTo));
     }
 
     redirect("/reservations?erreur=note");
@@ -443,7 +456,7 @@ export async function createReservationNote(formData: FormData) {
     .maybeSingle();
 
   if (readError || !reservation || !reservation.organization_id) {
-    redirect(noteUrl(reservationId, "error"));
+    redirect(noteUrl(reservationId, "error", returnTo));
   }
 
   const { error: insertError } = await supabase.from("notes").insert({
@@ -457,12 +470,12 @@ export async function createReservationNote(formData: FormData) {
   });
 
   if (insertError) {
-    redirect(noteUrl(reservationId, "error"));
+    redirect(noteUrl(reservationId, "error", returnTo));
   }
 
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
-  redirect(noteUrl(reservationId, "success"));
+  redirect(noteUrl(reservationId, "success", returnTo));
 }
 
 export async function upsertReservationAppointment(formData: FormData) {
