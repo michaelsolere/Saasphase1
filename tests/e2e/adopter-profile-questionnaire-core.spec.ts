@@ -15,7 +15,9 @@ import {
 import { parseAdopterProfilePublicCommand } from "../../src/features/adopter-profile-questionnaire/public-request";
 import {
   buildAdopterProfileDeliveryIdempotencyKey,
+  chooseAdopterProfileStaleDeliveryAction,
   chooseAdopterProfileDeliveryKind,
+  isAdopterProfileDeliveryLeaseExpired,
 } from "../../src/features/adopter-profile-questionnaire/delivery-model";
 import {
   deriveAdopterProfileState,
@@ -267,6 +269,21 @@ test("planifie une seule invitation puis la relance J+7, sans renvoi automatique
   expect(chooseAdopterProfileDeliveryKind({ automaticInvitationAllowed: true, invitationAttemptId: "attempt", invitationFailedAt: null, invitationSentAt: "2026-08-13T09:59:59Z", reminderAttemptId: null, reminderFailedAt: null, finalSubmittedAt: null, waivedAt: null }, now)).toBe("reminder");
   expect(chooseAdopterProfileDeliveryKind({ automaticInvitationAllowed: true, invitationAttemptId: "attempt", invitationFailedAt: null, invitationSentAt: "2026-08-13T10:00:01Z", reminderAttemptId: null, reminderFailedAt: null, finalSubmittedAt: null, waivedAt: null }, now)).toBeNull();
   expect(chooseAdopterProfileDeliveryKind({ automaticInvitationAllowed: true, invitationAttemptId: "attempt", invitationFailedAt: null, invitationSentAt: "2026-08-01T10:00:00Z", reminderAttemptId: null, reminderFailedAt: null, finalSubmittedAt: "2026-08-02T10:00:00Z", waivedAt: null }, now)).toBeNull();
+});
+
+test("considère le bail d’envoi expiré après cinq minutes sans interrompre une tentative active", () => {
+  const now = new Date("2026-08-08T10:10:00.000Z");
+  expect(isAdopterProfileDeliveryLeaseExpired("2026-08-08T10:04:59.999Z", now)).toBe(true);
+  expect(isAdopterProfileDeliveryLeaseExpired("2026-08-08T10:05:00.001Z", now)).toBe(false);
+  expect(isAdopterProfileDeliveryLeaseExpired(null, now)).toBe(true);
+});
+
+test("ne réémet automatiquement qu’une tentative expirée sans appel fournisseur commencé", () => {
+  const now = new Date("2026-08-08T10:10:00.000Z");
+  expect(chooseAdopterProfileStaleDeliveryAction({ lastAttemptAt: "2026-08-08T10:09:00Z", providerCallStartedAt: null, attemptCount: 1 }, now)).toBe("wait");
+  expect(chooseAdopterProfileStaleDeliveryAction({ lastAttemptAt: "2026-08-08T10:00:00Z", providerCallStartedAt: null, attemptCount: 1 }, now)).toBe("retry");
+  expect(chooseAdopterProfileStaleDeliveryAction({ lastAttemptAt: "2026-08-08T10:00:00Z", providerCallStartedAt: "2026-08-08T10:00:01Z", attemptCount: 1 }, now)).toBe("uncertain");
+  expect(chooseAdopterProfileStaleDeliveryAction({ lastAttemptAt: "2026-08-08T10:00:00Z", providerCallStartedAt: null, attemptCount: 3 }, now)).toBe("exhausted");
 });
 
 test("rend configurables les deux modèles Brevo du jalon Profil", () => {

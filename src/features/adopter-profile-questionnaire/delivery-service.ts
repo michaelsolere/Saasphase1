@@ -14,7 +14,7 @@ import { getBrevoTransactionalTemplate, sendBrevoTransactionalEmail } from "@/li
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import type { Database } from "@/types/database.types";
 import { buildAdopterProfileQuestionnairePath, deriveAdopterProfileQuestionnaireToken, hashAdopterProfileQuestionnaireToken } from "./public-token";
-import { buildAdopterProfileDeliveryIdempotencyKey } from "./delivery-model";
+import { buildAdopterProfileDeliveryIdempotencyKey, chooseAdopterProfileStaleDeliveryAction } from "./delivery-model";
 
 type Kind = "invitation" | "reminder";
 type Client = SupabaseClient;
@@ -170,7 +170,40 @@ export async function dispatchAdopterProfileQuestionnaire(instanceId: string, ki
     return { outcome: "failed" as const, reason: prepared.error.code };
   }
   const attempt = prepared.attempt;
-  const claimed = await claimEmailDeliveryAttemptForSend({ organizationId: instance.organization_id, attemptId: attempt.id, userId: context.actor_profile_id }, client as unknown as TypedClient);
+  const priorProviderStart = (attempt as typeof attempt & { provider_call_started_at?: string | null }).provider_call_started_at ?? null;
+  if (attempt.status === "failed" && priorProviderStart) {
+    await recordFailure(client, instance, kind, "provider_outcome_uncertain", attempt.id);
+    return { outcome: "failed" as const, reason: "provider_outcome_uncertain" };
+  }
+  let claimed = await claimEmailDeliveryAttemptForSend({ organizationId: instance.organization_id, attemptId: attempt.id, userId: context.actor_profile_id }, client as unknown as TypedClient);
+  if (claimed.outcome === "in_progress" && !claimed.attempt) {
+    await recordFailure(client, instance, kind, "sending_attempt_missing", attempt.id);
+    return { outcome: "failed" as const, reason: "sending_attempt_missing" };
+  }
+  if (claimed.outcome === "in_progress" && claimed.attempt) {
+    const staleAction = chooseAdopterProfileStaleDeliveryAction({
+      lastAttemptAt: claimed.attempt.last_attempt_at,
+      providerCallStartedAt: (claimed.attempt as typeof claimed.attempt & { provider_call_started_at?: string | null }).provider_call_started_at ?? null,
+      attemptCount: claimed.attempt.attempt_count,
+    });
+    if (staleAction === "wait") return { outcome: "in_progress" as const };
+    const staleAttempt = await markEmailDeliveryAttemptFailed({
+      organizationId: instance.organization_id,
+      attemptId: attempt.id,
+      lastErrorCode: staleAction === "uncertain" ? "provider_outcome_uncertain" : staleAction === "exhausted" ? "stale_delivery_attempt_limit" : "stale_delivery_attempt_recovered",
+      userId: context.actor_profile_id,
+    }, client as unknown as TypedClient);
+    if (staleAttempt.outcome !== "updated") {
+      await recordFailure(client, instance, kind, "stale_delivery_recovery_failed", attempt.id);
+      return { outcome: "failed" as const, reason: "stale_delivery_recovery_failed" };
+    }
+    if (staleAction === "uncertain" || staleAction === "exhausted") {
+      const reason = staleAction === "uncertain" ? "provider_outcome_uncertain" : "stale_delivery_attempt_limit";
+      await recordFailure(client, instance, kind, reason, attempt.id);
+      return { outcome: "failed" as const, reason };
+    }
+    claimed = await claimEmailDeliveryAttemptForSend({ organizationId: instance.organization_id, attemptId: attempt.id, userId: context.actor_profile_id }, client as unknown as TypedClient);
+  }
   if (claimed.outcome === "already_sent") {
     const finalized = await finalizeDelivery(client, instance.id, attempt.id, kind);
     return finalized
@@ -204,6 +237,19 @@ export async function dispatchAdopterProfileQuestionnaire(instanceId: string, ki
     await markEmailDeliveryAttemptFailed({ organizationId: instance.organization_id, attemptId: attempt.id, lastErrorCode: snapshotted.error.code, userId: context.actor_profile_id }, client as unknown as TypedClient);
     await recordFailure(client, instance, kind, snapshotted.error.code, attempt.id);
     return { outcome: "failed" as const, reason: snapshotted.error.code };
+  }
+  const providerStart = await client
+    .from("email_delivery_attempts")
+    .update({ provider_call_started_at: new Date().toISOString() })
+    .eq("organization_id", instance.organization_id)
+    .eq("id", attempt.id)
+    .eq("status", "sending")
+    .select("id")
+    .maybeSingle();
+  if (providerStart.error || !providerStart.data) {
+    await markEmailDeliveryAttemptFailed({ organizationId: instance.organization_id, attemptId: attempt.id, lastErrorCode: "provider_start_not_recorded", userId: context.actor_profile_id }, client as unknown as TypedClient);
+    await recordFailure(client, instance, kind, "provider_start_not_recorded", attempt.id);
+    return { outcome: "failed" as const, reason: "provider_start_not_recorded" };
   }
   const sent = await sendBrevoTransactionalEmail({
     templateId: context.brevo_template_id,
