@@ -1,3 +1,10 @@
+import {
+  adopterProfileStateLabels,
+  deriveAdopterProfileState,
+  isAdopterProfileMilestoneComplete,
+  type AdopterProfileWorkbenchSummary,
+} from "@/features/adopter-profile-questionnaire/state";
+
 export type AdopterWorkbenchView = "current" | "waiting" | "finalized" | "follow_up";
 export type AdopterQueue = "incomplete" | "flexible" | "female" | "male";
 export type AdopterMilestoneKey =
@@ -59,6 +66,8 @@ export type AdopterWorkbenchRecord = {
   departureAppointmentAt: string | null;
   departureAppointmentStatus: string | null;
   noteCount: number;
+  profile?: AdopterProfileWorkbenchSummary | null;
+  manualContacts?: Array<{ id: string; label: string }>;
   recentEvents: RecentAdopterEvent[];
   updatedAt: string;
 };
@@ -158,8 +167,10 @@ export function deriveAdopterJourney(
   const view = classifyAdopterView(record);
   const openingDone = hasAcceptedJourneyOpeningProof(record);
   const queue = deriveQueue(record);
-  // The profile-review lot has not shipped: absence of a durable proof remains a real gap.
-  const profileDone = false;
+  const profileDone = record.profile
+    ? isAdopterProfileMilestoneComplete(record.profile)
+    : false;
+  const profileState = record.profile ? deriveAdopterProfileState(record.profile, now) : null;
   const positionDone = Boolean(
     record.rank &&
     (record.litterId || record.litterGroupId) &&
@@ -171,7 +182,7 @@ export function deriveAdopterJourney(
   const adoptionDone = Boolean(record.adoptionCompletedAt || record.status === "adopted");
   const facts: Array<[AdopterMilestoneKey, boolean, string]> = [
     ["opening", openingDone, openingDone ? "Versement accepté" : "Preuve de versement manquante"],
-    ["profile", profileDone, "Questionnaire et revue dans le prochain lot"],
+    ["profile", profileDone, profileState ? adopterProfileStateLabels[profileState] : "Questionnaire à préparer"],
     ["positioning", positionDone, positionDone ? "Portée et rang connus" : "Position ou rang à compléter"],
     ["reservation", reservationDone, reservationDone ? "Documents reçus" : "Formalisation à venir"],
     ["choice_assignment", choiceDone, choiceDone ? `${record.animalName ?? "Animal"} attribué` : "Choix ou attribution à venir"],
@@ -191,7 +202,22 @@ export function deriveAdopterJourney(
     actions.push(action("financial", "Résoudre la situation financière", "Décision sensible à traiter dans le parcours complet.", "blocked", "opening", false, `/reservations/${record.id}#financial-resolution`));
   }
   if (!profileDone) {
-    actions.push(action("profile", "Envoyer le questionnaire", "La revue complète sera disponible dans le prochain lot.", "normal", "profile", false));
+    const profileLabel = profileState ? adopterProfileStateLabels[profileState] : "Questionnaire à préparer";
+    const profileActionLabel = profileState === "received_to_read"
+      ? "Lire le questionnaire"
+      : profileState === "send_failed"
+        ? "Renvoyer le questionnaire"
+        : profileState === "awaiting_response" || profileState === "overdue"
+          ? "Suivre le questionnaire"
+          : "Envoyer le questionnaire";
+    actions.push(action(
+      "profile",
+      profileActionLabel,
+      profileLabel,
+      profileState === "send_failed" ? "blocked" : profileState === "overdue" ? "overdue" : profileState === "received_to_read" ? "due" : "normal",
+      "profile",
+      Boolean(record.profile),
+    ));
   }
   if (!positionDone) {
     actions.push(action("position", "Compléter le positionnement", "Renseigner la portée, la file et le rang.", "blocked", "positioning", false));

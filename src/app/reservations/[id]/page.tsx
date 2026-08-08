@@ -83,6 +83,7 @@ import {
 import { ReservationDocumentGenerationSection } from "@/features/reservations/reservation-document-generation-section";
 import { ReservationDocumentVariantsSection } from "@/features/reservations/reservation-document-variants-section";
 import { ReservationPostAdoptionQuestionnaireSection } from "@/features/post-adoption-questionnaire/reservation-section";
+import { AdopterProfileReservationSection } from "@/features/adopter-profile-questionnaire/reservation-section";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
@@ -4761,6 +4762,12 @@ export default async function ReservationDetailPage({
                     />
                   )
                 ) : null}
+
+                <AdopterProfileReservationSection
+                  reservationId={id}
+                  currentSexPreference={reservation.reserved_sex_preference}
+                  role={adoptionActorRole}
+                />
 
                 <ReservationPostAdoptionQuestionnaireSection
                   animalName={animalSummaryLabel}
