@@ -180,3 +180,22 @@ test("searches transversally, filters the view and produces a safe restorable UR
     `/reservations?view=follow_up&q=Martin+%26+fils&step=profile&action=due&queue=female&sort=deadline&selected=${current.record.id}`,
   );
 });
+
+test("the profile milestone waits for a review proof, not only a final response", () => {
+  const submitted = deriveAdopterJourney(record({
+    profile: {
+      instanceId: "profile-1", initialSexPreference: "male_only", instanceCreatedAt: "2026-08-01T10:00:00.000Z", dueAt: "2026-08-15T10:00:00.000Z",
+      invitationSentAt: "2026-08-01T10:01:00.000Z", invitationFailedAt: null, draftUpdatedAt: null,
+      finalAnswers: { household_adults: 2 }, finalSubmittedAt: "2026-08-03T10:00:00.000Z", reviewedAt: null,
+      reviewedBy: null, waivedAt: null, waivedBy: null, waiverReason: null, proposedSexPreference: "female",
+      sexPreferenceDecision: null, invitationDeliveryAttemptId: "attempt-1",
+    },
+  }));
+  expect(submitted.milestones.find((step) => step.key === "profile")?.state).not.toBe("done");
+  expect(submitted.actions.some((action) => action.label === "Lire le questionnaire")).toBe(true);
+
+  const reviewed = deriveAdopterJourney(record({
+    profile: { ...submitted.record.profile!, reviewedAt: "2026-08-04T10:00:00.000Z", reviewedBy: "owner-1", sexPreferenceDecision: "keep" },
+  }));
+  expect(reviewed.milestones.find((step) => step.key === "profile")?.state).toBe("done");
+});

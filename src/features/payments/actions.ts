@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { dispatchAdopterProfileAfterPayment } from "@/features/adopter-profile-questionnaire/delivery-service";
 import { maybePromoteReservationHolderAfterCompleteDeposit } from "@/features/payments/reservation-holder-promotion";
 import { createClient } from "@/lib/supabase/server";
 
@@ -75,6 +76,12 @@ async function markPreReservationPaymentPaidViaRpc({
 
   const result = data?.[0] ?? null;
   const outcome = result?.outcome ?? "error";
+
+  if ((outcome === "paid" || outcome === "already_paid") && result?.reservation_id) {
+    await dispatchAdopterProfileAfterPayment(result.reservation_id).catch((dispatchError) => {
+      console.error("Immediate adopter profile invitation failed", dispatchError);
+    });
+  }
 
   return {
     ok: outcome === "paid" || outcome === "already_paid",
@@ -399,6 +406,9 @@ export async function createReservationPayment(formData: FormData) {
       userId: user.id,
       paymentType,
     });
+    await dispatchAdopterProfileAfterPayment(reservation.id).catch((dispatchError) => {
+      console.error("Immediate adopter profile invitation failed", dispatchError);
+    });
   }
 
   revalidatePath(`/reservations/${reservationId}`);
@@ -554,6 +564,11 @@ export async function markPaymentAsPaid(formData: FormData) {
       userId: user.id,
       paymentType: payment.payment_type,
     });
+    if (isPreReservationPaymentType(payment.payment_type)) {
+      await dispatchAdopterProfileAfterPayment(payment.reservation_id).catch((dispatchError) => {
+        console.error("Immediate adopter profile invitation failed", dispatchError);
+      });
+    }
   }
 
   // 8. Revalidation des chemins

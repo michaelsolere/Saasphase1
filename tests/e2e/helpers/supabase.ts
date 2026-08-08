@@ -105,6 +105,7 @@ export async function createAuthenticatedSupabaseClient() {
 export function runE2eSqlSync(sql: string) {
   assertE2eEnvironment();
   const dbContainer = requiredEnv("SUPABASE_E2E_DB_CONTAINER");
+  const database = e2eDatabase();
 
   return execFileSync(
     "docker",
@@ -120,7 +121,7 @@ export function runE2eSqlSync(sql: string) {
       "-U",
       "postgres",
       "-d",
-      "postgres",
+      database,
       "-c",
       sql,
     ],
@@ -131,6 +132,7 @@ export function runE2eSqlSync(sql: string) {
 export async function runE2eSql(sql: string) {
   assertE2eEnvironment();
   const dbContainer = requiredEnv("SUPABASE_E2E_DB_CONTAINER");
+  const database = e2eDatabase();
 
   const { stdout } = await execFileAsync(
     "docker",
@@ -147,7 +149,7 @@ export async function runE2eSql(sql: string) {
       "-U",
       "postgres",
       "-d",
-      "postgres",
+      database,
       "-c",
       sql,
     ],
@@ -155,6 +157,14 @@ export async function runE2eSql(sql: string) {
   );
 
   return stdout;
+}
+
+function e2eDatabase() {
+  const database = process.env.SUPABASE_E2E_DATABASE ?? "postgres";
+  if (database !== "postgres" && !/^profile_review_test_[a-z0-9_]+$/.test(database)) {
+    throw new Error(`Refusing E2E SQL against database ${database}`);
+  }
+  return database;
 }
 
 export function expectSupabaseData<T>(

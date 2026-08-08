@@ -15,6 +15,16 @@ export const brevoTransactionalTemplateConfigs = [
     category: "adopter_journey",
   },
   {
+    templateKey: "adopter_profile_invitation",
+    title: "Invitation au questionnaire Profil",
+    category: "adopter_journey",
+  },
+  {
+    templateKey: "adopter_profile_reminder",
+    title: "Relance du questionnaire Profil à J+7",
+    category: "adopter_journey",
+  },
+  {
     templateKey: "post_adoption_t1",
     title: "Invitation au suivi post-adoption T1",
     category: "post_adoption",
