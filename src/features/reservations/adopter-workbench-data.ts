@@ -44,7 +44,7 @@ export async function loadAdopterWorkbench(supabase: Client) {
   const ids = overview.map((row) => row.id).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
-  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profiles, profileEvents] =
+  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents] =
     await Promise.all([
       supabase.from("payments").select("id, reservation_id, amount_cents, currency, payment_type, status, paid_at, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("documents").select("id, reservation_id, title, document_type, status, created_at").in("reservation_id", ids).is("deleted_at", null),
@@ -53,11 +53,12 @@ export async function loadAdopterWorkbench(supabase: Client) {
       supabase.from("candidate_journey_events" as "adopter_financial_resolution_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
       supabase.from("adopter_manual_contact_events" as "events").select("id, reservation_id, event_type, title, description, created_at").in("reservation_id", ids),
       supabase.from("email_delivery_attempts").select("id, reservation_id, message_type, status, subject_snapshot, sent_at, created_at").in("reservation_id", ids).is("deleted_at", null),
+      (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown[] | null; error: unknown }> }).rpc("read_adopter_profile_questionnaire_summaries", { p_reservation_ids: ids }),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_instances").select("id, reservation_id, initial_sex_preference, created_at, due_at, draft_updated_at, final_answers, final_submitted_at, reviewed_at, reviewed_by, waived_at, waived_by, waiver_reason, proposed_sex_preference, sex_preference_decision, invitation_delivery_attempt_id, invitation_last_failed_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_events").select("id, reservation_id, event_type, details, occurred_at").in("reservation_id", ids),
     ]);
 
-  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profiles, profileEvents].find((result) => result.error);
+  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents].find((result) => result.error);
   if (failed?.error) throw failed.error;
 
   const recentByReservation = new Map<string, RecentAdopterEvent[]>();
@@ -97,6 +98,30 @@ export async function loadAdopterWorkbench(supabase: Client) {
     ]);
   }
   const profileByReservation = new Map<string, AdopterWorkbenchRecord["profile"]>();
+  for (const raw of profileSummaries.data ?? []) {
+    const row = raw as Record<string, unknown>;
+    const attemptId = typeof row.invitation_delivery_attempt_id === "string" ? row.invitation_delivery_attempt_id : null;
+    const attempt = attemptId ? emailById.get(attemptId) : null;
+    profileByReservation.set(String(row.reservation_id), {
+      instanceId: String(row.instance_id),
+      initialSexPreference: null,
+      instanceCreatedAt: String(row.created_at),
+      dueAt: String(row.due_at),
+      invitationSentAt: attempt?.sent_at ?? null,
+      invitationFailedAt: typeof row.invitation_last_failed_at === "string" ? row.invitation_last_failed_at : null,
+      draftUpdatedAt: typeof row.draft_updated_at === "string" ? row.draft_updated_at : null,
+      finalAnswers: null,
+      finalSubmittedAt: typeof row.final_submitted_at === "string" ? row.final_submitted_at : null,
+      reviewedAt: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
+      reviewedBy: null,
+      waivedAt: typeof row.waived_at === "string" ? row.waived_at : null,
+      waivedBy: null,
+      waiverReason: null,
+      proposedSexPreference: null,
+      sexPreferenceDecision: null,
+      invitationDeliveryAttemptId: attemptId,
+    });
+  }
   for (const raw of profiles.data ?? []) {
     const row = raw as Record<string, unknown>;
     const attempt = typeof row.invitation_delivery_attempt_id === "string" ? emailById.get(row.invitation_delivery_attempt_id) : null;

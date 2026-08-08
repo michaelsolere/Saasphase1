@@ -1,10 +1,16 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { expect, test } from "@playwright/test";
 
 const migration = readFileSync(
   resolve(process.cwd(), "supabase/migrations/202608130001_adopter_profile_questionnaire.sql"),
+  "utf8",
+);
+const privacyMigrationPath = resolve(process.cwd(), "supabase/migrations/202608140001_adopter_profile_privacy_and_delivery_recovery.sql");
+const privacyMigration = existsSync(privacyMigrationPath) ? readFileSync(privacyMigrationPath, "utf8") : "";
+const deliveryService = readFileSync(
+  resolve(process.cwd(), "src/features/adopter-profile-questionnaire/delivery-service.ts"),
   "utf8",
 );
 
@@ -69,4 +75,23 @@ test("la finalisation d’un email lie atomiquement la tentative et sa preuve m�
   expect(migration).toContain("create or replace function public.record_adopter_profile_questionnaire_delivery_failure");
   expect(migration).toContain("create or replace function public.list_due_adopter_profile_questionnaire_deliveries");
   expect(migration).toContain("create or replace function public.revoke_adopter_profile_questionnaire_access");
+});
+
+test("les rôles de consultation ne reçoivent qu’une projection sans réponses familiales", () => {
+  expect(privacyMigration).toContain("drop policy if exists adopter_profile_instances_read");
+  expect(privacyMigration).toContain("array['owner', 'admin']");
+  expect(privacyMigration).toContain("read_adopter_profile_questionnaire_summaries");
+  expect(privacyMigration).not.toContain("final_answers");
+  expect(privacyMigration).not.toContain("draft_answers");
+  expect(privacyMigration).toContain("grant execute on function public.read_adopter_profile_questionnaire_summaries(uuid[]) to authenticated");
+  expect(privacyMigration).toContain("provider_call_started_at timestamptz");
+});
+
+test("l’appel Brevo commence seulement après la preuve durable et suspend les issues incertaines", () => {
+  const providerStart = deliveryService.indexOf("update({ provider_call_started_at:");
+  const providerSend = deliveryService.indexOf("const sent = await sendBrevoTransactionalEmail");
+  expect(providerStart).toBeGreaterThan(0);
+  expect(providerSend).toBeGreaterThan(providerStart);
+  expect(deliveryService).toContain("provider_outcome_uncertain");
+  expect(deliveryService).toContain("chooseAdopterProfileStaleDeliveryAction");
 });

@@ -13,6 +13,25 @@ export async function AdopterProfileReservationSection({
 }) {
   const supabase = await createClient();
   const client = supabase as unknown as import("@supabase/supabase-js").SupabaseClient;
+  const canAdmin = role === "owner" || role === "admin";
+  if (!canAdmin) {
+    const summaryResult = await (client as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown[] | null; error: unknown }> }).rpc(
+      "read_adopter_profile_questionnaire_summaries",
+      { p_reservation_ids: [reservationId] },
+    );
+    const summary = (summaryResult.data?.[0] ?? null) as Record<string, unknown> | null;
+    if (summaryResult.error || !summary) return null;
+    const state = summary.waived_at
+      ? "Traité par dérogation"
+      : summary.reviewed_at
+        ? "Relu"
+        : summary.final_submitted_at
+          ? "Réponse reçue"
+          : summary.draft_updated_at
+            ? "Brouillon commencé"
+            : "En attente de réponse";
+    return <section id="adopter-profile" className="rounded-2xl border bg-stone-50 p-5 sm:p-7"><h2 className="text-lg font-semibold">Profil adoptant</h2><p className="mt-2 text-sm font-medium">{state}</p><p className="mt-1 text-sm text-muted">Échéance : {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(String(summary.due_at)))}</p><p className="mt-3 text-xs text-muted">Les réponses détaillées sont réservées aux rôles owner et admin.</p></section>;
+  }
   const [instanceResult, contactsResult] = await Promise.all([
     client.from("adopter_profile_questionnaire_instances").select("*").eq("reservation_id", reservationId).maybeSingle(),
     client.from("adopter_manual_contact_events").select("id, title, event_type, created_at").eq("reservation_id", reservationId).order("created_at", { ascending: false }).limit(20),
@@ -39,6 +58,5 @@ export async function AdopterProfileReservationSection({
     sexPreferenceDecision: row.sex_preference_decision === "keep" || row.sex_preference_decision === "update" ? row.sex_preference_decision : null,
     invitationDeliveryAttemptId: typeof row.invitation_delivery_attempt_id === "string" ? row.invitation_delivery_attempt_id : null,
   };
-  const canAdmin = role === "owner" || role === "admin";
   return <section id="adopter-profile" className="rounded-2xl border bg-stone-50 p-5 sm:p-7"><AdopterProfileReviewView profile={profile} currentSexPreference={currentSexPreference} canAdmin={canAdmin} canWrite={canAdmin || role === "member"} returnTo={`/reservations/${reservationId}`} manualContacts={(contactsResult.data ?? []).map((contact) => ({ id: String(contact.id), label: `${String(contact.title)} · ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "short" }).format(new Date(String(contact.created_at)))}` }))} /></section>;
 }
