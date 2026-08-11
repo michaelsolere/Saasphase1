@@ -102,6 +102,34 @@ export async function upsertPostBirthProposal(formData: FormData) {
   refresh(formData);
 }
 
+export async function overridePostBirthActiveOrder(formData: FormData) {
+  await rpc("override_post_birth_active_order", {
+    p_line_id: stringField(formData, "line_id"),
+    p_target_order: integerField(formData, "target_order"),
+    p_reason: stringField(formData, "reason"),
+    p_expected_wave_version: integerField(formData, "expected_wave_version"),
+    p_client_command_id: commandId(formData),
+  });
+  revalidatePath("/reservations");
+  const groupId = stringField(formData, "litter_group_id");
+  if (groupId) revalidatePath(`/litter-groups/${groupId}/positioning`);
+}
+
+export async function movePostBirthProposal(formData: FormData) {
+  await rpc("move_post_birth_proposal", {
+    p_line_id: stringField(formData, "line_id"),
+    p_destination_litter_id: stringField(formData, "destination_litter_id"),
+    p_destination_sex: stringField(formData, "destination_sex"),
+    p_reason: stringField(formData, "reason") || null,
+    p_manual_contact_id: stringField(formData, "manual_contact_id") || null,
+    p_expected_wave_version: integerField(formData, "expected_wave_version"),
+    p_client_command_id: commandId(formData),
+  });
+  revalidatePath("/reservations");
+  const groupId = stringField(formData, "litter_group_id");
+  if (groupId) revalidatePath(`/litter-groups/${groupId}/positioning`);
+}
+
 export async function confirmPostBirthPlaces(formData: FormData) {
   await rpc("confirm_post_birth_places", {
     p_wave_id: stringField(formData, "wave_id"),
