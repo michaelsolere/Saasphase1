@@ -21,6 +21,7 @@ export const fixtureTables = [
   "adopter_profile_questionnaire_reconciliation_attempts",
   "email_delivery_attempts",
   "candidate_journey_events",
+  "adopter_manual_contacts",
   "pre_reservation_proposals",
   "adopter_financial_resolution_events",
   "adoption_handover_events",
@@ -116,6 +117,7 @@ const cleanupOrder: FixtureTable[] = [
   "adopter_profile_questionnaire_reconciliation_attempts",
   "email_delivery_attempts",
   "candidate_journey_events",
+  "adopter_manual_contacts",
   "pre_reservation_proposals",
   "adopter_financial_resolution_events",
   "adoption_handover_events",
@@ -307,6 +309,7 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "adopter_profile_questionnaire_events"
       || table === "adopter_profile_questionnaire_commands"
       || table === "candidate_journey_events"
+      || table === "adopter_manual_contacts"
       || table === "adopter_financial_resolution_events"
       || table === "adoption_handover_events"
       || table === "post_adoption_questionnaire_public_sessions"

@@ -34,6 +34,30 @@ export type RecentAdopterEvent = {
   occurredAt: string;
 };
 
+export type AdopterPositioningProposalOption = {
+  litterId: string;
+  litterName: string;
+  sex: "male" | "female";
+};
+
+export type AdopterPositioning = {
+  lineId: string;
+  waveId: string;
+  waveVersion: number;
+  litterId: string;
+  litterName: string;
+  sex: "male" | "female";
+  historicalRank: number;
+  activeOrder: number;
+  fileSize: number;
+  fileCapacity: number;
+  hasOrderOverride: boolean;
+  preferenceExceptionActive: boolean;
+  capacityOverflow: boolean;
+  operationalState: "Prête" | "À vérifier" | "Hors capacité" | "Bloquée" | "Reportée" | "Retirée";
+  options: AdopterPositioningProposalOption[];
+};
+
 export type AdopterWorkbenchRecord = {
   id: string;
   contactId: string | null;
@@ -51,6 +75,7 @@ export type AdopterWorkbenchRecord = {
   sexPreference: string | null;
   preferenceFlexible: boolean;
   rank: number | null;
+  positioning?: AdopterPositioning | null;
   postBirthPositionStatus?: string | null;
   animalId: string | null;
   animalName: string | null;
@@ -140,6 +165,7 @@ export function classifyAdopterView(record: AdopterWorkbenchRecord) {
 }
 
 function deriveQueue(record: AdopterWorkbenchRecord): AdopterQueue {
+  if (record.positioning) return record.positioning.sex;
   if (!record.rank || (!record.litterId && !record.litterGroupId) || !record.sexPreference) {
     return "incomplete";
   }
@@ -245,8 +271,8 @@ export function deriveAdopterJourney(
     actions.push(action("up-to-date", "À jour", "Aucune action ouverte.", "none", "adoption"));
   }
   actions.sort((left, right) => priority[left.state] - priority[right.state]);
-  const scopeKey = record.litterId ?? record.litterGroupId ?? "unassigned";
-  const scopeLabel = record.litterName ?? record.litterGroupName ?? "Portée ou groupe à compléter";
+  const scopeKey = record.positioning?.litterId ?? record.litterId ?? record.litterGroupId ?? "unassigned";
+  const scopeLabel = record.positioning?.litterName ?? record.litterName ?? record.litterGroupName ?? "Portée ou groupe à compléter";
   return {
     record,
     primaryView: view.primary,
@@ -286,7 +312,7 @@ export function groupAdopterJourneys(journeys: AdopterJourney[]) {
           label: queueLabels[queue],
           items: items
             .filter((item) => item.queue === queue)
-            .sort((a, b) => (a.record.rank ?? Number.MAX_SAFE_INTEGER) - (b.record.rank ?? Number.MAX_SAFE_INTEGER)),
+            .sort((a, b) => (a.record.positioning?.activeOrder ?? a.record.rank ?? Number.MAX_SAFE_INTEGER) - (b.record.positioning?.activeOrder ?? b.record.rank ?? Number.MAX_SAFE_INTEGER)),
         }))
         .filter((section) => section.items.length > 0),
     }))

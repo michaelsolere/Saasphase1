@@ -7,6 +7,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { AdopterProfileReviewView } from "@/features/adopter-profile-questionnaire/review-view";
 import { recordAdopterManualContact } from "@/features/reservations/adopter-workbench-actions";
 import {
+  movePostBirthProposal,
+  overridePostBirthActiveOrder,
+} from "@/features/reservations/post-birth-positioning-actions";
+import { isPostBirthPreferenceCompatible } from "@/features/reservations/post-birth-positioning-model";
+import {
   buildAdopterWorkbenchPath,
   deriveAdopterJourney,
   filterAndSortAdopterJourneys,
@@ -45,6 +50,15 @@ const shortStepLabels: Record<AdopterMilestoneKey, string> = {
 const queueLabels: Record<AdopterQueue, string> = {
   incomplete: "À compléter", flexible: "Préférence souple", female: "Femelles", male: "Mâles",
 };
+const preferenceLabels: Record<string, string> = {
+  male_only: "Mâle",
+  female_only: "Femelle",
+  male_preferred_female_possible: "Mâle → femelle possible",
+  female_preferred_male_possible: "Femelle → mâle possible",
+  no_preference: "Indifférent",
+  male: "Mâle",
+  female: "Femelle",
+};
 
 function actionTone(state: AdopterActionState) {
   if (state === "blocked") return "border-rose-200 bg-rose-50 text-rose-900";
@@ -81,12 +95,29 @@ export function AdopterWorkbench({ records, role, initial }: { records: AdopterW
   const journeys = useMemo(() => records.map((record) => deriveAdopterJourney(record)), [records]);
   const visible = useMemo(() => filterAndSortAdopterJourneys(journeys, { view, search, step, actionState, queue, sort }), [journeys, view, search, step, actionState, queue, sort]);
   const grouped = useMemo(() => groupAdopterJourneys(visible), [visible]);
+  const capacityFiles = useMemo(() => {
+    const files = new Map<string, { key: string; litterName: string; sex: "male" | "female"; count: number; capacity: number; overflow: boolean }>();
+    for (const journey of visible) {
+      const position = journey.record.positioning;
+      if (!position) continue;
+      const key = `${position.litterId}:${position.sex}`;
+      files.set(key, {
+        key,
+        litterName: position.litterName,
+        sex: position.sex,
+        count: position.fileSize,
+        capacity: position.fileCapacity,
+        overflow: position.fileSize > position.fileCapacity,
+      });
+    }
+    return [...files.values()];
+  }, [visible]);
   const selectedIndex = visible.findIndex((journey) => journey.record.id === selectedId);
   const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
   const returnPath = buildAdopterWorkbenchPath({ view, search, step, actionState, queue, sort, selectedId: selected?.record.id ?? null });
 
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 1023px)");
+    const media = window.matchMedia("(max-width: 1535px)");
     const update = () => setIsMobile(media.matches);
     update(); media.addEventListener("change", update);
     return () => media.removeEventListener("change", update);
@@ -114,15 +145,16 @@ export function AdopterWorkbench({ records, role, initial }: { records: AdopterW
       <details className="mt-3 text-sm"><summary className="cursor-pointer font-semibold text-accent">Filtres avancés</summary><p className="mt-2 text-xs text-muted">Type d’action, rendez-vous, dérogation et motif de finalisation seront affinés lorsque leurs lots spécialisés fourniront les preuves structurées.</p></details>
     </div>
 
-    <div className="grid min-h-[620px] gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(520px,550px)]">
+    <div className="grid min-h-[620px] gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(520px,550px)]">
       <div className="space-y-5">
         <p className="text-sm font-medium text-muted">{visible.length} parcours affiché{visible.length > 1 ? "s" : ""}</p>
-        {grouped.length === 0 ? <div className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center"><p className="font-semibold">Aucun parcours dans cette vue</p><p className="mt-2 text-sm text-muted">Le statut technique seul n’ouvre jamais un parcours : un versement accepté est requis.</p></div> : grouped.map((group) => <section key={group.key} className="overflow-hidden rounded-2xl border bg-surface"><header className="flex items-center justify-between border-b bg-background px-4 py-3"><h2 className="font-semibold">{group.label}</h2><span className="text-xs text-muted">Actions collectives indisponibles dans ce lot</span></header>{group.sections.map((section) => <div key={section.key}><h3 className="border-b bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-muted">{section.label}</h3><div className="hidden md:block"><table className="w-full table-fixed text-left text-sm"><thead className="sr-only"><tr><th>Famille</th><th>Progression</th><th>À faire</th><th>Prochain repère</th></tr></thead><tbody className="divide-y">{section.items.map((journey) => <JourneyRow key={journey.record.id} journey={journey} selected={selected?.record.id === journey.record.id} onSelect={(button) => { triggerRef.current = button; setSelectedId(journey.record.id); }} />)}</tbody></table></div><div className="divide-y md:hidden">{section.items.map((journey) => <JourneyCard key={journey.record.id} journey={journey} onSelect={(button) => { triggerRef.current = button; setSelectedId(journey.record.id); }} />)}</div></div>)}</section>)}
+        {capacityFiles.length > 0 ? <section aria-label="Capacités publiées" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{capacityFiles.map((file) => <article key={file.key} className={`rounded-xl border p-3 ${file.overflow ? "border-rose-300 bg-rose-50" : file.sex === "female" ? "border-rose-200 bg-white" : "border-sky-200 bg-white"}`}><p className="text-xs font-semibold uppercase tracking-wide text-muted">{file.litterName} · {file.sex === "female" ? "Femelles" : "Mâles"}</p><p className={`mt-1 text-lg font-bold ${file.sex === "female" ? "text-rose-800" : "text-sky-800"}`}>{file.count}/{file.capacity}</p><p className={`text-xs font-semibold ${file.overflow ? "text-rose-800" : "text-muted"}`}>{file.overflow ? `Dépassement de ${file.count - file.capacity}` : file.count === file.capacity ? "Capacité atteinte" : "Capacité disponible"}</p></article>)}</section> : null}
+        {grouped.length === 0 ? <div className="rounded-2xl border border-dashed bg-surface px-6 py-16 text-center"><p className="font-semibold">Aucun parcours dans cette vue</p><p className="mt-2 text-sm text-muted">Le statut technique seul n’ouvre jamais un parcours : un versement accepté est requis.</p></div> : grouped.map((group) => <section key={group.key} className="overflow-hidden rounded-2xl border bg-surface"><header className="flex items-center justify-between border-b bg-background px-4 py-3"><h2 className="font-semibold">{group.label}</h2><span className="text-xs text-muted">Positionnement post-naissance</span></header>{group.sections.map((section) => <div key={section.key}><h3 className={`border-b px-4 py-2 text-xs font-semibold uppercase tracking-wide ${section.key === "female" ? "bg-rose-50 text-rose-800" : section.key === "male" ? "bg-sky-50 text-sky-800" : "bg-surface text-muted"}`}>File {section.label.toLocaleLowerCase("fr")}</h3><div className="hidden md:block"><table className="w-full table-fixed text-left text-sm"><thead className="border-b bg-background text-xs uppercase tracking-wide text-muted"><tr><th className="w-[20%] px-4 py-2">Famille</th><th className="w-[18%] px-3 py-2">Priorité</th><th className="w-[20%] px-3 py-2">Préférence déclarée</th><th className="w-[30%] px-3 py-2">Proposition</th><th className="w-[12%] px-3 py-2">État</th></tr></thead><tbody className="divide-y">{section.items.map((journey) => <JourneyRow key={journey.record.id} journey={journey} selected={selected?.record.id === journey.record.id} canMutate={role === "owner" || role === "admin"} onSelect={(button) => { triggerRef.current = button; setSelectedId(journey.record.id); }} />)}</tbody></table></div><div className="divide-y md:hidden">{section.items.map((journey) => <JourneyCard key={journey.record.id} journey={journey} onSelect={(button) => { triggerRef.current = button; setSelectedId(journey.record.id); }} />)}</div></div>)}</section>)}
       </div>
-      <aside aria-label="Parcours adoptant sélectionné" className="hidden h-fit rounded-2xl border bg-surface p-5 shadow-sm lg:sticky lg:top-5 lg:block">{panel}</aside>
+      <aside aria-label="Parcours adoptant sélectionné" className="hidden h-fit rounded-2xl border bg-surface p-5 shadow-sm 2xl:sticky 2xl:top-5 2xl:block">{panel}</aside>
     </div>
 
-    <Dialog open={isMobile && Boolean(selected)} onOpenChange={(open) => { if (!open) setSelectedId(null); }}>{selected ? <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); triggerRef.current?.focus(); }} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 bg-surface p-5 [&>button:last-child]:hidden"><DialogTitle className="sr-only">Parcours adoptant de {selected.record.familyName}</DialogTitle><DialogDescription className="sr-only">Dossier de travail mobile</DialogDescription>{panel}</DialogContent> : null}</Dialog>
+    <Dialog open={isMobile && Boolean(selected)} onOpenChange={(open) => { if (!open) setSelectedId(null); }}>{selected ? <DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); triggerRef.current?.focus(); }} className="left-0 top-0 block h-[100dvh] max-h-none w-screen max-w-none translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 bg-surface p-5 sm:left-1/2 sm:top-1/2 sm:h-[92dvh] sm:w-[min(92vw,680px)] sm:max-w-[680px] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-6 [&>button:last-child]:hidden"><DialogTitle className="sr-only">Parcours adoptant de {selected.record.familyName}</DialogTitle><DialogDescription className="sr-only">Dossier de travail mobile</DialogDescription>{panel}</DialogContent> : null}</Dialog>
     <Dialog open={(role === "owner" || role === "admin") && profileOpen && Boolean(selected?.record.profile)} onOpenChange={setProfileOpen}>{selected?.record.profile ? <DialogContent className="h-[94dvh] w-[96vw] max-w-[1500px] overflow-y-auto bg-stone-50 p-6 sm:p-8"><DialogTitle className="sr-only">Questionnaire Profil de {selected.record.familyName}</DialogTitle><DialogDescription className="sr-only">Lecture large du questionnaire familial</DialogDescription><AdopterProfileReviewView profile={selected.record.profile} currentSexPreference={selected.record.sexPreference} canAdmin={role === "owner" || role === "admin"} canWrite={role !== "viewer"} returnTo={returnPath} manualContacts={selected.record.manualContacts ?? []} onClose={() => setProfileOpen(false)} /></DialogContent> : null}</Dialog>
   </div>;
 }
@@ -131,9 +163,34 @@ function Filter({ label, value, onChange, options }: { label: string; value: str
   return <label className="text-xs font-semibold uppercase tracking-wide text-muted">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:border-accent">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
 }
 
-function JourneyRow({ journey, selected, onSelect }: { journey: AdopterJourney; selected: boolean; onSelect: (trigger: HTMLElement) => void }) {
+function JourneyRow({ journey, selected, canMutate, onSelect }: { journey: AdopterJourney; selected: boolean; canMutate: boolean; onSelect: (trigger: HTMLElement) => void }) {
+  const positioning = journey.record.positioning;
+  const [pendingOrder, setPendingOrder] = useState<number | null>(null);
+  const [pendingProposal, setPendingProposal] = useState<{ litterId: string; sex: "male" | "female" } | null>(null);
+  const proposalFormRef = useRef<HTMLFormElement | null>(null);
   const select = (trigger: HTMLElement) => onSelect(trigger);
-  return <tr tabIndex={0} aria-selected={selected} onClick={(event) => select(event.currentTarget)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(event.currentTarget); } }} className={`cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${selected ? "bg-accent-soft" : "hover:bg-background"}`}><td className="w-[25%] px-4 py-3 align-top"><span className="text-left font-semibold text-accent">{journey.record.familyName}</span><p className="mt-1 text-xs text-muted">{journey.record.rank ? `Rang #${journey.record.rank}` : "Rang à compléter"}</p></td><td className="w-[23%] px-3 py-3 align-top"><p className="font-medium">{journey.currentMilestone.label}</p><p className="mt-1 text-xs text-muted">{journey.milestones.filter((step) => step.state === "done").length}/7 jalons</p></td><td className="w-[30%] px-3 py-3 align-top"><span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${actionTone(journey.primaryAction.state)}`}>{journey.primaryAction.label}</span>{journey.otherActionCount > 0 ? <span className="ml-2 text-xs font-semibold text-muted">+{journey.otherActionCount} autres</span> : null}</td><td className="w-[22%] px-3 py-3 align-top text-xs text-muted">{journey.primaryAction.detail}</td></tr>;
+  const stop = (event: React.SyntheticEvent) => event.stopPropagation();
+  const preference = journey.record.sexPreference ?? "";
+  const preferenceTone = preference.startsWith("female") ? "border-rose-200 bg-rose-50 text-rose-900" : preference.startsWith("male") ? "border-sky-200 bg-sky-50 text-sky-900" : "border-violet-200 bg-gradient-to-r from-rose-50 to-sky-50 text-violet-900";
+  const stateTone = positioning?.operationalState === "Prête" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : positioning?.operationalState === "Hors capacité" || positioning?.operationalState === "Bloquée" ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-amber-50 text-amber-900";
+  const applyCompatibleProposal = (litterId: string, sex: "male" | "female") => {
+    const form = proposalFormRef.current;
+    if (!form) return;
+    (form.elements.namedItem("destination_litter_id") as HTMLInputElement).value = litterId;
+    (form.elements.namedItem("destination_sex") as HTMLInputElement).value = sex;
+    form.requestSubmit();
+  };
+  return <>
+    <tr data-testid={`positioning-row-${journey.record.id}`} tabIndex={0} aria-selected={selected} onClick={(event) => select(event.currentTarget)} onKeyDown={(event) => { if ((event.key === "Enter" || event.key === " ") && event.target === event.currentTarget) { event.preventDefault(); select(event.currentTarget); } }} className={`cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${selected ? "bg-accent-soft" : "hover:bg-background"}`}>
+      <td className="px-4 py-3 align-top"><span className="font-semibold text-accent">{journey.record.familyName}</span><p className="mt-1 text-xs text-muted">Versement accepté</p></td>
+      <td className="px-3 py-3 align-top"><p className="text-xs text-muted">Historique <strong className="text-sm text-foreground">#{positioning?.historicalRank ?? journey.record.rank ?? "—"}</strong></p>{positioning ? <label className="mt-1 block text-xs text-muted">Ordre actif<select aria-label={`Ordre actif de ${journey.record.familyName}`} disabled={!canMutate} value={pendingOrder ?? positioning.activeOrder} onClick={stop} onChange={(event) => { event.stopPropagation(); const value = Number(event.target.value); if (value !== positioning.activeOrder) setPendingOrder(value); }} className="mt-1 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-950">{Array.from({ length: positioning.fileSize }, (_, index) => <option key={index + 1} value={index + 1}>{index + 1}/{positioning.fileSize}</option>)}</select></label> : <p className="mt-1 text-xs text-muted">Sans ordre actif</p>}{positioning?.hasOrderOverride ? <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Dérogation</span> : null}</td>
+      <td className="px-3 py-3 align-top"><span className={`inline-flex max-w-full rounded-full border px-2 py-1 text-xs font-semibold ${preferenceTone}`}>{preferenceLabels[preference] ?? "À préciser"}</span></td>
+      <td className="px-3 py-3 align-top">{positioning ? <form ref={proposalFormRef} action={movePostBirthProposal} onClick={stop} onSubmit={() => setPendingProposal(null)}><input type="hidden" name="line_id" value={positioning.lineId} /><input type="hidden" name="destination_litter_id" defaultValue={positioning.litterId} /><input type="hidden" name="destination_sex" defaultValue={positioning.sex} /><input type="hidden" name="expected_wave_version" value={positioning.waveVersion} /><input type="hidden" name="client_command_id" value={crypto.randomUUID()} /><select aria-label={`Proposition de ${journey.record.familyName}`} disabled={!canMutate} value={`${positioning.litterId}:${positioning.sex}`} onChange={(event) => { event.stopPropagation(); const [litterId, sex] = event.target.value.split(":") as [string, "male" | "female"]; if (isPostBirthPreferenceCompatible(preference, sex)) applyCompatibleProposal(litterId, sex); else setPendingProposal({ litterId, sex }); }} className={`w-full rounded-lg border px-2 py-2 text-xs font-semibold ${positioning.sex === "female" ? "border-rose-300 bg-rose-50 text-rose-900" : "border-sky-300 bg-sky-50 text-sky-900"}`}>{positioning.options.map((option) => <option key={`${option.litterId}:${option.sex}`} value={`${option.litterId}:${option.sex}`}>{option.litterName} · {option.sex === "female" ? "Femelle" : "Mâle"}</option>)}</select>{positioning.capacityOverflow ? <span className="mt-1 inline-flex rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-semibold text-rose-900">Dépassement provisoire</span> : null}{positioning.preferenceExceptionActive ? <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900">Préférence incompatible</span> : null}</form> : <span className="text-xs text-muted">Ouvrir une vague pour proposer une place</span>}</td>
+      <td className="px-3 py-3 align-top">{positioning ? <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${stateTone}`}>{positioning.operationalState}</span> : <span className="text-xs text-muted">À positionner</span>}</td>
+    </tr>
+    {positioning && pendingOrder !== null ? <tr data-testid="active-order-editor"><td colSpan={5} className="bg-amber-50/60 px-4 py-3"><form action={overridePostBirthActiveOrder} onSubmit={() => setPendingOrder(null)} className="grid items-end gap-3 rounded-xl border border-amber-300 bg-white p-3 lg:grid-cols-[1fr_2fr_auto]"><input type="hidden" name="line_id" value={positioning.lineId} /><input type="hidden" name="target_order" value={pendingOrder} /><input type="hidden" name="expected_wave_version" value={positioning.waveVersion} /><input type="hidden" name="client_command_id" value={crypto.randomUUID()} /><div><p className="font-semibold">Dérogation : {positioning.activeOrder}/{positioning.fileSize} → {pendingOrder}/{positioning.fileSize}</p><p className="text-xs text-muted">Le rang historique #{positioning.historicalRank} reste inchangé.</p></div><label className="text-xs font-semibold text-amber-900">Motif obligatoire<input autoFocus name="reason" required minLength={5} onKeyDown={(event) => { if (event.key === "Escape") setPendingOrder(null); }} className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm font-normal" /></label><div className="flex gap-2"><button type="button" onClick={() => setPendingOrder(null)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Annuler</button><button className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">Appliquer</button></div></form></td></tr> : null}
+    {positioning && pendingProposal ? <tr data-testid="preference-exception-editor"><td colSpan={5} className="bg-amber-50/60 px-4 py-3"><form action={movePostBirthProposal} onSubmit={() => setPendingProposal(null)} className="grid items-end gap-3 rounded-xl border border-amber-300 bg-white p-3 md:grid-cols-2 2xl:grid-cols-[1fr_1.5fr_1.2fr_auto]"><input type="hidden" name="line_id" value={positioning.lineId} /><input type="hidden" name="destination_litter_id" value={pendingProposal.litterId} /><input type="hidden" name="destination_sex" value={pendingProposal.sex} /><input type="hidden" name="expected_wave_version" value={positioning.waveVersion} /><input type="hidden" name="client_command_id" value={crypto.randomUUID()} /><div><p className="font-semibold">Préférence incompatible</p><p className="text-xs text-muted">La proposition actuelle reste inchangée jusqu’à validation.</p></div><label className="text-xs font-semibold text-amber-900">Motif obligatoire<input autoFocus name="reason" required minLength={5} onKeyDown={(event) => { if (event.key === "Escape") setPendingProposal(null); }} className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm font-normal" /></label><label className="text-xs font-semibold text-amber-900">Trace du contact familial<select name="manual_contact_id" required className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm font-normal"><option value="">Sélectionner</option>{journey.record.manualContacts?.map((contact) => <option key={contact.id} value={contact.id}>{contact.label}</option>)}</select></label><div className="flex gap-2"><button type="button" onClick={() => setPendingProposal(null)} className="rounded-lg border px-3 py-2 text-xs font-semibold">Annuler</button><button className="rounded-lg bg-accent px-3 py-2 text-xs font-semibold text-white">Appliquer</button></div></form></td></tr> : null}
+  </>;
 }
 
 function JourneyCard({ journey, onSelect }: { journey: AdopterJourney; onSelect: (button: HTMLElement) => void }) {

@@ -63,6 +63,17 @@ export async function loadAdopterWorkbench(supabase: Client) {
   const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents].find((result) => result.error);
   if (failed?.error) throw failed.error;
 
+  const loose = supabase as unknown as SupabaseClient;
+  const [positioningLines, positioningWaves, capacities, litters, positioningEvents] = await Promise.all([
+    loose.from("post_birth_positioning_lines").select("id, wave_id, reservation_id, proposed_sex, proposed_outcome, blocker_code, rank_snapshot, active_order, has_order_override, preference_exception_active, stale_reason, updated_at").in("reservation_id", ids),
+    loose.from("post_birth_positioning_waves").select("id, draft_id, litter_id, wave_kind, status, version"),
+    loose.from("post_birth_capacity_states").select("litter_id, male_total, female_total, male_preserved, female_preserved, male_uncertain, female_uncertain"),
+    loose.from("litters").select("id, name").is("deleted_at", null),
+    loose.from("post_birth_positioning_events").select("id, reservation_id, event_type, reason, details, occurred_at").in("reservation_id", ids),
+  ]);
+  const positioningFailure = [positioningLines, positioningWaves, capacities, litters, positioningEvents].find((result) => result.error);
+  if (positioningFailure?.error) throw positioningFailure.error;
+
   const recentByReservation = new Map<string, RecentAdopterEvent[]>();
   const add = (reservationId: string | null, item: RecentAdopterEvent | null) => {
     if (!reservationId || !item) return;
@@ -98,6 +109,66 @@ export async function loadAdopterWorkbench(supabase: Client) {
   for (const raw of directSaleEvents.data ?? []) {
     const row = raw as { id: string; reservation_id: string; event_type: string; reason: string | null; occurred_at: string };
     add(row.reservation_id, event(row.id, "decision", row.event_type.replaceAll("_", " "), row.reason, row.occurred_at));
+  }
+  for (const raw of positioningEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; reason: string | null; occurred_at: string };
+    const label = row.event_type === "post_birth_active_order_overridden"
+      ? "Dérogation à l’ordre actif"
+      : row.event_type === "post_birth_preference_exception_recorded"
+        ? "Préférence incompatible documentée"
+        : "Proposition de positionnement modifiée";
+    add(row.reservation_id, event(row.id, "decision", label, row.reason, row.occurred_at));
+  }
+
+  type PositioningWave = { id: string; draft_id: string; litter_id: string; wave_kind: string; status: string; version: number };
+  type PositioningLine = { id: string; wave_id: string; reservation_id: string; proposed_sex: string | null; proposed_outcome: string; blocker_code: string | null; rank_snapshot: number; active_order: number | null; has_order_override: boolean; preference_exception_active: boolean; stale_reason: string | null; updated_at: string };
+  const waveById = new Map((positioningWaves.data ?? []).map((raw) => { const wave = raw as PositioningWave; return [wave.id, wave]; }));
+  const litterNameById = new Map((litters.data ?? []).map((raw) => { const litter = raw as { id: string; name: string }; return [litter.id, litter.name]; }));
+  const capacityByLitter = new Map((capacities.data ?? []).map((raw) => {
+    const capacity = raw as { litter_id: string; male_total: number; female_total: number; male_preserved: number; female_preserved: number; male_uncertain: number; female_uncertain: number };
+    return [capacity.litter_id, capacity];
+  }));
+  const openWaves = [...waveById.values()].filter((wave) => wave.status === "open");
+  const activeLines = (positioningLines.data ?? [])
+    .map((raw) => raw as PositioningLine)
+    .filter((line) => waveById.get(line.wave_id)?.status === "open");
+  const positioningByReservation = new Map<string, AdopterWorkbenchRecord["positioning"]>();
+  for (const line of activeLines) {
+    const wave = waveById.get(line.wave_id);
+    if (!wave || (line.proposed_sex !== "male" && line.proposed_sex !== "female")) continue;
+    const file = activeLines
+      .filter((candidate) => candidate.wave_id === line.wave_id && candidate.proposed_sex === line.proposed_sex && candidate.proposed_outcome === "place")
+      .sort((left, right) => (left.active_order ?? left.rank_snapshot) - (right.active_order ?? right.rank_snapshot) || left.id.localeCompare(right.id));
+    const activeOrder = line.active_order ?? file.findIndex((candidate) => candidate.id === line.id) + 1;
+    const capacity = capacityByLitter.get(wave.litter_id);
+    const fileCapacity = line.proposed_sex === "male"
+      ? (capacity?.male_total ?? 0) - (capacity?.male_preserved ?? 0) - (capacity?.male_uncertain ?? 0)
+      : (capacity?.female_total ?? 0) - (capacity?.female_preserved ?? 0) - (capacity?.female_uncertain ?? 0);
+    const operationalState = line.proposed_outcome === "blocked" ? "Bloquée"
+      : line.proposed_outcome === "postponed" ? "Reportée"
+        : line.proposed_outcome === "withdrawn" ? "Retirée"
+          : activeOrder > fileCapacity ? "Hors capacité"
+            : line.stale_reason || line.blocker_code ? "À vérifier" : "Prête";
+    const options = openWaves
+      .filter((candidate) => candidate.draft_id === wave.draft_id && candidate.wave_kind === wave.wave_kind && capacityByLitter.has(candidate.litter_id))
+      .flatMap((candidate) => (["female", "male"] as const).map((sex) => ({ litterId: candidate.litter_id, litterName: litterNameById.get(candidate.litter_id) ?? "Portée", sex })));
+    positioningByReservation.set(line.reservation_id, {
+      lineId: line.id,
+      waveId: wave.id,
+      waveVersion: wave.version,
+      litterId: wave.litter_id,
+      litterName: litterNameById.get(wave.litter_id) ?? "Portée",
+      sex: line.proposed_sex,
+      historicalRank: line.rank_snapshot,
+      activeOrder,
+      fileSize: file.length,
+      fileCapacity,
+      hasOrderOverride: line.has_order_override,
+      preferenceExceptionActive: line.preference_exception_active,
+      capacityOverflow: activeOrder > fileCapacity,
+      operationalState,
+      options,
+    });
   }
 
   const emailById = new Map((emails.data ?? []).map((row) => [row.id, row]));
@@ -178,6 +249,7 @@ export async function loadAdopterWorkbench(supabase: Client) {
       sexPreference: preference,
       preferenceFlexible: preference === "no_preference" || preference === "flexible",
       rank: row.rank_active,
+      positioning: positioningByReservation.get(row.id!) ?? null,
       postBirthPositionStatus: positionByReservation.get(row.id!) ?? null,
       animalId: row.animal_id,
       animalName: row.animal_display_name,
