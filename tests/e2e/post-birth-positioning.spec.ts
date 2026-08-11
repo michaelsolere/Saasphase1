@@ -188,6 +188,10 @@ test("post-birth positioning and direct late sale are atomic, private and recove
         });
         await context.close();
       }
+      console.info("POST_BIRTH_E2E_FIXTURE_IDS", JSON.stringify({
+        groupId, litterId, animalId, priorityContactId, priorityApplicationId,
+        priorityReservationId, directContactId, directApplicationId, generatedReservationIds,
+      }));
     } finally {
       registerGeneratedEffects();
     }
