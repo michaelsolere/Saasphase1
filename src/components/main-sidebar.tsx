@@ -98,6 +98,7 @@ const sections: SidebarSection[] = [
     icon: PawPrint,
     items: [
       { label: "Actuelles", href: "/litters" },
+      { label: "Positionnements", href: "/positionnements" },
       { label: "Journal", href: "/litters/journal" },
       { label: "Passées", comingSoon: true },
     ],
@@ -302,11 +303,13 @@ function getDefaultOpenSections(pathname: string, search: string) {
 
 function SidebarLink({
   item,
+  badge,
   onNavigate,
   collapsed,
   active,
 }: {
   item: SidebarItem;
+  badge?: number;
   onNavigate?: () => void;
   collapsed?: boolean;
   active?: boolean;
@@ -342,7 +345,7 @@ function SidebarLink({
       aria-current={active ? "page" : undefined}
       title={collapsed ? item.label : undefined}
       className={cn(
-        "flex min-h-9 min-w-0 items-center rounded-lg px-3 py-2 text-sm font-medium transition",
+        "flex min-h-9 min-w-0 items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm font-medium transition",
         collapsed && "justify-center px-2",
         active
           ? "bg-accent-soft text-accent"
@@ -352,8 +355,13 @@ function SidebarLink({
       <span className={cn("min-w-0 truncate", collapsed && "sr-only")}>
         {item.label}
       </span>
+      {!collapsed && badge && badge > 0 ? (
+        <span className="inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[11px] font-bold text-white" aria-label={`${badge} groupe${badge > 1 ? "s" : ""} à traiter`}>
+          {badge}
+        </span>
+      ) : null}
       {collapsed ? (
-        <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" />
+        <span className={`h-2 w-2 rounded-full ${badge && badge > 0 ? "bg-amber-500" : "bg-current"}`} aria-hidden="true" />
       ) : null}
     </Link>
   );
@@ -361,10 +369,12 @@ function SidebarLink({
 
 export function MainSidebar({
   collapsed = false,
+  positioningAttentionCount = 0,
   onNavigate,
   onToggleCollapsed,
 }: {
   collapsed?: boolean;
+  positioningAttentionCount?: number;
   onNavigate?: () => void;
   onToggleCollapsed?: () => void;
 }) {
@@ -582,6 +592,7 @@ export function MainSidebar({
                     <SidebarLink
                       key={`${section.label}-${item.label}`}
                       item={item}
+                      badge={item.href === "/positionnements" ? positioningAttentionCount : undefined}
                       onNavigate={handleNavigate}
                       collapsed={collapsed}
                       active={index === activeItemIndex}

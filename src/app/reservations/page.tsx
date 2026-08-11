@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { AdopterWorkbench } from "@/features/reservations/adopter-workbench";
@@ -66,9 +67,10 @@ export default async function ReservationsPage({ searchParams }: { searchParams:
 
   return <main className="mx-auto min-h-screen w-full max-w-[1600px] px-4 py-8 sm:px-8 lg:px-10">
     <header className="border-b pb-6">
-      <p className="text-sm font-semibold uppercase tracking-wide text-accent">Poste de travail</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Parcours adoptants</h1>
-      <p className="mt-3 max-w-3xl leading-7 text-muted">Suivez les familles dont le premier versement a été réellement reçu et accepté. Le statut technique seul ne suffit pas.</p>
+      <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
+        <div><p className="text-sm font-semibold uppercase tracking-wide text-accent">Poste de travail</p><h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Parcours adoptants</h1><p className="mt-3 max-w-3xl leading-7 text-muted">Suivez les familles dont le premier versement a été réellement reçu et accepté. Le statut technique seul ne suffit pas.</p></div>
+        <Link href="/positionnements" className="shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Voir tous les positionnements</Link>
+      </div>
       {params.contact_status === "conflict" ? <p role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">Le dossier a changé depuis son ouverture. Les données ont été rechargées : vérifiez-les avant de tracer à nouveau le contact.</p> : null}
       {params.contact_status === "success" ? <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Contact manuel enregistré et historisé.</p> : null}
       {params.contact_status === "error" ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">Le contact manuel n’a pas été enregistré. Aucune donnée n’a été modifiée.</p> : null}

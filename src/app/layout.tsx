@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 
 import { PrivateAppShell } from "@/components/private-app-shell";
+import { loadPositioningAttentionCount } from "@/features/reservations/positioning-overview-data";
 import { createClient } from "@/lib/supabase/server";
 
 import "./globals.css";
@@ -26,11 +27,22 @@ export default async function RootLayout({
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  let positioningAttentionCount = 0;
+  if (user) {
+    try {
+      positioningAttentionCount = await loadPositioningAttentionCount(supabase);
+    } catch (error) {
+      console.error("Unable to load positioning navigation summary", error);
+    }
+  }
 
   return (
     <html lang="fr">
       <body className="min-h-screen antialiased">
-        <PrivateAppShell initialIsAuthenticated={Boolean(user)}>
+        <PrivateAppShell
+          initialIsAuthenticated={Boolean(user)}
+          positioningAttentionCount={positioningAttentionCount}
+        >
           {children}
         </PrivateAppShell>
       </body>
