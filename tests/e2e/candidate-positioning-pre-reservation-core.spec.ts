@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import {
   allocateCandidateJourneyPayment,
+  calculateCandidatePaymentRank,
   evaluatePreReservationProposalEligibility,
   resolveCandidateJourneyEntryMode,
   validateDesiredTiming,
@@ -148,4 +149,39 @@ test("payment allocation keeps real amounts and carries shortfall or surplus", (
     opensJourney: true,
     requiresShortfallReason: false,
   });
+});
+
+test("payment rank keeps the historical form order until the deadline and queues late families by acceptance", () => {
+  const common = {
+    initialRank: 3,
+    deadline: "2026-08-20T12:00:00.000Z",
+    activeOnTimeRanks: [1, 2, 4],
+    lateAcceptances: [
+      { reservationId: "late-b", acceptedAt: "2026-08-22T09:00:00.000Z" },
+      { reservationId: "late-a", acceptedAt: "2026-08-21T09:00:00.000Z" },
+    ],
+    reservationId: "current",
+  };
+
+  expect(
+    calculateCandidatePaymentRank({
+      ...common,
+      acceptedAt: "2026-08-20T12:00:00.000Z",
+    }),
+  ).toEqual({ rank: 3, late: false });
+
+  expect(
+    calculateCandidatePaymentRank({
+      ...common,
+      acceptedAt: "2026-08-23T09:00:00.000Z",
+    }),
+  ).toEqual({ rank: 7, late: true });
+
+  expect(
+    calculateCandidatePaymentRank({
+      ...common,
+      reservationId: "late-0",
+      acceptedAt: "2026-08-21T09:00:00.000Z",
+    }),
+  ).toEqual({ rank: 5, late: true });
 });

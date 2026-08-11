@@ -44,7 +44,7 @@ export async function loadAdopterWorkbench(supabase: Client) {
   const ids = overview.map((row) => row.id).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
-  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents] =
+  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents] =
     await Promise.all([
       supabase.from("payments").select("id, reservation_id, amount_cents, currency, payment_type, status, paid_at, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("documents").select("id, reservation_id, title, document_type, status, created_at").in("reservation_id", ids).is("deleted_at", null),
@@ -56,9 +56,11 @@ export async function loadAdopterWorkbench(supabase: Client) {
       (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown[] | null; error: unknown }> }).rpc("read_adopter_profile_questionnaire_summaries", { p_reservation_ids: ids }),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_instances").select("id, reservation_id, initial_sex_preference, created_at, due_at, draft_updated_at, final_answers, final_submitted_at, reviewed_at, reviewed_by, waived_at, waived_by, waiver_reason, proposed_sex_preference, sex_preference_decision, invitation_delivery_attempt_id, invitation_last_failed_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_events").select("id, reservation_id, event_type, details, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("post_birth_positions").select("id, reservation_id, status, confirmed_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("direct_late_sale_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
     ]);
 
-  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents].find((result) => result.error);
+  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents].find((result) => result.error);
   if (failed?.error) throw failed.error;
 
   const recentByReservation = new Map<string, RecentAdopterEvent[]>();
@@ -85,6 +87,17 @@ export async function loadAdopterWorkbench(supabase: Client) {
       profile_questionnaire_send_failed: "Incident d’envoi du questionnaire",
     };
     if (labels[row.event_type]) add(row.reservation_id, event(row.id, "decision", labels[row.event_type]!, null, row.occurred_at));
+  }
+
+  const positionByReservation = new Map<string, string>();
+  for (const raw of positions.data ?? []) {
+    const row = raw as { id: string; reservation_id: string; status: string; confirmed_at: string };
+    positionByReservation.set(row.reservation_id, row.status);
+    add(row.reservation_id, event(row.id, "decision", "Place post-naissance confirmée", null, row.confirmed_at));
+  }
+  for (const raw of directSaleEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string; event_type: string; reason: string | null; occurred_at: string };
+    add(row.reservation_id, event(row.id, "decision", row.event_type.replaceAll("_", " "), row.reason, row.occurred_at));
   }
 
   const emailById = new Map((emails.data ?? []).map((row) => [row.id, row]));
@@ -165,6 +178,7 @@ export async function loadAdopterWorkbench(supabase: Client) {
       sexPreference: preference,
       preferenceFlexible: preference === "no_preference" || preference === "flexible",
       rank: row.rank_active,
+      postBirthPositionStatus: positionByReservation.get(row.id!) ?? null,
       animalId: row.animal_id,
       animalName: row.animal_display_name,
       identificationNumber: row.identification_number,

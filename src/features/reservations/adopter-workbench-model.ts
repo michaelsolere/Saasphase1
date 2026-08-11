@@ -51,6 +51,7 @@ export type AdopterWorkbenchRecord = {
   sexPreference: string | null;
   preferenceFlexible: boolean;
   rank: number | null;
+  postBirthPositionStatus?: string | null;
   animalId: string | null;
   animalName: string | null;
   identificationNumber: string | null;
@@ -171,11 +172,9 @@ export function deriveAdopterJourney(
     ? isAdopterProfileMilestoneComplete(record.profile)
     : false;
   const profileState = record.profile ? deriveAdopterProfileState(record.profile, now) : null;
-  const positionDone = Boolean(
-    record.rank &&
-    (record.litterId || record.litterGroupId) &&
-    queue !== "incomplete",
-  );
+  const positionDone = record.postBirthPositionStatus
+    ? record.postBirthPositionStatus === "confirmed"
+    : Boolean(record.rank && (record.litterId || record.litterGroupId) && queue !== "incomplete");
   const reservationDone = record.documentCount > 0 && record.signedDocumentCount >= record.documentCount;
   const choiceDone = Boolean(record.animalId && record.choiceAppointmentStatus === "done");
   const departureDone = Boolean(record.identificationNumber && record.departureAppointmentStatus === "done");
@@ -183,7 +182,7 @@ export function deriveAdopterJourney(
   const facts: Array<[AdopterMilestoneKey, boolean, string]> = [
     ["opening", openingDone, openingDone ? "Versement accepté" : "Preuve de versement manquante"],
     ["profile", profileDone, profileState ? adopterProfileStateLabels[profileState] : "Questionnaire à préparer"],
-    ["positioning", positionDone, positionDone ? "Portée et rang connus" : "Position ou rang à compléter"],
+    ["positioning", positionDone, positionDone ? (record.postBirthPositionStatus === "confirmed" ? "Place post-naissance confirmée" : "Portée et rang connus") : "Position ou rang à compléter"],
     ["reservation", reservationDone, reservationDone ? "Documents reçus" : "Formalisation à venir"],
     ["choice_assignment", choiceDone, choiceDone ? `${record.animalName ?? "Animal"} attribué` : "Choix ou attribution à venir"],
     ["departure", departureDone, departureDone ? "Départ préparé" : "Contrôles de départ à venir"],

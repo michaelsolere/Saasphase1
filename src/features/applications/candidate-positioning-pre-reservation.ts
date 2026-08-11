@@ -193,3 +193,41 @@ export function allocateCandidateJourneyPayment({
       receivedCents < expectedFirstCents && acceptShortfallForOpening,
   };
 }
+
+export function calculateCandidatePaymentRank({
+  initialRank,
+  deadline,
+  acceptedAt,
+  activeOnTimeRanks,
+  lateAcceptances,
+  reservationId,
+}: {
+  initialRank: number;
+  deadline: string;
+  acceptedAt: string;
+  activeOnTimeRanks: number[];
+  lateAcceptances: Array<{ reservationId: string; acceptedAt: string }>;
+  reservationId: string;
+}) {
+  if (acceptedAt <= deadline) {
+    return { rank: initialRank, late: false };
+  }
+
+  const lastHistoricalRank = Math.max(initialRank, 0, ...activeOnTimeRanks);
+  const orderedLateReservations = [
+    ...lateAcceptances.filter((item) => item.reservationId !== reservationId),
+    { reservationId, acceptedAt },
+  ].sort(
+    (left, right) =>
+      left.acceptedAt.localeCompare(right.acceptedAt) ||
+      left.reservationId.localeCompare(right.reservationId),
+  );
+
+  return {
+    rank:
+      lastHistoricalRank +
+      orderedLateReservations.findIndex((item) => item.reservationId === reservationId) +
+      1,
+    late: true,
+  };
+}

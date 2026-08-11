@@ -1,4 +1,25 @@
 export const fixtureTables = [
+  "direct_late_sale_commands",
+  "direct_late_sale_events",
+  "direct_late_sale_email_drafts",
+  "direct_late_sales",
+  "post_birth_positioning_commands",
+  "post_birth_positioning_events",
+  "post_birth_position_decisions",
+  "post_birth_positioning_lines",
+  "post_birth_positions",
+  "post_birth_positioning_waves",
+  "post_birth_positioning_drafts",
+  "post_birth_capacity_revisions",
+  "post_birth_incidents",
+  "post_birth_capacity_states",
+  "adopter_profile_questionnaire_sessions",
+  "adopter_profile_questionnaire_accesses",
+  "adopter_profile_questionnaire_events",
+  "adopter_profile_questionnaire_commands",
+  "adopter_profile_questionnaire_instances",
+  "adopter_profile_questionnaire_reconciliation_attempts",
+  "email_delivery_attempts",
   "candidate_journey_events",
   "pre_reservation_proposals",
   "adopter_financial_resolution_events",
@@ -73,6 +94,27 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "direct_late_sale_commands",
+  "direct_late_sale_events",
+  "direct_late_sale_email_drafts",
+  "direct_late_sales",
+  "post_birth_positioning_commands",
+  "post_birth_positioning_events",
+  "post_birth_position_decisions",
+  "post_birth_positioning_lines",
+  "post_birth_positions",
+  "post_birth_positioning_waves",
+  "post_birth_positioning_drafts",
+  "post_birth_capacity_revisions",
+  "post_birth_incidents",
+  "post_birth_capacity_states",
+  "adopter_profile_questionnaire_sessions",
+  "adopter_profile_questionnaire_accesses",
+  "adopter_profile_questionnaire_events",
+  "adopter_profile_questionnaire_commands",
+  "adopter_profile_questionnaire_instances",
+  "adopter_profile_questionnaire_reconciliation_attempts",
+  "email_delivery_attempts",
   "candidate_journey_events",
   "pre_reservation_proposals",
   "adopter_financial_resolution_events",
@@ -175,6 +217,21 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     const animalIds = [...ids.get("animals")!];
     const reservationIds = [...ids.get("reservations")!];
     const contactIds = [...ids.get("contacts")!];
+    const positionIds = [...ids.get("post_birth_positions")!];
+    const directSaleIds = [...ids.get("direct_late_sales")!];
+    if (positionIds.length) {
+      await execute(`update public.post_birth_positions set current_decision_id = null where id in (${idsSql(positionIds)})`);
+    }
+    if (directSaleIds.length) {
+      await execute(`begin;
+        set local session_replication_role = replica;
+        update public.direct_late_sales set email_draft_id = null where id in (${idsSql(directSaleIds)});
+        delete from public.direct_late_sale_commands where target_id in (${idsSql(directSaleIds)});
+        delete from public.direct_late_sale_events where direct_sale_id in (${idsSql(directSaleIds)});
+        delete from public.direct_late_sale_email_drafts where direct_sale_id in (${idsSql(directSaleIds)});
+        delete from public.direct_late_sales where id in (${idsSql(directSaleIds)});
+        commit;`);
+    }
     if (reservationIds.length) {
       await execute(
         `begin;
@@ -227,7 +284,13 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     if (table === "litters" && animalIds.length) await execute(`delete from public.animals where id in (${idsSql(animalIds)}) and litter_id is not null`);
     const statement = `delete from public.${table} where id in (${idsSql(tableIds)})`;
     const requiresAppendOnlyBypass =
-      table === "litter_plan_actual_birth_reconciliation_task_changes"
+      table === "direct_late_sale_commands"
+      || table === "direct_late_sale_events"
+      || table === "post_birth_positioning_commands"
+      || table === "post_birth_positioning_events"
+      || table === "post_birth_position_decisions"
+      || table === "post_birth_capacity_revisions"
+      || table === "litter_plan_actual_birth_reconciliation_task_changes"
       || table === "litter_plan_actual_birth_reconciliations"
       || table === "litter_plan_series_actual_birth_reconciliation_changes"
       || table === "litter_plan_series_actual_birth_reconciliation_commands"
@@ -239,7 +302,11 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
-      table === "candidate_journey_events"
+      table === "adopter_profile_questionnaire_sessions"
+      || table === "adopter_profile_questionnaire_accesses"
+      || table === "adopter_profile_questionnaire_events"
+      || table === "adopter_profile_questionnaire_commands"
+      || table === "candidate_journey_events"
       || table === "adopter_financial_resolution_events"
       || table === "adoption_handover_events"
       || table === "post_adoption_questionnaire_public_sessions"
