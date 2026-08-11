@@ -926,6 +926,30 @@ export default async function LitterGroupDetailPage({
             )}
 
             <div className="space-y-6 py-8">
+              <section className="rounded-2xl border border-accent/20 bg-accent-soft p-6 sm:p-8">
+                <p className="text-xs font-semibold uppercase tracking-wide text-accent">
+                  Après la naissance
+                </p>
+                <div className="mt-2 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <div>
+                    <h2 className="text-xl font-semibold">
+                      Positionnement des familles
+                    </h2>
+                    <p className="mt-1 text-sm text-muted">
+                      Publier les capacités réelles, préparer les vagues par
+                      portée et confirmer des places générales sans choisir de
+                      chiot.
+                    </p>
+                  </div>
+                  <Link
+                    href={`/litter-groups/${group.id}/positioning`}
+                    className="inline-flex shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
+                  >
+                    Ouvrir le poste
+                  </Link>
+                </div>
+              </section>
+
               <section className="rounded-2xl border bg-surface p-6 sm:p-8">
                 <h2 className="text-xl font-semibold">Informations</h2>
                 <dl className="mt-6 grid gap-6 sm:grid-cols-2">

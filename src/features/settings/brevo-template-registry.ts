@@ -15,6 +15,11 @@ export const brevoTransactionalTemplateConfigs = [
     category: "adopter_journey",
   },
   {
+    templateKey: "direct_late_sale",
+    title: "Vente directe tardive — dossier individuel",
+    category: "adopter_journey",
+  },
+  {
     templateKey: "adopter_profile_invitation",
     title: "Invitation au questionnaire Profil",
     category: "adopter_journey",
