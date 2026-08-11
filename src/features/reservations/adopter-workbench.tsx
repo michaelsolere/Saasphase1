@@ -59,6 +59,14 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+function positioningStatusLabel(value: string | null | undefined) {
+  if (value === "confirmed") return "Place confirmée";
+  if (value === "postponed") return "Reporté";
+  if (value === "withdrawn") return "Retiré";
+  if (value === "rectified") return "Rectifié";
+  return "À positionner";
+}
+
 export function AdopterWorkbench({ records, role, initial }: { records: AdopterWorkbenchRecord[]; role: WorkbenchRole; initial: InitialFilters }) {
   const [view, setView] = useState(initial.view);
   const [search, setSearch] = useState(initial.search);
@@ -69,7 +77,7 @@ export function AdopterWorkbench({ records, role, initial }: { records: AdopterW
   const [selectedId, setSelectedId] = useState<string | null>(initial.selectedId);
   const [isMobile, setIsMobile] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const journeys = useMemo(() => records.map((record) => deriveAdopterJourney(record)), [records]);
   const visible = useMemo(() => filterAndSortAdopterJourneys(journeys, { view, search, step, actionState, queue, sort }), [journeys, view, search, step, actionState, queue, sort]);
   const grouped = useMemo(() => groupAdopterJourneys(visible), [visible]);
@@ -123,11 +131,12 @@ function Filter({ label, value, onChange, options }: { label: string; value: str
   return <label className="text-xs font-semibold uppercase tracking-wide text-muted">{label}<select value={value} onChange={(event) => onChange(event.target.value)} className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:border-accent">{options.map(([key, text]) => <option key={key} value={key}>{text}</option>)}</select></label>;
 }
 
-function JourneyRow({ journey, selected, onSelect }: { journey: AdopterJourney; selected: boolean; onSelect: (button: HTMLButtonElement) => void }) {
-  return <tr className={selected ? "bg-accent-soft" : "hover:bg-background"}><td className="w-[25%] px-4 py-3 align-top"><button type="button" onClick={(event) => onSelect(event.currentTarget)} className="text-left font-semibold text-accent hover:underline">{journey.record.familyName}</button><p className="mt-1 text-xs text-muted">{journey.record.rank ? `Rang #${journey.record.rank}` : "Rang à compléter"}</p></td><td className="w-[23%] px-3 py-3 align-top"><p className="font-medium">{journey.currentMilestone.label}</p><p className="mt-1 text-xs text-muted">{journey.milestones.filter((step) => step.state === "done").length}/7 jalons</p></td><td className="w-[30%] px-3 py-3 align-top"><span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${actionTone(journey.primaryAction.state)}`}>{journey.primaryAction.label}</span>{journey.otherActionCount > 0 ? <span className="ml-2 text-xs font-semibold text-muted">+{journey.otherActionCount} autres</span> : null}</td><td className="w-[22%] px-3 py-3 align-top text-xs text-muted">{journey.primaryAction.detail}</td></tr>;
+function JourneyRow({ journey, selected, onSelect }: { journey: AdopterJourney; selected: boolean; onSelect: (trigger: HTMLElement) => void }) {
+  const select = (trigger: HTMLElement) => onSelect(trigger);
+  return <tr tabIndex={0} aria-selected={selected} onClick={(event) => select(event.currentTarget)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(event.currentTarget); } }} className={`cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${selected ? "bg-accent-soft" : "hover:bg-background"}`}><td className="w-[25%] px-4 py-3 align-top"><span className="text-left font-semibold text-accent">{journey.record.familyName}</span><p className="mt-1 text-xs text-muted">{journey.record.rank ? `Rang #${journey.record.rank}` : "Rang à compléter"}</p></td><td className="w-[23%] px-3 py-3 align-top"><p className="font-medium">{journey.currentMilestone.label}</p><p className="mt-1 text-xs text-muted">{journey.milestones.filter((step) => step.state === "done").length}/7 jalons</p></td><td className="w-[30%] px-3 py-3 align-top"><span className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${actionTone(journey.primaryAction.state)}`}>{journey.primaryAction.label}</span>{journey.otherActionCount > 0 ? <span className="ml-2 text-xs font-semibold text-muted">+{journey.otherActionCount} autres</span> : null}</td><td className="w-[22%] px-3 py-3 align-top text-xs text-muted">{journey.primaryAction.detail}</td></tr>;
 }
 
-function JourneyCard({ journey, onSelect }: { journey: AdopterJourney; onSelect: (button: HTMLButtonElement) => void }) {
+function JourneyCard({ journey, onSelect }: { journey: AdopterJourney; onSelect: (button: HTMLElement) => void }) {
   return <button type="button" onClick={(event) => onSelect(event.currentTarget)} className="block w-full p-4 text-left"><div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-accent">{journey.record.familyName}</p><p className="mt-1 text-xs text-muted">{journey.currentMilestone.label} · {journey.milestones.filter((step) => step.state === "done").length}/7</p></div><span className="rounded-full border px-2 py-1 text-sm font-bold">#{journey.record.rank ?? "—"}</span></div><p className={`mt-3 rounded-lg border px-3 py-2 text-sm font-semibold ${actionTone(journey.primaryAction.state)}`}>{journey.primaryAction.label}{journey.otherActionCount ? ` · +${journey.otherActionCount}` : ""}</p><p className="mt-2 text-xs text-muted">{journey.primaryAction.detail}</p></button>;
 }
 
@@ -139,7 +148,13 @@ function AdopterPanel({ journey, role, returnPath, hasPrevious, hasNext, onOpenP
   return <div>
     <header className="flex items-start justify-between gap-3 border-b pb-4"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-wide text-accent">Parcours adoptant · famille</p><h2 className="mt-1 truncate text-xl font-semibold">{record.familyName}</h2><p className="mt-1 text-sm text-muted">{journey.scopeLabel} · {queueLabels[journey.queue]} · {record.rank ? `rang #${record.rank}` : "rang à compléter"}</p></div><button type="button" onClick={onClose} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold text-muted">Fermer</button></header>
 
-    <ol aria-label="Sept jalons du parcours" className="mt-5 grid grid-cols-7 gap-1">{journey.milestones.map((milestone, index) => <li key={milestone.key} title={`${milestone.label} — ${milestone.detail}`} className="min-w-0 text-center"><span className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold ${milestone.state === "done" ? "border-emerald-500 bg-emerald-500 text-white" : milestone.key === journey.currentMilestone.key ? "border-amber-500 bg-amber-50 text-amber-800" : "bg-background text-muted"}`}>{milestone.state === "done" ? "✓" : index + 1}</span><span className="mt-1 block text-[9px] font-semibold leading-3 sm:text-[10px]"><span className="sm:hidden">{shortStepLabels[milestone.key]}</span><span className="hidden sm:inline">{milestone.label}</span></span></li>)}</ol>
+    <ol aria-label="Sept jalons du parcours" className="mt-5 grid grid-cols-7 gap-1">{journey.milestones.map((milestone, index) => <li key={milestone.key} title={`${milestone.label} — ${milestone.detail}`} className="min-w-0 text-center"><span className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-xs font-bold ${milestone.state === "done" ? "border-emerald-500 bg-emerald-500 text-white" : milestone.key === journey.currentMilestone.key ? "border-amber-500 bg-amber-50 text-amber-800" : "bg-background text-muted"}`}>{milestone.state === "done" ? "✓" : index + 1}</span><span className="mt-1 block truncate text-[10px] font-semibold leading-3">{shortStepLabels[milestone.key]}</span></li>)}</ol>
+
+    <section className="mt-5 rounded-xl border border-accent/20 bg-accent-soft p-4">
+      <div className="flex items-start justify-between gap-3"><div><h3 className="text-xs font-semibold uppercase tracking-wide text-accent">Positionnement</h3><p className="mt-1 font-semibold">{positioningStatusLabel(record.postBirthPositionStatus)}</p></div><span className="rounded-full border bg-surface px-2.5 py-1 text-xs font-bold">{record.rank ? `#${record.rank}` : "—"}</span></div>
+      <p className="mt-2 text-sm text-muted">Après naissance · {journey.scopeLabel} · {queueLabels[journey.queue]}</p>
+      <Link href={record.litterGroupId ? `/litter-groups/${record.litterGroupId}/positioning` : "/positionnements"} className="mt-3 inline-flex rounded-lg bg-accent px-3 py-2 text-sm font-semibold !text-white">Ouvrir le positionnement</Link>
+    </section>
 
     <section className={`mt-5 rounded-xl border p-4 ${actionTone(journey.primaryAction.state)}`}><p className="text-xs font-semibold uppercase tracking-wide">Action prioritaire</p><p className="mt-1 font-semibold">{journey.primaryAction.label}</p><p className="mt-1 text-xs leading-5">{journey.primaryAction.detail}</p>{journey.primaryAction.key === "profile" && journey.primaryAction.available && canReadProfileDetails ? <button type="button" onClick={onOpenProfile} className="mt-3 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white">{journey.primaryAction.label}</button> : journey.primaryAction.key === "profile" && journey.primaryAction.available ? <p className="mt-2 text-xs font-semibold">Réponses détaillées réservées aux rôles owner et admin.</p> : !journey.primaryAction.available ? <p className="mt-2 rounded-lg bg-white/60 px-2 py-1 text-xs font-semibold">Indisponible dans ce lot — aucune action n’est simulée.</p> : null}</section>
 
@@ -147,7 +162,7 @@ function AdopterPanel({ journey, role, returnPath, hasPrevious, hasNext, onOpenP
 
     <div className="mt-5 space-y-2">
       <Detail title="Famille et profil"><dl className="grid gap-3 text-sm sm:grid-cols-2"><Info label="Email" value={record.email ?? "Non renseigné"} /><Info label="Téléphone" value={record.phone ?? "Non renseigné"} /><Info label="Référence" value={record.reference} /><Info label="Rôle connecté" value={role} /></dl>{record.profile && canReadProfileDetails ? <button type="button" onClick={onOpenProfile} className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent">Lire le questionnaire</button> : record.profile ? <p className="mt-3 text-xs text-muted">État du jalon visible ; réponses détaillées réservées aux rôles owner et admin.</p> : null}{record.contactId ? <Link href={`/contacts/${record.contactId}`} className="ml-3 mt-3 inline-flex text-sm font-semibold text-accent hover:underline">Ouvrir la fiche contact</Link> : null}</Detail>
-      <Detail title="Position et portée"><p className="text-sm">{journey.scopeLabel} · {queueLabels[journey.queue]} · {record.rank ? `rang #${record.rank}` : "rang à compléter"}</p>{record.litterGroupId ? <Link href={`/litter-groups/${record.litterGroupId}/positioning`} className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent">Ouvrir le positionnement après naissance</Link> : <p className="mt-2 text-xs text-muted">Rattachez d’abord le dossier à un groupe de portées pour ouvrir le positionnement.</p>}</Detail>
+
       <Detail title="Paiements"><p className="text-sm">Reçu : {(record.paidCents / 100).toLocaleString("fr-FR")} € · Remboursé : {(record.refundedCents / 100).toLocaleString("fr-FR")} €</p><QuickMutationLink canMutate={canMutate} href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}#payments`} label="Enregistrer un paiement" /></Detail>
       <Detail title="Documents"><p className="text-sm">{record.signedDocumentCount}/{record.documentCount} document(s) signé(s) ou validé(s).</p><Link href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}#documents`} className="mt-3 inline-flex text-sm font-semibold text-accent">Ouvrir les documents</Link></Detail>
       <Detail title="Rendez-vous et attribution"><p className="text-sm">Choix : {formatDate(record.choiceAppointmentAt)}</p><p className="mt-1 text-sm">Départ : {formatDate(record.departureAppointmentAt)}</p><QuickMutationLink canMutate={canMutate} href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}#appointments`} label="Créer ou modifier un rendez-vous" /></Detail>

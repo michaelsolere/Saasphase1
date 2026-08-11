@@ -13,7 +13,7 @@ async function login(page: Page) {
   await expect(page).not.toHaveURL(/\/login$/, { timeout: 30_000 });
 }
 
-test("sélectionne le Journal comme entrée Portées la plus précise", async ({
+test("donne un accès direct aux positionnements depuis Portées", async ({
   page,
 }) => {
   await login(page);
@@ -22,6 +22,7 @@ test("sélectionne le Journal comme entrée Portées la plus précise", async ({
   const sidebar = page.getByTestId("main-sidebar");
   const littersSection = sidebar.getByRole("button", { name: "Portées" });
   const currentLittersLink = sidebar.getByRole("link", { name: "Actuelles" });
+  const positioningLink = sidebar.getByRole("link", { name: /Positionnements/ });
   const journalLink = sidebar.getByRole("link", { name: "Journal" });
 
   await expect(littersSection).toHaveAttribute("aria-expanded", "true");
@@ -33,14 +34,31 @@ test("sélectionne le Journal comme entrée Portées la plus précise", async ({
       Array.from(section.querySelectorAll("a, [aria-disabled='true']"))
         .map((item) => item.textContent?.trim())
         .filter((label) =>
-          label === "Actuelles" || label === "Journal" || label?.startsWith("Passées"),
+          label === "Actuelles" || label?.startsWith("Positionnements") || label === "Journal" || label?.startsWith("Passées"),
         )
-        .map((label) => label?.replace("À venir", "").trim()),
+        .map((label) => label?.startsWith("Positionnements") ? "Positionnements" : label?.replace("À venir", "").trim()),
     ),
-  ).resolves.toEqual(["Actuelles", "Journal", "Passées"]);
+  ).resolves.toEqual(["Actuelles", "Positionnements", "Journal", "Passées"]);
+
+  await positioningLink.click();
+  await expect(page).toHaveURL(/\/positionnements$/);
+  await expect(page.getByRole("heading", { name: "Positionnements" })).toBeVisible();
+  await expect(positioningLink).toHaveAttribute("aria-current", "page");
+  await expect(sidebar.getByLabel("1 groupe à traiter")).toBeVisible();
 
   await page.goto("/litters");
   await expect(littersSection).toHaveAttribute("aria-expanded", "true");
   await expect(currentLittersLink).toHaveAttribute("aria-current", "page");
   await expect(journalLink).not.toHaveAttribute("aria-current", "page");
+
+  await page.goto("/reservations");
+
+  await expect(page.getByRole("link", { name: "Voir tous les positionnements" })).toHaveAttribute("href", "/positionnements");
+  const firstRow = page.locator("tbody tr").first();
+  await firstRow.getByText(/jalons/).click();
+
+  const panel = page.getByRole("complementary", { name: "Parcours adoptant sélectionné" });
+  await expect(panel.getByRole("heading", { level: 2 })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Positionnement" })).toBeVisible();
+  await expect(panel.getByRole("link", { name: "Ouvrir le positionnement" })).toBeVisible();
 });

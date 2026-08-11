@@ -271,6 +271,7 @@ async function main() {
       "tests/e2e/adopter-financial-resolution-foundation.spec.ts",
       "tests/e2e/adopter-financial-resolution-ui.spec.ts",
       "tests/e2e/adopter-financial-resolution-workflow.spec.ts",
+      "tests/e2e/main-sidebar-litter-journal.spec.ts",
       "tests/e2e/candidate-positioning-pre-reservation.spec.ts",
       "tests/e2e/transactional-adopter-withdrawal-workflow.spec.ts",
       "tests/e2e/transactional-adopter-refund-workflow.spec.ts",

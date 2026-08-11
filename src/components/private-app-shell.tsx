@@ -17,9 +17,11 @@ type AuthStatus = "loading" | "authenticated" | "unauthenticated";
 export function PrivateAppShell({
   children,
   initialIsAuthenticated,
+  positioningAttentionCount,
 }: Readonly<{
   children: React.ReactNode;
   initialIsAuthenticated: boolean;
+  positioningAttentionCount: number;
 }>) {
   const pathname = usePathname();
   const [authStatus, setAuthStatus] = useState<AuthStatus>(
@@ -88,6 +90,7 @@ export function PrivateAppShell({
         <div className="sticky top-0 h-screen">
           <MainSidebar
             collapsed={sidebarCollapsed}
+            positioningAttentionCount={positioningAttentionCount}
             onToggleCollapsed={toggleSidebarCollapsed}
           />
         </div>
