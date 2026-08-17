@@ -65,6 +65,7 @@ type BrevoTransactionalTemplateResponse = {
   modifiedAt?: unknown;
   sender?: unknown;
   replyTo?: unknown;
+  htmlContent?: unknown;
 };
 
 type BrevoTransactionalEmailResponse = {
@@ -79,6 +80,7 @@ export type BrevoTransactionalTemplate = {
   modifiedAt: string | null;
   sender: BrevoEmailIdentity | null;
   replyTo: BrevoEmailIdentity | null;
+  htmlContent: string | null;
 };
 
 export type BrevoTransactionalTemplateResult =
@@ -271,6 +273,7 @@ function normalizeTemplateResponse(
     modifiedAt,
     sender: normalizeEmailIdentity(data.sender),
     replyTo: normalizeEmailIdentity(data.replyTo),
+    htmlContent: toOptionalString(data.htmlContent) ?? null,
   };
 }
 

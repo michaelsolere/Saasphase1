@@ -199,3 +199,14 @@ test("the profile milestone waits for a review proof, not only a final response"
   }));
   expect(reviewed.milestones.find((step) => step.key === "profile")?.state).toBe("done");
 });
+
+test("opens the guided reservation preparation from the adopter workbench", () => {
+  const journey = deriveAdopterJourney(record());
+  const preparation = journey.actions.find((action) => action.key === "documents");
+
+  expect(preparation).toMatchObject({
+    label: "Préparer la réservation",
+    available: true,
+    href: `/reservations/${journey.record.id}/preparer`,
+  });
+});

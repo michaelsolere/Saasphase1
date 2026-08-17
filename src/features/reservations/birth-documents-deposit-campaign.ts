@@ -46,7 +46,7 @@ export async function runBirthDocumentsDepositCampaign(input: {
   const result = emptyResult();
   const { data: membership } = await input.supabase.from("memberships")
     .select("organization_id").eq("profile_id", input.userId).eq("status", "active")
-    .is("deleted_at", null).in("role", ["owner", "admin", "member"]).limit(1).maybeSingle();
+    .is("deleted_at", null).in("role", ["owner", "admin"]).limit(1).maybeSingle();
   if (!membership) { result.errorCount = input.reservationIds.length || 1; return result; }
 
   for (const reservationId of [...new Set(input.reservationIds)]) {

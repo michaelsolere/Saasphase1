@@ -1803,6 +1803,7 @@ export type Database = {
           litter_id: string | null
           message_type: string
           organization_id: string
+          provider_call_started_at: string | null
           recipient_email: string
           recipient_name: string | null
           reservation_id: string | null
@@ -1833,6 +1834,7 @@ export type Database = {
           litter_id?: string | null
           message_type: string
           organization_id: string
+          provider_call_started_at?: string | null
           recipient_email: string
           recipient_name?: string | null
           reservation_id?: string | null
@@ -1863,6 +1865,7 @@ export type Database = {
           litter_id?: string | null
           message_type?: string
           organization_id?: string
+          provider_call_started_at?: string | null
           recipient_email?: string
           recipient_name?: string | null
           reservation_id?: string | null
@@ -7237,6 +7240,7 @@ export type Database = {
           p_contract_file_sha256: string
           p_contract_file_size_bytes: number
           p_contract_version: number
+          p_attempt_id: string
           p_organization_id: string
           p_reservation_id: string
           p_sent_at: string
