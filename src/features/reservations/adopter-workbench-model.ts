@@ -251,7 +251,15 @@ export function deriveAdopterJourney(
     actions.push(action("payment", "Contrôler les versements", "Enregistrer uniquement un versement réellement constaté.", "normal", "reservation", true, `/reservations/${record.id}#payments`));
   }
   if (!reservationDone) {
-    actions.push(action("documents", "Préparer les documents", "La préparation guidée arrive dans un prochain lot.", "normal", "reservation", false));
+    actions.push(action(
+      "documents",
+      "Préparer la réservation",
+      "Contrôler les documents, les arrhes et l’envoi Brevo dans la vue guidée.",
+      "normal",
+      "reservation",
+      true,
+      `/reservations/${record.id}/preparer`,
+    ));
   }
   if (!record.choiceAppointmentAt) {
     actions.push(action("choice-appointment", "Organiser le rendez-vous de choix", "Créer le rendez-vous depuis le panneau.", "normal", "choice_assignment", true));

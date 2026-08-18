@@ -44,12 +44,40 @@ export async function runBirthDocumentsDepositCampaign(input: {
   sendEmail: (input: { reservationId: string; litterId: string }) => Promise<SendBirthDocumentsDepositEmailResult>;
 }): Promise<BirthDocumentsDepositCampaignResult> {
   const result = emptyResult();
+  const reservationIds = [...new Set(input.reservationIds)];
+  const { data: litter, error: litterError } = await input.supabase.from("litters")
+    .select("organization_id").eq("id", input.litterId)
+    .is("deleted_at", null).maybeSingle();
+  if (litterError || !litter) {
+    result.errorCount = reservationIds.length || 1;
+    return result;
+  }
   const { data: membership } = await input.supabase.from("memberships")
     .select("organization_id").eq("profile_id", input.userId).eq("status", "active")
-    .is("deleted_at", null).in("role", ["owner", "admin", "member"]).limit(1).maybeSingle();
-  if (!membership) { result.errorCount = input.reservationIds.length || 1; return result; }
+    .is("deleted_at", null).in("role", ["owner", "admin"])
+    .eq("organization_id", litter.organization_id).maybeSingle();
+  if (!membership) { result.errorCount = reservationIds.length || 1; return result; }
 
-  for (const reservationId of [...new Set(input.reservationIds)]) {
+  const { data: reservations, error: reservationsError } = reservationIds.length
+    ? await input.supabase.from("reservations").select("id")
+        .eq("organization_id", litter.organization_id)
+        .eq("litter_id", input.litterId)
+        .in("id", reservationIds)
+        .is("deleted_at", null)
+    : { data: [], error: null };
+  if (reservationsError) {
+    result.errorCount = reservationIds.length || 1;
+    return result;
+  }
+  const eligibleReservationIds = new Set(
+    (reservations ?? []).map((reservation) => reservation.id),
+  );
+
+  for (const reservationId of reservationIds) {
+    if (!eligibleReservationIds.has(reservationId)) {
+      result.errorCount++;
+      continue;
+    }
     const sent = await input.sendEmail({ reservationId, litterId: input.litterId });
     if (sent.paymentAction === "created" || sent.paymentAction === "reactivated") result.paymentsCreatedCount++;
     else if (sent.paymentAction === "reused") result.paymentsReusedCount++;

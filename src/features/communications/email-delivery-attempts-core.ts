@@ -611,6 +611,7 @@ export async function claimEmailDeliveryAttemptForSend(
       status: "sending",
       attempt_count: currentAttempt.attempt_count + 1,
       last_attempt_at: claimedAt,
+      provider_call_started_at: null,
       updated_by: userId,
     })
     .eq("organization_id", organizationId)

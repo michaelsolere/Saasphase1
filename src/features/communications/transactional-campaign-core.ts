@@ -18,6 +18,8 @@ import {
 import type { Database } from "@/types/database.types";
 
 type Supabase = SupabaseClient<Database>;
+type TransactionalCampaignRole = "owner" | "admin" | "member";
+const TRANSACTIONAL_CAMPAIGN_LEASE_MS = 10 * 60 * 1_000;
 
 export type TransactionalProviderErrorReason =
   | "not_configured"
@@ -138,22 +140,43 @@ function isUncertainProviderReason(reason: TransactionalProviderErrorReason) {
   );
 }
 
-async function readWritableContext(supabase: Supabase) {
+export async function readTransactionalCampaignContext(
+  supabase: Supabase,
+  scope: {
+    organizationId: string;
+    roles?: TransactionalCampaignRole[];
+  },
+) {
+  if (!scope.organizationId) return null;
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return null;
 
-  const { data, error } = await supabase
+  const query = supabase
     .from("memberships")
     .select("organization_id")
     .eq("profile_id", authData.user.id)
     .eq("status", "active")
     .is("deleted_at", null)
-    .in("role", ["owner", "admin", "member"])
-    .limit(1)
-    .maybeSingle();
+    .in("role", scope.roles ?? ["owner", "admin", "member"])
+    .eq("organization_id", scope.organizationId);
+  const { data, error } = await query.maybeSingle();
 
   if (error || !data) return null;
   return { userId: authData.user.id, organizationId: data.organization_id };
+}
+
+export function chooseTransactionalCampaignStaleAction(
+  attempt: {
+    lastAttemptAt: string | null;
+    providerCallStartedAt: string | null;
+  },
+  now = new Date(),
+): "wait" | "retry" | "uncertain" {
+  const claimedAt = attempt.lastAttemptAt ? Date.parse(attempt.lastAttemptAt) : Number.NaN;
+  const expired = !Number.isFinite(claimedAt) ||
+    now.getTime() - claimedAt >= TRANSACTIONAL_CAMPAIGN_LEASE_MS;
+  if (!expired) return "wait";
+  return attempt.providerCallStartedAt ? "uncertain" : "retry";
 }
 
 async function readCampaignTemplate(
@@ -196,6 +219,10 @@ export async function runTransactionalCampaignDelivery(
   input: {
     campaignKey: string;
     operationVersion: string;
+    context: {
+      organizationId: string;
+      roles?: TransactionalCampaignRole[];
+    };
     claimedPreparationPhase?: ClaimedPreparationPhase;
     transport?: TransactionalEmailTransport;
     prepareOperation: (context: {
@@ -223,7 +250,10 @@ export async function runTransactionalCampaignDelivery(
     transitions?: TransitionDependencies;
   },
 ): Promise<TransactionalCampaignResult> {
-  const context = await readWritableContext(options.supabase);
+  const context = await readTransactionalCampaignContext(
+    options.supabase,
+    input.context,
+  );
   if (!context) return { outcome: "failed", errorCode: "not_eligible" };
 
   const prepared = await input.prepareOperation({
@@ -276,7 +306,7 @@ export async function runTransactionalCampaignDelivery(
     return { outcome: "already_sent", attemptId: attempt.attempt.id };
   }
 
-  const claim = await claimEmailDeliveryAttemptForSend(
+  let claim = await claimEmailDeliveryAttemptForSend(
     {
       organizationId: context.organizationId,
       attemptId: attempt.attempt.id,
@@ -287,8 +317,44 @@ export async function runTransactionalCampaignDelivery(
   if (claim.outcome === "already_sent") {
     return { outcome: "already_sent", attemptId: claim.attempt?.id };
   }
-  if (claim.outcome === "in_progress") {
-    return { outcome: "in_progress", attemptId: claim.attempt?.id };
+  if (claim.outcome === "in_progress" && claim.attempt) {
+    const staleAction = chooseTransactionalCampaignStaleAction({
+      lastAttemptAt: claim.attempt.last_attempt_at,
+      providerCallStartedAt: claim.attempt.provider_call_started_at,
+    });
+    if (staleAction === "wait") {
+      return { outcome: "in_progress", attemptId: claim.attempt.id };
+    }
+    if (staleAction === "uncertain") {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: "provider_outcome_uncertain",
+      };
+    }
+    const released = await markEmailDeliveryAttemptFailed({
+      organizationId: context.organizationId,
+      attemptId: claim.attempt.id,
+      lastErrorCode: "stale_delivery_attempt_recovered",
+      userId: context.userId,
+    }, options.supabase);
+    if (released.outcome !== "updated") {
+      return {
+        outcome: "uncertain",
+        attemptId: claim.attempt.id,
+        errorCode: released.error.code,
+      };
+    }
+    claim = await claimEmailDeliveryAttemptForSend(
+      {
+        organizationId: context.organizationId,
+        attemptId: claim.attempt.id,
+        userId: context.userId,
+      },
+      options.supabase,
+    );
+  } else if (claim.outcome === "in_progress") {
+    return { outcome: "in_progress", attemptId: attempt.attempt.id };
   }
   if (claim.outcome !== "claimed") {
     return {
@@ -445,6 +511,19 @@ export async function runTransactionalCampaignDelivery(
     return failCertainly(snapshot.error.code);
   }
 
+  const providerCallStartedAt = new Date().toISOString();
+  const providerStart = await options.supabase
+    .from("email_delivery_attempts")
+    .update({ provider_call_started_at: providerCallStartedAt })
+    .eq("organization_id", context.organizationId)
+    .eq("id", claim.attempt.id)
+    .eq("status", "sending")
+    .select("id")
+    .maybeSingle();
+  if (providerStart.error || !providerStart.data) {
+    return failCertainly("provider_start_not_recorded");
+  }
+
   let sendResult;
   try {
     sendResult = await input.transport.sendEmail({
@@ -475,6 +554,20 @@ export async function runTransactionalCampaignDelivery(
     return failCertainly(sendResult.reason);
   }
 
+  const markSent = options.transitions?.markSent ?? markEmailDeliveryAttemptSent;
+  const sent: EmailDeliveryAttemptTransitionResult = await markSent(
+    {
+      organizationId: context.organizationId,
+      attemptId: claim.attempt.id,
+      brevoMessageId: sendResult.messageId,
+      userId: context.userId,
+    },
+    options.supabase,
+  );
+  if (sent.outcome === "error") {
+    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
+  }
+
   if (claimedResource.afterProviderSuccess) {
     let callbackResult;
     try {
@@ -499,18 +592,5 @@ export async function runTransactionalCampaignDelivery(
     }
   }
 
-  const markSent = options.transitions?.markSent ?? markEmailDeliveryAttemptSent;
-  const sent: EmailDeliveryAttemptTransitionResult = await markSent(
-    {
-      organizationId: context.organizationId,
-      attemptId: claim.attempt.id,
-      brevoMessageId: sendResult.messageId,
-      userId: context.userId,
-    },
-    options.supabase,
-  );
-  if (sent.outcome === "error") {
-    return { outcome: "uncertain", attemptId: claim.attempt.id, errorCode: sent.error.code, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
-  }
   return { outcome: "success", attemptId: sent.attempt.id, resourceAction: claimedResource.resourceAction, metadata: claimedResource.metadata };
 }

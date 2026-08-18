@@ -12,7 +12,10 @@ import {
 import { buildDocumentGenerationSnapshot } from "../../src/features/documents/build-document-generation-snapshot";
 import { buildDocumentPdfPath } from "../../src/features/documents/document-pdf-storage-core";
 import {
+  createAnonymousSupabaseClient,
   createAuthenticatedSupabaseClient,
+  E2E_MEMBER_EMAIL,
+  E2E_MEMBER_PASSWORD,
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
   runE2eSqlSync,
@@ -174,7 +177,15 @@ async function cleanup(supabase: Supabase) {
     const removed = await supabase.storage.from("documents").remove(paths);
     if (removed.error) throw new Error(`Storage cleanup failed: ${removed.error.message}`);
   }
-  sql(`delete from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid;
+  sql(`begin;
+    set local app.qa_hard_delete = 'on';
+    delete from public.adopter_profile_questionnaire_sessions where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id=${q(ids.reservation)}::uuid);
+    delete from public.adopter_profile_questionnaire_accesses where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id=${q(ids.reservation)}::uuid);
+    delete from public.adopter_profile_questionnaire_events where reservation_id=${q(ids.reservation)}::uuid;
+    delete from public.adopter_profile_questionnaire_commands where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id=${q(ids.reservation)}::uuid);
+    delete from public.adopter_profile_questionnaire_reconciliation_attempts where reservation_id=${q(ids.reservation)}::uuid;
+    delete from public.adopter_profile_questionnaire_instances where reservation_id=${q(ids.reservation)}::uuid;
+    delete from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid;
     delete from public.payments where reservation_id=${q(ids.reservation)}::uuid;
     delete from public.documents where reservation_id=${q(ids.reservation)}::uuid;
     delete from public.reservation_document_variant_versions where id=${q(ids.variantVersion)}::uuid;
@@ -186,23 +197,31 @@ async function cleanup(supabase: Supabase) {
     delete from public.contacts where id=${q(ids.contact)}::uuid;
     delete from public.email_templates where id=${q(ids.emailTemplate)}::uuid;
     delete from public.litters where id=${q(ids.litter)}::uuid;
-    delete from public.litter_groups where id=${q(ids.group)}::uuid;`);
+    delete from public.litter_groups where id=${q(ids.group)}::uuid;
+    commit;`);
 }
 
 function remaining() {
   return Number(sql(`select count(*) from (
-    select id from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid
-    union all select id from public.payments where reservation_id=${q(ids.reservation)}::uuid
-    union all select id from public.documents where reservation_id=${q(ids.reservation)}::uuid
-    union all select id from public.reservation_document_variants where id=${q(ids.variant)}::uuid
-    union all select id from public.document_templates where id in (${q(ids.commitmentTemplate)}::uuid,${q(ids.contractTemplate)}::uuid)
-    union all select id from public.document_template_families where id in (${q(ids.commitmentFamily)}::uuid,${q(ids.contractFamily)}::uuid)
-    union all select id from public.reservations where id=${q(ids.reservation)}::uuid
-    union all select id from public.applications where id=${q(ids.app)}::uuid
-    union all select id from public.contacts where id=${q(ids.contact)}::uuid
-    union all select id from public.email_templates where id=${q(ids.emailTemplate)}::uuid
-    union all select id from public.litters where id=${q(ids.litter)}::uuid
-    union all select id from public.litter_groups where id=${q(ids.group)}::uuid
+    select id from public.adopter_profile_questionnaire_sessions where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id::text like '97000000-0000-4000-8000-%')
+    union all select id from public.adopter_profile_questionnaire_accesses where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id::text like '97000000-0000-4000-8000-%')
+    union all select id from public.adopter_profile_questionnaire_events where reservation_id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.adopter_profile_questionnaire_commands where instance_id in (select id from public.adopter_profile_questionnaire_instances where reservation_id::text like '97000000-0000-4000-8000-%')
+    union all select id from public.adopter_profile_questionnaire_reconciliation_attempts where reservation_id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.adopter_profile_questionnaire_instances where reservation_id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.email_delivery_attempts where reservation_id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.payments where reservation_id::text like '97000000-0000-4000-8000-%' or id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.documents where reservation_id::text like '97000000-0000-4000-8000-%' or id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.reservation_document_variant_versions where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.reservation_document_variants where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.document_templates where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.document_template_families where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.reservations where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.applications where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.contacts where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.email_templates where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.litters where id::text like '97000000-0000-4000-8000-%'
+    union all select id from public.litter_groups where id::text like '97000000-0000-4000-8000-%'
     union all select id from storage.objects where bucket_id='documents' and name like 'organizations/${org}/documents/97000000-0000-4000-8000-%'
   ) fixtures;`));
 }
@@ -236,7 +255,21 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/candidatures/, { timeout: 20_000 });
 }
 
-test("sends exactly the two authoritative PDFs in order and atomically marks them sent", async () => {
+test("the legacy document-delivery RPC overload is absent after migration replay", () => {
+  const legacySignature = [
+    "uuid", "uuid", "uuid", "uuid", "text", "text",
+    "bigint", "bigint", "integer", "integer", "timestamptz",
+  ].join(",");
+  const currentSignature = [
+    "uuid", "uuid", "uuid", "uuid", "text", "text",
+    "bigint", "bigint", "integer", "integer", "uuid", "timestamptz",
+  ].join(",");
+
+  expect(sql(`select to_regprocedure('public.mark_birth_documents_deposit_documents_sent(${legacySignature})') is null;`)).toBe("t");
+  expect(sql(`select to_regprocedure('public.mark_birth_documents_deposit_documents_sent(${currentSignature})') is not null;`)).toBe("t");
+});
+
+test("owner envoie les deux PDF atomiquement puis member reste refusé sur les mêmes documents", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   const docs = await fixture(supabase, { variantContract: true });
   const t = transport();
@@ -257,10 +290,62 @@ test("sends exactly the two authoritative PDFs in order and atomically marks the
       [ids.contract, "contrat-reservation-v1.pdf", 1],
     ]);
     expect(sql(`select count(distinct sent_at) || ':' || string_agg(distinct status, ',') from public.documents where reservation_id=${q(ids.reservation)}::uuid;`)).toBe("1:sent");
+    const attemptId = sql(`select id from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid;`);
+    const member = createAnonymousSupabaseClient();
+    const memberLogin = await member.auth.signInWithPassword({
+      email: E2E_MEMBER_EMAIL,
+      password: E2E_MEMBER_PASSWORD,
+    });
+    expect(memberLogin.error).toBeNull();
+    const memberDelivery = await member.rpc(
+      "mark_birth_documents_deposit_documents_sent",
+      {
+        p_organization_id: org,
+        p_reservation_id: ids.reservation,
+        p_commitment_document_id: docs!.commitment.documentId,
+        p_contract_document_id: docs!.contract.documentId,
+        p_commitment_file_sha256: docs!.commitment.sha,
+        p_contract_file_sha256: docs!.contract.sha,
+        p_commitment_file_size_bytes: docs!.commitment.bytes.length,
+        p_contract_file_size_bytes: docs!.contract.bytes.length,
+        p_commitment_version: docs!.commitment.version,
+        p_contract_version: docs!.contract.version,
+        p_attempt_id: attemptId,
+        p_sent_at: new Date().toISOString(),
+      },
+    );
+    expect(memberDelivery.error?.message).toContain("owner or admin role required");
     const persisted = sql(`select row_to_json(attempt)::text from public.email_delivery_attempts attempt where reservation_id=${q(ids.reservation)}::uuid;`);
     expect(persisted).not.toContain(docs!.commitment.bytes.toString("base64"));
     expect(persisted).not.toContain(docs!.contract.bytes.toString("base64"));
   } finally { await cleanup(supabase); expect(remaining()).toBe(0); }
+});
+
+test("sends the documents when deposits are already complete without creating a complement request", async () => {
+  const supabase = await createAuthenticatedSupabaseClient();
+  await fixture(supabase, { active: true });
+  const t = transport();
+  try {
+    sql(`update public.payments set amount_cents=50000, received_amount_cents=50000, applied_amount_cents=50000 where id=${q(ids.paid)}::uuid;`);
+    const result = await sendBirthDocumentsDepositEmailForReservation(
+      { reservationId: ids.reservation, litterId: ids.litter },
+      { supabase, transport: t.value },
+    );
+
+    expect(result).toMatchObject({ status: "success" });
+    expect(result.paymentAction).toBeUndefined();
+    expect(t.sends).toHaveLength(1);
+    expect(t.sends[0].params.montant_complement_arrhes).toBe("0,00 €");
+    expect(
+      sql(`select count(*) from public.payments where reservation_id=${q(ids.reservation)}::uuid and payment_type='arrhes' and status in ('requested','pending','partially_paid') and deleted_at is null;`),
+    ).toBe("1");
+    expect(
+      sql(`select count(*) from public.documents where reservation_id=${q(ids.reservation)}::uuid and status='sent';`),
+    ).toBe("2");
+  } finally {
+    await cleanup(supabase);
+    expect(remaining()).toBe(0);
+  }
 });
 
 test("missing, duplicated, incomplete and non-sendable documents fail before payment mutation", async () => {
@@ -340,7 +425,7 @@ test("certain failure compensates payment while uncertainty preserves payment, m
   } finally { await cleanup(supabase); expect(remaining()).toBe(0); }
 });
 
-test("post-provider callback failure is uncertain; final attempt failure leaves both documents sent", async () => {
+test("post-provider callback failure is reconciled without a second Brevo send", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   try {
     await fixture(supabase);
@@ -350,6 +435,15 @@ test("post-provider callback failure is uncertain; final attempt failure leaves 
     );
     expect(result).toMatchObject({ deliveryState: "uncertain", errorCode: "qa_delivery_failure", compensated: false });
     expect(sql(`select count(*) from public.documents where reservation_id=${q(ids.reservation)}::uuid and status='to_generate';`)).toBe("2");
+    expect(sql(`select status from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid;`)).toBe("sent");
+    const retryTransport = transport();
+    result = await sendBirthDocumentsDepositEmailForReservation(
+      { reservationId: ids.reservation, litterId: ids.litter },
+      { supabase, transport: retryTransport.value },
+    );
+    expect(result).toMatchObject({ status: "already_sent", deliveryState: "sent" });
+    expect(retryTransport.sends).toHaveLength(0);
+    expect(sql(`select count(*) from public.documents where reservation_id=${q(ids.reservation)}::uuid and status='sent';`)).toBe("2");
     await cleanup(supabase);
     await fixture(supabase);
     result = await sendBirthDocumentsDepositEmailForReservation(
@@ -358,7 +452,15 @@ test("post-provider callback failure is uncertain; final attempt failure leaves 
     );
     expect(result.deliveryState).toBe("uncertain");
     expect(sql(`select status from public.email_delivery_attempts where reservation_id=${q(ids.reservation)}::uuid;`)).toBe("sending");
-    expect(sql(`select count(*) from public.documents where reservation_id=${q(ids.reservation)}::uuid and status='sent';`)).toBe("2");
+    expect(sql(`select count(*) from public.documents where reservation_id=${q(ids.reservation)}::uuid and status='to_generate';`)).toBe("2");
+    sql(`update public.email_delivery_attempts set last_attempt_at=now()-interval '11 minutes' where reservation_id=${q(ids.reservation)}::uuid;`);
+    const uncertainRetry = transport();
+    result = await sendBirthDocumentsDepositEmailForReservation(
+      { reservationId: ids.reservation, litterId: ids.litter },
+      { supabase, transport: uncertainRetry.value },
+    );
+    expect(result).toMatchObject({ deliveryState: "uncertain" });
+    expect(uncertainRetry.sends).toHaveLength(0);
   } finally { await cleanup(supabase); expect(remaining()).toBe(0); }
 });
 
