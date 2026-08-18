@@ -37,6 +37,9 @@ function preparation(
         status: "to_generate",
         version: 1,
         sendable: true,
+        fileSha256: "a".repeat(64),
+        fileSizeBytes: 1_024,
+        filePath: "organizations/org/documents/certificate-v1.pdf",
       },
       {
         id: "30000000-0000-4000-8000-000000000002",
@@ -44,6 +47,9 @@ function preparation(
         status: "to_generate",
         version: 1,
         sendable: true,
+        fileSha256: "b".repeat(64),
+        fileSizeBytes: 2_048,
+        filePath: "organizations/org/documents/contract-v1.pdf",
       },
     ],
     variables: {
@@ -57,6 +63,7 @@ function preparation(
       providerName: "Réservation",
       subject: "Vos documents",
       htmlContent: "<p>Bonjour</p>",
+      htmlSha256: "1".repeat(64),
       modifiedAt: "2026-08-16T08:00:00.000Z",
       active: true,
     },
@@ -113,6 +120,54 @@ test("relit le dossier et refuse un aperçu devenu périmé", async () => {
 
   expect(result).toEqual({ status: "conflict" });
   expect(sends).toBe(0);
+});
+
+test("confirme avec un modèle Brevo volumineux sans sérialiser son HTML dans la clé", async () => {
+  const current = preparation({
+    template: {
+      ...preparation().template!,
+      htmlContent: `<p>${"contenu".repeat(6_000)}</p>`,
+    },
+  });
+  let sends = 0;
+
+  const result = await confirmReservationPreparationActionCore(
+    initialReservationPreparationActionState,
+    form(current),
+    {
+      loadPreparation: async () => current,
+      send: async () => {
+        sends += 1;
+        return { status: "success", deliveryState: "sent" };
+      },
+      revalidate: () => undefined,
+    },
+  );
+  const changed = {
+    ...current,
+    template: {
+      ...current.template!,
+      htmlContent: `${current.template!.htmlContent}<p>modifié</p>`,
+      htmlSha256: "2".repeat(64),
+    },
+  };
+  const changedDocument = {
+    ...current,
+    documents: current.documents.map((document, index) =>
+      index === 0
+        ? { ...document, fileSha256: "c".repeat(64) }
+        : document),
+  };
+
+  expect(buildReservationPreparationKey(current).length).toBeLessThan(32_000);
+  expect(buildReservationPreparationKey(changed)).not.toBe(
+    buildReservationPreparationKey(current),
+  );
+  expect(buildReservationPreparationKey(changedDocument)).not.toBe(
+    buildReservationPreparationKey(current),
+  );
+  expect(result).toMatchObject({ status: "sent" });
+  expect(sends).toBe(1);
 });
 
 test("refuse côté serveur un member et un dossier bloqué", async () => {

@@ -175,6 +175,7 @@ async function deliver(input: {
     {
       campaignKey,
       operationVersion: input.operationVersion,
+      context: { organizationId },
       claimedPreparationPhase:
         input.claimedPreparationPhase ?? "before_provider",
       transport: input.transport,

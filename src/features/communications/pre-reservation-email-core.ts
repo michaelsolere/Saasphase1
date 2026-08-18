@@ -180,24 +180,6 @@ export function formatPreReservationParisDate(value: string | null) {
   }).format(date);
 }
 
-async function readWritableMembership(supabase: Supabase, userId: string) {
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("organization_id")
-    .eq("profile_id", userId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .in("role", ["owner", "admin", "member"])
-    .limit(1)
-    .maybeSingle();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return data;
-}
-
 async function readReservation(
   supabase: Supabase,
   organizationId: string,
@@ -363,15 +345,12 @@ function mapTransactionalResult(
 async function readBlockingHistoricalPreReservationAttempt(
   supabase: Supabase,
   applicationId: string,
+  organizationId: string,
 ): Promise<SendPreReservationEmailResult | null> {
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) return null;
-  const membership = await readWritableMembership(supabase, authData.user.id);
-  if (!membership) return null;
   const { data: application } = await supabase
     .from("applications")
     .select("id, contact_id")
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .eq("id", applicationId)
     .eq("status", "qualified")
     .is("deleted_at", null)
@@ -380,7 +359,7 @@ async function readBlockingHistoricalPreReservationAttempt(
   const { data: reservations } = await supabase
     .from("reservations")
     .select("id")
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .eq("application_id", application.id)
     .eq("contact_id", application.contact_id)
     .is("deleted_at", null);
@@ -389,7 +368,7 @@ async function readBlockingHistoricalPreReservationAttempt(
   const { data: attempts } = await supabase
     .from("email_delivery_attempts")
     .select("id, status")
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .eq("contact_id", application.contact_id)
     .eq("message_type", PRE_RESERVATION_MESSAGE_TYPE)
     .in("reservation_id", reservationIds)
@@ -417,9 +396,20 @@ export async function sendPreReservationEmailForApplication(
     transitions?: Parameters<typeof runTransactionalCampaignDelivery>[1]["transitions"];
   },
 ): Promise<SendPreReservationEmailResult> {
+  const { data: applicationScope, error: applicationScopeError } = await options.supabase
+    .from("applications")
+    .select("organization_id")
+    .eq("id", input.applicationId)
+    .eq("status", "qualified")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (applicationScopeError || !applicationScope) {
+    return { status: "not_eligible", deliveryState: "not_sent" };
+  }
   const historical = await readBlockingHistoricalPreReservationAttempt(
     options.supabase,
     input.applicationId,
+    applicationScope.organization_id,
   );
   if (historical) return historical;
 
@@ -430,6 +420,7 @@ export async function sendPreReservationEmailForApplication(
     {
       campaignKey: PRE_RESERVATION_MESSAGE_TYPE,
       operationVersion: PRE_RESERVATION_OPERATION_VERSION,
+      context: { organizationId: applicationScope.organization_id },
       transport: options.transport as TransactionalEmailTransport | undefined,
       prepareOperation: async ({ supabase, organizationId }) => {
         const { data: application, error } = await supabase
@@ -548,20 +539,18 @@ export async function sendPreReservationEmailForReservation(
     transport?: PreReservationEmailTransport;
   },
 ): Promise<SendPreReservationEmailResult> {
-  const { data: authData } = await options.supabase.auth.getUser();
-  if (!authData.user) {
-    return { status: "not_eligible", deliveryState: "not_sent" };
-  }
-  const membership = await readWritableMembership(
-    options.supabase,
-    authData.user.id,
-  );
-  if (!membership) {
+  const { data: reservationScope, error: reservationScopeError } = await options.supabase
+    .from("reservations")
+    .select("organization_id")
+    .eq("id", input.reservationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (reservationScopeError || !reservationScope) {
     return { status: "not_eligible", deliveryState: "not_sent" };
   }
   const reservation = await readReservation(
     options.supabase,
-    membership.organization_id,
+    reservationScope.organization_id,
     input.reservationId,
   );
   if (

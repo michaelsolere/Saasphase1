@@ -1,9 +1,11 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { assessBirthDocumentsDepositDocumentRows } from "@/features/communications/birth-documents-deposit-attachments";
 import { formatPreReservationContactFullName } from "@/features/communications/pre-reservation-email-core";
+import { chooseTransactionalCampaignStaleAction } from "@/features/communications/transactional-campaign-core";
 import { parseDocumentPdfPath } from "@/features/documents/document-pdf-storage-core";
 import {
   addDaysAsIsoDate,
@@ -93,7 +95,7 @@ export async function loadReservationPreparation(
     loose.from("post_birth_positions").select("status, confirmed_at")
       .eq("organization_id", organizationId).eq("reservation_id", reservationId)
       .order("confirmed_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("email_delivery_attempts").select("status, created_at")
+    supabase.from("email_delivery_attempts").select("status, created_at, last_attempt_at, provider_call_started_at")
       .eq("organization_id", organizationId).eq("reservation_id", reservationId)
       .eq("message_type", "birth_documents_deposit").is("deleted_at", null)
       .order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -143,6 +145,9 @@ export async function loadReservationPreparation(
       sendable: assessed.ok && assessed.documents.some(
         (candidate) => candidate.documentType === document.document_type && candidate.version === parsed?.version,
       ),
+      fileSha256: document.file_sha256,
+      fileSizeBytes: document.file_size_bytes,
+      filePath: document.file_path,
     };
   });
 
@@ -162,6 +167,22 @@ export async function loadReservationPreparation(
   const dueDate = complementCents > 0
     ? activeComplement?.due_date ?? addDaysAsIsoDate(settings.preReservationResponseDelayDays)
     : null;
+  const previousAttempt = attemptResult.data;
+  const previousDeliveryStatus = previousAttempt?.status === "sending"
+    ? (() => {
+        const staleAction = chooseTransactionalCampaignStaleAction({
+          lastAttemptAt: previousAttempt.last_attempt_at,
+          providerCallStartedAt: previousAttempt.provider_call_started_at,
+        });
+        return staleAction === "retry"
+          ? "retryable" as const
+          : staleAction === "uncertain"
+            ? "uncertain" as const
+            : "sending" as const;
+      })()
+    : previousAttempt?.status === "sent" || previousAttempt?.status === "failed"
+      ? previousAttempt.status
+      : null;
   const variables = buildBirthDocumentsDepositVariables({
     firstName: contact?.first_name ?? null,
     lastName: contact?.last_name ?? null,
@@ -205,11 +226,14 @@ export async function loadReservationPreparation(
           providerName: provider?.name ?? null,
           subject: provider?.subject ?? null,
           htmlContent: provider?.htmlContent ?? null,
+          htmlSha256: provider?.htmlContent === null || provider?.htmlContent === undefined
+            ? null
+            : createHash("sha256").update(provider.htmlContent).digest("hex"),
           modifiedAt: provider?.modifiedAt ?? null,
           active: Boolean(provider?.isActive),
         }
       : null,
     brevoConfigured: configuration.isConfigured,
-    previousDeliveryStatus: attemptResult.data?.status ?? null,
+    previousDeliveryStatus,
   };
 }

@@ -255,6 +255,20 @@ async function login(page: Page) {
   await expect(page).toHaveURL(/\/candidatures/, { timeout: 20_000 });
 }
 
+test("the legacy document-delivery RPC overload is absent after migration replay", () => {
+  const legacySignature = [
+    "uuid", "uuid", "uuid", "uuid", "text", "text",
+    "bigint", "bigint", "integer", "integer", "timestamptz",
+  ].join(",");
+  const currentSignature = [
+    "uuid", "uuid", "uuid", "uuid", "text", "text",
+    "bigint", "bigint", "integer", "integer", "uuid", "timestamptz",
+  ].join(",");
+
+  expect(sql(`select to_regprocedure('public.mark_birth_documents_deposit_documents_sent(${legacySignature})') is null;`)).toBe("t");
+  expect(sql(`select to_regprocedure('public.mark_birth_documents_deposit_documents_sent(${currentSignature})') is not null;`)).toBe("t");
+});
+
 test("owner envoie les deux PDF atomiquement puis member reste refusé sur les mêmes documents", async () => {
   const supabase = await createAuthenticatedSupabaseClient();
   const docs = await fixture(supabase, { variantContract: true });

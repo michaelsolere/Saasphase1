@@ -33,6 +33,9 @@ function input(
         status: "to_generate",
         version: 2,
         sendable: true,
+        fileSha256: "a".repeat(64),
+        fileSizeBytes: 1_024,
+        filePath: "organizations/org/documents/certificate-v2.pdf",
       },
       {
         id: "30000000-0000-4000-8000-000000000002",
@@ -40,6 +43,9 @@ function input(
         status: "to_generate",
         version: 3,
         sendable: true,
+        fileSha256: "b".repeat(64),
+        fileSizeBytes: 2_048,
+        filePath: "organizations/org/documents/contract-v3.pdf",
       },
     ],
     variables: {
@@ -54,6 +60,7 @@ function input(
       providerName: "Réservation après naissance",
       subject: "Vos documents pour {{ params.portee }}",
       htmlContent: "<h1>Bonjour {{ params.prenom }}</h1><p>{{params.portee}}</p>",
+      htmlSha256: "1".repeat(64),
       modifiedAt: "2026-08-15T08:00:00.000Z",
       active: true,
     },
@@ -93,6 +100,21 @@ test("un paiement déjà complet n’empêche pas l’envoi des documents", () =
   expect(preparation.financial.complementCents).toBe(0);
   expect(preparation.financial.requestState).toBe("not_required");
   expect(preparation.canConfirm).toBe(true);
+});
+
+test("autorise une reprise sûre mais bloque un résultat fournisseur incertain", () => {
+  const retryable = buildReservationPreparation(
+    input({ previousDeliveryStatus: "retryable" }),
+  );
+  const uncertain = buildReservationPreparation(
+    input({ previousDeliveryStatus: "uncertain" }),
+  );
+
+  expect(retryable.canConfirm).toBe(true);
+  expect(uncertain.blockers.map((issue) => issue.code)).toContain(
+    "delivery_uncertain",
+  );
+  expect(uncertain.canConfirm).toBe(false);
 });
 
 test("signale sans bloquer une ancienne demande de complément lorsque les arrhes sont complètes", () => {

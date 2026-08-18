@@ -143,25 +143,22 @@ function isUncertainProviderReason(reason: TransactionalProviderErrorReason) {
 export async function readTransactionalCampaignContext(
   supabase: Supabase,
   scope: {
-    organizationId?: string;
+    organizationId: string;
     roles?: TransactionalCampaignRole[];
-  } = {},
+  },
 ) {
+  if (!scope.organizationId) return null;
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return null;
 
-  let query = supabase
+  const query = supabase
     .from("memberships")
     .select("organization_id")
     .eq("profile_id", authData.user.id)
     .eq("status", "active")
     .is("deleted_at", null)
-    .in("role", scope.roles ?? ["owner", "admin", "member"]);
-  if (scope.organizationId) {
-    query = query.eq("organization_id", scope.organizationId);
-  } else {
-    query = query.limit(1);
-  }
+    .in("role", scope.roles ?? ["owner", "admin", "member"])
+    .eq("organization_id", scope.organizationId);
   const { data, error } = await query.maybeSingle();
 
   if (error || !data) return null;
@@ -222,8 +219,8 @@ export async function runTransactionalCampaignDelivery(
   input: {
     campaignKey: string;
     operationVersion: string;
-    context?: {
-      organizationId?: string;
+    context: {
+      organizationId: string;
       roles?: TransactionalCampaignRole[];
     };
     claimedPreparationPhase?: ClaimedPreparationPhase;

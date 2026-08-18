@@ -111,10 +111,22 @@ export async function sendMatingConfirmationEmailForApplication(
     transitions?: Parameters<typeof runTransactionalCampaignDelivery>[1]["transitions"];
   },
 ): Promise<SendMatingConfirmationEmailResult> {
+  const { data: applicationScope, error: applicationScopeError } = await options.supabase
+    .from("applications")
+    .select("organization_id")
+    .eq("id", input.applicationId)
+    .eq("desired_litter_id", input.litterId)
+    .eq("status", "qualified")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (applicationScopeError || !applicationScope) {
+    return { status: "not_eligible", deliveryState: "not_sent" };
+  }
   const result = await runTransactionalCampaignDelivery(
     {
       campaignKey: CAMPAIGN_KEY,
       operationVersion: OPERATION_VERSION,
+      context: { organizationId: applicationScope.organization_id },
       transport: options.transport,
       prepareOperation: async ({ supabase, organizationId }) => {
         const { data: application, error: applicationError } = await supabase

@@ -14,6 +14,9 @@ export type ReservationPreparationDocument = {
   status: string;
   version: number;
   sendable: boolean;
+  fileSha256: string | null;
+  fileSizeBytes: number | null;
+  filePath: string | null;
 };
 
 export type ReservationPreparationInput = {
@@ -43,11 +46,12 @@ export type ReservationPreparationInput = {
     providerName: string | null;
     subject: string | null;
     htmlContent: string | null;
+    htmlSha256: string | null;
     modifiedAt: string | null;
     active: boolean;
   } | null;
   brevoConfigured: boolean;
-  previousDeliveryStatus: string | null;
+  previousDeliveryStatus: "sent" | "sending" | "retryable" | "uncertain" | "failed" | null;
 };
 
 export type ReservationPreparationIssue = {
@@ -67,6 +71,7 @@ const stateLabels: Record<string, string> = {
   incomplete: "Incomplet",
   sent: "Envoyé",
   sending: "Envoi en cours",
+  uncertain: "Résultat d’envoi à vérifier",
   not_ready: "Non prêt",
 };
 
@@ -230,6 +235,13 @@ export function buildReservationPreparation(input: ReservationPreparationInput) 
     blockers.push(
       issue("delivery_in_progress", "Un envoi de cette réservation est déjà en cours."),
     );
+  } else if (input.previousDeliveryStatus === "uncertain") {
+    blockers.push(
+      issue(
+        "delivery_uncertain",
+        "Un appel Brevo a pu aboutir ; vérifiez son résultat avant toute nouvelle tentative.",
+      ),
+    );
   }
 
   const financial = {
@@ -257,9 +269,11 @@ export function buildReservationPreparation(input: ReservationPreparationInput) 
       ? "sent" as const
       : input.previousDeliveryStatus === "sending"
         ? "sending" as const
-        : selectedDocuments.length === 2
-          ? "ready_to_send" as const
-          : "not_ready" as const,
+        : input.previousDeliveryStatus === "uncertain"
+          ? "uncertain" as const
+          : selectedDocuments.length === 2
+            ? "ready_to_send" as const
+            : "not_ready" as const,
     deliveryStatus: input.previousDeliveryStatus,
   };
 
@@ -302,19 +316,32 @@ export function buildReservationPreparationKey(
     activeComplementRequest: input.activeComplementRequest,
     documents: [...input.documents]
       .sort((left, right) => left.type.localeCompare(right.type))
-      .map(({ id, type, status, version, sendable }) => ({
+      .map(({ id, type, status, version, sendable, fileSha256, fileSizeBytes, filePath }) => ({
         id,
         type,
         status,
         version,
         sendable,
+        fileSha256,
+        fileSizeBytes,
+        filePath,
       })),
     variables: Object.fromEntries(
       Object.entries(input.variables).sort(([left], [right]) =>
         left.localeCompare(right),
       ),
     ),
-    template: input.template,
+    template: input.template
+      ? {
+          registryTitle: input.template.registryTitle,
+          brevoTemplateId: input.template.brevoTemplateId,
+          providerName: input.template.providerName,
+          subject: input.template.subject,
+          htmlSha256: input.template.htmlSha256,
+          modifiedAt: input.template.modifiedAt,
+          active: input.template.active,
+        }
+      : null,
     brevoConfigured: input.brevoConfigured,
     previousDeliveryStatus: input.previousDeliveryStatus,
   });
