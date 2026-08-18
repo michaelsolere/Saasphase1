@@ -4,7 +4,6 @@ import { createTestOrganization } from "./helpers/fixtures/breeding-fixtures";
 import {
   createTestAdopterAnimalAssignmentScenario,
   createTestAssignableProducedAnimal,
-  registerActualAnimalAssignmentEffects,
 } from "./helpers/fixtures/adopter-animal-assignment-fixtures";
 import {
   createTestAdopterJourney,
@@ -148,104 +147,31 @@ test("assigns an existing produced animal to an adopter journey through the rese
     expect(hiddenForeignAnimal.error).toBeNull();
     expect(hiddenForeignAnimal.data).toBeNull();
 
-    const animalSelect = page.getByLabel("Attribuer un animal");
-    await expect(animalSelect.locator(`option[value="${scenario.animal.id}"]`)).toHaveCount(1);
-    await expect(animalSelect.locator(`option[value="${foreignAnimal.id}"]`)).toHaveCount(0);
-    await expect(animalSelect.locator(`option[value="${incompatibleAnimal.id}"]`)).toHaveCount(0);
-
-    await animalSelect.selectOption(scenario.animal.id);
-    await page.getByRole("button", { name: "Attribuer l’animal" }).click();
-    await expect(page).toHaveURL(/animal_assign_status=success/);
-
-    const afterAssign = expectSupabaseData(
-      await supabase
-        .from("reservations")
-        .select("id, animal_id, animal_assigned_at, status")
-        .eq("id", scenario.journey.id)
-        .maybeSingle(),
-      "read journey after assignment",
-    );
-    expect(afterAssign).toMatchObject({
-      id: scenario.journey.id,
-      animal_id: scenario.animal.id,
-      status: "animal_assigned",
-    });
-    expect(afterAssign?.animal_assigned_at).not.toBeNull();
-
-    const reservedAnimal = expectSupabaseData(
-      await supabase
-        .from("animals")
-        .select("id, status, ownership_status")
-        .eq("id", scenario.animal.id)
-        .maybeSingle(),
-      "read animal after assignment",
-    );
-    expect(reservedAnimal).toMatchObject({
-      id: scenario.animal.id,
-      status: "reserved",
-      ownership_status: "produced",
-    });
-
-    const animalCount = expectSupabaseData(
-      await supabase
-        .from("animals")
-        .select("id")
-        .eq("organization_id", organizationId)
-        .in("id", [scenario.animal.id, incompatibleAnimal.id]),
-      "count animals after assignment",
-    );
-    expect(animalCount).toHaveLength(2);
-
-    const reservationCount = expectSupabaseData(
-      await supabase
-        .from("reservations")
-        .select("id")
-        .in("id", [scenario.journey.id, rivalJourney.id]),
-      "count reservations after assignment",
-    );
-    expect(reservationCount).toHaveLength(2);
-
-    await registerActualAnimalAssignmentEffects(sql, fixtures, {
-      organizationId,
-      reservationId: scenario.journey.id,
-      contactId: scenario.contact.id,
-      animalId: scenario.animal.id,
-    });
-
-    await page.reload();
-    await expect(
-      page.locator("#scope-and-animal").getByRole("link", { name: `Chiot pilote ${suffix}` }),
-    ).toBeVisible();
     await expect(page.getByLabel("Attribuer un animal")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Attribuer l’animal" })).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Ouvrir le planning de choix" }),
+    ).toHaveAttribute("href", `/litters/${scenario.litterId}/choice-appointments`);
 
-    const afterReload = expectSupabaseData(
+    const unchanged = expectSupabaseData(
       await supabase
         .from("reservations")
         .select("id, animal_id, status")
-        .eq("id", scenario.journey.id)
-        .maybeSingle(),
-      "read journey after reload",
-    );
-    expect(afterReload).toEqual({
-      id: scenario.journey.id,
-      animal_id: scenario.animal.id,
-      status: "animal_assigned",
-    });
-
-    await page.goto(`/reservations/${rivalJourney.id}`);
-    await expect(page.getByText("Animal non attribué pour l’instant", { exact: true })).toBeVisible();
-    const rivalSelect = page.getByLabel("Attribuer un animal");
-    await expect(rivalSelect.locator(`option[value="${scenario.animal.id}"]`)).toHaveCount(0);
-
-    const holders = expectSupabaseData(
-      await supabase
-        .from("reservations")
-        .select("id")
-        .eq("animal_id", scenario.animal.id)
-        .is("deleted_at", null),
-      "read reservations holding animal",
-    );
-    expect(holders.map((row) => row.id)).toEqual([scenario.journey.id]);
+        .in("id", [scenario.journey.id, rivalJourney.id])
+        .order("id"),
+      "read journeys after guarded detail page",
+    ) as Array<{ id: string; animal_id: string | null; status: string }>;
+    expect(unchanged).toHaveLength(2);
+    expect(unchanged.every((row) => row.animal_id === null)).toBe(true);
+    expect(
+      expectSupabaseData(
+        await supabase
+          .from("animals")
+          .select("id, status")
+          .eq("id", scenario.animal.id)
+          .single(),
+        "read animal after guarded detail page",
+      ),
+    ).toMatchObject({ id: scenario.animal.id, status: "available" });
   });
 });

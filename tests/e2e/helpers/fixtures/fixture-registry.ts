@@ -1,4 +1,13 @@
 export const fixtureTables = [
+  "choice_appointment_sessions",
+  "choice_appointment_accesses",
+  "animal_assignment_commands",
+  "choice_appointment_commands",
+  "choice_appointment_events",
+  "animal_assignment_events",
+  "choice_appointment_ranked_preferences",
+  "choice_appointment_slots",
+  "choice_appointment_plans",
   "direct_late_sale_commands",
   "direct_late_sale_events",
   "direct_late_sale_email_drafts",
@@ -38,6 +47,7 @@ export const fixtureTables = [
   "calendar_reminder_commands",
   "calendar_reminders",
   "events",
+  "media",
   "documents",
   "payments",
   "contact_roles",
@@ -95,6 +105,15 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "choice_appointment_sessions",
+  "choice_appointment_accesses",
+  "animal_assignment_commands",
+  "choice_appointment_commands",
+  "choice_appointment_events",
+  "animal_assignment_events",
+  "choice_appointment_ranked_preferences",
+  "choice_appointment_slots",
+  "choice_appointment_plans",
   "direct_late_sale_commands",
   "direct_late_sale_events",
   "direct_late_sale_email_drafts",
@@ -134,6 +153,7 @@ const cleanupOrder: FixtureTable[] = [
   "calendar_reminder_commands",
   "calendar_reminders",
   "events",
+  "media",
   "documents",
   "payments",
   "contact_roles",
@@ -221,6 +241,49 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     const contactIds = [...ids.get("contacts")!];
     const positionIds = [...ids.get("post_birth_positions")!];
     const directSaleIds = [...ids.get("direct_late_sales")!];
+    const choiceSlotIds = [...ids.get("choice_appointment_slots")!];
+    if (choiceSlotIds.length) {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         delete from public.choice_appointment_sessions
+         where slot_id in (${idsSql(choiceSlotIds)});
+         delete from public.choice_appointment_accesses
+         where slot_id in (${idsSql(choiceSlotIds)});
+         update public.choice_appointment_slots
+         set invitation_delivery_attempt_id=null,
+             invitation_sent_at=null,
+             reminder_due_at=null,
+             reminder_delivery_attempt_id=null,
+             reminder_sent_at=null
+         where id in (${idsSql(choiceSlotIds)});
+         delete from public.email_delivery_attempts
+         where reservation_id in (
+           select reservation_id from public.choice_appointment_slots
+           where id in (${idsSql(choiceSlotIds)})
+         ) and message_type in (
+           'choice_appointment_adoption_booklet',
+           'choice_assignment_confirmation'
+         );
+         delete from public.animal_assignment_commands command
+         where command.result->>'assignmentEventId' in (
+           select event.id::text from public.animal_assignment_events event
+           where event.slot_id in (${idsSql(choiceSlotIds)})
+         );
+         update public.choice_appointment_slots
+         set assignment_event_id = null
+         where id in (${idsSql(choiceSlotIds)});
+         delete from public.animal_assignment_events
+         where slot_id in (${idsSql(choiceSlotIds)});
+         delete from public.choice_appointment_events
+         where slot_id in (${idsSql(choiceSlotIds)});
+         delete from public.choice_appointment_commands
+         where target_id in (${idsSql(choiceSlotIds)});
+         delete from public.choice_appointment_ranked_preferences
+         where slot_id in (${idsSql(choiceSlotIds)});
+         commit;`,
+      );
+    }
     if (positionIds.length) {
       await execute(`update public.post_birth_positions set current_decision_id = null where id in (${idsSql(positionIds)})`);
     }
@@ -251,6 +314,27 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
               where proposal.reservation_id in (${idsSql(reservationIds)})
             );
          delete from public.pre_reservation_proposals
+         where reservation_id in (${idsSql(reservationIds)});
+         delete from public.adopter_profile_questionnaire_sessions
+         where instance_id in (
+           select id from public.adopter_profile_questionnaire_instances
+           where reservation_id in (${idsSql(reservationIds)})
+         );
+         delete from public.adopter_profile_questionnaire_accesses
+         where instance_id in (
+           select id from public.adopter_profile_questionnaire_instances
+           where reservation_id in (${idsSql(reservationIds)})
+         );
+         delete from public.adopter_profile_questionnaire_events
+         where reservation_id in (${idsSql(reservationIds)});
+         delete from public.adopter_profile_questionnaire_commands
+         where instance_id in (
+           select id from public.adopter_profile_questionnaire_instances
+           where reservation_id in (${idsSql(reservationIds)})
+         );
+         delete from public.adopter_profile_questionnaire_reconciliation_attempts
+         where reservation_id in (${idsSql(reservationIds)});
+         delete from public.adopter_profile_questionnaire_instances
          where reservation_id in (${idsSql(reservationIds)});
          delete from public.payments
          where reservation_id in (${idsSql(reservationIds)});
@@ -304,7 +388,11 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activation_deactivations"
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
-      table === "adopter_profile_questionnaire_sessions"
+      table === "animal_assignment_commands"
+      || table === "animal_assignment_events"
+      || table === "choice_appointment_commands"
+      || table === "choice_appointment_events"
+      || table === "adopter_profile_questionnaire_sessions"
       || table === "adopter_profile_questionnaire_accesses"
       || table === "adopter_profile_questionnaire_events"
       || table === "adopter_profile_questionnaire_commands"

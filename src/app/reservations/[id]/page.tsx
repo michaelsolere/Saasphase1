@@ -34,8 +34,6 @@ import {
   updateReservationInternalComment,
   updateReservationPrice,
   activateReservation,
-  assignAnimalToReservation,
-  unassignAnimalFromReservation,
   syncReservationScopeFromApplication,
   attachReservationToScope,
 } from "@/features/reservations/actions";
@@ -4175,63 +4173,40 @@ export default async function ReservationDetailPage({
                                 : "Aucun animal attribuable trouvé pour cet adoptant."}
                             </p>
                           ) : (
-                            <form action={assignAnimalToReservation} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                              <input type="hidden" name="reservation_id" value={id} />
-                              <div className="max-w-xs flex-1">
-                                <label htmlFor="animal_id" className="block text-xs font-semibold uppercase tracking-wide text-muted mb-2">
-                                  Attribuer un animal
-                                </label>
-                                <select
-                                  id="animal_id"
-                                  name="animal_id"
-                                  required
-                                  className="w-full rounded-xl border bg-background px-4 py-2.5 text-sm outline-none transition focus:border-accent"
-                                >
-                                  <option value="">-- Choisir un animal --</option>
-                                  {availableAnimals.map((animal) => {
-                                    const name = getAnimalDisplayName(animal);
-                                    const sex = getAnimalSexLabel(animal.sex);
-                                    const breed = animal.breed || "Race inconnue";
-                                    return (
-                                      <option key={animal.id} value={animal.id}>
-                                        {name} ({sex} - {breed})
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                                <p className="mt-2 text-xs leading-5 text-muted">
-                                  {reservation.litter_id
-                                    ? "Seuls les animaux disponibles de la portée liée sont proposés."
-                                    : "Seuls les chiots ou chatons nés à l’élevage et disponibles sont proposés."}
-                                </p>
-                              </div>
-                              <button
-                                type="submit"
-                                className="inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
+                            <div className="rounded-xl border bg-background p-4">
+                              <p className="text-sm font-semibold text-foreground">
+                                L’attribution se finalise depuis le planning de choix.
+                              </p>
+                              <p className="mt-2 text-xs leading-5 text-muted">
+                                Le planning contrôle la place, le sexe, l’ordre actif,
+                                la disponibilité et l’historique dans une seule opération.
+                              </p>
+                              <Link
+                                href={`/litters/${reservation.litter_id}/choice-appointments`}
+                                className="mt-3 inline-flex rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white"
                               >
-                                Attribuer l’animal
-                              </button>
-                            </form>
+                                Ouvrir le planning de choix
+                              </Link>
+                            </div>
                           )}
                         </div>
                       ) : null}
                     </div>
                   ) : !isFinalReservationStatus(reservation.status) ? (
-                    <form action={unassignAnimalFromReservation} className="mt-6 border-t pt-5">
-                      <input type="hidden" name="reservation_id" value={id} />
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="max-w-2xl text-xs leading-5 text-muted">
-                          Cela retire uniquement le lien entre l’adoptant et
-                          l’animal. L’animal n’est pas supprimé.
-                        </p>
-                        <button
-                          type="submit"
-                          className="inline-flex w-fit rounded-xl border border-red-200 bg-red-50/50 px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100/60 hover:border-red-300"
+                    <div className="mt-6 border-t pt-5">
+                      <p className="max-w-2xl text-xs leading-5 text-muted">
+                        Un changement reste possible depuis le planning de choix tant
+                        que le premier document individuel n’a pas verrouillé l’attribution.
+                      </p>
+                      {reservation.litter_id ? (
+                        <Link
+                          href={`/litters/${reservation.litter_id}/choice-appointments`}
+                          className="mt-3 inline-flex w-fit rounded-xl border px-4 py-2 text-sm font-semibold text-accent"
                         >
-                          Retirer l’attribution
-                        </button>
-                      </div>
-                    </form>
+                          Contrôler ou changer l’attribution
+                        </Link>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   <div className="mt-6 border-t pt-5">
