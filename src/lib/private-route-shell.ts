@@ -7,7 +7,12 @@
  */
 
 /** Explicit public marketing / auth / intake surfaces (no sidebar). */
-export const PUBLIC_APP_ROUTES = ["/login", "/candidature", "/suivi"] as const;
+export const PUBLIC_APP_ROUTES = [
+  "/login",
+  "/candidature",
+  "/suivi",
+  "/choix",
+] as const;
 
 /**
  * Authenticated surfaces that intentionally omit the desktop sidebar.

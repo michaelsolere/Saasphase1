@@ -145,10 +145,13 @@ export async function readTransactionalCampaignContext(
   scope: {
     organizationId: string;
     roles?: TransactionalCampaignRole[];
+    systemActorUserId?: string;
   },
 ) {
   if (!scope.organizationId) return null;
-  const { data: authData } = await supabase.auth.getUser();
+  const { data: authData } = scope.systemActorUserId
+    ? { data: { user: { id: scope.systemActorUserId } } }
+    : await supabase.auth.getUser();
   if (!authData.user) return null;
 
   const query = supabase
@@ -222,6 +225,7 @@ export async function runTransactionalCampaignDelivery(
     context: {
       organizationId: string;
       roles?: TransactionalCampaignRole[];
+      systemActorUserId?: string;
     };
     claimedPreparationPhase?: ClaimedPreparationPhase;
     transport?: TransactionalEmailTransport;
@@ -244,6 +248,13 @@ export async function runTransactionalCampaignDelivery(
       | { ok: true; claimed: ClaimedOperation }
       | { ok: false; errorCode: string }
     >;
+    reconcileAlreadySentOperation?: (context: {
+      supabase: Supabase;
+      organizationId: string;
+      userId: string;
+      attempt: Database["public"]["Tables"]["email_delivery_attempts"]["Row"];
+      operation: PreparedOperation;
+    }) => Promise<{ ok: true } | { ok: false; errorCode: string }>;
   },
   options: {
     supabase: Supabase;
@@ -303,6 +314,30 @@ export async function runTransactionalCampaignDelivery(
     return { outcome: "failed", errorCode: attempt.error.code };
   }
   if (attempt.attempt.status === "sent") {
+    if (input.reconcileAlreadySentOperation) {
+      let reconciliation;
+      try {
+        reconciliation = await input.reconcileAlreadySentOperation({
+          supabase: options.supabase,
+          ...context,
+          attempt: attempt.attempt,
+          operation,
+        });
+      } catch {
+        return {
+          outcome: "uncertain",
+          attemptId: attempt.attempt.id,
+          errorCode: "already_sent_reconciliation_exception",
+        };
+      }
+      if (!reconciliation.ok) {
+        return {
+          outcome: "uncertain",
+          attemptId: attempt.attempt.id,
+          errorCode: reconciliation.errorCode,
+        };
+      }
+    }
     return { outcome: "already_sent", attemptId: attempt.attempt.id };
   }
 

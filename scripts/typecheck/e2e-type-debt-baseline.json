@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "totalDiagnostics": 443,
-  "totalFiles": 51,
+  "totalDiagnostics": 441,
+  "totalFiles": 50,
   "diagnostics": [
     {
       "file": "tests/e2e/animal-attribution-coherence.spec.ts",
@@ -505,18 +505,6 @@
       "file": "tests/e2e/transactional-adopter-activation-workflow.spec.ts",
       "code": "TS2339",
       "message": "Property 'updated_by' does not exist on type 'never'.",
-      "count": 1
-    },
-    {
-      "file": "tests/e2e/transactional-adopter-animal-assignment-workflow.spec.ts",
-      "code": "TS18047",
-      "message": "'holders' is possibly 'null'.",
-      "count": 1
-    },
-    {
-      "file": "tests/e2e/transactional-adopter-animal-assignment-workflow.spec.ts",
-      "code": "TS2339",
-      "message": "Property 'animal_assigned_at' does not exist on type 'never'.",
       "count": 1
     },
     {

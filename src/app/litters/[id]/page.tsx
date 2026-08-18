@@ -3127,9 +3127,17 @@ export default async function LitterDetailPage({
                 </div>
 
                 <div className="mt-8 border-t pt-8">
-                  <p className="text-sm font-medium text-foreground">
-                    Créneaux de choix + livret d’adoption
-                  </p>
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                    <p className="text-sm font-medium text-foreground">
+                      Créneaux de choix + livret d’adoption
+                    </p>
+                    <Link
+                      href={`/litters/${id}/choice-appointments`}
+                      className="inline-flex w-fit rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white"
+                    >
+                      Ouvrir le planning de choix
+                    </Link>
+                  </div>
                   <p className="mt-2 text-sm text-muted">
                     Prévisualisez chaque e-mail personnalisé, envoyez-le
                     manuellement avec le livret, puis confirmez la trace
