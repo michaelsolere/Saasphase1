@@ -2,7 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
   buildJourneyChronology,
-  type JourneyChronologyEmailDetails,
   type JourneyChronologySourceEntry,
   type AdopterWorkbenchRecord,
 } from "@/features/reservations/adopter-workbench-model";
