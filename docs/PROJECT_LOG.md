@@ -1666,6 +1666,66 @@ socialisation sera collectif au niveau de la portée ou de l’ensemble des
 chiots. Il ne suivra pas les chiots individuellement. La socialisation n’est
 pas implémentée dans ce lot.
 
+## Lot du 2026-08-03 au 2026-08-09 — Fondations liées du parcours adoptant
+
+Entrée consolidée des lots livrés en marge de l'ordre de livraison validé, tous intégrés au parcours :
+
+- **Questionnaire de suivi post-adoption T1/T2** (#456 à #463) : fondation des instances de suivi, provisionnement et réconciliation des questionnaires (ancres auditées), revue interne des réponses, collecte publique sécurisée, lecture interne améliorée, photographie descriptive individuelle, puis centralisation et visualisation collective des résultats.
+- **Finalisation d'adoption sécurisée** (#464, `ADOPTION-HANDOVER-SAFETY-01`) : contrôles de cohérence avant clôture du dossier, événements historisés (`finalized`, `date_corrected`, `reversed`, `incident_opened`), correction d'une adoption finalisée encadrée.
+- **Résolution financière des sorties payées** (#465 et #466, `ADOPTER-FINANCIAL-RESOLUTION-01`) : sorties payées (retrait, annulation, expiration) ouvertes puis résolues, rectifiées ou réconciliées ; remboursements partiels et totaux, avoirs et reports ; preuve de concurrence rendue déterministe.
+- **Administration du formulaire public** (#467 et #468) : partage et administration de la soumission publique, écritures contraintes aux RPC autoritatives du SaaS.
+- **Suivi post-adoption automatisé** (#469 et #470) : livraison automatisée des questionnaires T1/T2 via le cron protégé, avec reprise sûre des échecs d'envoi.
+
+## Lot du 2026-08-06 — CANDIDATE-WORKBENCH-01 : poste de travail Candidats (#471)
+
+Premier lot de l'ordre de livraison validé du parcours adoptant (référence `docs/PARCOURS_ADOPTANT_WORKFLOW_REFERENCE.md`). Livre le poste de travail **Candidats** avec la direction hybride validée : tableau principal compact et panneau contextuel confortable.
+
+Le tableau présente la recherche immédiate, les filtres principaux (étape, portée ou groupe, préférence, urgence), un tri par ancienneté de candidature, un compteur « Nouvelles » et un badge jusqu'à la première consultation, et des repères visuels d'urgence sans modifier l'ordre. Le panneau, refermable et redimensionnable sur ordinateur, garde le tableau visible, présente une synthèse actuelle unique et calcule la prochaine action principale ; les rubriques suivent un ordre stable et restent repliables, la confirmation guidée étant réservée aux décisions sensibles.
+
+Le parcours d'entrée reste celui du formulaire public générique : la soumission crée ou rapproche le contact, puis la candidature, sans saisie manuelle préalable. La fiche contact unique est conservée (aucune table séparée prospects/adoptants).
+
+## Lot du 2026-08-07 — CANDIDATE-POSITIONING-AND-PRE-RESERVATION-01 : positionnement candidat et pré-réservation (#472)
+
+Deuxième lot de l'ordre validé. Ajoute le **souhait temporel** structuré, distinct de l'organisation métier des portées : au plus tôt, saison précise, pas avant une date, sans préférence (l'absence de valeur s'interprète selon que la question a été posée ou non). Une candidature peut exprimer seulement une saison, puis être rattachée à un groupe de portées, puis positionnée sur une portée précise — le positionnement courant se modifie directement depuis le panneau.
+
+Ajoute l'**invitation à se pré-réserver** : préparation des invitations depuis le tableau candidats (fiche de portée ouvrant le tableau filtré), sélection multiple avec récapitulatif des destinataires, exclusions et anomalies avant validation, envoi transactionnel Brevo (le SaaS conserve la logique métier, les variables et l'historique ; Brevo conserve les modèles HTML et effectue le transport). L'enregistrement du **premier versement** accepte un montant réel modifiable ; un montant inférieur à l'attendu n'est jamais transformé silencieusement en paiement complet — l'éleveur l'accepte explicitement avec un motif, et la décision est historisée. Le premier versement accepté ouvre le parcours adoptant ; les événements de la phase candidat sont tracés dans `candidate_journey_events` (attribués, idempotents, append-only).
+
+## Lot du 2026-08-07 — ADOPTER-WORKBENCH-01 : poste de travail Parcours adoptants (#473)
+
+Troisième lot de l'ordre validé. Livre le poste **Parcours adoptants**, ouvert par le premier versement accepté (preuve d'ouverture exigée) : tableau groupé par groupe de portées ou portée puis classé par rang opérationnel, colonnes compactes (adoptant, souhait/attribution, rang, étape, prochaine action, indicateurs), et panneau avec la **timeline métier de sept jalons** (Pré-réservé, Profil relu, Rang confirmé, Contrat & arrhes, Chiot attribué, Départ prêt, Adopté) — l'étape courante est le premier jalon obligatoire non terminé, une opération en avance reste visible sans masquer un prérequis manquant.
+
+Le panneau présente l'action prioritaire calculée, les rubriques Famille et profil, Paiements, Documents, Rendez-vous, Communications et Notes internes. Les **échanges manuels** sont tracés de façon append-only et idempotente (`client_command_id`, canal, résumé, auteur, date) via la RPC `record_adopter_manual_contact`. Les mutations sensibles restent owner/admin et historisées ; les membres conservent la lecture. La vue `adopter_workbench_overview` projette le dossier courant (jalons, paiements, documents, notes, rendez-vous).
+
+## Lot du 2026-08-08 — ACCOMPANIMENT-PROFILE-REVIEW-01 : revue du profil adoptant (#474 et #475)
+
+Quatrième lot de l'ordre validé. Ajoute le **questionnaire d'accompagnement** versionné, envoyé après le premier versement : un brouillon modifiable jusqu'à la soumission, puis un final unique ; échéance J+14 avec relance J+7 ; invitation par email transactionnel avec lien sécurisé et reprise d'envoi en cas d'échec.
+
+La revue reste une **lecture humaine sans score** : l'éleveur accepte ou refuse chaque changement proposé, les conséquences sont affichées, et rien n'écrase silencieusement la donnée courante (exemple validé : une préférence de sexe différente est conservée jusqu'à adoption explicite). Le traitement par dérogation (questionnaire non rempli) exige un motif et une trace de contact familial, réservé aux rôles owner/admin et historisé. Les réponses détaillées ne sont lisibles que par owner/admin ; les autres rôles voient l'état du jalon.
+
+## Lot du 2026-08-11 — POST-BIRTH-POSITIONING-01 : positionnement après naissance (#476, #477 et #478)
+
+Cinquième lot de l'ordre validé. Ajoute le positionnement post-naissance : **capacités mâles/femelles versionnées** par portée, **rang historique** conservé et **ordre actif** distinct, files et vagues par sexe, places abstraites, incidents et entrées tardives gérés.
+
+Le SaaS prépare un **brouillon global** à partir des disponibilités, rangs et préférences ; l'éleveur relit et ajuste dans une vue large, traite les incompatibilités individuellement (motif obligatoire + trace du contact familial), puis une **validation globale** applique le positionnement final — les cas non résolus restent exclus sans bloquer les dossiers prêts. La surcapacité bloque ; la dérogation à l'ordre actif reste owner/admin et auditée. Les positionnements deviennent accessibles depuis le poste de travail (intégration du workbench, projection par portée).
+
+## Lot du 2026-08-18 — RESERVATION-PREPARATION-01 : préparation guidée de la réservation (#479)
+
+Sixième lot de l'ordre validé. Ajoute l'action guidée **« Préparer la réservation »** qui regroupe : les documents attendus (état et action principale), le complément d'arrhes, les variables et l'aperçu Brevo, les anomalies et exclusions visibles avant validation, et un récapitulatif avant application finale.
+
+Seules les informations indispensables bloquent l'action ; les données secondaires manquantes produisent un avertissement visible. Les paiements sont présentés en résumé compact avec la prochaine échéance ; l'historique financier détaillé reste repliable. Les documents sont présentés par état attendu et action principale, la liste détaillée s'ouvrant à la demande. Les mutations restent réservées aux rôles owner/admin.
+
+## Lot du 2026-08-18 — CHOICE-APPOINTMENTS-AND-ASSIGNMENT-01 : rendez-vous de choix et attribution (#480)
+
+Septième lot de l'ordre validé. Ajoute l'organisation des **rendez-vous de choix** (planning par portée, files fusionnées selon le rang) avec invitations Brevo à **lien sécurisé** : jeton opaque, aléatoire, limité à une action, expirable et révocable, session de choix dédiée — aucun identifiant métier ni donnée personnelle dans l'URL.
+
+Le **pré-choix classé** est enregistré puis recalculé à la meilleure préférence encore disponible au moment du tour ; l'éleveur confirme l'attribution avant toute information adressée à la famille. Les réponses possibles autour du rendez-vous couvrent accepter le créneau, demander une visio au même horaire, ou signaler une impossibilité pour organiser un pré-choix avant le rang concerné. L'**attribution** est atomique et réservée owner/admin, la confirmation est idempotente, et un changement d'attribution reste possible jusqu'au premier document individuel émis. L'éligibilité vérifie place, sexe, ordre, documents et arrhes.
+
+## Lot du 2026-08-19 — DEPARTURE-ORGANIZATION-01 : organisation des départs (#481 à #486)
+
+Huitième lot de l'ordre validé. Ajoute l'**agenda hebdomadaire multi-portées** des départs : blocs déplaçables par pas de 15 minutes (poignée ou corps), durée réglable par la poignée basse, une famille par créneau sans chevauchement, week-end public avec créneaux et rendez-vous exceptionnels privés.
+
+Le **choix de créneau public** est atomique avec confirmation immédiate, échéance et relance 48 h ; J-7 le solde est relu, J-2 un rappel est envoyé. Le départ est prêt lorsque le rendez-vous, l'identification, l'attestation et le solde sont réunis — trois blocages sans dérogation ; le contrôle final reste un contrôle court owner/admin ; l'envoi Brevo du PDF est non bloquant. La **finalisation** passe par une RPC dédiée avec sélection conservée (l'interface revient au même dossier désormais adopté). Les correctifs #482 à #486 fiabilisent l'interactivité de l'agenda (accès 127.0.0.1, pas de 15 minutes, attribution d'un bloc excluant les familles déjà attribuées et rejet proprement une seconde attribution).
+
 ## Lot du 2026-08-19 — Chronologie unifiée du parcours adoptant (lot 9, clôture du parcours)
 
 PR #487 (`feat/unified-journey-history-01`, fusionnée dans `main` à `ded7905a`). Dernier lot de l’ordre de livraison validé de la référence parcours : le parcours complet du formulaire public à l’adoption est livré.
