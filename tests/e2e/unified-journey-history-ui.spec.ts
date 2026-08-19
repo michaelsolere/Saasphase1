@@ -148,10 +148,13 @@ test("shows the unified chronology with collapsible email details and pagination
 
     // Déplier les détails techniques de l'email.
     const emailEntry = entries.filter({ hasText: "Invitation à la pré-réservation" });
+    await expect(emailEntry.locator("span").getByText("Envoyé", { exact: true })).toBeVisible();
     await emailEntry.getByText("Détails techniques").click();
     await expect(emailEntry.getByText("Destinataire")).toBeVisible();
     await expect(emailEntry.getByText("famille@example.test")).toBeVisible();
     await expect(emailEntry.getByText("Envoyé le")).toBeVisible();
+    await expect(emailEntry.getByText("Tentatives")).toBeVisible();
+    await expect(emailEntry.getByText("1", { exact: true })).toBeVisible();
 
     // Afficher plus révèle les entrées plus anciennes (39 au total).
     await showMore.click();
