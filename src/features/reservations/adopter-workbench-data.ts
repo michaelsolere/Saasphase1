@@ -34,20 +34,21 @@ function event(
   return occurredAt ? { id, kind, label, detail, occurredAt } : null;
 }
 
-export async function loadAdopterWorkbench(supabase: Client) {
-  const overviewResult = await supabase
+export async function loadAdopterWorkbench(supabase: Client, organizationId?: string | null) {
+  let overviewQuery = supabase
     .from("adopter_workbench_overview" as "reservation_overview")
-    .select("*")
-    .order("created_at", { ascending: false });
+    .select("*");
+  if (organizationId) overviewQuery = overviewQuery.eq("organization_id", organizationId);
+  const overviewResult = await overviewQuery.order("created_at", { ascending: false });
   if (overviewResult.error) throw overviewResult.error;
   const overview = (overviewResult.data ?? []) as unknown as RawOverview[];
   const ids = overview.map((row) => row.id).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
-  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents] =
+  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots] =
     await Promise.all([
       supabase.from("payments").select("id, reservation_id, amount_cents, currency, payment_type, status, paid_at, created_at").in("reservation_id", ids).is("deleted_at", null),
-      supabase.from("documents").select("id, reservation_id, title, document_type, status, created_at").in("reservation_id", ids).is("deleted_at", null),
+      supabase.from("documents").select("id, reservation_id, animal_id, title, document_type, status, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("events").select("id, reservation_id, event_type, title, description, actual_at, planned_at, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("notes").select("id, reservation_id, body, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("candidate_journey_events" as "adopter_financial_resolution_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
@@ -58,10 +59,16 @@ export async function loadAdopterWorkbench(supabase: Client) {
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_events").select("id, reservation_id, event_type, details, occurred_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("post_birth_positions").select("id, reservation_id, status, confirmed_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("direct_late_sale_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("departure_slots").select("id,reservation_id,starts_at,status,confirmed_at,updated_at").in("reservation_id", ids).order("updated_at", { ascending: false }),
     ]);
 
-  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents].find((result) => result.error);
+  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots].find((result) => result.error);
   if (failed?.error) throw failed.error;
+  const departureSlotByReservation = new Map<string, { starts_at: string; status: string; confirmed_at: string | null }>();
+  for (const raw of departureSlots.data ?? []) {
+    const slot = raw as { reservation_id: string | null; starts_at: string; status: string; confirmed_at: string | null };
+    if (slot.reservation_id && !departureSlotByReservation.has(slot.reservation_id)) departureSlotByReservation.set(slot.reservation_id, slot);
+  }
 
   const loose = supabase as unknown as SupabaseClient;
   const [positioningLines, positioningWaves, capacities, litters, positioningEvents] = await Promise.all([
@@ -232,6 +239,7 @@ export async function loadAdopterWorkbench(supabase: Client) {
 
   return overview.map((row): AdopterWorkbenchRecord => {
     const preference = row.reserved_sex_preference ?? row.application_sex_preference;
+    const saleCertificate = (documents.data ?? []).find((document) => document.reservation_id === row.id && document.animal_id === row.animal_id && document.document_type === "sale_certificate");
     return {
       id: row.id!,
       contactId: row.contact_id,
@@ -261,10 +269,12 @@ export async function loadAdopterWorkbench(supabase: Client) {
       financialResolution: row.financial_resolution,
       documentCount: Number(row.document_count ?? 0),
       signedDocumentCount: Number(row.signed_document_count ?? 0),
+      saleCertificateGenerated: Boolean(saleCertificate),
+      saleCertificateSigned: saleCertificate?.status === "signed",
       choiceAppointmentAt: row.choice_appointment_at,
       choiceAppointmentStatus: row.choice_appointment_status,
-      departureAppointmentAt: row.departure_appointment_at,
-      departureAppointmentStatus: row.departure_appointment_status,
+      departureAppointmentAt: departureSlotByReservation.get(row.id!)?.starts_at ?? row.departure_appointment_at,
+      departureAppointmentStatus: (() => { const slot = departureSlotByReservation.get(row.id!); return slot ? (["booked","late","to_review","completed"].includes(slot.status) && slot.confirmed_at ? "done" : slot.status === "cancelled" || slot.status === "no_show" ? "cancelled" : "planned") : row.departure_appointment_status; })(),
       noteCount: Number(row.note_count ?? 0),
       profile: profileByReservation.get(row.id!) ?? null,
       manualContacts: manualContactsByReservation.get(row.id!) ?? [],

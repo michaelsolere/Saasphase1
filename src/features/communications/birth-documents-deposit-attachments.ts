@@ -21,6 +21,7 @@ const DOCUMENT_TYPES = [
   "commitment_certificate",
   "reservation_contract",
 ] as const satisfies readonly TransactionalEmailAttachmentDocumentType[];
+type BirthDocumentsDepositDocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export type BirthDocumentsDepositAttachmentErrorCode =
   | "missing_documents"
@@ -28,7 +29,7 @@ export type BirthDocumentsDepositAttachmentErrorCode =
   | "documents_not_sendable";
 
 export type BirthDocumentsDepositDocumentPreview = {
-  documentType: TransactionalEmailAttachmentDocumentType;
+  documentType: BirthDocumentsDepositDocumentType;
   version: number;
 };
 
@@ -56,7 +57,7 @@ type CandidateDocument = Pick<
   | "generation_data"
 >;
 
-function fileName(documentType: TransactionalEmailAttachmentDocumentType, version: number) {
+function fileName(documentType: BirthDocumentsDepositDocumentType, version: number) {
   return documentType === "commitment_certificate"
     ? `certificat-engagement-v${version}.pdf`
     : `contrat-reservation-v${version}.pdf`;
@@ -70,9 +71,7 @@ function validateDocumentOrigin(
   if (
     document.organization_id !== organizationId ||
     document.reservation_id !== reservationId ||
-    !DOCUMENT_TYPES.includes(
-      document.document_type as TransactionalEmailAttachmentDocumentType,
-    ) ||
+    !DOCUMENT_TYPES.includes(document.document_type as BirthDocumentsDepositDocumentType) ||
     document.deleted_at !== null ||
     !document.generated_from_template ||
     !document.generated_at ||
@@ -98,7 +97,7 @@ function validateDocumentOrigin(
   }
 
   return {
-    documentType: document.document_type as TransactionalEmailAttachmentDocumentType,
+    documentType: document.document_type as BirthDocumentsDepositDocumentType,
     version: parsedPath.version,
   };
 }

@@ -12,6 +12,7 @@ export const PUBLIC_APP_ROUTES = [
   "/candidature",
   "/suivi",
   "/choix",
+  "/depart",
 ] as const;
 
 /**

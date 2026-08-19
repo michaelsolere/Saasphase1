@@ -8,7 +8,11 @@ export const MAX_TRANSACTIONAL_EMAIL_ATTACHMENTS_TOTAL_BYTES = 12 * 1024 * 1024;
 
 export type TransactionalEmailAttachmentDocumentType =
   | "commitment_certificate"
-  | "reservation_contract";
+  | "reservation_contract"
+  | "sale_certificate"
+  | "veterinary_certificate"
+  | "birth_certificate"
+  | "invoice";
 
 export type TransactionalEmailAttachmentSnapshot = {
   kind: "document_pdf";
@@ -55,7 +59,12 @@ function isDocumentType(
   value: unknown,
 ): value is TransactionalEmailAttachmentDocumentType {
   return (
-    value === "commitment_certificate" || value === "reservation_contract"
+    value === "commitment_certificate" ||
+    value === "reservation_contract" ||
+    value === "sale_certificate" ||
+    value === "veterinary_certificate" ||
+    value === "birth_certificate" ||
+    value === "invoice"
   );
 }
 

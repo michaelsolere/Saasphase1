@@ -92,7 +92,7 @@ test("requires an explicit exception when the price is unknown", () => {
   expect(readiness.exceptionCodes).toEqual(["price_missing"]);
 });
 
-test("allows members only for complete handovers and owners or admins for justified exceptions", () => {
+test("reserves finalization authorization to owner or admin", () => {
   const complete = evaluateAdoptionHandoverReadiness(completeInput);
   const incomplete = evaluateAdoptionHandoverReadiness({
     ...completeInput,
@@ -100,12 +100,12 @@ test("allows members only for complete handovers and owners or admins for justif
   });
 
   expect(getAdoptionHandoverAuthorization({ role: "member", readiness: complete })).toEqual({
-    allowed: true,
+    allowed: false,
     requiresJustification: false,
   });
   expect(getAdoptionHandoverAuthorization({ role: "member", readiness: incomplete })).toEqual({
     allowed: false,
-    requiresJustification: true,
+    requiresJustification: false,
   });
   expect(getAdoptionHandoverAuthorization({ role: "admin", readiness: incomplete })).toEqual({
     allowed: true,

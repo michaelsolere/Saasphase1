@@ -16,6 +16,7 @@ import {
 } from "@/features/payments/deposit-thresholds";
 import { evaluatePreReservationBalanceRequest } from "@/features/payments/pre-reservation-deposit";
 import { calculateRemainingBalanceCents } from "@/features/reservations/financials";
+import { departureDateTimeInputToIso } from "@/features/departures/departure-time-zone";
 import { formatPrice } from "@/features/reservations/formatters";
 import { parseEuroAmountToCents } from "@/features/reservations/financial-resolution-core";
 import { sendPreReservationEmailForApplication, sendPreReservationEmailForReservation } from "@/features/communications/pre-reservation-email";
@@ -224,13 +225,13 @@ function parseOptionalDateTimeLocal(value: FormDataEntryValue | null) {
     return { ok: false as const };
   }
 
-  const date = new Date(trimmedValue);
+  const isoValue = departureDateTimeInputToIso(trimmedValue);
 
-  if (!Number.isFinite(date.getTime())) {
+  if (!isoValue) {
     return { ok: false as const };
   }
 
-  return { ok: true as const, value: date.toISOString() };
+  return { ok: true as const, value: isoValue };
 }
 
 export async function updateReservationPrice(formData: FormData) {
@@ -657,6 +658,7 @@ export async function adoptReservation(formData: FormData) {
   const reservationId = formData.get("reservation_id");
   const commandId = formData.get("client_command_id");
   const adoptionCompletedAt = formData.get("adoption_completed_at");
+  const adoptionIso = typeof adoptionCompletedAt === "string" ? departureDateTimeInputToIso(adoptionCompletedAt) : null;
   const expectedReservationUpdatedAt = formData.get(
     "expected_reservation_updated_at",
   );
@@ -669,16 +671,19 @@ export async function adoptReservation(formData: FormData) {
     .filter((value): value is string => typeof value === "string")
     .map((value) => value.trim())
     .filter(Boolean);
+  const physicalDocumentsHandedOver = formData.get("physical_documents_handed_over") === "confirmed";
+  const requestedReturnTo = formData.get("return_to");
+  const returnTo = typeof requestedReturnTo === "string" && requestedReturnTo.startsWith("/reservations?") && !requestedReturnTo.includes("//") ? requestedReturnTo : null;
 
   if (
     typeof reservationId !== "string" ||
     !isUuid(reservationId) ||
     typeof commandId !== "string" ||
     !isUuid(commandId) ||
-    typeof adoptionCompletedAt !== "string" ||
-    !Number.isFinite(Date.parse(adoptionCompletedAt)) ||
+    !adoptionIso ||
     typeof expectedReservationUpdatedAt !== "string" ||
-    !Number.isFinite(Date.parse(expectedReservationUpdatedAt))
+    !Number.isFinite(Date.parse(expectedReservationUpdatedAt)) ||
+    !physicalDocumentsHandedOver
   ) {
     redirect("/reservations?erreur=adoption");
   }
@@ -692,11 +697,18 @@ export async function adoptReservation(formData: FormData) {
     redirect("/login");
   }
 
-  const { data, error } = await supabase.rpc("finalize_adoption_handover", {
+
+  const { data, error } = await (supabase as unknown as {
+    rpc: (name: string, args: Record<string, unknown>) => Promise<{
+      data: Array<{ outcome: string; event_id: string | null; reason: string | null; exception_codes: string[] | null; result?: unknown }> | null;
+      error: unknown;
+    }>;
+  }).rpc("finalize_departure_adoption_handover", {
     p_reservation_id: reservationId,
     p_client_command_id: commandId,
-    p_adoption_completed_at: new Date(adoptionCompletedAt).toISOString(),
+    p_adoption_completed_at: adoptionIso,
     p_expected_reservation_updated_at: expectedReservationUpdatedAt,
+    p_physical_documents_handed_over: true,
     p_acknowledged_exception_codes: acknowledgedExceptionCodes,
     p_exception_reason: exceptionReason,
   });
@@ -716,7 +728,8 @@ export async function adoptReservation(formData: FormData) {
   revalidatePath("/reservations");
   revalidatePath(`/reservations/${reservationId}`);
   revalidatePath("/animals");
-  redirect(adoptionUrl(reservationId, "success"));
+  const organization = returnTo ? new URL(returnTo, "http://localhost").searchParams.get("organization") : null;
+  redirect(`/reservations?view=finalized&selected=${reservationId}&adoption_status=success${organization ? `&organization=${encodeURIComponent(organization)}` : ""}`);
 }
 
 export async function correctAdoptionHandover(formData: FormData) {
@@ -724,6 +737,7 @@ export async function correctAdoptionHandover(formData: FormData) {
   const commandId = formData.get("client_command_id");
   const correctionType = formData.get("correction_type");
   const newAdoptionCompletedAt = formData.get("new_adoption_completed_at");
+  const correctedAdoptionIso = typeof newAdoptionCompletedAt === "string" ? departureDateTimeInputToIso(newAdoptionCompletedAt) : null;
   const expectedAdoptionCompletedAt = formData.get(
     "expected_adoption_completed_at",
   );
@@ -738,9 +752,7 @@ export async function correctAdoptionHandover(formData: FormData) {
     typeof expectedAdoptionCompletedAt !== "string" ||
     !Number.isFinite(Date.parse(expectedAdoptionCompletedAt)) ||
     !reason ||
-    (correctionType === "date" &&
-      (typeof newAdoptionCompletedAt !== "string" ||
-        !Number.isFinite(Date.parse(newAdoptionCompletedAt))))
+    (correctionType === "date" && !correctedAdoptionIso)
   ) {
     redirect("/reservations?erreur=correction_adoption");
   }
@@ -757,9 +769,7 @@ export async function correctAdoptionHandover(formData: FormData) {
     p_correction_type: correctionType,
     p_expected_adoption_completed_at: expectedAdoptionCompletedAt,
     p_new_adoption_completed_at:
-      correctionType === "date" && typeof newAdoptionCompletedAt === "string"
-        ? new Date(newAdoptionCompletedAt).toISOString()
-        : null,
+      correctionType === "date" ? correctedAdoptionIso : null,
     p_reason: reason,
   });
   const response = data?.[0];

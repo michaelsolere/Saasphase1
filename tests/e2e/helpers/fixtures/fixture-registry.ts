@@ -1,4 +1,13 @@
 export const fixtureTables = [
+  "departure_public_sessions",
+  "departure_public_accesses",
+  "departure_finalization_authorizations",
+  "departure_signature_events",
+  "departure_commands",
+  "departure_events",
+  "departure_slots",
+  "departure_plan_litters",
+  "departure_plans",
   "choice_appointment_sessions",
   "choice_appointment_accesses",
   "animal_assignment_commands",
@@ -48,6 +57,7 @@ export const fixtureTables = [
   "calendar_reminders",
   "events",
   "media",
+  "document_signed_returns",
   "documents",
   "payments",
   "contact_roles",
@@ -105,6 +115,15 @@ export type FixtureTable = (typeof fixtureTables)[number];
 export type SqlExecutor = (sql: string) => string | Promise<string>;
 
 const cleanupOrder: FixtureTable[] = [
+  "departure_public_sessions",
+  "departure_public_accesses",
+  "departure_finalization_authorizations",
+  "departure_signature_events",
+  "departure_commands",
+  "departure_events",
+  "departure_slots",
+  "departure_plan_litters",
+  "departure_plans",
   "choice_appointment_sessions",
   "choice_appointment_accesses",
   "animal_assignment_commands",
@@ -154,6 +173,7 @@ const cleanupOrder: FixtureTable[] = [
   "calendar_reminders",
   "events",
   "media",
+  "document_signed_returns",
   "documents",
   "payments",
   "contact_roles",
@@ -242,6 +262,73 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     const positionIds = [...ids.get("post_birth_positions")!];
     const directSaleIds = [...ids.get("direct_late_sales")!];
     const choiceSlotIds = [...ids.get("choice_appointment_slots")!];
+    const documentIds = [...ids.get("documents")!];
+    if (documentIds.length) {
+      await execute(`begin; set local app.qa_hard_delete='on'; delete from public.departure_signature_events where document_id in (${idsSql(documentIds)}); delete from public.document_signed_returns where document_id in (${idsSql(documentIds)}); commit;`);
+    }
+    const departurePlanIds = [...ids.get("departure_plans")!];
+    if (departurePlanIds.length) {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         set local app.departure_calendar_projection = 'on';
+         create temporary table e2e_departure_attempt_ids on commit drop as
+           select invitation_delivery_attempt_id as id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})
+           union select confirmation_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})
+           union select response_reminder_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})
+           union select appointment_reminder_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})
+           union select move_confirmation_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)});
+         update public.departure_public_accesses set invitation_delivery_attempt_id=null,confirmation_delivery_attempt_id=null,response_reminder_delivery_attempt_id=null,appointment_reminder_delivery_attempt_id=null,move_confirmation_delivery_attempt_id=null where plan_id in (${idsSql(departurePlanIds)});
+         delete from public.email_delivery_attempts where id in (select id from e2e_departure_attempt_ids where id is not null);
+         delete from public.departure_commands where public_session_id in (
+           select session.id from public.departure_public_sessions session
+           join public.departure_public_accesses access on access.id=session.access_id
+           where access.plan_id in (${idsSql(departurePlanIds)})
+         );
+         delete from public.departure_public_sessions where access_id in (
+           select id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})
+         );
+         delete from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)});
+         delete from public.departure_events where plan_id in (${idsSql(departurePlanIds)});
+         delete from public.departure_commands where target_id in (
+           select id from public.departure_slots where plan_id in (${idsSql(departurePlanIds)})
+           union select unnest(array[${idsSql(departurePlanIds)}])
+         );
+         delete from public.events where departure_slot_id in (
+           select id from public.departure_slots where plan_id in (${idsSql(departurePlanIds)})
+         );
+         delete from public.departure_slots where plan_id in (${idsSql(departurePlanIds)});
+         delete from public.departure_plan_litters where plan_id in (${idsSql(departurePlanIds)});
+         delete from public.departure_plans where id in (${idsSql(departurePlanIds)});
+         commit;`,
+      );
+    }
+    const departureSlotIds = [...ids.get("departure_slots")!];
+    if (departureSlotIds.length) {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         set local app.departure_calendar_projection = 'on';
+         delete from public.events where departure_slot_id in (${idsSql(departureSlotIds)});
+         delete from public.departure_commands where public_session_id in (
+           select session.id from public.departure_public_sessions session
+           join public.departure_public_accesses access on access.id=session.access_id
+           join public.departure_slots slot on slot.plan_id=access.plan_id and slot.reservation_id=access.reservation_id
+           where slot.id in (${idsSql(departureSlotIds)})
+         );
+         delete from public.departure_public_sessions where access_id in (
+           select access.id from public.departure_public_accesses access
+           join public.departure_slots slot on slot.plan_id=access.plan_id and slot.reservation_id=access.reservation_id
+           where slot.id in (${idsSql(departureSlotIds)})
+         );
+         delete from public.departure_public_accesses where exists(
+           select 1 from public.departure_slots slot where slot.plan_id=departure_public_accesses.plan_id
+             and slot.reservation_id=departure_public_accesses.reservation_id
+             and slot.id in (${idsSql(departureSlotIds)})
+         );
+         commit;`,
+      );
+    }
     if (choiceSlotIds.length) {
       await execute(
         `begin;
@@ -304,6 +391,10 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
          update public.reservations
          set current_financial_resolution_event_id = null
          where id in (${idsSql(reservationIds)});
+         delete from public.departure_signature_events where reservation_id in (${idsSql(reservationIds)});
+         delete from public.document_signed_returns where document_id in (select id from public.documents where reservation_id in (${idsSql(reservationIds)}));
+         delete from public.documents where reservation_id in (${idsSql(reservationIds)});
+         delete from public.adoption_handover_events where reservation_id in (${idsSql(reservationIds)});
          delete from public.adopter_financial_resolution_events
          where reservation_id in (${idsSql(reservationIds)});
          delete from public.candidate_journey_events
@@ -336,6 +427,7 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
          where reservation_id in (${idsSql(reservationIds)});
          delete from public.adopter_profile_questionnaire_instances
          where reservation_id in (${idsSql(reservationIds)});
+         delete from public.departure_commands where target_id in (${idsSql(reservationIds)});
          delete from public.payments
          where reservation_id in (${idsSql(reservationIds)});
          commit;`,
@@ -344,12 +436,22 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     if (contactIds.length) {
       await execute(
         `delete from public.contact_roles
-         where contact_id in (${idsSql(contactIds)})
-           and role = 'pre_reservation_holder'`,
+         where contact_id in (${idsSql(contactIds)})`,
       );
     }
     for (const table of cleanupOrder) { const tableIds = [...ids.get(table)!]; if (tableIds.length) {
     if (table === "animals" || table === "organizations") continue;
+    if (table === "departure_slots") {
+      await execute(
+        `begin;
+         set local app.qa_hard_delete = 'on';
+         set local app.departure_calendar_projection = 'on';
+         delete from public.events where departure_slot_id in (${idsSql(tableIds)});
+         delete from public.departure_slots where id in (${idsSql(tableIds)});
+         commit;`,
+      );
+      continue;
+    }
     if (table === "litter_care_tasks") {
       await execute(`delete from public.litter_care_task_schedule_changes where task_id in (${idsSql(tableIds)})`);
       await execute(`delete from public.litter_care_task_schedule_commands where task_id in (${idsSql(tableIds)})`);
@@ -389,6 +491,9 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
       || table === "litter_plan_actual_birth_activations";
     const requiresPostAdoptionBypass =
       table === "animal_assignment_commands"
+      || table === "departure_commands"
+      || table === "departure_events"
+      || table === "departure_signature_events"
       || table === "animal_assignment_events"
       || table === "choice_appointment_commands"
       || table === "choice_appointment_events"
