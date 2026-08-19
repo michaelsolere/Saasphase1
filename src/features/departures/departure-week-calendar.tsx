@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition, type KeyboardEvent as React
 import { useRouter } from "next/navigation";
 
 import { moveDepartureAppointmentAction, upsertDepartureSlotAction } from "@/features/departures/departure-planning-actions";
-import { departureBlockHeightPixels, departureDropTargetFromDelta, departureDurationFromResize } from "@/features/departures/departure-calendar-interaction-core";
+import { DEPARTURE_DRAG_STEP_PIXELS, departureBlockHeightPixels, departureDropTargetFromDelta, departureDurationFromResize } from "@/features/departures/departure-calendar-interaction-core";
 
 const hours = Array.from({ length: 12 }, (_, index) => index + 8);
 const zone = "Europe/Paris";
@@ -159,7 +159,7 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
       if (pointerEvent.pointerId !== pointerId) return;
       lastX = pointerEvent.clientX;
       lastY = pointerEvent.clientY;
-      setDragPreview({ slotId: slot.id, deltaX: lastX - startX, deltaY: lastY - startY });
+      setDragPreview({ slotId: slot.id, deltaX: lastX - startX, deltaY: Math.round((lastY - startY) / DEPARTURE_DRAG_STEP_PIXELS) * DEPARTURE_DRAG_STEP_PIXELS });
     };
     let cleaned = false;
     const cleanup = () => {
