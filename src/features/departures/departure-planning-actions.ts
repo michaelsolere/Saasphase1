@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { deriveDepartureToken, hashDepartureToken, sendDepartureAppointmentEmail } from "@/features/communications/departure-appointment-email";
+import { validateDeparturePlanDraft } from "@/features/departures/departure-calendar-interaction-core";
 import { departureDateTimeInputToIso } from "@/features/departures/departure-time-zone";
 import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import { createClient } from "@/lib/supabase/server";
@@ -32,7 +33,9 @@ export async function createDeparturePlanAction(formData: FormData) {
   const duration = Number(formData.get("default_duration_minutes"));
   const litterIds = formData.getAll("litter_ids").filter(uuid);
   const litters = litterIds.map((litterId) => ({ litterId, earliestDepartureAt: departureDateTimeInputToIso(String(formData.get(`earliest_${litterId}`) ?? "")) ?? "" }));
-  if (!clientCommandId || !Number.isInteger(duration) || !litters.length || litters.some((row) => !Number.isFinite(Date.parse(row.earliestDepartureAt)))) redirect(target(null, "invalid_input", formData));
+  const validation = validateDeparturePlanDraft({ durationMinutes: duration, litterCount: litters.length, earliestDatesValid: litters.every((row) => Number.isFinite(Date.parse(row.earliestDepartureAt))) });
+  if (!clientCommandId) redirect(target(null, "invalid_input", formData));
+  if (!validation.ok) redirect(target(null, validation.reason, formData));
   const supabase = await createClient();
   const { data, error } = await (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: Array<{ outcome: string; plan_id: string | null; reason: string | null }> | null; error: unknown }> }).rpc("create_departure_plan", { p_title: title, p_default_duration_minutes: duration, p_litters: litters, p_client_command_id: clientCommandId });
   const result = data?.[0];

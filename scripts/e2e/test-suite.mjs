@@ -35,6 +35,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/deposit-thresholds.spec.ts",
   "tests/e2e/departure-planning-core.spec.ts",
   "tests/e2e/departure-handover-orchestration-foundation.spec.ts",
+  "tests/e2e/departure-calendar-interactions.spec.ts",
   "tests/e2e/departure-planning-foundation.spec.ts",
   "tests/e2e/departure-readiness-core.spec.ts",
   "tests/e2e/departure-review-corrections-foundation.spec.ts",

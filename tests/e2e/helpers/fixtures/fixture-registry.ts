@@ -268,6 +268,17 @@ export function createE2eFixtureRegistry(execute: SqlExecutor, namespace = `e2e-
     }
     const departurePlanIds = [...ids.get("departure_plans")!];
     if (departurePlanIds.length) {
+      const discovered = JSON.parse(await execute(`select json_build_object(
+        'departure_commands', coalesce((select json_agg(id) from public.departure_commands where target_id in (select id from public.departure_slots where plan_id in (${idsSql(departurePlanIds)})) or target_id in (${idsSql(departurePlanIds)})), '[]'::json),
+        'departure_events', coalesce((select json_agg(id) from public.departure_events where plan_id in (${idsSql(departurePlanIds)})), '[]'::json),
+        'events', coalesce((select json_agg(id) from public.events where departure_slot_id in (select id from public.departure_slots where plan_id in (${idsSql(departurePlanIds)}))), '[]'::json),
+        'departure_public_accesses', coalesce((select json_agg(id) from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})), '[]'::json),
+        'departure_public_sessions', coalesce((select json_agg(session.id) from public.departure_public_sessions session join public.departure_public_accesses access on access.id=session.access_id where access.plan_id in (${idsSql(departurePlanIds)})), '[]'::json),
+        'email_delivery_attempts', coalesce((select json_agg(attempt_id) from (select invitation_delivery_attempt_id attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)}) union select confirmation_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)}) union select response_reminder_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)}) union select appointment_reminder_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)}) union select move_confirmation_delivery_attempt_id from public.departure_public_accesses where plan_id in (${idsSql(departurePlanIds)})) attempts where attempt_id is not null), '[]'::json)
+      )::text`)) as Partial<Record<FixtureTable, string[]>>;
+      for (const [table, discoveredIds] of Object.entries(discovered) as Array<[FixtureTable, string[]]>) {
+        for (const id of discoveredIds) if (!has(table, id)) register(table, id);
+      }
       await execute(
         `begin;
          set local app.qa_hard_delete = 'on';
