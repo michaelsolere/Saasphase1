@@ -57,6 +57,7 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
   const [dragPreview, setDragPreview] = useState<{ slotId: string; deltaX: number; deltaY: number } | null>(null);
   const [gestureActive, setGestureActive] = useState(false);
   const gestureCleanupRef = useRef<(() => void) | null>(null);
+  const gestureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekKey, index));
   const weekEnd = addDays(weekKey, 7);
@@ -81,13 +82,12 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
   }
 
   function handleResizePointerDown(event: ReactPointerEvent<HTMLButtonElement>, slot: (typeof visible)[number]) {
-    if (gestureActive) return;
+    if (gestureActive) gestureCleanupRef.current?.();
     setGestureActive(true);
     event.preventDefault();
     event.stopPropagation();
     const pointerId = event.pointerId;
     const pointerTarget = event.currentTarget;
-    pointerTarget.setPointerCapture(pointerId);
     const startY = event.clientY;
     let lastY = startY;
     const initialDuration = resizedDurations[slot.id] ?? slot.durationMinutes;
@@ -109,7 +109,8 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("blur", onAbort);
       pointerTarget.removeEventListener("lostpointercapture", onAbort);
-      if (pointerTarget.hasPointerCapture(pointerId)) pointerTarget.releasePointerCapture(pointerId);
+      try { if (pointerTarget.hasPointerCapture(pointerId)) pointerTarget.releasePointerCapture(pointerId); } catch { /* capture already released */ }
+      if (gestureTimeoutRef.current) { clearTimeout(gestureTimeoutRef.current); gestureTimeoutRef.current = null; }
       gestureCleanupRef.current = null;
       setGestureActive(false);
     };
@@ -135,16 +136,18 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
     window.addEventListener("pointercancel", onCancel);
     window.addEventListener("blur", onAbort);
     pointerTarget.addEventListener("lostpointercapture", onAbort);
+    try { pointerTarget.setPointerCapture(pointerId); } catch { /* capture is optional; window listeners keep working */ }
+    gestureTimeoutRef.current = setTimeout(onAbort, 20_000);
   }
 
   function handleMovePointerDown(event: ReactPointerEvent<HTMLElement>, slot: (typeof visible)[number]) {
-    if (gestureActive || event.button !== 0 || (event.target as HTMLElement).closest("[data-resize-handle]")) return;
+    if (gestureActive) gestureCleanupRef.current?.();
+    if (event.button !== 0 || (event.target as HTMLElement).closest("[data-resize-handle]")) return;
     setGestureActive(true);
     event.preventDefault();
     event.stopPropagation();
     const pointerId = event.pointerId;
     const pointerTarget = event.currentTarget;
-    pointerTarget.setPointerCapture(pointerId);
     const startX = event.clientX;
     const startY = event.clientY;
     const source = parisParts(new Date(slot.startsAt));
@@ -167,7 +170,8 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
       window.removeEventListener("pointercancel", onCancel);
       window.removeEventListener("blur", onAbort);
       pointerTarget.removeEventListener("lostpointercapture", onAbort);
-      if (pointerTarget.hasPointerCapture(pointerId)) pointerTarget.releasePointerCapture(pointerId);
+      try { if (pointerTarget.hasPointerCapture(pointerId)) pointerTarget.releasePointerCapture(pointerId); } catch { /* capture already released */ }
+      if (gestureTimeoutRef.current) { clearTimeout(gestureTimeoutRef.current); gestureTimeoutRef.current = null; }
       gestureCleanupRef.current = null;
       setGestureActive(false);
     };
@@ -195,6 +199,8 @@ export function DepartureWeekCalendar({ plan, initialWeek, returnTo }: {
     window.addEventListener("pointercancel", onCancel);
     window.addEventListener("blur", onAbort);
     pointerTarget.addEventListener("lostpointercapture", onAbort);
+    try { pointerTarget.setPointerCapture(pointerId); } catch { /* capture is optional; window listeners keep working */ }
+    gestureTimeoutRef.current = setTimeout(onAbort, 20_000);
   }
 
   function moveWithKeyboard(event: ReactKeyboardEvent<HTMLButtonElement>, slot: (typeof visible)[number]) {
