@@ -16,6 +16,7 @@ import {
   deriveAdopterJourney,
   filterAndSortAdopterJourneys,
   groupAdopterJourneys,
+  JOURNEY_CHRONOLOGY_PAGE_SIZE,
   type AdopterActionState,
   type AdopterMilestoneKey,
   type AdopterQueue,
@@ -23,6 +24,7 @@ import {
   type AdopterWorkbenchSort,
   type AdopterWorkbenchView,
   type AdopterJourney,
+  type JourneyChronologyEntry,
 } from "@/features/reservations/adopter-workbench-model";
 import { ReservationNoteDialog } from "@/features/reservations/note-dialog";
 import { ReservationNoteForm } from "@/features/reservations/note-form";
@@ -228,7 +230,7 @@ function AdopterPanel({ journey, role, returnPath, hasPrevious, hasNext, onOpenP
       <Detail title="Rendez-vous et attribution"><p className="text-sm">Choix : {formatDate(record.choiceAppointmentAt)}</p><p className="mt-1 text-sm">Départ : {formatDate(record.departureAppointmentAt)}</p><QuickMutationLink canMutate={canMutate} href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}#appointments`} label="Créer ou modifier un rendez-vous" /></Detail>
       <Detail title="Communications">{canRecord ? <ManualContactForm record={record} returnPath={returnPath} /> : <ReadOnlyRoleMessage />}</Detail>
       <Detail title="Notes internes">{canRecord ? <ReservationNoteDialog triggerLabel="Ajouter une note" noteForm={<ReservationNoteForm reservationId={record.id} returnTo={returnPath} />} /> : <ReadOnlyRoleMessage />}</Detail>
-      <Detail title="Activité récente" open>{record.recentEvents.length ? <ol className="space-y-3">{record.recentEvents.map((item) => <li key={`${item.kind}-${item.id}`} className="border-l-2 pl-3"><p className="text-sm font-semibold">{item.label}</p><p className="text-xs text-muted">{formatDate(item.occurredAt)}</p>{item.detail ? <p className="mt-1 line-clamp-2 text-xs text-muted">{item.detail}</p> : null}</li>)}</ol> : <p className="text-sm text-muted">Aucun événement récent.</p>}</Detail>
+      <Detail title="Chronologie" open><ChronologyPanel entries={record.chronology} /></Detail>
     </div>
 
     <div className="mt-5 grid gap-2 border-t pt-5 sm:grid-cols-2"><Link href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}`} className="rounded-xl border px-3 py-2 text-center text-sm font-semibold text-accent">Ouvrir le parcours complet</Link><Link href={`/reservations/${record.id}?return_to=${encodeURIComponent(returnPath)}`} className="rounded-xl bg-accent px-3 py-2 text-center text-sm font-semibold !text-white">Agrandir le dossier</Link></div>
@@ -238,6 +240,56 @@ function AdopterPanel({ journey, role, returnPath, hasPrevious, hasNext, onOpenP
 
 function Detail({ title, children, open = false }: { title: string; children: React.ReactNode; open?: boolean }) { return <details open={open} className="rounded-xl border bg-surface"><summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{title}</summary><div className="border-t px-4 py-4">{children}</div></details>; }
 function Info({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-semibold uppercase text-muted">{label}</dt><dd className="mt-1 break-words">{value}</dd></div>; }
+
+const chronologyKindTones: Record<JourneyChronologyEntry["kind"], string> = {
+  decision: "bg-violet-100 text-violet-900",
+  payment: "bg-emerald-100 text-emerald-900",
+  document: "bg-sky-100 text-sky-900",
+  email: "bg-stone-200 text-stone-800",
+  manual_contact: "bg-amber-100 text-amber-900",
+  note: "bg-rose-100 text-rose-900",
+  appointment: "bg-cyan-100 text-cyan-900",
+};
+const chronologyKindLabels: Record<JourneyChronologyEntry["kind"], string> = {
+  decision: "Décision",
+  payment: "Paiement",
+  document: "Document",
+  email: "Email",
+  manual_contact: "Échange",
+  note: "Note",
+  appointment: "RDV",
+};
+const emailStatusLabels: Record<string, string> = {
+  sent: "Envoyé",
+  failed: "Échec",
+  pending: "En attente",
+};
+function emailStatusTone(status: string | null | undefined) {
+  if (status === "failed") return "border-rose-200 bg-rose-50 text-rose-900";
+  if (status === "sent") return "border-emerald-200 bg-emerald-50 text-emerald-900";
+  return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+function ChronologyPanel({ entries }: { entries: JourneyChronologyEntry[] }) {
+  const [visibleCount, setVisibleCount] = useState(JOURNEY_CHRONOLOGY_PAGE_SIZE);
+  const visible = entries.slice(0, visibleCount);
+  if (entries.length === 0) return <p className="text-sm text-muted">Aucun événement.</p>;
+  return <div>
+    <ol className="space-y-3" data-testid="journey-chronology">
+      {visible.map((item) => <li key={`${item.kind}-${item.id}`} className="border-l-2 pl-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${chronologyKindTones[item.kind]}`}>{chronologyKindLabels[item.kind]}</span>
+          <p className="text-sm font-semibold">{item.label}</p>
+          {item.email ? <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${emailStatusTone(item.email.status)}`}>{emailStatusLabels[item.email.status ?? ""] ?? item.email.status}</span> : null}
+        </div>
+        <p className="mt-0.5 text-xs text-muted">{formatDate(item.occurredAt)}</p>
+        {item.detail ? <p className="mt-1 line-clamp-2 text-xs text-muted">{item.detail}</p> : null}
+        {item.email ? <details className="mt-2 rounded-lg border bg-background px-3 py-2 text-xs" data-testid={`email-details-${item.id}`}><summary className="cursor-pointer font-semibold text-accent">Détails techniques</summary><dl className="mt-2 grid gap-1.5 sm:grid-cols-2"><Info label="Destinataire" value={item.email.recipientEmail ?? "Non renseigné"} /><Info label="Objet" value={item.email.subject ?? "Sans objet"} /><Info label="Statut" value={emailStatusLabels[item.email.status ?? ""] ?? item.email.status ?? "Inconnu"} /><Info label="Tentatives" value={String(item.email.attemptCount ?? 0)} />{item.email.lastErrorCode ? <Info label="Dernière erreur" value={item.email.lastErrorCode} /> : null}<Info label="Envoyé le" value={formatDate(item.email.sentAt)} /><Info label="Créé le" value={formatDate(item.email.createdAt)} />{item.email.attachmentCount ? <Info label="Pièces jointes" value={String(item.email.attachmentCount)} /> : null}</dl></details> : null}
+      </li>)}
+    </ol>
+    {entries.length > visibleCount ? <button type="button" data-testid="chronology-show-more" onClick={() => setVisibleCount((count) => count + JOURNEY_CHRONOLOGY_PAGE_SIZE)} className="mt-4 w-full rounded-lg border px-3 py-2 text-sm font-semibold text-accent">Afficher plus ({entries.length - visibleCount})</button> : null}
+  </div>;
+}
 function QuickMutationLink({ canMutate, href, label }: { canMutate: boolean; href: string; label: string }) { return canMutate ? <Link href={href} className="mt-3 inline-flex rounded-lg border px-3 py-2 text-sm font-semibold text-accent">{label}</Link> : <span className="mt-3 inline-flex cursor-not-allowed rounded-lg border px-3 py-2 text-sm font-semibold text-muted" title="Rôle owner ou admin requis">{label} · owner/admin requis</span>; }
 function ReadOnlyRoleMessage() { return <p className="text-sm text-muted">Consultation uniquement pour ce rôle.</p>; }
 function ManualContactForm({ record, returnPath }: { record: AdopterWorkbenchRecord; returnPath: string }) { const [defaults] = useState(() => { const date = new Date(); return { contactedAt: new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16), commandId: crypto.randomUUID() }; }); return <form action={recordAdopterManualContact} className="space-y-3"><input type="hidden" name="reservation_id" value={record.id} /><input type="hidden" name="expected_updated_at" value={record.updatedAt} /><input type="hidden" name="client_command_id" value={defaults.commandId} /><input type="hidden" name="return_to" value={returnPath} /><label className="block text-xs font-semibold uppercase text-muted">Canal<select name="channel" className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm normal-case"><option value="phone">Appel</option><option value="sms">SMS</option><option value="external_email">Email externe</option><option value="visit">Visite</option><option value="video">Visio</option><option value="other">Autre</option></select></label><label className="block text-xs font-semibold uppercase text-muted">Date et heure<input name="contacted_at" type="datetime-local" required defaultValue={defaults.contactedAt} className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm normal-case" /></label><label className="block text-xs font-semibold uppercase text-muted">Résumé<textarea name="summary" required minLength={3} maxLength={1000} rows={3} className="mt-1 w-full rounded-lg border bg-background px-3 py-2 text-sm font-normal normal-case" /></label><button type="submit" className="rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white">Tracer le contact manuel</button></form>; }
