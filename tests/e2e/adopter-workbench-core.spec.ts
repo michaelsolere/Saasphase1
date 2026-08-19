@@ -45,7 +45,7 @@ function record(overrides: Partial<AdopterWorkbenchRecord> = {}): AdopterWorkben
     departureAppointmentAt: null,
     departureAppointmentStatus: null,
     noteCount: 0,
-    recentEvents: [],
+    chronology: [],
     updatedAt: "2026-08-01T10:00:00.000Z",
     ...overrides,
   };

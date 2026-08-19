@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import type {
-  AdopterWorkbenchRecord,
-  RecentAdopterEvent,
+import {
+  buildJourneyChronology,
+  type JourneyChronologySourceEntry,
+  type AdopterWorkbenchRecord,
 } from "@/features/reservations/adopter-workbench-model";
 import type { Database } from "@/types/database.types";
 
@@ -24,14 +25,17 @@ type RawOverview = Database["public"]["Views"]["reservation_overview"]["Row"] & 
   departure_appointment_status: string | null;
 };
 
-function event(
-  id: string,
-  kind: RecentAdopterEvent["kind"],
-  label: string,
-  detail: string | null,
-  occurredAt: string | null,
-): RecentAdopterEvent | null {
-  return occurredAt ? { id, kind, label, detail, occurredAt } : null;
+const MANUAL_CONTACT_CHANNEL_LABELS: Record<string, string> = {
+  phone: "Appel",
+  sms: "SMS",
+  external_email: "Email externe",
+  visit: "Visite",
+  video: "Visio",
+  other: "Autre",
+};
+
+function manualContactChannelLabel(channel: string) {
+  return MANUAL_CONTACT_CHANNEL_LABELS[channel] ?? channel;
 }
 
 export async function loadAdopterWorkbench(supabase: Client, organizationId?: string | null) {
@@ -45,24 +49,29 @@ export async function loadAdopterWorkbench(supabase: Client, organizationId?: st
   const ids = overview.map((row) => row.id).filter((id): id is string => Boolean(id));
   if (ids.length === 0) return [];
 
-  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots] =
+  const [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots, choiceEvents, departureEvents, assignmentEvents, handoverEvents, financialEvents] =
     await Promise.all([
       supabase.from("payments").select("id, reservation_id, amount_cents, currency, payment_type, status, paid_at, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("documents").select("id, reservation_id, animal_id, title, document_type, status, created_at").in("reservation_id", ids).is("deleted_at", null),
-      supabase.from("events").select("id, reservation_id, event_type, title, description, actual_at, planned_at, created_at").in("reservation_id", ids).is("deleted_at", null),
+      supabase.from("events").select("id, reservation_id, event_type, title, description, status, actual_at, planned_at, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("notes").select("id, reservation_id, body, created_at").in("reservation_id", ids).is("deleted_at", null),
       supabase.from("candidate_journey_events" as "adopter_financial_resolution_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
       supabase.from("adopter_manual_contact_events" as "events").select("id, reservation_id, event_type, title, description, created_at").in("reservation_id", ids),
-      supabase.from("email_delivery_attempts").select("id, reservation_id, message_type, status, subject_snapshot, sent_at, created_at").in("reservation_id", ids).is("deleted_at", null),
+      supabase.from("email_delivery_attempts").select("id, reservation_id, message_type, status, subject_snapshot, recipient_email, attempt_count, last_error_code, sent_at, failed_at, created_at, attachments_snapshot").in("reservation_id", ids).is("deleted_at", null),
       (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown[] | null; error: unknown }> }).rpc("read_adopter_profile_questionnaire_summaries", { p_reservation_ids: ids }),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_instances").select("id, reservation_id, initial_sex_preference, created_at, due_at, draft_updated_at, final_answers, final_submitted_at, reviewed_at, reviewed_by, waived_at, waived_by, waiver_reason, proposed_sex_preference, sex_preference_decision, invitation_delivery_attempt_id, invitation_last_failed_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("adopter_profile_questionnaire_events").select("id, reservation_id, event_type, details, occurred_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("post_birth_positions").select("id, reservation_id, status, confirmed_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("direct_late_sale_events").select("id, reservation_id, event_type, reason, occurred_at").in("reservation_id", ids),
       (supabase as unknown as SupabaseClient).from("departure_slots").select("id,reservation_id,starts_at,status,confirmed_at,updated_at").in("reservation_id", ids).order("updated_at", { ascending: false }),
+      (supabase as unknown as SupabaseClient).from("choice_appointment_events").select("id, reservation_id, event_type, details, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("departure_events").select("id, reservation_id, event_type, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("animal_assignment_events").select("id, reservation_id, event_type, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("adoption_handover_events").select("id, reservation_id, event_type, occurred_at").in("reservation_id", ids),
+      (supabase as unknown as SupabaseClient).from("adopter_financial_resolution_events").select("id, reservation_id, event_type, occurred_at").in("reservation_id", ids),
     ]);
 
-  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots].find((result) => result.error);
+  const failed = [payments, documents, appointments, notes, candidateEvents, manualContacts, emails, profileSummaries, profiles, profileEvents, positions, directSaleEvents, departureSlots, choiceEvents, departureEvents, assignmentEvents, handoverEvents, financialEvents].find((result) => result.error);
   if (failed?.error) throw failed.error;
   const departureSlotByReservation = new Map<string, { starts_at: string; status: string; confirmed_at: string | null }>();
   for (const raw of departureSlots.data ?? []) {
@@ -81,50 +90,80 @@ export async function loadAdopterWorkbench(supabase: Client, organizationId?: st
   const positioningFailure = [positioningLines, positioningWaves, capacities, litters, positioningEvents].find((result) => result.error);
   if (positioningFailure?.error) throw positioningFailure.error;
 
-  const recentByReservation = new Map<string, RecentAdopterEvent[]>();
-  const add = (reservationId: string | null, item: RecentAdopterEvent | null) => {
-    if (!reservationId || !item) return;
-    recentByReservation.set(reservationId, [...(recentByReservation.get(reservationId) ?? []), item]);
+  const sourceByReservation = new Map<string, JourneyChronologySourceEntry[]>();
+  const add = (reservationId: string | null, item: Omit<JourneyChronologySourceEntry, "occurredAt"> & { occurredAt: string | null }) => {
+    if (!reservationId || !item.occurredAt) return;
+    const entry = { ...item, occurredAt: item.occurredAt } as JourneyChronologySourceEntry;
+    sourceByReservation.set(reservationId, [...(sourceByReservation.get(reservationId) ?? []), entry]);
   };
-  for (const row of payments.data ?? []) add(row.reservation_id, event(row.id, "payment", `Paiement · ${row.status}`, `${(row.amount_cents / 100).toLocaleString("fr-FR")} ${row.currency}`, row.paid_at ?? row.created_at));
-  for (const row of documents.data ?? []) add(row.reservation_id, event(row.id, "document", row.title || `Document · ${row.document_type}`, row.status, row.created_at));
-  for (const row of appointments.data ?? []) add(row.reservation_id, event(row.id, "appointment", row.title, row.description, row.actual_at ?? row.planned_at ?? row.created_at));
-  for (const row of notes.data ?? []) add(row.reservation_id, event(row.id, "note", "Note interne", row.body, row.created_at));
-  for (const row of candidateEvents.data ?? []) add(row.reservation_id, event(row.id, "decision", row.event_type.replaceAll("_", " "), row.reason, row.occurred_at));
-  for (const row of manualContacts.data ?? []) add(row.reservation_id, event(row.id, "manual_contact", `${row.title} · ${row.event_type}`, row.description, row.created_at));
+  const emailAttachmentCount = (snapshot: unknown): number | null => {
+    if (!Array.isArray(snapshot)) return null;
+    return snapshot.length > 0 ? snapshot.length : null;
+  };
+  for (const row of payments.data ?? []) add(row.reservation_id, { id: row.id, source: "payment", eventType: null, label: `Paiement · ${row.status}`, detail: `${(row.amount_cents / 100).toLocaleString("fr-FR")} ${row.currency}`, occurredAt: row.paid_at ?? row.created_at, status: row.status, email: null });
+  for (const row of documents.data ?? []) add(row.reservation_id, { id: row.id, source: "document", eventType: null, label: row.title || `Document · ${row.document_type}`, detail: row.status, occurredAt: row.created_at, status: row.status, email: null });
+  for (const row of appointments.data ?? []) {
+    if (row.event_type !== "puppy_choice" && row.event_type !== "adoption") continue;
+    add(row.reservation_id, { id: row.id, source: "appointment", eventType: row.event_type, label: row.event_type === "puppy_choice" ? "Rendez-vous de choix" : "Rendez-vous de départ", detail: row.description ?? row.status, occurredAt: row.actual_at ?? row.planned_at ?? row.created_at, status: row.status, email: null });
+  }
+  for (const row of notes.data ?? []) add(row.reservation_id, { id: row.id, source: "note", eventType: null, label: "Note interne", detail: row.body, occurredAt: row.created_at, status: null, email: null });
+  for (const row of candidateEvents.data ?? []) add(row.reservation_id, { id: row.id, source: "candidate", eventType: row.event_type, label: null, detail: row.reason, occurredAt: row.occurred_at, status: null, email: null });
+  for (const row of manualContacts.data ?? []) add(row.reservation_id, { id: row.id, source: "manual_contact", eventType: row.event_type, label: `Échange manuel · ${manualContactChannelLabel(row.event_type)}`, detail: row.description, occurredAt: row.created_at, status: null, email: null });
   for (const row of emails.data ?? []) {
-    if (!row.message_type.startsWith("adopter_profile_")) add(row.reservation_id, event(row.id, "email", row.subject_snapshot || `Email · ${row.message_type}`, row.status, row.sent_at ?? row.created_at));
+    add(row.reservation_id, {
+      id: row.id, source: "email", eventType: row.message_type, label: row.subject_snapshot || `Email · ${row.message_type}`, detail: null,
+      occurredAt: row.sent_at ?? row.created_at, status: row.status,
+      email: {
+        recipientEmail: row.recipient_email ?? null,
+        subject: row.subject_snapshot ?? null,
+        status: row.status,
+        attemptCount: row.attempt_count ?? null,
+        lastErrorCode: row.last_error_code ?? null,
+        sentAt: row.sent_at ?? null,
+        createdAt: row.created_at ?? null,
+        attachmentCount: emailAttachmentCount(row.attachments_snapshot),
+      },
+    });
   }
   for (const raw of profileEvents.data ?? []) {
     const row = raw as { id: string; reservation_id: string; event_type: string; occurred_at: string; details: unknown };
-    const labels: Record<string, string> = {
-      profile_questionnaire_sent: "Questionnaire envoyé",
-      profile_questionnaire_received: "Questionnaire reçu",
-      profile_questionnaire_reviewed: "Questionnaire relu",
-      profile_questionnaire_waived: "Profil traité par dérogation",
-      profile_questionnaire_send_failed: "Incident d’envoi du questionnaire",
-    };
-    if (labels[row.event_type]) add(row.reservation_id, event(row.id, "decision", labels[row.event_type]!, null, row.occurred_at));
+    add(row.reservation_id, { id: row.id, source: "profile", eventType: row.event_type, label: null, detail: null, occurredAt: row.occurred_at, status: null, email: null });
   }
 
   const positionByReservation = new Map<string, string>();
   for (const raw of positions.data ?? []) {
-    const row = raw as { id: string; reservation_id: string; status: string; confirmed_at: string };
+    const row = raw as { id: string; reservation_id: string; status: string; confirmed_at: string | null };
     positionByReservation.set(row.reservation_id, row.status);
-    add(row.reservation_id, event(row.id, "decision", "Place post-naissance confirmée", null, row.confirmed_at));
+    add(row.reservation_id, { id: row.id, source: "position", eventType: row.status, label: null, detail: null, occurredAt: row.confirmed_at, status: row.status, email: null });
   }
   for (const raw of directSaleEvents.data ?? []) {
     const row = raw as { id: string; reservation_id: string; event_type: string; reason: string | null; occurred_at: string };
-    add(row.reservation_id, event(row.id, "decision", row.event_type.replaceAll("_", " "), row.reason, row.occurred_at));
+    add(row.reservation_id, { id: row.id, source: "direct_sale", eventType: row.event_type, label: null, detail: row.reason, occurredAt: row.occurred_at, status: null, email: null });
   }
   for (const raw of positioningEvents.data ?? []) {
     const row = raw as { id: string; reservation_id: string | null; event_type: string; reason: string | null; occurred_at: string };
-    const label = row.event_type === "post_birth_active_order_overridden"
-      ? "Dérogation à l’ordre actif"
-      : row.event_type === "post_birth_preference_exception_recorded"
-        ? "Préférence incompatible documentée"
-        : "Proposition de positionnement modifiée";
-    add(row.reservation_id, event(row.id, "decision", label, row.reason, row.occurred_at));
+    add(row.reservation_id, { id: row.id, source: "positioning", eventType: row.event_type, label: null, detail: row.reason, occurredAt: row.occurred_at, status: null, email: null });
+  }
+  for (const raw of choiceEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; details: Record<string, unknown> | null; occurred_at: string };
+    const responseKind = row.details && typeof row.details === "object" ? String((row.details as Record<string, unknown>).responseKind ?? "") : "";
+    add(row.reservation_id, { id: row.id, source: "choice", eventType: row.event_type, label: null, detail: responseKind || null, occurredAt: row.occurred_at, status: null, email: null });
+  }
+  for (const raw of departureEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; occurred_at: string };
+    add(row.reservation_id, { id: row.id, source: "departure", eventType: row.event_type, label: null, detail: null, occurredAt: row.occurred_at, status: null, email: null });
+  }
+  for (const raw of assignmentEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; occurred_at: string };
+    add(row.reservation_id, { id: row.id, source: "assignment", eventType: row.event_type, label: null, detail: null, occurredAt: row.occurred_at, status: null, email: null });
+  }
+  for (const raw of handoverEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; occurred_at: string };
+    add(row.reservation_id, { id: row.id, source: "handover", eventType: row.event_type, label: null, detail: null, occurredAt: row.occurred_at, status: null, email: null });
+  }
+  for (const raw of financialEvents.data ?? []) {
+    const row = raw as { id: string; reservation_id: string | null; event_type: string; occurred_at: string };
+    add(row.reservation_id, { id: row.id, source: "financial", eventType: row.event_type, label: null, detail: null, occurredAt: row.occurred_at, status: null, email: null });
   }
 
   type PositioningWave = { id: string; draft_id: string; litter_id: string; wave_kind: string; status: string; version: number };
@@ -278,9 +317,7 @@ export async function loadAdopterWorkbench(supabase: Client, organizationId?: st
       noteCount: Number(row.note_count ?? 0),
       profile: profileByReservation.get(row.id!) ?? null,
       manualContacts: manualContactsByReservation.get(row.id!) ?? [],
-      recentEvents: (recentByReservation.get(row.id!) ?? [])
-        .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
-        .slice(0, 5),
+      chronology: buildJourneyChronology(sourceByReservation.get(row.id!) ?? []),
       updatedAt: row.updated_at ?? row.created_at ?? new Date(0).toISOString(),
     };
   });
