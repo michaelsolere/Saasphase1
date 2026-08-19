@@ -158,6 +158,8 @@ export async function assignDepartureSlotAction(formData: FormData) {
   const planId = formData.get("plan_id"); const slotId = formData.get("slot_id"); const reservationId = formData.get("reservation_id");
   if (!clientCommandId || !uuid(planId) || !uuid(slotId) || !uuid(reservationId)) redirect(target(uuid(planId) ? planId : null, "invalid_input", formData));
   const supabase = await createClient(); const { data: { user } } = await supabase.auth.getUser(); if (!user) redirect("/login");
+  const tokenSecret = process.env.DEPARTURE_TOKEN_SECRET?.trim();
+  if (!tokenSecret || tokenSecret.length < 32) redirect(target(planId, "config_error", formData));
   const result = await (supabase as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: Array<{ outcome: string; reason: string | null }> | null; error: unknown }> }).rpc("assign_departure_slot", { p_slot_id: slotId, p_reservation_id: reservationId, p_client_command_id: clientCommandId });
   if (!result.error && result.data?.[0]?.outcome === "booked") {
     const service = createServiceRoleClient() as unknown as SupabaseClient; const plan = await service.from("departure_plans").select("organization_id,response_deadline_at").eq("id", planId).single();
@@ -165,7 +167,8 @@ export async function assignDepartureSlotAction(formData: FormData) {
       let access = await service.from("departure_public_accesses").select("id").eq("plan_id", planId).eq("reservation_id", reservationId).is("revoked_at", null).maybeSingle();
       if (!access.data) {
         const accessId = randomUUID(); const token = deriveDepartureToken(accessId);
-        access = await service.from("departure_public_accesses").insert({ id: accessId, organization_id: plan.data.organization_id, plan_id: planId, reservation_id: reservationId, token_hash: hashDepartureToken(token), token_hint: token.slice(-8), expires_at: new Date(Math.max(Date.parse(plan.data.response_deadline_at ?? "") + 30 * 86_400_000, Date.now() + 7 * 86_400_000)).toISOString() }).select("id").single();
+        const deadlineMs = Date.parse(plan.data.response_deadline_at ?? "");
+        access = await service.from("departure_public_accesses").insert({ id: accessId, organization_id: plan.data.organization_id, plan_id: planId, reservation_id: reservationId, token_hash: hashDepartureToken(token), token_hint: token.slice(-8), expires_at: new Date(Math.max(Number.isFinite(deadlineMs) ? deadlineMs + 30 * 86_400_000 : 0, Date.now() + 7 * 86_400_000)).toISOString() }).select("id").single();
       }
       if (access.data) {
         await service.from("departure_public_accesses").update({ response_kind: "booked", responded_at: new Date().toISOString() }).eq("id", access.data.id);

@@ -44,6 +44,7 @@ export const e2eEnv = {
   NEXT_DEV_DIR: nextBuildDir,
   PORT: String(appPort),
   HOSTNAME: "127.0.0.1",
+  DEPARTURE_TOKEN_SECRET: "e2e-departure-token-secret-0123456789abcdef",
 };
 
 export function run(command, args, options = {}) {

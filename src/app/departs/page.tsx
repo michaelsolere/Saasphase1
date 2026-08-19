@@ -31,6 +31,7 @@ function statusMessage(status: string) {
   if (status === "litter_required") return "Sélectionnez au moins une portée avant de créer le planning.";
   if (status === "duration_invalid") return "La durée doit être comprise entre 5 et 480 minutes.";
   if (status === "departure_date_invalid") return "Vérifiez la première date de départ de chaque portée sélectionnée.";
+  if (status === "config_error") return "Configuration du serveur incomplète : la clé de signature des liens de rendez-vous est manquante. Contactez l’administrateur.";
   return `Résultat : ${status.replaceAll("_", " ")}`;
 }
 
