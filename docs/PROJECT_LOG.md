@@ -1665,3 +1665,11 @@ Décision fonctionnelle validée pour la suite : le futur planning de
 socialisation sera collectif au niveau de la portée ou de l’ensemble des
 chiots. Il ne suivra pas les chiots individuellement. La socialisation n’est
 pas implémentée dans ce lot.
+
+## Lot du 2026-08-19 — Chronologie unifiée du parcours adoptant (lot 9, clôture du parcours)
+
+PR #487 (`feat/unified-journey-history-01`, fusionnée dans `main` à `ded7905a`). Dernier lot de l’ordre de livraison validé de la référence parcours : le parcours complet du formulaire public à l’adoption est livré.
+
+Le panneau Parcours adoptants remplace sa section « Activité récente » (cinq derniers événements) par une **section « Chronologie »** complète et paginée (30 entrées + « Afficher plus »), triée par date décroissante, couvrant le dossier depuis la candidature : décisions métier (y compris les cinq sources ajoutées : rendez-vous de choix, départs, attribution du chiot, finalisation d’adoption, résolution financière), paiements, documents, notes, échanges manuels et emails. Chaque email présente ses détails techniques repliés (destinataire, objet, statut, tentatives, dernière erreur, dates, pièces jointes) ; « Jamais envoyé » remplace « Non planifié » pour un envoi non parti. Déduplications : les événements de relance/envoi de questionnaire sont portés par l’email lui-même, les faits d’organisation interne (plans, ajustements de créneau) restent masqués, `appointment_booked` est couvert par le rendez-vous, `not_required` (résolution financière) n’apparaît pas.
+
+Ce lot est une **projection de lecture pure** : aucune migration, aucun changement RLS, aucun endpoint, aucune donnée personnelle supplémentaire exposée (les `variables_snapshot` ne sont jamais affichées). L’action « Ajouter un échange » reste inchangée (append-only, idempotente). Vérifications : tests de modèle 9/9, test UI intégré vert (pile E2E isolée, fixtures hard-delete avec vérification finale par le registre), lint, typecheck et build verts, revue indépendante sans défaut bloquant, recette UX validée. Aucune donnée temporaire créée dans la base de démo persistante.
