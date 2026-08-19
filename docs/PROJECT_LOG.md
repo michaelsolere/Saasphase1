@@ -724,6 +724,15 @@ Les tests ciblés et E2E pertinents s’ajoutent selon le risque du lot.
 - Vérifier explicitement les erreurs de suppression, puis compter avec `count(*)` toutes les tables et objets Storage concernés, sans filtre `deleted_at`. Un soft delete, un reset de base ou un test vert ne prouve pas le nettoyage.
 - Nettoyer aussi les reliquats historiques identifiables sans ambiguïté ; ne jamais supprimer une donnée potentiellement réelle.
 - Le rapport final doit lister les données temporaires créées et supprimées avec leurs identifiants et le résultat du contrôle final, ou indiquer explicitement qu’aucune donnée temporaire n’a été créée.
+
+## Lot du 2026-06-22 au 2026-07-15 — Fondation du SaaS (Phase 1)
+
+Entrée consolidée de la période fondatrice, livrée en commits directs avant la pratique des PR : initialisation de l'application Next.js/Supabase (schéma core puis métier, index, vues et politiques RLS, formulaire public en vue `security_invoker`), identité de l'organisation, formulaire public d'adoption avec traitement des soumissions suspectes (rapprochement avec un contact existant ou création, archivage, durcissement d'intégrité) et promotion du rôle candidat, revue des candidatures, fiches contact, candidature et réservation en lecture seule avec événements, notes et liens associés, demandes de pré-réservation et premier paiement (RPC dédiées, tarifs par sexe), animaux (noms simplifiés, photo principale en stockage), modèles d'email et envois transactionnels Brevo (`email_delivery_attempts` avec clé d'idempotence), moteur PDF (schéma documentaire, stockage, modèles versionnés avec schémas JSON, remplacement de l'ancien moteur, retours signés), logo de l'organisation et portées (disponibilité). La pratique du journal de projet est établie dès cette période, mise à jour au fil des jalons.
+
+## Lot du 2026-07-16 au 2026-07-20 — Documents groupés, mise-bas et reproductif (#290 à #354)
+
+Entrée consolidée de la première semaine de travail par PR : **génération groupée des documents par portée** (noyau, action serveur, interface, audit) puis **orchestrateur documentaire par groupe de portées** (action et interface dédiées), unification des documents sur l'**éditeur libre V2** et envoi Brevo des PDF exacts ; **socle des sessions de mise-bas** avec Server Actions et panneau de mise-bas intégré au Journal ; **observations maternelles structurées** et leur interface ; **saillies transactionnelles cycle–portée** et **cycles reproductifs** avec leurs interfaces ; **tâches et jalons personnalisables de portée** (modèles, bibliothèque recommandée, import) ; **planification des pesées** (modèle paramétrable, repères de progression, statistiques des séances) ; **courbes de croissance de portée** et **comparaison des portées par âge** ; mode E2E réutilisable.
+
 ## Lot du 2026-07-21 — Rectification des pesées de routine
 
 - Le Journal permet désormais de corriger le poids ou la note d’une mesure de routine, d’annuler une mesure dans une séance multiple et d’annuler une séance entière. Les lignes sont conservées : aucune suppression physique n’est réalisée par ces opérations.
@@ -760,6 +769,10 @@ La liste fautive n’était pas la liste interne des cartes rapides. Dans le gro
 Les espaces de clés du panneau sont désormais explicitement séparés. La commande express utilise un préfixe propre, et le remontage de la file rapide utilise un autre préfixe avec une identité publique composée de l’ordre, de l’heure de naissance et du sexe. Aucun identifiant de base n’est exposé. Les clés de la chronologie, de l’historique, de la palette, du sélecteur et des dialogues ont aussi été vérifiées sans collision réelle.
 
 Le scénario navigateur capture la console dès le chargement initial et échoue dès la première alerte de clé dupliquée. Il contrôle chaque action et chaque rafraîchissement, les cartes rapides, la chronologie, l’historique et les comptes SQL, puis exige le hard-delete de toutes les fixtures. Ce lot n’ajoute aucune migration, RPC, table ou dépendance.
+
+## Lot du 2026-07-23 au 2026-07-28 — Calendrier, frise, paiements et rôles
+
+Entrée consolidée de la semaine intermédiaire : **calendrier unifié de l'élevage** (architecture du planning du Journal des portées, vues semaine et agenda, actions rapides du jour, report d'une action, modification de la programmation) ; **frise biologique de portée** en lecture seule, puis traitement des éléments depuis la frise et manipulation graphique directe ; **tâches récurrentes finies** et leur interface, **modèles de planning** (éditeur et administration) ; **vue Aujourd'hui de l'élevage** (PLAN-TODAY-GLOBAL-01) ; **rappels internes programmables** sur le calendrier (REMINDER-FOUNDATION-01) ; **cycle de vie des chaleurs** (REPRO-CYCLE-LIFECYCLE-01) avec repli de première saillie moins 24 h (OVULATION-FALLBACK-CONSISTENCY-01) ; **promotion du rôle réservation après arrhes complètes** (ROLE-RESERVATION-01) ; **paiements** : montants configurables centralisés (PAY-CONFIG-01/02), correction du complément après pré-réservation moderne (PAY-BALANCE-01), interdiction du sur-remboursement (PAY-REFUND-01) ; **sidebar garantie sur toutes les pages privées** (NAV-SIDEBAR-COVERAGE-01) ; durcissement de l'infrastructure E2E (registre centralisé de fixtures, runner managé avec préflight).
 
 ## Lot du 2026-07-29 — Filtres locaux de la frise du planning
 
