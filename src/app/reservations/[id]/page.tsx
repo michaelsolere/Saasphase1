@@ -71,7 +71,6 @@ import {
   DocumentConfirmDialog,
   ReservationDocumentsBundleConfirmDialog,
 } from "@/features/reservations/document-confirm-dialog";
-import { AdoptionConfirmDialog } from "@/features/reservations/adoption-confirm-dialog";
 import { AdoptionCorrectionDialog } from "@/features/reservations/adoption-correction-dialog";
 import { ReservationNegativeActionConfirmDialog } from "@/features/reservations/negative-action-confirm-dialog";
 import {
@@ -2035,28 +2034,17 @@ export default async function ReservationDetailPage({
       })
     : resolveDepositSettings(null);
 
-  const [adoptionMembershipResult, adoptionOrganizationResult] =
-    reservation?.organization_id
-      ? await Promise.all([
-          supabase
-            .from("memberships")
-            .select("role")
-            .eq("organization_id", reservation.organization_id)
-            .eq("profile_id", user.id)
-            .eq("status", "active")
-            .is("deleted_at", null)
-            .maybeSingle(),
-          supabase
-            .from("organizations")
-            .select("name")
-            .eq("id", reservation.organization_id)
-            .is("deleted_at", null)
-            .maybeSingle(),
-        ])
-      : [{ data: null }, { data: null }];
+  const adoptionMembershipResult = reservation?.organization_id
+    ? await supabase
+        .from("memberships")
+        .select("role")
+        .eq("organization_id", reservation.organization_id)
+        .eq("profile_id", user.id)
+        .eq("status", "active")
+        .is("deleted_at", null)
+        .maybeSingle()
+    : { data: null };
   const adoptionActorRole = adoptionMembershipResult.data?.role ?? null;
-  const adoptionOrganizationName =
-    adoptionOrganizationResult.data?.name ?? "Organisation non disponible";
 
   // Fetch available animals of the organization if reservation has no animal
   let availableAnimals: Array<{
@@ -2934,10 +2922,6 @@ export default async function ReservationDetailPage({
     events: reservationEvents,
     fallbackPlannedAt: reservation?.adoption_planned_at,
   });
-  const defaultAdoptionCompletedAt =
-    adoptionAppointment.actualAt ??
-    adoptionAppointment.plannedAt ??
-    new Date().toISOString();
   const choiceAppointmentsCampaignTrace = reservationEvents?.find(
     (event) =>
       event.title === CHOICE_APPOINTMENTS_CAMPAIGN_TRACE_TITLE &&
@@ -3346,56 +3330,13 @@ export default async function ReservationDetailPage({
                   {canFinalizeAdoptionManually ? (
                     <div className="mt-6 border-t pt-6">
                       <p className="max-w-2xl text-xs leading-5 text-muted">
-                        La confirmation relit les données, distingue les blocages des exceptions et enregistre tous les changements ensemble.
+                        Le contrôle guidé regroupe le rendez-vous, l’identification, l’attestation de vente, le paiement final, la signature sur iPad et les documents remis.
                       </p>
-                      <AdoptionConfirmDialog
-                        reservationId={id}
-                        expectedReservationUpdatedAt={reservation.updated_at ?? ""}
-                        organizationName={adoptionOrganizationName}
-                        contactName={
-                          reservation.contact_display_name ?? "Famille associée"
-                        }
-                        actorRole={adoptionActorRole}
-                        animal={
-                          relatedAnimal
-                            ? {
-                                id: relatedAnimal.id,
-                                name: animalSummaryLabel,
-                                birthDate: relatedAnimal.birth_date,
-                                identificationNumber:
-                                  relatedAnimal.identification_number,
-                                isConsistent:
-                                  relatedAnimal.status === "reserved" &&
-                                  relatedAnimal.ownership_status === "produced" &&
-                                  !relatedAnimal.is_breeder &&
-                                  !relatedAnimal.is_external &&
-                                  !relatedAnimal.is_retired,
-                              }
-                            : null
-                        }
-                        defaultAdoptionAt={defaultAdoptionCompletedAt}
-                        priceCents={priceCents}
-                        balanceRemainingCents={remainingBalanceCents}
-                        balanceLabel={
-                          priceCents === null
-                            ? "Solde non déterminé"
-                            : remainingBalanceCents !== null &&
-                                remainingBalanceCents > 0
-                              ? `${formatPrice(remainingBalanceCents, currency)} reste à régler`
-                              : remainingBalanceCents === 0
-                                ? "Dossier soldé"
-                                : `Trop-perçu de ${formatPrice(Math.abs(remainingBalanceCents ?? 0), currency)}`
-                        }
-                        paymentDataAvailable={!paymentsError}
-                        documentDataAvailable={!documentsError}
-                        commitmentCertificateStatus={
-                          commitmentDocument?.status ?? null
-                        }
-                        reservationContractStatus={
-                          reservationContractDocument?.status ?? null
-                        }
-                        buttonClassName="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
-                      />
+                      {adoptionActorRole === "owner" || adoptionActorRole === "admin" ? (
+                        <Link href={`/reservations/${id}/depart?return_to=${encodeURIComponent(workbenchReturnPath)}`} className="mt-4 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Ouvrir le contrôle final du départ</Link>
+                      ) : (
+                        <p className="mt-3 text-sm font-semibold text-muted">Finalisation réservée aux rôles owner et admin.</p>
+                      )}
                     </div>
                   ) : null}
 

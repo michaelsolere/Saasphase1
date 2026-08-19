@@ -38,6 +38,8 @@ function record(overrides: Partial<AdopterWorkbenchRecord> = {}): AdopterWorkben
     financialResolution: null,
     documentCount: 0,
     signedDocumentCount: 0,
+    saleCertificateGenerated: false,
+    saleCertificateSigned: false,
     choiceAppointmentAt: null,
     choiceAppointmentStatus: null,
     departureAppointmentAt: null,

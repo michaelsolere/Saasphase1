@@ -14,20 +14,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { departureDateTimeInputToIso, isoToParisLocalInput } from "@/features/departures/departure-time-zone";
 import { correctAdoptionHandover } from "@/features/reservations/actions";
 
 type CorrectionType = "date" | "reverse";
 
-function toLocalDateTimeValue(value: string) {
-  const date = new Date(value);
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-}
-
-function localDateTimeToIso(value: string) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
-}
 
 function SubmitButton({ disabled, correctionType }: {
   disabled: boolean;
@@ -63,17 +54,17 @@ export function AdoptionCorrectionDialog({
   const [correctionType, setCorrectionType] = useState<CorrectionType>("date");
   const [commandId, setCommandId] = useState("");
   const [newAdoptionAt, setNewAdoptionAt] = useState(() =>
-    toLocalDateTimeValue(adoptionCompletedAt),
+    isoToParisLocalInput(adoptionCompletedAt),
   );
   const [reason, setReason] = useState("");
-  const newAdoptionAtIso = localDateTimeToIso(newAdoptionAt);
+  const newAdoptionAtIso = departureDateTimeInputToIso(newAdoptionAt) ?? "";
 
   if (!canCorrect) return null;
 
   function show(type: CorrectionType) {
     setCorrectionType(type);
     setCommandId(crypto.randomUUID());
-    setNewAdoptionAt(toLocalDateTimeValue(adoptionCompletedAt));
+    setNewAdoptionAt(isoToParisLocalInput(adoptionCompletedAt));
     setReason("");
     setOpen(true);
   }

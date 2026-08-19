@@ -87,6 +87,8 @@ export type AdopterWorkbenchRecord = {
   financialResolution: string | null;
   documentCount: number;
   signedDocumentCount: number;
+  saleCertificateGenerated: boolean;
+  saleCertificateSigned: boolean;
   choiceAppointmentAt: string | null;
   choiceAppointmentStatus: string | null;
   departureAppointmentAt: string | null;
@@ -203,7 +205,14 @@ export function deriveAdopterJourney(
     : Boolean(record.rank && (record.litterId || record.litterGroupId) && queue !== "incomplete");
   const reservationDone = record.documentCount > 0 && record.signedDocumentCount >= record.documentCount;
   const choiceDone = Boolean(record.animalId && record.choiceAppointmentStatus === "done");
-  const departureDone = Boolean(record.identificationNumber && record.departureAppointmentStatus === "done");
+  const departureDone = Boolean(
+    record.identificationNumber &&
+    record.departureAppointmentStatus === "done" &&
+    record.saleCertificateGenerated &&
+    record.saleCertificateSigned &&
+    record.priceCents !== null &&
+    record.paidCents - record.refundedCents === record.priceCents,
+  );
   const adoptionDone = Boolean(record.adoptionCompletedAt || record.status === "adopted");
   const facts: Array<[AdopterMilestoneKey, boolean, string]> = [
     ["opening", openingDone, openingDone ? "Versement accepté" : "Preuve de versement manquante"],
@@ -273,7 +282,11 @@ export function deriveAdopterJourney(
     actions.push(action("identification", "Vérifier l’identification", "Le numéro d’identification est requis avant le départ.", "blocked", "departure", false));
   }
   if (!record.departureAppointmentAt) {
-    actions.push(action("departure-appointment", "Préparer le départ", "Créer le rendez-vous de départ depuis le panneau.", "normal", "departure", true));
+    actions.push(action("departure-appointment", "Organiser les départs", "Ouvrir l’agenda transversal des rendez-vous de départ.", "normal", "departure", true, "/departs"));
+  } else if (!departureDone) {
+    actions.push(action("departure-readiness", "Préparer le départ", "Contrôler l’identification, l’attestation de vente et le paiement final.", "blocked", "departure", true, `/reservations/${record.id}/depart`));
+  } else if (!adoptionDone) {
+    actions.push(action("finalize-adoption", "Finaliser l’adoption", "Ouvrir le contrôle final guidé.", "due", "adoption", true, `/reservations/${record.id}/depart`));
   }
   if (actions.length === 0) {
     actions.push(action("up-to-date", "À jour", "Aucune action ouverte.", "none", "adoption"));

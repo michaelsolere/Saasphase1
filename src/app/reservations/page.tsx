@@ -23,6 +23,7 @@ type Params = {
   sort?: string;
   selected?: string;
   contact_status?: string;
+  organization?: string;
 };
 
 const oneOf = <T extends string>(value: string | undefined, allowed: readonly T[], fallback: T) =>
@@ -34,22 +35,25 @@ export default async function ReservationsPage({ searchParams }: { searchParams:
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: membership } = await supabase
+  const { data: memberships } = await supabase
     .from("memberships")
-    .select("role")
+    .select("organization_id,role")
     .eq("profile_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
-    .limit(1)
-    .maybeSingle();
-  const role = membership?.role === "owner" || membership?.role === "admin" || membership?.role === "member"
-    ? membership.role
+    .order("organization_id");
+  const activeMembership = (memberships ?? []).find((membership) => membership.organization_id === params.organization) ?? memberships?.[0] ?? null;
+  const activeOrganizationId = activeMembership?.organization_id ?? null;
+  const role = activeMembership?.role === "owner" || activeMembership?.role === "admin" || activeMembership?.role === "member"
+    ? activeMembership.role
     : "viewer";
+  const organizationIds = (memberships ?? []).map((membership) => membership.organization_id);
+  const { data: organizations } = organizationIds.length ? await supabase.from("organizations").select("id,name").in("id", organizationIds).is("deleted_at", null) : { data: [] };
 
   let records = null;
   let loadingError = false;
   try {
-    records = await loadAdopterWorkbench(supabase);
+    records = await loadAdopterWorkbench(supabase, activeOrganizationId);
   } catch (error) {
     console.error("Unable to load adopter workbench", error);
     loadingError = true;
@@ -69,12 +73,13 @@ export default async function ReservationsPage({ searchParams }: { searchParams:
     <header className="border-b pb-6">
       <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-end">
         <div><p className="text-sm font-semibold uppercase tracking-wide text-accent">Poste de travail</p><h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Parcours adoptants</h1><p className="mt-3 max-w-3xl leading-7 text-muted">Suivez les familles dont le premier versement a été réellement reçu et accepté. Le statut technique seul ne suffit pas.</p></div>
-        <Link href="/positionnements" className="shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Voir tous les positionnements</Link>
+        <div className="flex flex-wrap gap-2"><Link href={`/departs${activeOrganizationId ? `?organization=${activeOrganizationId}` : ""}`} className="shrink-0 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Organiser les départs</Link><Link href="/positionnements" className="shrink-0 rounded-xl border px-4 py-2.5 text-sm font-semibold text-accent">Voir tous les positionnements</Link></div>
       </div>
       {params.contact_status === "conflict" ? <p role="alert" className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-950">Le dossier a changé depuis son ouverture. Les données ont été rechargées : vérifiez-les avant de tracer à nouveau le contact.</p> : null}
       {params.contact_status === "success" ? <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">Contact manuel enregistré et historisé.</p> : null}
       {params.contact_status === "error" ? <p role="alert" className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-900">Le contact manuel n’a pas été enregistré. Aucune donnée n’a été modifiée.</p> : null}
     </header>
-    <section className="py-7">{loadingError || !records ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"><p className="font-semibold">Impossible de charger le poste Parcours adoptants</p><p className="mt-2 text-sm">Réessayez après vérification de la migration. Aucune donnée n’a été modifiée.</p></div> : <AdopterWorkbench records={records} role={role} initial={initial} />}</section>
+    {(organizations ?? []).length > 1 ? <nav aria-label="Organisation active" className="mt-5 flex flex-wrap gap-2">{(organizations ?? []).map((organization) => <Link key={organization.id} href={`/reservations?organization=${organization.id}`} className={`rounded-full border px-4 py-2 text-sm font-semibold ${organization.id === activeOrganizationId ? "border-accent bg-accent-soft text-accent" : "bg-surface"}`}>{organization.name}</Link>)}</nav> : null}
+    <section className="py-7">{loadingError || !records ? <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-12 text-center text-amber-950"><p className="font-semibold">Impossible de charger le poste Parcours adoptants</p><p className="mt-2 text-sm">Réessayez après vérification de la migration. Aucune donnée n’a été modifiée.</p></div> : <AdopterWorkbench records={records} role={role} initial={initial} organizationId={activeOrganizationId} />}</section>
   </main>;
 }

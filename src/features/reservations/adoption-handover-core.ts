@@ -137,8 +137,5 @@ export function getAdoptionHandoverAuthorization({
   if (role === "owner" || role === "admin") {
     return { allowed: true, requiresJustification };
   }
-  if (role === "member") {
-    return { allowed: !requiresJustification, requiresJustification };
-  }
   return { allowed: false, requiresJustification: false };
 }

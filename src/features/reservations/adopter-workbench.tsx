@@ -70,7 +70,7 @@ function actionTone(state: AdopterActionState) {
 
 function formatDate(value: string | null) {
   if (!value) return "Non planifié";
-  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/Paris" }).format(new Date(value));
 }
 
 function positioningStatusLabel(value: string | null | undefined) {
@@ -81,7 +81,7 @@ function positioningStatusLabel(value: string | null | undefined) {
   return "À positionner";
 }
 
-export function AdopterWorkbench({ records, role, initial }: { records: AdopterWorkbenchRecord[]; role: WorkbenchRole; initial: InitialFilters }) {
+export function AdopterWorkbench({ records, role, initial, organizationId }: { records: AdopterWorkbenchRecord[]; role: WorkbenchRole; initial: InitialFilters; organizationId: string | null }) {
   const [view, setView] = useState(initial.view);
   const [search, setSearch] = useState(initial.search);
   const [step, setStep] = useState(initial.step);
@@ -114,7 +114,8 @@ export function AdopterWorkbench({ records, role, initial }: { records: AdopterW
   }, [visible]);
   const selectedIndex = visible.findIndex((journey) => journey.record.id === selectedId);
   const selected = selectedIndex >= 0 ? visible[selectedIndex] : null;
-  const returnPath = buildAdopterWorkbenchPath({ view, search, step, actionState, queue, sort, selectedId: selected?.record.id ?? null });
+  const baseReturnPath = buildAdopterWorkbenchPath({ view, search, step, actionState, queue, sort, selectedId: selected?.record.id ?? null });
+  const returnPath = organizationId ? `${baseReturnPath}${baseReturnPath.includes("?") ? "&" : "?"}organization=${encodeURIComponent(organizationId)}` : baseReturnPath;
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1535px)");
@@ -123,8 +124,10 @@ export function AdopterWorkbench({ records, role, initial }: { records: AdopterW
     return () => media.removeEventListener("change", update);
   }, []);
   useEffect(() => {
-    window.history.replaceState(window.history.state, "", buildAdopterWorkbenchPath({ view, search, step, actionState, queue, sort, selectedId: selected?.record.id ?? null }));
-  }, [view, search, step, actionState, queue, sort, selected]);
+    const path = buildAdopterWorkbenchPath({ view, search, step, actionState, queue, sort, selectedId: selected?.record.id ?? null });
+    const separator = path.includes("?") ? "&" : "?";
+    window.history.replaceState(window.history.state, "", organizationId ? `${path}${separator}organization=${encodeURIComponent(organizationId)}` : path);
+  }, [view, search, step, actionState, queue, sort, selected, organizationId]);
 
   const counts = Object.fromEntries(views.map(([key]) => [key, journeys.filter((item) => key === "follow_up" ? item.followUp : item.primaryView === key).length]));
   const panel = selected ? <AdopterPanel journey={selected} role={role} returnPath={returnPath} hasPrevious={selectedIndex > 0} hasNext={selectedIndex < visible.length - 1} onOpenProfile={() => setProfileOpen(true)} onClose={() => setSelectedId(null)} onPrevious={() => setSelectedId(visible[selectedIndex - 1]?.record.id ?? null)} onNext={() => setSelectedId(visible[selectedIndex + 1]?.record.id ?? null)} /> : <div className="py-20 text-center"><p className="font-semibold">Sélectionnez une famille</p><p className="mt-2 text-sm text-muted">La famille reste ouverte dans ce panneau sans perdre la vue ni les filtres.</p></div>;

@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 
+import { isoToParisLocalInput } from "@/features/departures/departure-time-zone";
 import { upsertReservationAppointment } from "@/features/reservations/actions";
 
 export type ReservationAppointmentFormValues = {
@@ -28,20 +29,6 @@ function SubmitButton() {
   );
 }
 
-function toDateTimeLocalValue(value: string | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (!Number.isFinite(date.getTime())) {
-    return "";
-  }
-
-  const offsetDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return offsetDate.toISOString().slice(0, 16);
-}
 
 export function ReservationAppointmentForm({
   reservationId,
@@ -80,7 +67,7 @@ export function ReservationAppointmentForm({
             type="datetime-local"
             min="1970-01-01T00:00"
             step="300"
-            defaultValue={toDateTimeLocalValue(appointment.plannedAt)}
+            defaultValue={isoToParisLocalInput(appointment.plannedAt)}
             className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent"
           />
         </div>
@@ -98,7 +85,7 @@ export function ReservationAppointmentForm({
             type="datetime-local"
             min="1970-01-01T00:00"
             step="300"
-            defaultValue={toDateTimeLocalValue(appointment.actualAt)}
+            defaultValue={isoToParisLocalInput(appointment.actualAt)}
             className="mt-2 w-full rounded-xl border bg-background px-3 py-2.5 text-sm outline-none transition focus:border-accent"
           />
         </div>
