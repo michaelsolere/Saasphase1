@@ -162,6 +162,7 @@ test("shows the unified chronology with collapsible email details and pagination
     await panel
       .getByTestId("journey-chronology")
       .screenshot({ path: "/tmp/unified-journey-history-chronology-2x.png" });
+    await panel.screenshot({ path: "/tmp/unified-journey-history-panel-2x.png" });
 
     // Le formulaire « Communications » reste fonctionnel après l'arrivée de la chronologie.
     await panel.getByText("Communications", { exact: true }).click();
