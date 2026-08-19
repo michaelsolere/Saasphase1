@@ -1,5 +1,6 @@
 const PIXELS_PER_HOUR = 64;
 const RESIZE_STEP_MINUTES = 15;
+export const DEPARTURE_DRAG_STEP_PIXELS = PIXELS_PER_HOUR / 4;
 
 export function validateDeparturePlanDraft(input: {
   durationMinutes: number;
@@ -42,16 +43,17 @@ export function departureDropTargetFromDelta(input: {
 }) {
   const pixelsPerHour = input.pixelsPerHour ?? PIXELS_PER_HOUR;
   if (Math.hypot(input.deltaX, input.deltaY) < 6) return null;
-  let dayDelta = Math.round(input.deltaX / input.dayColumnWidth);
-  const totalHour = input.sourceHour + Math.round(input.deltaY / pixelsPerHour);
-  dayDelta += Math.floor(totalHour / 24);
-  const hour = ((totalHour % 24) + 24) % 24;
+  const deltaMinutes = Math.round(input.deltaY / (pixelsPerHour / 4)) * 15;
+  const totalMinutes = input.sourceHour * 60 + input.sourceMinute + deltaMinutes;
+  const dayDelta = Math.round(input.deltaX / input.dayColumnWidth) + Math.floor(totalMinutes / (24 * 60));
+  const wrappedMinutes = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hour = Math.floor(wrappedMinutes / 60);
+  const minute = wrappedMinutes % 60;
   const date = new Date(`${input.sourceDateKey}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + dayDelta);
   const dateKey = date.toISOString().slice(0, 10);
   const weekEnd = new Date(`${input.weekStartKey}T12:00:00Z`);
   weekEnd.setUTCDate(weekEnd.getUTCDate() + 6);
-  const startMinutes = hour * 60 + input.sourceMinute;
-  if (dateKey < input.weekStartKey || dateKey > weekEnd.toISOString().slice(0, 10) || startMinutes < 8 * 60 || startMinutes + input.durationMinutes > 20 * 60) return null;
-  return { dateKey, hour, minute: input.sourceMinute };
+  if (dateKey < input.weekStartKey || dateKey > weekEnd.toISOString().slice(0, 10) || wrappedMinutes < 8 * 60 || wrappedMinutes + input.durationMinutes > 20 * 60) return null;
+  return { dateKey, hour, minute };
 }
