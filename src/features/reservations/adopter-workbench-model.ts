@@ -26,13 +26,182 @@ export type AdopterWorkbenchSort =
   | "choice_appointment"
   | "departure_appointment";
 
-export type RecentAdopterEvent = {
+export type JourneyChronologyKind =
+  | "decision"
+  | "payment"
+  | "document"
+  | "email"
+  | "manual_contact"
+  | "note"
+  | "appointment";
+
+export type JourneyChronologyEmailDetails = {
+  recipientEmail: string | null;
+  subject: string | null;
+  status: string | null;
+  attemptCount: number | null;
+  lastErrorCode: string | null;
+  sentAt: string | null;
+  createdAt: string | null;
+  attachmentCount: number | null;
+};
+
+export type JourneyChronologyEntry = {
   id: string;
-  kind: "decision" | "payment" | "document" | "appointment" | "email" | "note" | "manual_contact";
+  kind: JourneyChronologyKind;
   label: string;
   detail: string | null;
   occurredAt: string;
+  email?: JourneyChronologyEmailDetails;
 };
+
+export type JourneyChronologySource =
+  | "candidate"
+  | "manual_contact"
+  | "email"
+  | "payment"
+  | "document"
+  | "appointment"
+  | "note"
+  | "profile"
+  | "position"
+  | "positioning"
+  | "direct_sale"
+  | "assignment"
+  | "choice"
+  | "departure"
+  | "handover"
+  | "financial";
+
+export type JourneyChronologySourceEntry = {
+  id: string;
+  source: JourneyChronologySource;
+  eventType: string | null;
+  occurredAt: string | null;
+  label: string | null;
+  detail: string | null;
+  status: string | null;
+  email: JourneyChronologyEmailDetails | null;
+};
+
+export const JOURNEY_CHRONOLOGY_PAGE_SIZE = 30;
+
+const CHOICE_VISIBLE_EVENT_TYPES = new Set(["family_response_recorded", "ranked_preferences_saved"]);
+const DEPARTURE_VISIBLE_EVENT_TYPES = new Set(["plan_published", "no_slot_suitable"]);
+const PROFILE_VISIBLE_EVENT_TYPES = new Set(["profile_questionnaire_received", "profile_questionnaire_reviewed", "profile_questionnaire_waived"]);
+const FINANCIAL_VISIBLE_EVENT_TYPES = new Set(["opened", "resolved", "rectified", "reconciled"]);
+
+const CHOICE_RESPONSE_KIND_LABELS: Record<string, string> = {
+  in_person: "Sur place",
+  video: "Visio",
+  prechoice: "Pré-choix",
+};
+
+const CANDIDATE_LABELS: Record<string, string> = {
+  candidate_first_payment_accepted: "Premier versement accepté",
+  candidate_payment_partially_received: "Paiement partiel reçu",
+  candidate_positioning_updated: "Positionnement modifié",
+};
+
+const POSITIONING_LABELS: Record<string, string> = {
+  post_birth_active_order_overridden: "Dérogation à l’ordre actif",
+  post_birth_preference_exception_recorded: "Préférence incompatible documentée",
+};
+
+const HANDOVER_LABELS: Record<string, string> = {
+  finalized: "Adoption finalisée",
+  date_corrected: "Date de départ corrigée",
+  reversed: "Adoption annulée",
+  incident_opened: "Incident ouvert",
+};
+
+const FINANCIAL_LABELS: Record<string, string> = {
+  opened: "Résolution financière ouverte",
+  resolved: "Résolution financière résolue",
+  rectified: "Résolution financière rectifiée",
+  reconciled: "Résolution financière réconciliée",
+};
+
+function decisionLabel(entry: JourneyChronologySourceEntry): string | null {
+  const type = entry.eventType ?? "";
+  switch (entry.source) {
+    case "candidate":
+      return CANDIDATE_LABELS[type] ?? type.replaceAll("_", " ");
+    case "profile":
+      return PROFILE_VISIBLE_EVENT_TYPES.has(type)
+        ? type === "profile_questionnaire_received"
+          ? "Questionnaire reçu"
+          : type === "profile_questionnaire_reviewed"
+            ? "Questionnaire relu"
+            : "Profil traité par dérogation"
+        : null;
+    case "position":
+      return entry.status === "confirmed" ? "Place post-naissance confirmée" : null;
+    case "positioning":
+      return POSITIONING_LABELS[type] ?? "Proposition de positionnement modifiée";
+    case "direct_sale":
+      return type.replaceAll("_", " ");
+    case "assignment":
+      return type === "assigned" ? "Chiot attribué" : type === "changed" ? "Attribution modifiée" : null;
+    case "choice":
+      return CHOICE_VISIBLE_EVENT_TYPES.has(type)
+        ? type === "family_response_recorded"
+          ? "Réponse de la famille au RDV de choix"
+          : "Pré-choix enregistrés"
+        : null;
+    case "departure":
+      return DEPARTURE_VISIBLE_EVENT_TYPES.has(type)
+        ? type === "plan_published"
+          ? "Planning des départs publié"
+          : "Aucun créneau convenait à la famille"
+        : null;
+    case "handover":
+      return HANDOVER_LABELS[type] ?? null;
+    case "financial":
+      return FINANCIAL_VISIBLE_EVENT_TYPES.has(type) ? FINANCIAL_LABELS[type] ?? null : null;
+    default:
+      return null;
+  }
+}
+
+function entryKind(source: JourneyChronologySource): JourneyChronologyKind {
+  switch (source) {
+    case "payment": return "payment";
+    case "document": return "document";
+    case "email": return "email";
+    case "manual_contact": return "manual_contact";
+    case "note": return "note";
+    case "appointment": return "appointment";
+    default: return "decision";
+  }
+}
+
+export function buildJourneyChronology(entries: JourneyChronologySourceEntry[]): JourneyChronologyEntry[] {
+  const built: JourneyChronologyEntry[] = [];
+  for (const entry of entries) {
+    if (!entry.occurredAt) continue;
+    const label = entry.source === "candidate" || entry.source === "profile" || entry.source === "position"
+      || entry.source === "positioning" || entry.source === "direct_sale" || entry.source === "assignment"
+      || entry.source === "choice" || entry.source === "departure" || entry.source === "handover"
+      || entry.source === "financial"
+      ? decisionLabel(entry)
+      : entry.label;
+    if (!label) continue;
+    let detail = entry.detail;
+    if (entry.source === "choice" && entry.eventType === "family_response_recorded" && detail) {
+      detail = CHOICE_RESPONSE_KIND_LABELS[detail] ?? detail;
+    }
+    built.push({
+      id: entry.id,
+      kind: entryKind(entry.source),
+      label,
+      detail,
+      occurredAt: entry.occurredAt,
+      ...(entry.email ? { email: entry.email } : {}),
+    });
+  }
+  return built.sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.id.localeCompare(left.id));
+}
 
 export type AdopterPositioningProposalOption = {
   litterId: string;
@@ -96,7 +265,7 @@ export type AdopterWorkbenchRecord = {
   noteCount: number;
   profile?: AdopterProfileWorkbenchSummary | null;
   manualContacts?: Array<{ id: string; label: string }>;
-  recentEvents: RecentAdopterEvent[];
+  chronology: JourneyChronologyEntry[];
   updatedAt: string;
 };
 
