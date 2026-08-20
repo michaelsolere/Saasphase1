@@ -16,6 +16,8 @@ const errorMessages: Record<string, string> = {
     "Certaines valeurs sont incohérentes pour une création manuelle d’animal.",
   invalid_mother: "La mère sélectionnée est invalide ou inaccessible.",
   invalid_father: "Le père sélectionné est invalide ou inaccessible.",
+  sensitive_role_required:
+    "Seuls les responsables peuvent créer directement un animal disponible, gardé à l’élevage ou reproducteur.",
   same_parents: "La mère et le père doivent être deux animaux différents.",
   error: "Impossible de créer l’animal pour le moment.",
 };
@@ -35,14 +37,13 @@ export default async function NewAnimalPage({
     redirect("/login");
   }
 
-  const { data: parentOptionsData } = await supabase
-    .from("animals")
-    .select("id, call_name, official_name, sex")
-    .is("deleted_at", null)
-    .order("official_name", { ascending: true, nullsFirst: false })
-    .order("call_name", { ascending: true, nullsFirst: false });
+  const [parentOptionsResult, membershipResult] = await Promise.all([
+    supabase.from("animals").select("id, call_name, official_name, sex").is("deleted_at", null).order("official_name", { ascending: true, nullsFirst: false }).order("call_name", { ascending: true, nullsFirst: false }),
+    supabase.from("memberships").select("role").eq("profile_id", user.id).eq("status", "active").is("deleted_at", null).order("created_at", { ascending: true }).limit(1).maybeSingle(),
+  ]);
 
-  const parentOptions = (parentOptionsData ?? []) as AnimalParentOption[];
+  const parentOptions = (parentOptionsResult.data ?? []) as AnimalParentOption[];
+  const canSetSensitiveDecisions = ["owner", "admin"].includes(membershipResult.data?.role ?? "");
   const errorMessage = query.status ? errorMessages[query.status] : undefined;
 
   return (
@@ -97,7 +98,7 @@ export default async function NewAnimalPage({
         action={createManualAnimal}
         className="mt-8 rounded-2xl border bg-surface p-6 sm:p-8"
       >
-        <AnimalFields idPrefix="animal-new" parentOptions={parentOptions} />
+        <AnimalFields idPrefix="animal-new" parentOptions={parentOptions} canSetSensitiveDecisions={canSetSensitiveDecisions} />
 
         <div className="mt-8 flex flex-wrap items-center justify-end gap-4 border-t pt-6">
           <Link

@@ -78,6 +78,7 @@ function animalCreateUrl(
     | "invalid_mother"
     | "invalid_father"
     | "same_parents"
+    | "sensitive_role_required"
     | "error",
 ) {
   return `/animals/new?status=${code}`;
@@ -418,7 +419,7 @@ export async function createManualAnimal(formData: FormData) {
 
   const { data: membership, error: membershipError } = await supabase
     .from("memberships")
-    .select("organization_id")
+    .select("organization_id, role")
     .eq("profile_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
@@ -431,6 +432,13 @@ export async function createManualAnimal(formData: FormData) {
   }
 
   const organizationId = membership.organization_id;
+
+  if (
+    (["kept", "available"].includes(status) || isBreeder) &&
+    !isSensitiveAnimalDecisionRole(membership.role)
+  ) {
+    redirect(animalCreateUrl("sensitive_role_required"));
+  }
 
   if (motherId) {
     const { data: mother, error: motherError } = await supabase

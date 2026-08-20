@@ -8,6 +8,8 @@ import {
   E2E_MEMBER_PASSWORD,
   E2E_OWNER_EMAIL,
   E2E_OWNER_PASSWORD,
+  E2E_VIEWER_EMAIL,
+  E2E_VIEWER_PASSWORD,
   runE2eSql,
   runE2eSqlSync,
 } from "./helpers/supabase";
@@ -155,7 +157,9 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     }
     await page.keyboard.press("Escape");
 
-    await healthTab.press("ArrowRight");
+    await healthTab.focus();
+    await expect(healthTab).toBeFocused();
+    await page.keyboard.press("ArrowRight");
     await expect(tabs.getByRole("tab", { name: /Reproduction/ })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(new RegExp(`tab=reproduction`));
@@ -211,7 +215,18 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page.getByRole("button", { name: "Remettre disponible" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Promouvoir en reproductrice" })).toHaveCount(0);
     await page.getByRole("tab", { name: /Santé/ }).click();
-    await expect(page.getByRole("button", { name: "Ajouter un événement santé" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Ajouter un événement santé" })).toBeVisible();
+
+    await page.goto("/animals/new");
+    await expect(page.locator('select[name="status"] option[value="available"]')).toHaveCount(0);
+    await expect(page.locator('select[name="status"] option[value="kept"]')).toHaveCount(0);
+    await expect(page.getByRole("checkbox", { name: /Reproducteur maison/ })).toHaveCount(0);
+
+    await page.context().clearCookies();
+    await login(page, E2E_VIEWER_EMAIL, E2E_VIEWER_PASSWORD);
+    await page.goto(`/animals/${identityAnimalId}`);
+    await page.getByRole("button", { name: "Consulter" }).click();
+    await expect(page.locator("#animal-essential-identity")).toBeFocused();
   });
 });
 

@@ -142,7 +142,7 @@ export function AnimalOverviewSection({
       </section>
 
       <div className="grid gap-8 lg:grid-cols-2 lg:gap-12">
-        <section className="border-t pt-4" aria-labelledby="animal-essential-heading">
+        <section id="animal-essential-identity" tabIndex={-1} className="border-t pt-4 outline-none focus-visible:ring-2 focus-visible:ring-accent" aria-labelledby="animal-essential-heading">
           <h2 id="animal-essential-heading" className="text-lg font-semibold tracking-tight">Essentiel</h2>
           <dl className="mt-3">
             <DefinitionRow label="Né(e) le">{formatAnimalDate(animal.birthDate)}</DefinitionRow>
