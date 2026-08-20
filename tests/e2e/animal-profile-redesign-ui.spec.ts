@@ -145,8 +145,7 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     }
     await page.keyboard.press("Escape");
 
-    await healthTab.focus();
-    await page.keyboard.press("ArrowRight");
+    await healthTab.press("ArrowRight");
     await expect(tabs.getByRole("tab", { name: /Reproduction/ })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(new RegExp(`tab=reproduction`));
@@ -196,5 +195,37 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page.getByRole("button", { name: "Garder à l’élevage" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Remettre disponible" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Promouvoir en reproductrice" })).toHaveCount(0);
+  });
+});
+
+test("charge la fiche depuis l’organisation de l’animal quand l’utilisateur a plusieurs adhésions", async ({ page }) => {
+  await withE2eFixtures(runE2eSql, async (fixtures) => {
+    const secondOrganizationId = fixtures.register("organizations", randomUUID());
+    const secondMembershipId = fixtures.register("memberships", randomUUID());
+    const animalId = fixtures.register("animals", randomUUID());
+
+    sql(`
+      insert into public.organizations (id, name, slug)
+      values (${q(secondOrganizationId)}::uuid, 'Organisation secondaire E2E', ${q(`animal-profile-secondary-${secondOrganizationId}`)});
+      insert into public.memberships (
+        id, organization_id, profile_id, role, status, created_by, updated_by
+      ) values (
+        ${q(secondMembershipId)}::uuid, ${q(secondOrganizationId)}::uuid,
+        ${q(ownerId)}::uuid, 'admin', 'active', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      );
+      insert into public.animals (
+        id, organization_id, call_name, official_name, species, breed, sex,
+        status, ownership_status, created_by, updated_by
+      ) values (
+        ${q(animalId)}::uuid, ${q(secondOrganizationId)}::uuid, 'Multi E2E',
+        'Animal multi-organisation E2E', 'dog', 'Golden Retriever', 'male',
+        'active', 'owned', ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      );
+    `);
+
+    await login(page, E2E_OWNER_EMAIL, E2E_OWNER_PASSWORD);
+    await page.goto(`/animals/${animalId}`);
+    await expect(page.getByRole("heading", { name: "Animal multi-organisation E2E" })).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "Sections de la fiche animal" })).toBeVisible();
   });
 });

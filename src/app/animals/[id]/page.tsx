@@ -104,12 +104,12 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [animalResult, membershipResult] = await Promise.all([
-    supabase.from("animals").select("id, organization_id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, death_date, litter_id, mother_id, father_id, identification_number, lof_number, coat_color, pedigree_url, birth_order, birth_weight_grams, collar_color_current, notes, is_breeder, is_external, is_retired, created_at, updated_at").eq("id", id).is("deleted_at", null).maybeSingle(),
-    supabase.from("memberships").select("organization_id, role").eq("profile_id", user.id).eq("status", "active").is("deleted_at", null).order("created_at", { ascending: true }).limit(1).maybeSingle(),
-  ]);
+  const animalResult = await supabase.from("animals").select("id, organization_id, call_name, official_name, species, breed, sex, status, ownership_status, birth_date, death_date, litter_id, mother_id, father_id, identification_number, lof_number, coat_color, pedigree_url, birth_order, birth_weight_grams, collar_color_current, notes, is_breeder, is_external, is_retired, created_at, updated_at").eq("id", id).is("deleted_at", null).maybeSingle();
   const animal = animalResult.data as AnimalRow | null;
-  if (animalResult.error || !animal || !membershipResult.data || membershipResult.data.organization_id !== animal.organization_id) return unavailable();
+  if (animalResult.error || !animal) return unavailable();
+
+  const membershipResult = await supabase.from("memberships").select("organization_id, role").eq("organization_id", animal.organization_id).eq("profile_id", user.id).eq("status", "active").is("deleted_at", null).maybeSingle();
+  if (membershipResult.error || !membershipResult.data) return unavailable();
 
   const parentIds = [animal.mother_id, animal.father_id].filter((value): value is string => Boolean(value));
   const [litterResult, parentsResult, photoResult, documentsResult, eventsResult, notesResult, reservationResult, reproductionLittersResult] = await Promise.all([
