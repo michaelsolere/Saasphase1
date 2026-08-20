@@ -44,6 +44,7 @@ type AnimalPrimaryPhotoManagerProps = {
   photoWidth: number | null;
   photoHeight: number | null;
   layout?: "default" | "profile";
+  canManage?: boolean;
 };
 
 type LocalMessage = {
@@ -156,6 +157,7 @@ export function AnimalPrimaryPhotoManager({
   photoWidth,
   photoHeight,
   layout = "default",
+  canManage = true,
 }: AnimalPrimaryPhotoManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -267,7 +269,7 @@ export function AnimalPrimaryPhotoManager({
         )}
       </div>
 
-      <div className={layout === "profile" ? "flex flex-col gap-3" : "flex flex-1 flex-col gap-3 sm:min-w-56"}>
+      {canManage ? <div className={layout === "profile" ? "flex flex-col gap-3" : "flex flex-1 flex-col gap-3 sm:min-w-56"}>
         <div className="flex flex-wrap gap-2">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -380,7 +382,7 @@ export function AnimalPrimaryPhotoManager({
             {message.text}
           </p>
         ) : null}
-      </div>
+      </div> : null}
     </div>
   );
 }

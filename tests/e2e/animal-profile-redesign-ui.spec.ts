@@ -32,6 +32,7 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
   await withE2eFixtures(runE2eSql, async (fixtures) => {
     const femaleId = fixtures.register("animals", randomUUID());
     const maleId = fixtures.register("animals", randomUUID());
+    const identityAnimalId = fixtures.register("animals", randomUUID());
     const litterId = fixtures.register("litters", randomUUID());
     const cycleId = fixtures.register("reproductive_cycles", randomUUID());
     const measurementId = fixtures.register("progesterone_measurements", randomUUID());
@@ -57,6 +58,15 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
         ${q(litterId)}::uuid, ${q(organizationId)}::uuid, 'Portée Profil E2E',
         'dog', 'Golden Retriever', 'born', ${q(femaleId)}::uuid, ${q(maleId)}::uuid,
         '2025-04-12', 7, 4, 3, 7, ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
+      );
+
+      insert into public.animals (
+        id, organization_id, litter_id, call_name, species, breed, sex, status,
+        ownership_status, created_by, updated_by
+      ) values (
+        ${q(identityAnimalId)}::uuid, ${q(organizationId)}::uuid, ${q(litterId)}::uuid,
+        'Identité E2E', 'dog', 'Golden Retriever', 'female', 'available', 'produced',
+        ${q(ownerId)}::uuid, ${q(ownerId)}::uuid
       );
 
       insert into public.reproductive_cycles (
@@ -179,6 +189,11 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
       await page.getByTestId("animal-profile").screenshot({ path: "/tmp/animal-profile-male-reproduction-2x.png", animations: "disabled" });
     }
 
+    await page.goto(`/animals/${identityAnimalId}`);
+    await page.getByRole("button", { name: "Consulter" }).click();
+    await expect(page.getByRole("dialog", { name: "Renseigner l’identité définitive" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`/animals/${femaleId}`);
     expect(await page.locator("main").evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
@@ -195,6 +210,8 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page.getByRole("button", { name: "Garder à l’élevage" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Remettre disponible" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Promouvoir en reproductrice" })).toHaveCount(0);
+    await page.getByRole("tab", { name: /Santé/ }).click();
+    await expect(page.getByRole("button", { name: "Ajouter un événement santé" })).toHaveCount(0);
   });
 });
 

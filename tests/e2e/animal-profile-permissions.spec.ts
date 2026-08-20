@@ -42,6 +42,8 @@ test("réserve les décisions animales sensibles à owner/admin et accepte healt
     const otherOrganizationId = fixtures.register("organizations", randomUUID());
     const otherAnimalId = fixtures.register("animals", randomUUID());
     const healthEventId = fixtures.register("events", randomUUID());
+    const protectedInsertId = fixtures.register("animals", randomUUID());
+    const adminInsertId = fixtures.register("animals", randomUUID());
 
     sql(`
       insert into public.animals (
@@ -86,13 +88,37 @@ test("réserve les décisions animales sensibles à owner/admin et accepte healt
       expect(sql(`select status from public.animals where id = ${q(animalId)}::uuid`)).toBe("active");
       await resetAnimal(animalId);
 
+      const memberProtectedInsert = await member.from("animals").insert({
+        id: protectedInsertId,
+        organization_id: organizationId,
+        call_name: "Insertion protégée E2E",
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "available",
+        ownership_status: "owned",
+      });
+      expect(memberProtectedInsert.error).toBeTruthy();
+
+      sql(`update public.memberships set role = 'admin' where id = ${q(memberMembershipId)}::uuid;`);
+      const adminProtectedInsert = await member.from("animals").insert({
+        id: adminInsertId,
+        organization_id: organizationId,
+        call_name: "Insertion admin E2E",
+        species: "dog",
+        breed: "Golden Retriever",
+        sex: "female",
+        status: "available",
+        ownership_status: "owned",
+      });
+      expect(adminProtectedInsert.error).toBeNull();
+
       const viewerKeep = await viewer.from("animals").update({ status: "kept" }).eq("id", animalId).select("id").maybeSingle();
       expect(viewerKeep.error).toBeNull();
       expect(viewerKeep.data).toBeNull();
       expect(sql(`select status from public.animals where id = ${q(animalId)}::uuid`)).toBe("born");
       await resetAnimal(animalId);
 
-      sql(`update public.memberships set role = 'admin' where id = ${q(memberMembershipId)}::uuid;`);
       const adminKeep = await member.from("animals").update({ status: "kept" }).eq("id", animalId).select("id").maybeSingle();
       expect(adminKeep.error).toBeNull();
       expect(adminKeep.data?.id).toBe(animalId);

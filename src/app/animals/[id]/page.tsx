@@ -162,7 +162,8 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
     litter={litterResult.data ? { id: litterResult.data.id, name: litterResult.data.name } : null}
     mother={animal.mother_id ? parents.get(animal.mother_id) ?? null : null}
     father={animal.father_id ? parents.get(animal.father_id) ?? null : null}
-    owner={reservationRow ? { id: reservationRow.contact_id, name: reservationRow.contact_display_name } : null}
+    owner={reservationRow && (animal.status === "adopted" || ["sold", "adopted_out"].includes(animal.ownership_status) || reservationRow.status === "adopted") ? { id: reservationRow.contact_id, name: reservationRow.contact_display_name } : null}
+    reservationContact={reservationRow ? { id: reservationRow.contact_id, name: reservationRow.contact_display_name } : null}
     reservation={reservationRow?.id ? { id: reservationRow.id, status: reservationRow.status ?? "unknown", paidCents: reservationRow.paid_cents ?? 0, priceCents: reservationRow.price_cents, currency: reservationRow.currency ?? "EUR" } : null}
     attention={projectAnimalAttentionPoints({ now: new Date().toISOString(), events: events.map((event) => ({ id: event.id, title: event.title, eventType: event.event_type, status: event.status, priority: event.priority, plannedAt: event.planned_at, plannedDate: event.planned_date })), identity: { kennelBorn: Boolean(animal.litter_id), status: animal.status, identificationNumber: animal.identification_number, officialName: animal.official_name } })}
     recentActivity={getRecentAnimalActivity(history.entries)}

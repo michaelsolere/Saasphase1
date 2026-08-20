@@ -35,18 +35,20 @@ declare
   v_user uuid := auth.uid();
   v_is_sensitive boolean;
 begin
-  v_is_sensitive :=
-    old.is_breeder is distinct from new.is_breeder
-    or (
-      old.status is distinct from new.status
-      and (
-        old.status = 'kept'
-        or new.status = 'kept'
-        or new.status = 'available'
-        or (old.status = 'born' and new.status = 'available')
-        or (old.status = 'available' and new.status = 'born')
+  v_is_sensitive := case
+    when tg_op = 'INSERT' then
+      new.is_breeder or new.status in ('available', 'kept')
+    else
+      old.is_breeder is distinct from new.is_breeder
+      or (
+        old.status is distinct from new.status
+        and (
+          old.status = 'kept'
+          or new.status in ('kept', 'available')
+          or (old.status = 'available' and new.status = 'born')
+        )
       )
-    );
+  end;
 
   if not v_is_sensitive then
     return new;
@@ -76,7 +78,7 @@ end;
 $function$;
 
 create trigger animals_guard_sensitive_breeding_decisions
-before update of status, is_breeder on public.animals
+before insert or update of status, is_breeder on public.animals
 for each row execute function public.guard_animal_sensitive_breeding_decisions();
 
 revoke all on function public.guard_animal_sensitive_breeding_decisions()

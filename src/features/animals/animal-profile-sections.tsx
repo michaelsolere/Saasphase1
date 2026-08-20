@@ -84,10 +84,12 @@ export function AnimalOverviewSection({
   mother,
   father,
   owner,
+  reservationContact,
   reservation,
   attention,
   recentActivity,
   onOpenTab,
+  onOpenIdentity,
   hasSituationError,
 }: {
   animal: {
@@ -107,10 +109,12 @@ export function AnimalOverviewSection({
   mother: { id: string; name: string } | null;
   father: { id: string; name: string } | null;
   owner: { id: string | null; name: string | null } | null;
+  reservationContact: { id: string | null; name: string | null } | null;
   reservation: { id: string; status: string; paidCents: number; priceCents: number | null; currency: string } | null;
   attention: AnimalAttentionPoint[];
   recentActivity: AnimalHistoryEntry[];
   onOpenTab: (tab: "overview" | "health" | "history") => void;
+  onOpenIdentity: () => void;
   hasSituationError: boolean;
 }) {
   return (
@@ -130,7 +134,7 @@ export function AnimalOverviewSection({
                   <p className="text-sm font-semibold">{point.title}</p>
                   {point.detail ? <p className="mt-1 text-xs text-muted">Échéance : {formatAnimalDate(point.detail)}</p> : null}
                 </div>
-                <button type="button" onClick={() => onOpenTab(point.tab === "health" || point.tab === "history" ? point.tab : "overview")} className="w-fit text-sm font-semibold text-accent hover:underline">Consulter</button>
+                <button type="button" onClick={() => point.kind === "identity" ? onOpenIdentity() : onOpenTab(point.tab === "health" || point.tab === "history" ? point.tab : "overview")} className="w-fit text-sm font-semibold text-accent hover:underline">Consulter</button>
               </li>
             ))}
           </ul>
@@ -164,6 +168,7 @@ export function AnimalOverviewSection({
         {hasSituationError ? <p role="alert" className="mt-3 text-sm text-amber-800">Certaines informations de situation n’ont pas pu être chargées.</p> : null}
         <dl className="mt-3 grid gap-x-10 lg:grid-cols-2">
           <DefinitionRow label="Propriétaire">{owner?.id ? <Link href={`/contacts/${owner.id}`} className="text-accent hover:underline">{owner.name || "Ouvrir le contact"}</Link> : owner?.name || "Non renseigné"}</DefinitionRow>
+          <DefinitionRow label="Contact de réservation">{reservationContact?.id ? <Link href={`/contacts/${reservationContact.id}`} className="text-accent hover:underline">{reservationContact.name || "Ouvrir le contact"}</Link> : reservationContact?.name || "Aucun"}</DefinitionRow>
           <DefinitionRow label="Réservation">{reservation ? <Link href={`/reservations/${reservation.id}`} className="text-accent hover:underline">{reservation.status}</Link> : "Aucune"}</DefinitionRow>
           {reservation ? <DefinitionRow label="Paiement">{new Intl.NumberFormat("fr-FR", { style: "currency", currency: reservation.currency }).format(reservation.paidCents / 100)}{reservation.priceCents ? ` / ${new Intl.NumberFormat("fr-FR", { style: "currency", currency: reservation.currency }).format(reservation.priceCents / 100)}` : ""}</DefinitionRow> : null}
         </dl>
@@ -202,9 +207,9 @@ export function AnimalHealthSection({ notes, events, documents, onAdd, onDocumen
 
 export function AnimalReproductionSection({ animalId, sex, female, male, litters, hasError }: { animalId: string; sex: string; female: AnimalProfileFemaleSummary | null; male: AnimalProfileMaleSummary | null; litters: AnimalProfileLitter[]; hasError: boolean }) {
   const statusLabels: Record<string, string> = { planned: "Prévu", in_progress: "En cours", mated: "Saillie enregistrée", closed: "Terminé", cancelled: "Annulé" };
-  if (hasError) return <section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Reproduction</h2><p role="alert" className="mt-3 text-sm text-amber-800">La synthèse reproductive est partielle. Réessayez dans quelques instants.</p></section>;
-  if (sex === "female") return <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(16rem,.85fr)]"><section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Parcours reproductif</h2><div className="mt-5 grid grid-cols-3 gap-4 border-b pb-5"><div><strong className="block text-2xl">{female?.litterCount ?? 0}</strong><span className="text-xs text-muted">portées</span></div><div><strong className="block text-2xl">{female?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{female?.matingCount ?? 0}</strong><span className="text-xs text-muted">saillies du cycle</span></div></div><LitterList litters={litters} /></section><aside className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Dernier cycle</h2>{female?.latestCycle ? <dl className="mt-3"><DefinitionRow label="Début">{formatAnimalDate(female.latestCycle.startedOn)}</DefinitionRow><DefinitionRow label="Statut">{statusLabels[female.latestCycle.status] ?? female.latestCycle.status}</DefinitionRow><DefinitionRow label="Dernier dosage">{female.latestMeasurement ? `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(female.latestMeasurement.value)} ${female.latestMeasurement.unit === "ng_ml" ? "ng/mL" : "nmol/L"}` : "Aucun"}</DefinitionRow></dl> : <p className="mt-3 text-sm text-muted">Aucun cycle reproductif.</p>}<Link href={`/animals/${animalId}/reproduction`} className="mt-5 inline-flex rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Ouvrir le suivi complet</Link></aside></div>;
-  return <section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Descendance</h2><div className="mt-5 flex gap-10 border-b pb-5"><div><strong className="block text-2xl">{male?.litterCount ?? 0}</strong><span className="text-xs text-muted">{male?.litterCount === 1 ? "portée" : "portées"}</span></div><div><strong className="block text-2xl">{male?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{male?.aliveDescendantCount ?? 0}</strong><span className="text-xs text-muted">vivants</span></div></div><LitterList litters={litters} empty="Aucune portée liée à ce mâle." /></section>;
+  const errorNotice = hasError ? <p role="alert" className="mb-5 text-sm text-amber-800">La synthèse reproductive est partielle. Les informations chargées restent affichées.</p> : null;
+  if (sex === "female") return <>{errorNotice}<div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(16rem,.85fr)]"><section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Parcours reproductif</h2><div className="mt-5 grid grid-cols-3 gap-4 border-b pb-5"><div><strong className="block text-2xl">{female?.litterCount ?? 0}</strong><span className="text-xs text-muted">portées</span></div><div><strong className="block text-2xl">{female?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{female?.matingCount ?? 0}</strong><span className="text-xs text-muted">saillies du cycle</span></div></div><LitterList litters={litters} /></section><aside className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Dernier cycle</h2>{female?.latestCycle ? <dl className="mt-3"><DefinitionRow label="Début">{formatAnimalDate(female.latestCycle.startedOn)}</DefinitionRow><DefinitionRow label="Statut">{statusLabels[female.latestCycle.status] ?? female.latestCycle.status}</DefinitionRow><DefinitionRow label="Dernier dosage">{female.latestMeasurement ? `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(female.latestMeasurement.value)} ${female.latestMeasurement.unit === "ng_ml" ? "ng/mL" : "nmol/L"}` : "Aucun"}</DefinitionRow></dl> : <p className="mt-3 text-sm text-muted">Aucun cycle reproductif.</p>}<Link href={`/animals/${animalId}/reproduction`} className="mt-5 inline-flex rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Ouvrir le suivi complet</Link></aside></div></>;
+  return <>{errorNotice}<section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Descendance</h2><div className="mt-5 flex gap-10 border-b pb-5"><div><strong className="block text-2xl">{male?.litterCount ?? 0}</strong><span className="text-xs text-muted">{male?.litterCount === 1 ? "portée" : "portées"}</span></div><div><strong className="block text-2xl">{male?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{male?.aliveDescendantCount ?? 0}</strong><span className="text-xs text-muted">vivants</span></div></div><LitterList litters={litters} empty="Aucune portée liée à ce mâle." /></section></>;
 }
 
 function LitterList({ litters, empty = "Aucune portée enregistrée." }: { litters: AnimalProfileLitter[]; empty?: string }) { return litters.length === 0 ? <p className="py-5 text-sm text-muted">{empty}</p> : <ul className="mt-3 divide-y divide-border/70">{litters.map((litter) => <li key={litter.id} className="flex items-center justify-between gap-5 py-4"><div><Link href={`/litters/${litter.id}`} className="text-sm font-semibold text-accent hover:underline">{litter.name || "Portée"}</Link><p className="mt-1 text-xs text-muted">{litter.actualBirthDate ? formatAnimalDate(litter.actualBirthDate) : "Date non renseignée"} · {litter.bornTotalCount ?? litter.aliveCount ?? 0} chiots</p></div><span className="text-xs text-muted">{getLitterStatusLabel(litter.status)}</span></li>)}</ul>; }
