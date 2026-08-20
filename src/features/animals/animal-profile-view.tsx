@@ -90,6 +90,12 @@ export type AnimalProfileViewProps = {
   femaleSummary: AnimalProfileFemaleSummary | null;
   maleSummary: AnimalProfileMaleSummary | null;
   reproductionLitters: AnimalProfileLitter[];
+  errors: {
+    health: boolean;
+    documents: boolean;
+    reproduction: boolean;
+    situation: boolean;
+  };
   messages: { tone: "success" | "error"; text: string }[];
 };
 
@@ -170,10 +176,10 @@ export function AnimalProfileView(props: AnimalProfileViewProps) {
       </div>
 
       <section role="tabpanel" id={`animal-panel-${props.initialTab}`} aria-labelledby={`animal-tab-${props.initialTab}`} tabIndex={0} className="py-7 outline-none focus-visible:ring-2 focus-visible:ring-accent">
-        {props.initialTab === "overview" ? <AnimalOverviewSection animal={{ birthDate: animal.birthDate, identificationNumber: animal.identificationNumber, lofNumber: animal.lofNumber, coatColor: animal.coatColor, pedigreeUrl: animal.pedigreeUrl, birthOrder: animal.birthOrder, birthWeightGrams: animal.birthWeightGrams, collarColor: animal.collarColor, notes: animal.notes, createdAt: animal.createdAt, updatedAt: animal.updatedAt }} litter={props.litter} mother={props.mother} father={props.father} owner={props.owner} reservation={props.reservation} attention={props.attention} recentActivity={props.recentActivity} onOpenTab={openTab} /> : null}
-        {props.initialTab === "health" ? <AnimalHealthSection notes={props.healthNotes} events={props.healthEvents} documents={props.healthDocuments} onAdd={<HealthEventDialog animalId={animal.id} />} onDocuments={() => openTab("documents")} /> : null}
-        {props.initialTab === "reproduction" ? <AnimalReproductionSection animalId={animal.id} sex={animal.sex} female={props.femaleSummary} male={props.maleSummary} litters={props.reproductionLitters} /> : null}
-        {props.initialTab === "documents" ? <AnimalDocumentsSection documents={props.documents} /> : null}
+        {props.initialTab === "overview" ? <AnimalOverviewSection animal={{ birthDate: animal.birthDate, identificationNumber: animal.identificationNumber, lofNumber: animal.lofNumber, coatColor: animal.coatColor, pedigreeUrl: animal.pedigreeUrl, birthOrder: animal.birthOrder, birthWeightGrams: animal.birthWeightGrams, collarColor: animal.collarColor, notes: animal.notes, createdAt: animal.createdAt, updatedAt: animal.updatedAt }} litter={props.litter} mother={props.mother} father={props.father} owner={props.owner} reservation={props.reservation} attention={props.attention} recentActivity={props.recentActivity} onOpenTab={openTab} hasSituationError={props.errors.situation} /> : null}
+        {props.initialTab === "health" ? <AnimalHealthSection notes={props.healthNotes} events={props.healthEvents} documents={props.healthDocuments} onAdd={<HealthEventDialog animalId={animal.id} />} onDocuments={() => openTab("documents")} hasError={props.errors.health} /> : null}
+        {props.initialTab === "reproduction" ? <AnimalReproductionSection animalId={animal.id} sex={animal.sex} female={props.femaleSummary} male={props.maleSummary} litters={props.reproductionLitters} hasError={props.errors.reproduction} /> : null}
+        {props.initialTab === "documents" ? <AnimalDocumentsSection documents={props.documents} hasError={props.errors.documents} /> : null}
         {props.initialTab === "history" ? <AnimalHistoryTab entries={props.history} hasError={props.historyHasError} /> : null}
       </section>
     </div>

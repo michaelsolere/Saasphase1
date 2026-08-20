@@ -80,6 +80,12 @@ test("réserve les décisions animales sensibles à owner/admin et accepte healt
       expect(memberKeep.error).toBeTruthy();
       await resetAnimal(animalId);
 
+      sql(`update public.animals set status = 'active' where id = ${q(animalId)}::uuid;`);
+      const memberAvailable = await member.from("animals").update({ status: "available" }).eq("id", animalId).select("id").maybeSingle();
+      expect(memberAvailable.error).toBeTruthy();
+      expect(sql(`select status from public.animals where id = ${q(animalId)}::uuid`)).toBe("active");
+      await resetAnimal(animalId);
+
       const viewerKeep = await viewer.from("animals").update({ status: "kept" }).eq("id", animalId).select("id").maybeSingle();
       expect(viewerKeep.error).toBeNull();
       expect(viewerKeep.data).toBeNull();

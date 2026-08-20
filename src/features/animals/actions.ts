@@ -285,6 +285,36 @@ function parseOptionalUuid(value: FormDataEntryValue | null) {
   return trimmed;
 }
 
+async function resolveSensitiveAnimalOrganization(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  animalId: string,
+) {
+  const { data: animal, error: animalError } = await supabase
+    .from("animals")
+    .select("organization_id")
+    .eq("id", animalId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (animalError || !animal?.organization_id) return null;
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("memberships")
+    .select("role")
+    .eq("organization_id", animal.organization_id)
+    .eq("profile_id", userId)
+    .eq("status", "active")
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (membershipError || !isSensitiveAnimalDecisionRole(membership?.role)) {
+    return null;
+  }
+
+  return animal.organization_id;
+}
+
 export async function createManualAnimal(formData: FormData) {
   const callName = normalizeOptionalText(formData.get("call_name"));
   const officialName = normalizeOptionalText(formData.get("official_name"));
@@ -729,21 +759,13 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("memberships")
-    .select("organization_id, role")
-    .eq("profile_id", user.id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const organizationId = await resolveSensitiveAnimalOrganization(
+    supabase,
+    user.id,
+    animalId,
+  );
 
-  if (
-    membershipError ||
-    !membership?.organization_id ||
-    !isSensitiveAnimalDecisionRole(membership.role)
-  ) {
+  if (!organizationId) {
     redirect(animalHomeBreederPromotionUrl(animalId, "error"));
   }
 
@@ -753,7 +775,7 @@ export async function promoteAnimalToHomeBreeder(formData: FormData) {
       "id, organization_id, sex, status, ownership_status, birth_date, litter_id, identification_number, is_breeder, is_external, is_retired",
     )
     .eq("id", animalId)
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -835,21 +857,13 @@ export async function keepAnimalAtKennel(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("memberships")
-    .select("organization_id, role")
-    .eq("profile_id", user.id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const organizationId = await resolveSensitiveAnimalOrganization(
+    supabase,
+    user.id,
+    animalId,
+  );
 
-  if (
-    membershipError ||
-    !membership?.organization_id ||
-    !isSensitiveAnimalDecisionRole(membership.role)
-  ) {
+  if (!organizationId) {
     redirect(animalKeepAtKennelUrl(animalId, "error"));
   }
 
@@ -859,7 +873,7 @@ export async function keepAnimalAtKennel(formData: FormData) {
       "id, organization_id, status, ownership_status, is_breeder, is_external, is_retired",
     )
     .eq("id", animalId)
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -925,21 +939,13 @@ export async function makeKeptAnimalAvailable(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("memberships")
-    .select("organization_id, role")
-    .eq("profile_id", user.id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const organizationId = await resolveSensitiveAnimalOrganization(
+    supabase,
+    user.id,
+    animalId,
+  );
 
-  if (
-    membershipError ||
-    !membership?.organization_id ||
-    !isSensitiveAnimalDecisionRole(membership.role)
-  ) {
+  if (!organizationId) {
     redirect(animalMakeAvailableUrl(animalId, "error"));
   }
 
@@ -949,7 +955,7 @@ export async function makeKeptAnimalAvailable(formData: FormData) {
       "id, organization_id, status, ownership_status, is_breeder, is_external, is_retired",
     )
     .eq("id", animalId)
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .maybeSingle();
 
@@ -1038,21 +1044,13 @@ export async function updateProducedOffspringAvailability(formData: FormData) {
     redirect("/login");
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("memberships")
-    .select("organization_id, role")
-    .eq("profile_id", user.id)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const organizationId = await resolveSensitiveAnimalOrganization(
+    supabase,
+    user.id,
+    animalId,
+  );
 
-  if (
-    membershipError ||
-    !membership?.organization_id ||
-    !isSensitiveAnimalDecisionRole(membership.role)
-  ) {
+  if (!organizationId) {
     redirect(animalAvailabilityStatusUrl(animalId, "error", litterRedirectId));
   }
 
@@ -1062,7 +1060,7 @@ export async function updateProducedOffspringAvailability(formData: FormData) {
       "id, organization_id, litter_id, status, ownership_status, is_breeder, is_external, is_retired",
     )
     .eq("id", animalId)
-    .eq("organization_id", membership.organization_id)
+    .eq("organization_id", organizationId)
     .is("deleted_at", null)
     .maybeSingle();
 

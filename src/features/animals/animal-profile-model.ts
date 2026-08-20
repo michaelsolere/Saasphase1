@@ -24,6 +24,7 @@ const IDENTITY_RELEVANT_STATUSES = new Set(["born", "available", "reserved", "ke
 export type AnimalAttentionEvent = {
   id: string;
   title: string;
+  eventType?: string;
   status: string;
   priority: string;
   plannedAt: string | null;
@@ -110,7 +111,7 @@ export function projectAnimalAttentionPoints(input: {
         kind,
         title: event.title,
         detail: dueAt,
-        tab: "health",
+        tab: isAnimalHealthEventType(event.eventType ?? "") ? "health" : "history",
       };
     })
     .filter((point): point is AnimalAttentionPoint => point !== null);

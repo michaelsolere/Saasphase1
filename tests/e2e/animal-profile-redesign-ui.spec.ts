@@ -227,5 +227,10 @@ test("charge la fiche depuis l’organisation de l’animal quand l’utilisateu
     await page.goto(`/animals/${animalId}`);
     await expect(page.getByRole("heading", { name: "Animal multi-organisation E2E" })).toBeVisible();
     await expect(page.getByRole("tablist", { name: "Sections de la fiche animal" })).toBeVisible();
+    await page.getByRole("button", { name: "Garder à l’élevage" }).click();
+    const decisionDialog = page.getByRole("dialog");
+    await decisionDialog.getByRole("checkbox").check();
+    await decisionDialog.getByRole("button", { name: "Garder à l’élevage" }).click();
+    await expect.poll(() => sql(`select status from public.animals where id = ${q(animalId)}::uuid`)).toBe("kept");
   });
 });

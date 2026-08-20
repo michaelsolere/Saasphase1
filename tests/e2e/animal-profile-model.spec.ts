@@ -43,6 +43,7 @@ test("projette au maximum trois points d’attention dans l’ordre retard, urge
       {
         id: "high",
         title: "Tâche haute",
+        eventType: "vaccination",
         status: "todo",
         priority: "high",
         plannedAt: "2026-08-25T12:00:00.000Z",
@@ -51,6 +52,7 @@ test("projette au maximum trois points d’attention dans l’ordre retard, urge
       {
         id: "urgent",
         title: "Tâche urgente",
+        eventType: "vaccination",
         status: "in_progress",
         priority: "urgent",
         plannedAt: null,
@@ -59,6 +61,7 @@ test("projette au maximum trois points d’attention dans l’ordre retard, urge
       {
         id: "late",
         title: "Tâche en retard",
+        eventType: "vaccination",
         status: "todo",
         priority: "normal",
         plannedAt: null,
@@ -76,6 +79,22 @@ test("projette au maximum trois points d’attention dans l’ordre retard, urge
   expect(points.map((point) => point.id)).toEqual(["late", "urgent", "high"]);
   expect(points).toHaveLength(3);
   expect(points.every((point) => point.tab === "overview" || point.tab === "health")).toBe(true);
+});
+
+test("oriente les alertes santé vers Santé et les autres événements vers Historique", () => {
+  const points = projectAnimalAttentionPoints({
+    now: "2026-08-20T12:00:00.000Z",
+    events: [
+      { id: "health", title: "Santé", eventType: "health_other", status: "late", priority: "normal", plannedAt: null, plannedDate: "2026-08-19" },
+      { id: "payment", title: "Paiement", eventType: "payment_due", status: "late", priority: "normal", plannedAt: null, plannedDate: "2026-08-19" },
+    ],
+    identity: { kennelBorn: false, status: "active", identificationNumber: null, officialName: null },
+  });
+
+  expect(points).toEqual([
+    expect.objectContaining({ id: "health", tab: "health" }),
+    expect.objectContaining({ id: "payment", tab: "history" }),
+  ]);
 });
 
 test("exclut les statuts terminaux des alertes et signale l’identité incomplète pertinente", () => {

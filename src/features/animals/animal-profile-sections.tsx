@@ -88,6 +88,7 @@ export function AnimalOverviewSection({
   attention,
   recentActivity,
   onOpenTab,
+  hasSituationError,
 }: {
   animal: {
     birthDate: string | null;
@@ -109,7 +110,8 @@ export function AnimalOverviewSection({
   reservation: { id: string; status: string; paidCents: number; priceCents: number | null; currency: string } | null;
   attention: AnimalAttentionPoint[];
   recentActivity: AnimalHistoryEntry[];
-  onOpenTab: (tab: "health" | "history") => void;
+  onOpenTab: (tab: "overview" | "health" | "history") => void;
+  hasSituationError: boolean;
 }) {
   return (
     <div className="space-y-8">
@@ -128,7 +130,7 @@ export function AnimalOverviewSection({
                   <p className="text-sm font-semibold">{point.title}</p>
                   {point.detail ? <p className="mt-1 text-xs text-muted">Échéance : {formatAnimalDate(point.detail)}</p> : null}
                 </div>
-                <button type="button" onClick={() => onOpenTab(point.tab === "health" ? "health" : "history")} className="w-fit text-sm font-semibold text-accent hover:underline">Consulter</button>
+                <button type="button" onClick={() => onOpenTab(point.tab === "health" || point.tab === "history" ? point.tab : "overview")} className="w-fit text-sm font-semibold text-accent hover:underline">Consulter</button>
               </li>
             ))}
           </ul>
@@ -159,6 +161,7 @@ export function AnimalOverviewSection({
 
       <section className="border-t pt-4" aria-labelledby="animal-situation-heading">
         <h2 id="animal-situation-heading" className="text-lg font-semibold tracking-tight">Situation, propriétaire et réservation</h2>
+        {hasSituationError ? <p role="alert" className="mt-3 text-sm text-amber-800">Certaines informations de situation n’ont pas pu être chargées.</p> : null}
         <dl className="mt-3 grid gap-x-10 lg:grid-cols-2">
           <DefinitionRow label="Propriétaire">{owner?.id ? <Link href={`/contacts/${owner.id}`} className="text-accent hover:underline">{owner.name || "Ouvrir le contact"}</Link> : owner?.name || "Non renseigné"}</DefinitionRow>
           <DefinitionRow label="Réservation">{reservation ? <Link href={`/reservations/${reservation.id}`} className="text-accent hover:underline">{reservation.status}</Link> : "Aucune"}</DefinitionRow>
@@ -186,24 +189,26 @@ export function AnimalOverviewSection({
   );
 }
 
-export function AnimalHealthSection({ notes, events, documents, onAdd, onDocuments }: { notes: AnimalProfileNote[]; events: AnimalProfileEvent[]; documents: AnimalProfileDocument[]; onAdd: React.ReactNode; onDocuments: () => void }) {
+export function AnimalHealthSection({ notes, events, documents, onAdd, onDocuments, hasError }: { notes: AnimalProfileNote[]; events: AnimalProfileEvent[]; documents: AnimalProfileDocument[]; onAdd: React.ReactNode; onDocuments: () => void; hasError: boolean }) {
   const eventStatusLabels: Record<string, string> = { planned: "Planifié", todo: "À faire", in_progress: "En cours", done: "Fait", late: "En retard", cancelled: "Annulé", postponed: "Reporté", not_applicable: "Sans objet" };
   return <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(16rem,.85fr)]">
     <section className="border-t pt-4"><div className="flex flex-wrap items-center justify-between gap-4"><h2 className="text-lg font-semibold tracking-tight">Suivi de santé</h2>{onAdd}</div>
+      {hasError ? <p role="alert" className="mt-3 text-sm text-amber-800">Certaines informations de santé n’ont pas pu être chargées.</p> : null}
       {events.length === 0 && notes.length === 0 ? <p className="py-5 text-sm text-muted">Aucun événement ou note santé.</p> : <div className="mt-3 divide-y divide-border/70">{events.map((event) => <article key={event.id} className="py-4"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold">{event.title}</h3><span className="rounded-full border px-2 py-0.5 text-xs text-muted">{eventStatusLabels[event.status] ?? event.status}</span></div><p className="mt-1 text-xs text-muted">{formatAnimalDate(event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at)}</p>{event.description ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">{event.description}</p> : null}</article>)}{notes.map((note) => <article key={note.id} className="py-4"><h3 className="text-sm font-semibold">{note.title || "Note santé"}</h3><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-muted">{note.body}</p><p className="mt-1 text-xs text-muted">{formatAnimalDate(note.created_at)}</p></article>)}</div>}
     </section>
     <aside className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Documents santé</h2><p className="mt-2 text-sm text-muted">{documents.length} document{documents.length > 1 ? "s" : ""} lié{documents.length > 1 ? "s" : ""} à la santé</p><ul className="mt-3 divide-y divide-border/70">{documents.slice(0, 3).map((document) => <li key={document.id} className="py-3"><Link href={`/documents/${document.id}`} className="text-sm font-semibold text-accent hover:underline">{document.title}</Link></li>)}</ul><button type="button" onClick={onDocuments} className="mt-4 text-sm font-semibold text-accent hover:underline">Voir tous les documents</button></aside>
   </div>;
 }
 
-export function AnimalReproductionSection({ animalId, sex, female, male, litters }: { animalId: string; sex: string; female: AnimalProfileFemaleSummary | null; male: AnimalProfileMaleSummary | null; litters: AnimalProfileLitter[] }) {
+export function AnimalReproductionSection({ animalId, sex, female, male, litters, hasError }: { animalId: string; sex: string; female: AnimalProfileFemaleSummary | null; male: AnimalProfileMaleSummary | null; litters: AnimalProfileLitter[]; hasError: boolean }) {
   const statusLabels: Record<string, string> = { planned: "Prévu", in_progress: "En cours", mated: "Saillie enregistrée", closed: "Terminé", cancelled: "Annulé" };
+  if (hasError) return <section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Reproduction</h2><p role="alert" className="mt-3 text-sm text-amber-800">La synthèse reproductive est partielle. Réessayez dans quelques instants.</p></section>;
   if (sex === "female") return <div className="grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(16rem,.85fr)]"><section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Parcours reproductif</h2><div className="mt-5 grid grid-cols-3 gap-4 border-b pb-5"><div><strong className="block text-2xl">{female?.litterCount ?? 0}</strong><span className="text-xs text-muted">portées</span></div><div><strong className="block text-2xl">{female?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{female?.matingCount ?? 0}</strong><span className="text-xs text-muted">saillies du cycle</span></div></div><LitterList litters={litters} /></section><aside className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Dernier cycle</h2>{female?.latestCycle ? <dl className="mt-3"><DefinitionRow label="Début">{formatAnimalDate(female.latestCycle.startedOn)}</DefinitionRow><DefinitionRow label="Statut">{statusLabels[female.latestCycle.status] ?? female.latestCycle.status}</DefinitionRow><DefinitionRow label="Dernier dosage">{female.latestMeasurement ? `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(female.latestMeasurement.value)} ${female.latestMeasurement.unit === "ng_ml" ? "ng/mL" : "nmol/L"}` : "Aucun"}</DefinitionRow></dl> : <p className="mt-3 text-sm text-muted">Aucun cycle reproductif.</p>}<Link href={`/animals/${animalId}/reproduction`} className="mt-5 inline-flex rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold !text-white">Ouvrir le suivi complet</Link></aside></div>;
   return <section className="border-t pt-4"><h2 className="text-lg font-semibold tracking-tight">Descendance</h2><div className="mt-5 flex gap-10 border-b pb-5"><div><strong className="block text-2xl">{male?.litterCount ?? 0}</strong><span className="text-xs text-muted">{male?.litterCount === 1 ? "portée" : "portées"}</span></div><div><strong className="block text-2xl">{male?.descendantCount ?? 0}</strong><span className="text-xs text-muted">chiots nés</span></div><div><strong className="block text-2xl">{male?.aliveDescendantCount ?? 0}</strong><span className="text-xs text-muted">vivants</span></div></div><LitterList litters={litters} empty="Aucune portée liée à ce mâle." /></section>;
 }
 
 function LitterList({ litters, empty = "Aucune portée enregistrée." }: { litters: AnimalProfileLitter[]; empty?: string }) { return litters.length === 0 ? <p className="py-5 text-sm text-muted">{empty}</p> : <ul className="mt-3 divide-y divide-border/70">{litters.map((litter) => <li key={litter.id} className="flex items-center justify-between gap-5 py-4"><div><Link href={`/litters/${litter.id}`} className="text-sm font-semibold text-accent hover:underline">{litter.name || "Portée"}</Link><p className="mt-1 text-xs text-muted">{litter.actualBirthDate ? formatAnimalDate(litter.actualBirthDate) : "Date non renseignée"} · {litter.bornTotalCount ?? litter.aliveCount ?? 0} chiots</p></div><span className="text-xs text-muted">{getLitterStatusLabel(litter.status)}</span></li>)}</ul>; }
 
-export function AnimalDocumentsSection({ documents }: { documents: AnimalProfileDocument[] }) { return <section className="border-t pt-4"><div className="flex items-end justify-between gap-4"><h2 className="text-lg font-semibold tracking-tight">Documents</h2><span className="text-xs text-muted">{documents.length} au total</span></div>{documents.length === 0 ? <p className="py-5 text-sm text-muted">Aucun document lié.</p> : <ul className="mt-3 divide-y divide-border/70">{documents.map((document) => <li key={document.id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"><div><Link href={`/documents/${document.id}`} className="text-sm font-semibold text-accent hover:underline">{document.title}</Link><p className="mt-1 text-xs text-muted">{getDocumentTypeLabel(document.document_type)} · {document.file_name || "Sans fichier"}</p></div><div className="text-xs text-muted"><span className="rounded-full border px-2 py-1">{getDocumentStatusLabel(document.status, document.document_type)}</span><time className="ml-3">{formatAnimalDate(document.created_at)}</time></div></li>)}</ul>}</section>; }
+export function AnimalDocumentsSection({ documents, hasError }: { documents: AnimalProfileDocument[]; hasError: boolean }) { return <section className="border-t pt-4"><div className="flex items-end justify-between gap-4"><h2 className="text-lg font-semibold tracking-tight">Documents</h2><span className="text-xs text-muted">{documents.length} au total</span></div>{hasError ? <p role="alert" className="mt-3 text-sm text-amber-800">La liste des documents n’a pas pu être chargée complètement.</p> : null}{documents.length === 0 && !hasError ? <p className="py-5 text-sm text-muted">Aucun document lié.</p> : <ul className="mt-3 divide-y divide-border/70">{documents.map((document) => <li key={document.id} className="flex flex-col justify-between gap-3 py-4 sm:flex-row sm:items-center"><div><Link href={`/documents/${document.id}`} className="text-sm font-semibold text-accent hover:underline">{document.title}</Link><p className="mt-1 text-xs text-muted">{getDocumentTypeLabel(document.document_type)} · {document.file_name || "Sans fichier"}</p></div><div className="text-xs text-muted"><span className="rounded-full border px-2 py-1">{getDocumentStatusLabel(document.status, document.document_type)}</span><time className="ml-3">{formatAnimalDate(document.created_at)}</time></div></li>)}</ul>}</section>; }
 
 export function AnimalHistoryTab({ entries, hasError }: { entries: AnimalHistoryEntry[]; hasError: boolean }) { return <AnimalHistorySection entries={entries} hasError={hasError} variant="plain" />; }

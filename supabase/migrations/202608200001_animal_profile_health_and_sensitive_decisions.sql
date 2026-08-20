@@ -42,6 +42,7 @@ begin
       and (
         old.status = 'kept'
         or new.status = 'kept'
+        or new.status = 'available'
         or (old.status = 'born' and new.status = 'available')
         or (old.status = 'available' and new.status = 'born')
       )

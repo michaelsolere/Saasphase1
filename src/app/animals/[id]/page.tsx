@@ -134,15 +134,21 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
   const reproductionLitters = (reproductionLittersResult.data ?? []).map((litter) => ({ id: litter.id, name: litter.name, status: litter.status, actualBirthDate: litter.actual_birth_date, bornTotalCount: litter.born_total_count, aliveCount: litter.alive_count }));
 
   let femaleSummary: AnimalProfileViewProps["femaleSummary"] = null;
+  let reproductionHasError = Boolean(reproductionLittersResult.error);
   if (animal.sex === "female") {
     const cyclesResult = await listReproductiveCyclesForMother({ motherId: animal.id });
     if (cyclesResult.outcome === "success") {
       const latestCycle = [...cyclesResult.cycles].sort((left, right) => right.startedOn.localeCompare(left.startedOn))[0] ?? null;
       const [measurementsResult, matingsResult] = latestCycle ? await Promise.all([listProgesteroneMeasurementsForCycle({ cycleId: latestCycle.id }), listReproductiveCycleMatingsForCycle({ cycleId: latestCycle.id })]) : [null, null];
+      reproductionHasError = reproductionHasError || Boolean(
+        measurementsResult?.outcome === "error" || matingsResult?.outcome === "error",
+      );
       femaleSummary = buildFemaleReproductionSummary({
         cycles: cyclesResult.cycles.map((cycle) => ({ ...cycle, measurements: cycle.id === latestCycle?.id && measurementsResult?.outcome === "success" ? measurementsResult.measurements : [], matings: cycle.id === latestCycle?.id && matingsResult?.outcome === "success" ? matingsResult.matings : [] })),
         litters: reproductionLitters,
       });
+    } else {
+      reproductionHasError = true;
     }
   }
   const maleSummary = animal.sex === "male" ? buildMaleReproductionSummary(reproductionLitters) : null;
@@ -158,7 +164,7 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
     father={animal.father_id ? parents.get(animal.father_id) ?? null : null}
     owner={reservationRow ? { id: reservationRow.contact_id, name: reservationRow.contact_display_name } : null}
     reservation={reservationRow?.id ? { id: reservationRow.id, status: reservationRow.status ?? "unknown", paidCents: reservationRow.paid_cents ?? 0, priceCents: reservationRow.price_cents, currency: reservationRow.currency ?? "EUR" } : null}
-    attention={projectAnimalAttentionPoints({ now: new Date().toISOString(), events: events.map((event) => ({ id: event.id, title: event.title, status: event.status, priority: event.priority, plannedAt: event.planned_at, plannedDate: event.planned_date })), identity: { kennelBorn: Boolean(animal.litter_id), status: animal.status, identificationNumber: animal.identification_number, officialName: animal.official_name } })}
+    attention={projectAnimalAttentionPoints({ now: new Date().toISOString(), events: events.map((event) => ({ id: event.id, title: event.title, eventType: event.event_type, status: event.status, priority: event.priority, plannedAt: event.planned_at, plannedDate: event.planned_date })), identity: { kennelBorn: Boolean(animal.litter_id), status: animal.status, identificationNumber: animal.identification_number, officialName: animal.official_name } })}
     recentActivity={getRecentAnimalActivity(history.entries)}
     healthNotes={notes.filter((note) => note.note_type === "health")}
     healthEvents={events.filter((event) => isAnimalHealthEventType(event.event_type))}
@@ -169,6 +175,12 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
     femaleSummary={femaleSummary}
     maleSummary={maleSummary}
     reproductionLitters={reproductionLitters}
+    errors={{
+      health: Boolean(documentsResult.error || eventsResult.error || notesResult.error),
+      documents: Boolean(documentsResult.error),
+      reproduction: reproductionHasError,
+      situation: Boolean(litterResult.error || parentsResult.error || reservationResult.error),
+    }}
     messages={buildMessages(query)}
   />;
 }
