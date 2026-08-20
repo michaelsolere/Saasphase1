@@ -78,13 +78,21 @@ function TextField({
 export function AnimalFields({
   idPrefix,
   parentOptions,
+  canSetSensitiveDecisions = true,
 }: {
   idPrefix: string;
   parentOptions: AnimalParentOption[];
+  canSetSensitiveDecisions?: boolean;
 }) {
   const motherOptions = parentOptions.filter((animal) => animal.sex === "female");
   const fatherOptions = parentOptions.filter((animal) => animal.sex === "male");
   const parentCount = motherOptions.length + fatherOptions.length;
+  const statusOptions = canSetSensitiveDecisions
+    ? manualAnimalStatusOptions
+    : manualAnimalStatusOptions.filter(([value]) => !["kept", "available"].includes(value));
+  const ownershipOptions = canSetSensitiveDecisions
+    ? manualAnimalOwnershipOptions
+    : manualAnimalOwnershipOptions.filter(([value]) => !["external_stud", "external_female"].includes(value));
 
   return (
     <div className="grid gap-5 sm:grid-cols-2">
@@ -152,7 +160,7 @@ export function AnimalFields({
           defaultValue="active"
           className={inputClass}
         >
-          {manualAnimalStatusOptions.map(([value, label]) => (
+          {statusOptions.map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
@@ -170,7 +178,7 @@ export function AnimalFields({
           defaultValue="owned"
           className={inputClass}
         >
-          {manualAnimalOwnershipOptions.map(([value, label]) => (
+          {ownershipOptions.map(([value, label]) => (
             <option key={value} value={value}>
               {label}
             </option>
@@ -182,21 +190,23 @@ export function AnimalFields({
         </p>
       </div>
 
-      <label className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm">
-        <input
-          type="checkbox"
-          name="is_breeder"
-          value="yes"
-          className="mt-1"
-        />
-        <span>
-          <span className="font-semibold">Reproducteur maison</span>
-          <span className="mt-1 block text-xs leading-5 text-muted">
-            À cocher pour un reproducteur détenu par l’élevage. Pour un étalon
-            ou une femelle extérieure, ce rôle est activé automatiquement.
+      {canSetSensitiveDecisions ? (
+        <label className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm">
+          <input
+            type="checkbox"
+            name="is_breeder"
+            value="yes"
+            className="mt-1"
+          />
+          <span>
+            <span className="font-semibold">Reproducteur maison</span>
+            <span className="mt-1 block text-xs leading-5 text-muted">
+              À cocher pour un reproducteur détenu par l’élevage. Pour un étalon
+              ou une femelle extérieure, ce rôle est activé automatiquement.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      ) : null}
 
       <label className="flex items-start gap-3 rounded-xl border bg-background px-4 py-3 text-sm">
         <input

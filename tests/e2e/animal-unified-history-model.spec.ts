@@ -103,6 +103,22 @@ test("maps health event types to french labels", () => {
   expect(entries.every((entry) => entry.kind === "health")).toBe(true);
 });
 
+test("maps health_other as a health event while legacy other stays generic", () => {
+  const { entries } = buildAnimalHistory({
+    events: [
+      makeEvent({ id: "health-other", event_type: "health_other", actual_at: "2026-08-02T10:00:00.000Z" }),
+      makeEvent({ id: "legacy-other", event_type: "other", actual_at: "2026-08-01T10:00:00.000Z" }),
+    ],
+    notes: [],
+    documents: [],
+  });
+
+  expect(entries).toEqual([
+    expect.objectContaining({ id: "health-other", kind: "health", label: "Autre événement de santé" }),
+    expect.objectContaining({ id: "legacy-other", kind: "event", label: "Autre" }),
+  ]);
+});
+
 test("maps non-health event types to french labels and kind event", () => {
   const { entries } = buildAnimalHistory({
     events: [

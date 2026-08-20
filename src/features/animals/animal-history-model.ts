@@ -74,6 +74,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   application_review: "Revue de candidature",
   payment_due: "Paiement attendu",
   document_due: "Document attendu",
+  health_other: "Autre événement de santé",
   other: "Autre",
 };
 
@@ -103,6 +104,7 @@ const HEALTH_EVENT_TYPES = new Set([
   "xray",
   "ultrasound",
   "pregnancy_check",
+  "health_other",
 ]);
 
 function isHealthEvent(eventType: string): boolean {
