@@ -145,7 +145,7 @@ export function AnimalProfileView(props: AnimalProfileViewProps) {
     <div className="mx-auto w-full max-w-[80rem] px-4 py-7 sm:px-8 lg:px-10 lg:py-9">
       <Link href="/animals" className="text-sm font-semibold text-accent hover:underline">← Retour aux animaux</Link>
       <header className="mt-6 grid gap-7 border-b pb-8 md:grid-cols-[12.25rem_minmax(0,1fr)] xl:grid-cols-[12.25rem_minmax(0,1fr)_auto] xl:items-end">
-        <AnimalPrimaryPhotoManager animalId={animal.id} animalName={animal.title} hasStoredPhoto={Boolean(props.photo.id)} photoUrl={props.photo.url} photoUnavailable={props.photo.unavailable} photoActionsDisabled={false} photoWidth={props.photo.width} photoHeight={props.photo.height} />
+        <AnimalPrimaryPhotoManager animalId={animal.id} animalName={animal.title} hasStoredPhoto={Boolean(props.photo.id)} photoUrl={props.photo.url} photoUnavailable={props.photo.unavailable} photoActionsDisabled={false} photoWidth={props.photo.width} photoHeight={props.photo.height} layout="profile" />
         <div className="min-w-0">
           <p className="text-[0.68rem] font-bold uppercase tracking-[0.14em] text-accent">Fiche animal</p>
           <h1 className="mt-2 break-words text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">{animal.title}</h1>
@@ -154,7 +154,7 @@ export function AnimalProfileView(props: AnimalProfileViewProps) {
           <div className="mt-4 flex flex-wrap gap-2"><span className="rounded-full border bg-surface px-3 py-1 text-xs font-semibold">{getAnimalStatusLabel(animal.status)}</span><span className="rounded-full border bg-surface px-3 py-1 text-xs font-semibold">{getOwnershipStatusLabel(animal.ownershipStatus)}</span>{animal.isBreeder ? <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900">Reproducteur</span> : null}</div>
         </div>
         <div className="flex flex-wrap gap-2 md:col-span-2 xl:col-span-1 xl:max-w-sm xl:justify-end">
-          <Link href={`/animals/${animal.id}/edit`} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white">Modifier</Link>
+          <Link href={`/animals/${animal.id}/edit`} className="inline-flex min-h-10 items-center rounded-lg bg-accent px-4 py-2 text-sm font-semibold !text-white">Modifier</Link>
           {animal.litterId ? <FinalIdentityDialog animal={{ id: animal.id, identificationNumber: animal.identificationNumber, officialName: animal.officialName, callName: animal.callName, lofNumber: animal.lofNumber }} /> : null}
           {canKeep ? <KeepAtKennelDialog animalId={animal.id} /> : null}
           {canMakeAvailable ? <MakeAvailableDialog animalId={animal.id} /> : null}

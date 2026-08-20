@@ -127,7 +127,7 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page.getByRole("heading", { name: "Documents liés" })).toHaveCount(0);
 
     if (process.env.E2E_CAPTURE_VISUAL === "1") {
-      await page.getByTestId("animal-profile").screenshot({ path: "/tmp/animal-profile-overview-2x.png", animations: "disabled" });
+      await page.screenshot({ path: "/tmp/animal-profile-overview-2x.png", animations: "disabled" });
     }
 
     const healthTab = tabs.getByRole("tab", { name: /Santé/ });
@@ -135,6 +135,9 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page).toHaveURL(new RegExp(`animals/${femaleId}\\?tab=health`));
     await expect(page.getByRole("heading", { name: "Suivi de santé" })).toBeVisible();
     await expect(page.getByText("Contrôle santé E2E")).toBeVisible();
+    if (process.env.E2E_CAPTURE_VISUAL === "1") {
+      await page.getByRole("tabpanel").screenshot({ path: "/tmp/animal-profile-health-2x.png", animations: "disabled" });
+    }
     await page.getByRole("button", { name: "Ajouter un événement santé" }).click();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Ajouter un événement santé" })).toBeVisible();
     if (process.env.E2E_CAPTURE_VISUAL === "1") {
@@ -149,15 +152,24 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page).toHaveURL(new RegExp(`tab=reproduction`));
     await expect(page.getByText("7,8 ng/mL")).toBeVisible();
     await expect(page.getByRole("link", { name: "Ouvrir le suivi complet" })).toHaveAttribute("href", `/animals/${femaleId}/reproduction`);
+    if (process.env.E2E_CAPTURE_VISUAL === "1") {
+      await page.getByRole("tabpanel").screenshot({ path: "/tmp/animal-profile-female-reproduction-2x.png", animations: "disabled" });
+    }
 
     await tabs.getByRole("tab", { name: /Documents/ }).click();
     await expect(page.getByText("Certificat santé E2E")).toBeVisible();
     await expect(page.getByRole("button", { name: /ajouter.*document/i })).toHaveCount(0);
+    if (process.env.E2E_CAPTURE_VISUAL === "1") {
+      await page.getByRole("tabpanel").screenshot({ path: "/tmp/animal-profile-documents-2x.png", animations: "disabled" });
+    }
 
     await tabs.getByRole("tab", { name: /Historique/ }).click();
     const history = page.getByTestId("animal-history-section");
     await expect(history).toBeVisible();
     await expect(history.getByText("Contrôle santé E2E")).toBeVisible();
+    if (process.env.E2E_CAPTURE_VISUAL === "1") {
+      await history.screenshot({ path: "/tmp/animal-profile-history-2x.png", animations: "disabled" });
+    }
 
     await page.goto(`/animals/${maleId}?tab=reproduction`);
     await expect(page.getByRole("heading", { name: "Descendance" })).toBeVisible();

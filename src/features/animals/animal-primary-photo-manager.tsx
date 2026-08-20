@@ -43,6 +43,7 @@ type AnimalPrimaryPhotoManagerProps = {
   photoActionsDisabled: boolean;
   photoWidth: number | null;
   photoHeight: number | null;
+  layout?: "default" | "profile";
 };
 
 type LocalMessage = {
@@ -154,6 +155,7 @@ export function AnimalPrimaryPhotoManager({
   photoActionsDisabled,
   photoWidth,
   photoHeight,
+  layout = "default",
 }: AnimalPrimaryPhotoManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isAlertOpen, setIsAlertOpen] = useState(false);
@@ -230,8 +232,8 @@ export function AnimalPrimaryPhotoManager({
   }
 
   return (
-    <div className="flex w-full flex-col gap-4 sm:w-auto sm:flex-row sm:items-end">
-      <div className="w-full sm:w-48">
+    <div className={layout === "profile" ? "flex w-40 flex-col gap-3 sm:w-48" : "flex w-full flex-col gap-4 sm:w-auto sm:flex-row sm:items-end"}>
+      <div className={layout === "profile" ? "w-full" : "w-full sm:w-48"}>
         {photoUrl ? (
           <div className="overflow-hidden rounded-lg border bg-surface">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -240,13 +242,13 @@ export function AnimalPrimaryPhotoManager({
               alt={`Photo principale de ${animalName}`}
               width={photoWidth ?? 360}
               height={photoHeight ?? 420}
-              className="aspect-[4/5] w-full object-cover"
+              className={layout === "profile" ? "aspect-square w-full object-cover" : "aspect-[4/5] w-full object-cover"}
               data-testid="animal-primary-photo"
             />
           </div>
         ) : photoUnavailable && hasStoredPhoto ? (
           <div
-            className="flex aspect-[4/5] w-full flex-col items-center justify-center rounded-lg border border-dashed bg-surface px-4 text-center text-muted"
+            className={`flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-surface px-4 text-center text-muted ${layout === "profile" ? "aspect-square" : "aspect-[4/5]"}`}
             data-testid="animal-primary-photo-unavailable"
           >
             <ImageIcon className="h-8 w-8" aria-hidden="true" />
@@ -256,7 +258,7 @@ export function AnimalPrimaryPhotoManager({
           </div>
         ) : (
           <div
-            className="flex aspect-[4/5] w-full flex-col items-center justify-center rounded-lg border border-dashed bg-surface text-muted"
+            className={`flex w-full flex-col items-center justify-center rounded-lg border border-dashed bg-surface text-muted ${layout === "profile" ? "aspect-square" : "aspect-[4/5]"}`}
             data-testid="animal-primary-photo-placeholder"
           >
             <ImageIcon className="h-8 w-8" aria-hidden="true" />
@@ -265,7 +267,7 @@ export function AnimalPrimaryPhotoManager({
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 sm:min-w-56">
+      <div className={layout === "profile" ? "flex flex-col gap-3" : "flex flex-1 flex-col gap-3 sm:min-w-56"}>
         <div className="flex flex-wrap gap-2">
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
