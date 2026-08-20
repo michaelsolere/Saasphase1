@@ -5,6 +5,7 @@ import {
   buildMaleReproductionSummary,
   getRecentAnimalActivity,
   isAnimalHealthEventType,
+  isSensitiveAnimalDecisionRole,
   normalizeAnimalProfileTab,
   projectAnimalAttentionPoints,
 } from "../../src/features/animals/animal-profile-model";
@@ -25,6 +26,14 @@ test("classe health_other comme santé sans reclasser les anciens événements o
   expect(isAnimalHealthEventType("ultrasound")).toBe(true);
   expect(isAnimalHealthEventType("pregnancy_check")).toBe(true);
   expect(isAnimalHealthEventType("other")).toBe(false);
+});
+
+test("réserve les décisions sensibles aux rôles owner et admin", () => {
+  expect(isSensitiveAnimalDecisionRole("owner")).toBe(true);
+  expect(isSensitiveAnimalDecisionRole("admin")).toBe(true);
+  expect(isSensitiveAnimalDecisionRole("member")).toBe(false);
+  expect(isSensitiveAnimalDecisionRole("viewer")).toBe(false);
+  expect(isSensitiveAnimalDecisionRole(undefined)).toBe(false);
 });
 
 test("projette au maximum trois points d’attention dans l’ordre retard, urgent, haute, identité", () => {

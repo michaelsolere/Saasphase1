@@ -69,6 +69,10 @@ export function isAnimalHealthEventType(value: string): boolean {
   return HEALTH_EVENT_TYPES.has(value);
 }
 
+export function isSensitiveAnimalDecisionRole(role: string | undefined): boolean {
+  return role === "owner" || role === "admin";
+}
+
 function eventDueAt(event: AnimalAttentionEvent): string | null {
   return event.plannedAt ?? (event.plannedDate ? `${event.plannedDate}T23:59:59.999Z` : null);
 }
