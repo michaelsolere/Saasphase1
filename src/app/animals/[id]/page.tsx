@@ -13,6 +13,10 @@ import {
   AnimalPrimaryPhotoManager,
 } from "@/features/animals/animal-primary-photo-manager";
 import {
+  buildAnimalHistory,
+} from "@/features/animals/animal-history-model";
+import { AnimalHistorySection } from "@/features/animals/animal-history-section";
+import {
   formatAnimalAge,
   formatAnimalDate,
   getAnimalDisplayName,
@@ -1276,6 +1280,12 @@ export default async function AnimalDetailPage({
   const healthEvents = (animalEvents ?? []).filter(isHealthEvent);
   const healthDocuments = (animalDocuments ?? []).filter(isHealthDocument);
 
+  const animalHistory = buildAnimalHistory({
+    events: animalEvents ?? [],
+    notes: animalNotes ?? [],
+    documents: animalDocuments ?? [],
+  });
+
   const { data: rawReservations, error: reservationError } = animal
     ? await supabase
         .from("reservation_overview")
@@ -1797,6 +1807,11 @@ export default async function AnimalDetailPage({
                 documents={healthDocuments}
                 hasError={Boolean(documentsError || eventsError || notesError)}
                 eventStatus={query.health_event_status}
+              />
+
+              <AnimalHistorySection
+                entries={animalHistory.entries}
+                hasError={Boolean(documentsError || eventsError || notesError)}
               />
 
               <RelatedReservationSection
