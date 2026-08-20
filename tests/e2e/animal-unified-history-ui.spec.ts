@@ -128,6 +128,9 @@ test("affiche la chronologie unifiée sur la fiche animal avec pagination", asyn
       await login(page);
       await page.goto(`/animals/${animalId}`);
 
+      await page.getByRole("tab", { name: /Historique/ }).click();
+      await expect(page).toHaveURL(new RegExp(`animals/${animalId}\\?tab=history`));
+
       const section = page.locator('[data-testid="animal-history-section"]');
       await expect(section).toBeVisible();
       await expect(section).toContainText("Historique");
@@ -161,10 +164,9 @@ test("affiche la chronologie unifiée sur la fiche animal avec pagination", asyn
         path: "/tmp/animal-history-expanded-2x.png",
       });
 
-      await expect(page.getByRole("heading", { name: "Santé" }).first()).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Événements liés" }).first()).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Notes liées" }).first()).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Documents liés" }).first()).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Événements liés" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Notes liées" })).toHaveCount(0);
+      await expect(page.getByRole("heading", { name: "Documents liés" })).toHaveCount(0);
     } finally {
       // Cleanup est géré automatiquement par withE2eFixtures.
     }

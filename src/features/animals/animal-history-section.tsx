@@ -26,19 +26,21 @@ const animalHistoryKindTones: Record<AnimalHistoryEntry["kind"], string> = {
 export function AnimalHistorySection({
   entries,
   hasError,
+  variant = "card",
 }: {
   entries: AnimalHistoryEntry[];
   hasError: boolean;
+  variant?: "card" | "plain";
 }) {
   const [visibleCount, setVisibleCount] = useState(ANIMAL_HISTORY_PAGE_SIZE);
 
   return (
     <section
       id="historique"
-      className="rounded-2xl border bg-surface p-6 sm:p-8"
+      className={variant === "card" ? "rounded-2xl border bg-surface p-6 sm:p-8" : "border-t pt-4"}
       data-testid="animal-history-section"
     >
-      <h2 className="text-xl font-semibold">Historique</h2>
+      <h2 className="text-xl font-semibold">Historique unifié</h2>
 
       {hasError ? (
         <p role="alert" className="mt-5 text-sm text-amber-800">
