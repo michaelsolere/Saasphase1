@@ -215,7 +215,7 @@ test("rend la fiche pilote en cinq onglets sans duplication et avec navigation a
     await expect(page.getByRole("button", { name: "Remettre disponible" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Promouvoir en reproductrice" })).toHaveCount(0);
     await page.getByRole("tab", { name: /Santé/ }).click();
-    await expect(page.getByRole("button", { name: "Ajouter un événement santé" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Ajouter un événement santé" })).toHaveCount(0);
 
     await page.goto("/animals/new");
     await expect(page.locator('select[name="status"] option[value="available"]')).toHaveCount(0);

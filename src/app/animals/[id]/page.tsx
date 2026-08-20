@@ -149,6 +149,10 @@ export default async function AnimalDetailPage({ params, searchParams }: { param
       });
     } else {
       reproductionHasError = true;
+      femaleSummary = buildFemaleReproductionSummary({
+        cycles: [],
+        litters: reproductionLitters,
+      });
     }
   }
   const maleSummary = animal.sex === "male" ? buildMaleReproductionSummary(reproductionLitters) : null;

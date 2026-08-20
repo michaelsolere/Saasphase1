@@ -42,6 +42,7 @@ test("réserve les décisions animales sensibles à owner/admin et accepte healt
     const otherOrganizationId = fixtures.register("organizations", randomUUID());
     const otherAnimalId = fixtures.register("animals", randomUUID());
     const healthEventId = fixtures.register("events", randomUUID());
+    const forbiddenHealthEventId = fixtures.register("events", randomUUID());
     const protectedInsertId = fixtures.register("animals", randomUUID());
     const adminInsertId = fixtures.register("animals", randomUUID());
 
@@ -128,6 +129,19 @@ test("réserve les décisions animales sensibles à owner/admin et accepte healt
       const memberBreeder = await member.from("animals").update({ is_breeder: true }).eq("id", animalId).select("id").maybeSingle();
       expect(memberBreeder.error).toBeTruthy();
       await resetAnimal(animalId);
+
+      const memberHealthEvent = await member.from("events").insert({
+        id: forbiddenHealthEventId,
+        organization_id: organizationId,
+        animal_id: animalId,
+        event_type: "health_other",
+        title: "Événement santé membre interdit E2E",
+        planned_date: "2026-08-20",
+        status: "planned",
+        priority: "normal",
+        is_task: false,
+      });
+      expect(memberHealthEvent.error).toBeTruthy();
 
       sql(`update public.memberships set status = 'disabled' where id = ${q(memberMembershipId)}::uuid;`);
       const disabledKeep = await member.from("animals").update({ status: "kept" }).eq("id", animalId).select("id").maybeSingle();
