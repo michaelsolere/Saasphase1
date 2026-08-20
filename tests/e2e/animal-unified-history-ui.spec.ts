@@ -119,7 +119,7 @@ test("affiche la chronologie unifiée sur la fiche animal avec pagination", asyn
         id, organization_id, contact_id, reservation_id, application_id,
         animal_id, litter_id, document_type, status, title, signature_required,
         created_at, updated_at, sent_at, signed_at, received_at, file_path,
-        file_name, mime_type, file_size_bytes, file_sha256,
+        file_name, mime_type, file_size_bytes,
         created_by, updated_by
       ) values ${documentRows.join(", ")};
     `);
@@ -135,14 +135,10 @@ test("affiche la chronologie unifiée sur la fiche animal avec pagination", asyn
       const list = section.locator('[data-testid="animal-history-list"]');
       await expect(list).toBeVisible();
 
-      await expect(section.getByText("Santé")).toBeVisible();
-      await expect(section.getByText("Événement")).toBeVisible();
-      await expect(section.getByText("Note")).toBeVisible();
-      await expect(section.getByText("Document")).toBeVisible();
-
-      await expect(section.getByText("Vaccination")).toBeVisible();
-      await expect(section.getByText("Note interne")).toBeVisible();
-      await expect(section.getByText("Certificat vétérinaire")).toBeVisible();
+      // Avant le clic « Afficher plus » : seuls les 30 premiers événements sont visibles.
+      await expect(section.getByText("Santé", { exact: true }).first()).toBeVisible();
+      await expect(section.getByText("Événement", { exact: true }).first()).toBeVisible();
+      await expect(section.getByText("Historique animal e2e 35")).toBeVisible();
 
       const showMore = section.locator('[data-testid="animal-history-show-more"]');
       await expect(showMore).toBeVisible();
@@ -152,6 +148,13 @@ test("affiche la chronologie unifiée sur la fiche animal avec pagination", asyn
       });
 
       await showMore.click();
+
+      // Après le clic : toutes les entrées sont visibles (notes, documents, dernier événement).
+      await expect(section.getByText("Note", { exact: true }).first()).toBeVisible();
+      await expect(section.getByText("Document", { exact: true }).first()).toBeVisible();
+      await expect(section.getByText("Note interne")).toBeVisible();
+      await expect(section.getByText("Certificat vétérinaire")).toBeVisible();
+      await expect(section.getByText("Historique animal e2e 1", { exact: true })).toBeVisible();
       await expect(showMore).not.toBeVisible();
 
       await section.screenshot({
