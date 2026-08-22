@@ -17,6 +17,13 @@ export type AdopterMilestoneKey =
   | "adoption";
 export type AdopterStepState = "done" | "todo" | "waiting" | "blocked" | "not_applicable";
 export type AdopterActionState = "blocked" | "overdue" | "due" | "normal" | "none";
+
+export function appendReturnToBeforeHash(path: string, returnTo: string): string {
+  const [pathnameAndQuery, hash] = path.split("#", 2);
+  const separator = pathnameAndQuery.includes("?") ? "&" : "?";
+  return `${pathnameAndQuery}${separator}return_to=${encodeURIComponent(returnTo)}${hash ? `#${hash}` : ""}`;
+}
+
 export type AdopterWorkbenchSort =
   | "scope_queue_rank"
   | "urgency"
@@ -402,7 +409,7 @@ export function deriveAdopterJourney(
 
   const actions: AdopterAction[] = [];
   if (record.financialResolution === "pending") {
-    actions.push(action("financial", "Résoudre la situation financière", "Décision sensible à traiter dans le parcours complet.", "blocked", "opening", false, `/reservations/${record.id}#financial-resolution`));
+    actions.push(action("financial", "Résoudre la situation financière", "Décision sensible à traiter dans le parcours complet.", "blocked", "opening", false, `/reservations/${record.id}?tab=finances#financial-resolution`));
   }
   if (!profileDone) {
     const profileLabel = profileState ? adopterProfileStateLabels[profileState] : "Questionnaire à préparer";
@@ -426,7 +433,7 @@ export function deriveAdopterJourney(
     actions.push(action("position", "Compléter le positionnement", "Renseigner la portée, la file et le rang.", "blocked", "positioning", false));
   }
   if (record.priceCents !== null && record.paidCents - record.refundedCents < record.priceCents) {
-    actions.push(action("payment", "Contrôler les versements", "Enregistrer uniquement un versement réellement constaté.", "normal", "reservation", true, `/reservations/${record.id}#payments`));
+    actions.push(action("payment", "Contrôler les versements", "Enregistrer uniquement un versement réellement constaté.", "normal", "reservation", true, `/reservations/${record.id}?tab=finances#payments`));
   }
   if (!reservationDone) {
     actions.push(action(

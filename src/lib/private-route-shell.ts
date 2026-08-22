@@ -25,6 +25,17 @@ const sidebarCollapsedStorageKey = "main-sidebar-collapsed";
 
 export { sidebarCollapsedStorageKey };
 
+export type PrivateShellAuthStatus =
+  | "loading"
+  | "authenticated"
+  | "unauthenticated";
+
+export function canRenderPrivateShell(
+  authStatus: PrivateShellAuthStatus,
+): boolean {
+  return authStatus !== "unauthenticated";
+}
+
 function matchesRoutePrefix(pathname: string, route: string) {
   return pathname === route || pathname.startsWith(`${route}/`);
 }

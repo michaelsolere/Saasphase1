@@ -143,7 +143,11 @@ input[type="submit"]:disabled:disabled,
     padding: 0.75rem 1rem;
   }
 
-  .private-sidebar-desktop nav,
+  .private-sidebar-desktop nav {
+    display: block;
+    max-height: calc(100vh - 5rem);
+  }
+
   .private-sidebar-desktop aside > div:first-child button,
   .private-sidebar-desktop aside > div:last-child {
     display: none;

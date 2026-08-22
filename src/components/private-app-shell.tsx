@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   isPublicRoute,
   isStandalonePrivateRoute,
+  canRenderPrivateShell,
   shouldShowPrivateSidebar,
   sidebarCollapsedStorageKey,
 } from "@/lib/private-route-shell";
@@ -59,8 +60,8 @@ export function PrivateAppShell({
     };
   }, []);
 
-  const isAuthenticated = authStatus === "authenticated";
-  const shouldShowSidebar = shouldShowPrivateSidebar(pathname, isAuthenticated);
+  const canRenderShell = canRenderPrivateShell(authStatus);
+  const shouldShowSidebar = shouldShowPrivateSidebar(pathname, canRenderShell);
 
   if (!shouldShowSidebar) {
     return children;
