@@ -82,12 +82,31 @@ import { ReservationDocumentVariantsSection } from "@/features/reservations/rese
 import { ReservationPostAdoptionQuestionnaireSection } from "@/features/post-adoption-questionnaire/reservation-section";
 import { AdopterProfileReservationSection } from "@/features/adopter-profile-questionnaire/reservation-section";
 import type { ReservationOverview } from "@/features/reservations/types";
+import {
+  ADOPTER_JOURNEY_DETAIL_TAB_LABELS,
+  ADOPTER_JOURNEY_DETAIL_TABS,
+  buildAdopterJourneyDetailPath,
+  isAdopterJourneyDetailFutureTab,
+  normalizeAdopterJourneyDetailTab,
+  projectAdopterDocumentsSituation,
+  projectAdopterFinancialSituation,
+  projectAdopterJourneyAlert,
+  projectAdopterJourneyDossier,
+  projectAdopterJourneyGuidedLinks,
+  projectAdopterJourneyHeader,
+  projectAdopterJourneyProgress,
+  projectAdopterRecentActivity,
+  type AdopterJourneyActivityEntry,
+  type AdopterDossierItem,
+  type AdopterJourneyDetailTab,
+} from "@/features/reservations/adopter-journey-detail-model";
 import { createClient } from "@/lib/supabase/server";
 import { getContactRoleLabel } from "@/features/contacts/formatters";
 
 export const dynamic = "force-dynamic";
 
 type ReservationSearchParams = {
+  tab?: string;
   return_to?: string;
   comment_status?: string;
   deadline_status?: string;
@@ -1445,6 +1464,59 @@ function formatPriceInputValue(priceCents: number | null) {
   return (priceCents / 100).toFixed(2);
 }
 
+function situationBadgeClassName(
+  tone: "positive" | "attention" | "negative" | "neutral",
+) {
+  if (tone === "positive") {
+    return "text-emerald-700 bg-emerald-50 border-emerald-200";
+  }
+
+  if (tone === "attention") {
+    return "text-amber-700 bg-amber-50 border-amber-200";
+  }
+
+  if (tone === "negative") {
+    return "text-rose-700 bg-rose-50 border-rose-200";
+  }
+
+  return "text-muted bg-muted-soft border-border";
+}
+
+function DossierCard({
+  title,
+  items,
+}: {
+  title: string;
+  items: AdopterDossierItem[];
+}) {
+  return (
+    <dl className="min-w-0 rounded-xl border bg-background px-4 py-3">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted">
+        {title}
+      </dt>
+      {items.map((item) => (
+        <div key={item.label} className="mt-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted/80">
+            {item.label}
+          </p>
+          <p className="mt-0.5 break-words text-sm leading-5">
+            {item.href ? (
+              <Link
+                href={item.href}
+                className="font-medium text-accent hover:underline"
+              >
+                {item.value}
+              </Link>
+            ) : (
+              item.value
+            )}
+          </p>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function FinancialBalanceNotice({
   priceCents,
   paidCents,
@@ -2509,9 +2581,6 @@ export default async function ReservationDetailPage({
   const paidCents = reservation?.paid_cents ?? 0;
   const refundedCents = reservation?.refunded_cents ?? 0;
   const currency = reservation?.currency ?? "EUR";
-  const paidPreReservationDepositCents = preReservationDepositPayments
-    .filter((payment) => payment.status === "paid")
-    .reduce((total, payment) => total + payment.amount_cents, 0);
   const preReservationDepositAmountLabel = formatDepositSettingAmount(
     depositSettings.preReservationDepositCents,
     currency,
@@ -2739,91 +2808,6 @@ export default async function ReservationDetailPage({
     docsSummaryText = `${signedDocs} reçu(s) signé(s), ${sentDocs} envoyé(s), ${toPrepareDocs} à générer`;
   }
 
-  let paymentsSummaryText = "";
-  let paymentsSummaryColor = "text-muted bg-muted-soft border-border";
-
-  if (isPaidInFull) {
-    paymentsSummaryText = "Paiement intégral / dossier soldé";
-    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-  } else if (hasCompleteDeposit) {
-    paymentsSummaryText = "Arrhes complètes réglées";
-    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-  } else if (hasFirstPaid) {
-    paymentsSummaryText = "Pré-réservation réglée";
-    paymentsSummaryColor = "text-emerald-700 bg-emerald-50 border-emerald-200";
-  } else if (hasRequestedFirstDeposit) {
-    paymentsSummaryText = "Pré-réservation à régler";
-    paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
-  } else if (paidCents > 0) {
-    paymentsSummaryText = `${formatPrice(paidCents, currency)} payé hors pré-réservation`;
-    paymentsSummaryColor = "text-amber-700 bg-amber-50 border-amber-200";
-  } else {
-    paymentsSummaryText = "En attente de paiement";
-    paymentsSummaryColor = "text-muted bg-muted-soft border-border";
-  }
-
-  let financialSummaryDetail = "";
-  if (paymentsError) {
-    financialSummaryDetail = "Paiements partiellement indisponibles.";
-  } else if (hasCompleteDeposit) {
-    financialSummaryDetail = `${formatPrice(eligibleReceivedCents, currency)} versés.`;
-  } else if (hasFirstPaid) {
-    const paidPreReservationAmountCents =
-      paidPreReservationDepositCents > 0
-        ? paidPreReservationDepositCents
-        : Math.min(paidCents, depositSettings.preReservationDepositCents);
-
-    financialSummaryDetail = `${formatPrice(
-      paidPreReservationAmountCents,
-      currency,
-    )} versés sur ${completeDepositAmountLabel} attendus.`;
-  } else if (hasRequestedFirstDeposit) {
-    financialSummaryDetail = `${preReservationDepositAmountLabel} demandés, en attente de règlement.`;
-  } else if (paymentCount === 0) {
-    financialSummaryDetail =
-      priceCents === null
-        ? "Aucun paiement enregistré, tarif convenu non renseigné."
-        : `Aucun paiement enregistré. Tarif convenu : ${formatPrice(priceCents, currency)}.`;
-  } else {
-    financialSummaryDetail = [
-      `${paymentCount} paiement${paymentCount > 1 ? "s" : ""} lié${paymentCount > 1 ? "s" : ""}`,
-      `${formatPrice(paidCents, currency)} payé${paidCents > 0 ? "s" : ""}`,
-      refundedCents > 0
-        ? `${formatPrice(refundedCents, currency)} remboursé`
-        : null,
-      remainingBalanceCents === null
-        ? "solde non déterminé"
-        : remainingBalanceCents > 0
-          ? `${formatPrice(remainingBalanceCents, currency)} restant`
-          : remainingBalanceCents === 0
-            ? "solde à zéro"
-            : `${formatPrice(Math.abs(remainingBalanceCents), currency)} de trop-perçu`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-  }
-
-  const documentSummaryDetail = documentsError
-    ? "Documents partiellement indisponibles."
-    : totalDocs === 0
-      ? "Aucun document lié à ce dossier."
-      : [
-          commitmentDocument
-            ? `Certificat : ${getDocumentStatusLabel(commitmentDocument.status, commitmentDocument.document_type)}`
-            : null,
-          reservationContractDocument
-            ? `Contrat : ${getDocumentStatusLabel(reservationContractDocument.status, reservationContractDocument.document_type)}`
-            : null,
-          saleCertificateDocument
-            ? `Attestation : ${getDocumentStatusLabel(saleCertificateDocument.status, saleCertificateDocument.document_type)}`
-            : null,
-          missingReservationDocumentsSummary
-            ? missingReservationDocumentsSummary
-            : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-
   const reservationLitterLabel =
     reservation?.litter_name ?? (reservation?.litter_id ? "Portée liée" : null);
   const reservationLitterGroupLabel =
@@ -2962,16 +2946,129 @@ export default async function ReservationDetailPage({
       })
     : [];
 
-  const sectionNavItems = [
-    { href: "#payments", label: "Paiements" },
-    { href: "#documents", label: "Documents" },
-    { href: "#post-adoption-questionnaires", label: "Questionnaires" },
-    { href: "#scope-and-animal", label: "Animal attribué" },
-    { href: "#appointments", label: "Créneaux RV" },
-    { href: "#adoption-preparation", label: "Préparation départ" },
-    { href: "#notes", label: "Notes internes" },
-    { href: "#reservation-details", label: "Dossier" },
+  const activeTab = normalizeAdopterJourneyDetailTab(query.tab);
+  const tabHref = (tab: AdopterJourneyDetailTab) =>
+    buildAdopterJourneyDetailPath(id, tab, { ...query, tab: undefined });
+
+  const headerProjection = projectAdopterJourneyHeader({
+    familyName: reservation?.contact_display_name ?? null,
+    status: reservation?.status ?? null,
+    reference: null,
+    createdAt: reservation?.created_at ?? null,
+    litterId: reservation?.litter_id ?? null,
+    litterLabel: reservation?.litter_name ?? null,
+    litterGroupId: reservation?.litter_group_id ?? null,
+    litterGroupLabel: reservation?.litter_group_name ?? null,
+    animalId: reservation?.animal_id ?? null,
+    animalLabel: animalSummaryLabel,
+  });
+
+  const journeyAlert = projectAdopterJourneyAlert(adopterJourneySteps);
+  const journeyProgress = projectAdopterJourneyProgress(adopterJourneySteps);
+  const financialSituation = projectAdopterFinancialSituation({
+    priceCents,
+    paidCents,
+    refundedCents,
+    currency,
+  });
+  const documentsSituation = projectAdopterDocumentsSituation({
+    error: Boolean(documentsError),
+    total: totalDocs,
+    signed: signedDocs,
+    sent: sentDocs,
+    toGenerate: toPrepareDocs,
+    bundlePresent: hasReservationDocumentsBundle,
+    bundleSent: reservationDocumentsBundleSent,
+    bundleSigned: reservationDocumentsBundleSigned,
+  });
+  const guidedLinks = projectAdopterJourneyGuidedLinks({
+    reservationId: id,
+    litterId: reservation?.litter_id ?? null,
+    hasDocumentsToPrepare:
+      !reservationIsFinal && (totalDocs === 0 || toPrepareDocs > 0),
+    animalId: reservation?.animal_id ?? null,
+    canOpenDepartureControl: canFinalizeAdoptionManually,
+  });
+
+  const recentActivityEntries: AdopterJourneyActivityEntry[] = [
+    ...(reservationPayments ?? []).map((payment) => ({
+      id: `payment-${payment.id}`,
+      kind: "payment" as const,
+      label: `${formatPrice(payment.amount_cents, payment.currency)} · ${getPaymentTypeLabel(payment.payment_type)}`,
+      detail: getPaymentStatusLabel(payment.status),
+      occurredAt: payment.paid_at ?? payment.requested_at ?? payment.created_at,
+    })),
+    ...(reservationDocuments ?? []).map((document) => ({
+      id: `document-${document.id}`,
+      kind: "document" as const,
+      label: document.title,
+      detail: getDocumentStatusLabel(document.status, document.document_type),
+      occurredAt: document.signed_at ?? document.sent_at ?? document.created_at,
+    })),
+    ...(reservationEvents ?? []).map((event) => ({
+      id: `event-${event.id}`,
+      kind: "appointment" as const,
+      label: event.title,
+      detail: event.status,
+      occurredAt: getUsefulPostAdoptionEventDate(event),
+    })),
+    ...(reservationNotes ?? []).map((note) => ({
+      id: `note-${note.id}`,
+      kind: "note" as const,
+      label: note.title ?? "Note interne",
+      detail: note.body.slice(0, 120),
+      occurredAt: note.created_at,
+    })),
   ];
+  const recentActivity = projectAdopterRecentActivity(recentActivityEntries, 6);
+
+  const contactAddressLabel = contactDetails
+    ? [
+        contactDetails.address_line1,
+        contactDetails.address_line2,
+        [contactDetails.postal_code, contactDetails.city]
+          .filter(Boolean)
+          .join(" "),
+        contactDetails.country,
+      ]
+        .filter(Boolean)
+        .join(" · ") || null
+    : null;
+
+  const dossierProjection = projectAdopterJourneyDossier({
+    familyName: reservation?.contact_display_name ?? null,
+    contactId: reservation?.contact_id ?? null,
+    email: contactDetails?.email ?? null,
+    phone: contactDetails?.phone ?? null,
+    address: contactAddressLabel,
+    applicationId: reservation?.application_id ?? null,
+    applicationStatusLabel: applicationDetails?.status
+      ? applicationDetails.status === "qualified"
+        ? "Candidature validée"
+        : "Candidature de l’adoptant"
+      : null,
+    applicationSexPreference: applicationDetails?.desired_sex_preference ?? null,
+    applicationProject: applicationDetails?.project_description ?? null,
+    litterId: reservation?.litter_id ?? null,
+    litterLabel: reservation?.litter_name ?? null,
+    litterGroupId: reservation?.litter_group_id ?? null,
+    litterGroupLabel: reservation?.litter_group_name ?? null,
+    rankInitial: reservation?.rank_initial ?? null,
+    rankActive: reservation?.rank_active ?? null,
+    sexPreference: reservation?.reserved_sex_preference ?? null,
+    adoptionDateLabel:
+      adoptionDateLabel === "Non renseignée" ? null : adoptionDateLabel,
+    animalId: reservation?.animal_id ?? null,
+    animalLabel: animalSummaryLabel,
+    animalSexLabel: relatedAnimal ? getAnimalSexLabel(relatedAnimal.sex) : null,
+    animalBirthDateLabel: relatedAnimal
+      ? formatAnimalDate(relatedAnimal.birth_date)
+      : null,
+    animalIdentification: relatedAnimal?.identification_number ?? null,
+    animalStatusLabel: relatedAnimal
+      ? getAnimalStatusLabel(relatedAnimal.status)
+      : null,
+  });
 
   return (
     <main className="mx-auto min-h-screen w-full min-w-0 max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -2994,179 +3091,359 @@ export default async function ReservationDetailPage({
               ← Retour au poste Parcours adoptants
             </Link>
 
-            <header className="flex flex-col justify-between gap-5 border-b pb-8 sm:flex-row sm:items-end">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-                  {reservation.status === "pre_reservation_requested"
-                    ? "Demande de pré-réservation · Consultation technique"
-                    : "Parcours adoptant · Consultation · complétion limitée"}
-                </p>
-                <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {reservation.status === "pre_reservation_requested"
-                    ? "Demande de pré-réservation de "
-                    : "Parcours adoptant de "}
-                  {reservation.contact_display_name ?? "Client anonyme"}
-                </h1>
-                <p className="mt-3 text-sm text-muted">
-                  Créée le {formatApplicationDate(reservation.created_at)}
-                </p>
-              </div>
-            </header>
-
-            <JourneyTimeline
-              description={
-                reservation.status === "pre_reservation_requested"
-                  ? "Demande technique en attente de règlement. Le parcours adoptant commencera après paiement de la pré-réservation."
-                  : "Synthèse indicative des grandes étapes. Les détails restent dans les sections métier du dossier."
-              }
-              steps={adopterJourneySteps}
-              title={
-                reservation.status === "pre_reservation_requested"
-                  ? "Progression de la demande"
-                  : "Progression du parcours adoptant"
-              }
-              titleId="adopter-journey-progress-title"
-            />
-
-            {/* Résumé du dossier */}
-            <section id="dossier-summary" className="mt-8 rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
-              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">
-                    Résumé du dossier adoptant
-                  </h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-                    Lecture rapide du dossier : personnes liées, portée ou
-                    animal, état financier, documents et prochaine étape
-                    indicative.
+            <header className="border-b pb-8">
+              <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold uppercase tracking-wide text-accent">
+                    Parcours adoptant
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                    {headerProjection.familyName}
+                  </h1>
+                  <p className="mt-3 text-sm text-muted">
+                    {headerProjection.createdAt
+                      ? `Créée le ${formatApplicationDate(headerProjection.createdAt)}`
+                      : "Date de création inconnue"}
                   </p>
                 </div>
-                <span className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-muted">
-                  Lecture seule
+                <span
+                  className={`inline-flex w-fit rounded-full border px-3 py-1.5 text-xs font-semibold ${situationBadgeClassName(headerProjection.statusTone)}`}
+                >
+                  {headerProjection.statusLabel}
                 </span>
               </div>
 
-              <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-                <dl className="min-w-0 rounded-xl border bg-background px-4 py-2">
-                  <SummaryMetric
-                    label="Adoptant"
-                    value={reservation.contact_display_name ?? "Client associé"}
-                    detail={
-                      contactRoleSummary
-                        ? `${contactSummaryDetail} · ${contactRoleSummary}`
-                        : contactSummaryDetail
-                    }
-                    href={
-                      reservation.contact_id
-                        ? `/contacts/${reservation.contact_id}`
-                        : undefined
-                    }
-                  />
-                  <SummaryMetric
-                    label="Statut"
-                    value={getReservationStatusLabel(reservation.status)}
-                    badgeClassName={
-                      reservation.status === "adopted" || reservation.status === "pre_reservation_paid"
-                        ? "text-emerald-700 bg-emerald-50 border-emerald-200"
-                        : reservation.status === "pre_reservation_requested" || reservation.status === "active"
-                          ? "text-amber-700 bg-amber-50 border-amber-200"
-                          : reservation.status === "cancelled" || reservation.status === "withdrawn" || reservation.status === "expired"
-                            ? "text-rose-700 bg-rose-50 border-rose-200"
-                            : "text-muted bg-muted-soft border-border"
-                    }
-                  />
-                  <SummaryMetric
-                    label="Animal"
-                    value={animalSummaryLabel}
-                    detail={animalSummaryDetail}
-                    href={
-                      reservation.animal_id
-                        ? `/animals/${reservation.animal_id}`
-                        : undefined
-                    }
-                  />
-                  <SummaryMetric
-                    label="Candidature"
-                    value={applicationSummaryValue}
-                    detail={applicationSummaryDetail}
-                    href={
-                      reservation.application_id
-                        ? `/candidatures/${reservation.application_id}`
-                        : undefined
-                    }
-                  />
-                </dl>
-
-                <div className="min-w-0 rounded-xl border bg-background px-4 py-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    Prochaine action
-                  </p>
-                  {nextAction ? (
-                    <>
-                      <p className="mt-1.5 text-sm font-semibold leading-6 text-foreground">
-                        {nextAction.label}
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-muted">
-                        {nextAction.detail}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="mt-1.5 text-sm text-muted">
-                      Aucune action automatique identifiée.
-                    </p>
-                  )}
+              <dl className="mt-5 grid gap-4 rounded-2xl border bg-surface p-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <div className="min-w-0">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Portée
+                  </dt>
+                  <dd className="mt-1 text-sm leading-6">
+                    {headerProjection.litter.href ? (
+                      <Link
+                        href={headerProjection.litter.href}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {headerProjection.litter.label}
+                      </Link>
+                    ) : (
+                      headerProjection.litter.label
+                    )}
+                    {headerProjection.litterGroup.href ? (
+                      <>
+                        {" "}·{" "}
+                        <Link
+                          href={headerProjection.litterGroup.href}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          {headerProjection.litterGroup.label}
+                        </Link>
+                      </>
+                    ) : null}
+                  </dd>
                 </div>
-              </div>
+                <div className="min-w-0">
+                  <dt className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                    Animal attribué
+                  </dt>
+                  <dd className="mt-1 text-sm leading-6">
+                    {headerProjection.animal.href ? (
+                      <Link
+                        href={headerProjection.animal.href}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {headerProjection.animal.label}
+                      </Link>
+                    ) : (
+                      headerProjection.animal.label
+                    )}
+                  </dd>
+                </div>
+                <div className="flex flex-wrap items-end gap-2">
+                  {guidedLinks.map((link) => (
+                    <Link
+                      key={link.key}
+                      href={link.href}
+                      className="inline-flex rounded-lg bg-accent px-3 py-2 text-sm font-semibold !text-white"
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </dl>
+            </header>
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                <SummaryIndicator
-                  label="État financier"
-                  value={paymentsSummaryText}
-                  detail={financialSummaryDetail}
-                  badgeClassName={paymentsSummaryColor}
-                />
-                <SummaryIndicator
-                  label="Prochaine action paiement"
-                  value={preReservationPaymentActionSummary.value}
-                  detail={preReservationPaymentActionSummary.detail}
-                  badgeClassName={getPreReservationDepositBadgeClassName(
-                    preReservationDepositState,
-                  )}
-                />
-                <SummaryIndicator
-                  label="Documents"
-                  value={docsSummaryText}
-                  detail={documentSummaryDetail}
-                />
-                <SummaryIndicator
-                  label="Portée"
-                  value={scopeSummaryValue}
-                  detail={
-                    rankSummaryDetail
-                      ? `${scopeSummaryDetail} · ${rankSummaryDetail}`
-                      : scopeSummaryDetail
-                  }
-                />
-              </div>
-
-              <nav
-                aria-label="Sections du dossier adoptant"
-                className="mt-6 flex flex-wrap gap-2 border-t pt-4"
+            <nav
+              aria-label="Sections du parcours adoptant"
+              className="sticky top-0 z-10 -mx-4 mt-6 flex gap-1 overflow-x-auto border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:px-0"
+            >
+              <div
+                role="tablist"
+                aria-label="Onglets du parcours adoptant"
+                className="flex gap-1"
               >
-                {sectionNavItems.map((item) => (
-                  <a
-                    key={item.href}
-                    href={item.href}
-                    className="rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
-                  >
-                    {item.label}
-                  </a>
-                ))}
-              </nav>
-            </section>
+                {ADOPTER_JOURNEY_DETAIL_TABS.map((tab) => {
+                  const selected = activeTab === tab;
+                  const future = isAdopterJourneyDetailFutureTab(tab);
+                  return (
+                    <Link
+                      key={tab}
+                      href={tabHref(tab)}
+                      role="tab"
+                      id={`adopter-journey-tab-${tab}`}
+                      aria-selected={selected}
+                      aria-controls={`adopter-journey-panel-${tab}`}
+                      className={`shrink-0 border-b-2 px-3 py-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-accent ${
+                        selected
+                          ? "border-accent text-accent"
+                          : "border-transparent text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {ADOPTER_JOURNEY_DETAIL_TAB_LABELS[tab]}
+                      {future ? (
+                        <span className="ml-1.5 rounded-full bg-muted/15 px-1.5 py-0.5 text-[0.68rem] text-muted">
+                          futur
+                        </span>
+                      ) : null}
+                    </Link>
+                  );
+                })}
+              </div>
+            </nav>
 
-            <div className="py-8">
-              <div className="flex min-w-0 flex-col gap-6">
+            {activeTab === "apercu" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-apercu"
+                aria-labelledby="adopter-journey-tab-apercu"
+                tabIndex={0}
+                className="mt-8 rounded-2xl border bg-surface p-6 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-accent sm:p-8"
+              >
+                {journeyAlert ? (
+                  <div
+                    role="alert"
+                    className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3"
+                  >
+                    <p className="text-sm font-semibold text-amber-950">
+                      À vérifier : {journeyAlert.label}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted">
+                      {journeyAlert.detail}
+                      {journeyAlert.count > 1
+                        ? ` · ${journeyAlert.count} points à vérifier au total.`
+                        : ""}
+                    </p>
+                  </div>
+                ) : null}
+
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                  <div>
+                    <h2 className="text-xl font-semibold text-foreground">
+                      Aperçu
+                    </h2>
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                      Pilotage rapide du dossier : prochaine action, progression
+                      et situation actuelle.
+                    </p>
+                  </div>
+                  <Link
+                    href={tabHref("etapes")}
+                    className="inline-flex w-fit rounded-full border bg-background px-3 py-1.5 text-xs font-semibold text-accent"
+                  >
+                    Ouvrir les étapes →
+                  </Link>
+                </div>
+
+                <div className="mt-5 rounded-xl border bg-background px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Progression du parcours
+                    </p>
+                    <p className="text-sm font-semibold">
+                      {journeyProgress.doneCount}/{journeyProgress.totalCount}
+                    </p>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted-soft">
+                    <div
+                      className="h-full rounded-full bg-accent"
+                      style={{
+                        width: `${
+                          journeyProgress.totalCount > 0
+                            ? Math.round(
+                                (journeyProgress.doneCount /
+                                  journeyProgress.totalCount) *
+                                  100,
+                              )
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                  {journeyProgress.currentLabel ? (
+                    <p className="mt-2 text-xs text-muted">
+                      Étape courante : {journeyProgress.currentLabel}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                  <dl className="min-w-0 rounded-xl border bg-background px-4 py-2">
+                    <SummaryMetric
+                      label="Adoptant"
+                      value={reservation.contact_display_name ?? "Client associé"}
+                      detail={
+                        contactRoleSummary
+                          ? `${contactSummaryDetail} · ${contactRoleSummary}`
+                          : contactSummaryDetail
+                      }
+                      href={
+                        reservation.contact_id
+                          ? `/contacts/${reservation.contact_id}`
+                          : undefined
+                      }
+                    />
+                    <SummaryMetric
+                      label="Statut"
+                      value={getReservationStatusLabel(reservation.status)}
+                      badgeClassName={situationBadgeClassName(
+                        headerProjection.statusTone,
+                      )}
+                    />
+                    <SummaryMetric
+                      label="Animal"
+                      value={animalSummaryLabel}
+                      detail={animalSummaryDetail}
+                      href={
+                        reservation.animal_id
+                          ? `/animals/${reservation.animal_id}`
+                          : undefined
+                      }
+                    />
+                    <SummaryMetric
+                      label="Candidature"
+                      value={applicationSummaryValue}
+                      detail={applicationSummaryDetail}
+                      href={
+                        reservation.application_id
+                          ? `/candidatures/${reservation.application_id}`
+                          : undefined
+                      }
+                    />
+                  </dl>
+
+                  <div className="min-w-0 rounded-xl border bg-background px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                      Prochaine action
+                    </p>
+                    {nextAction ? (
+                      <>
+                        <p className="mt-1.5 text-sm font-semibold leading-6 text-foreground">
+                          {nextAction.label}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted">
+                          {nextAction.detail}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-1.5 text-sm text-muted">
+                        Aucune action automatique identifiée.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                  <SummaryIndicator
+                    label="État financier"
+                    value={financialSituation.label}
+                    detail={financialSituation.detail}
+                    badgeClassName={situationBadgeClassName(
+                      financialSituation.tone,
+                    )}
+                  />
+                  <SummaryIndicator
+                    label="Documents"
+                    value={documentsSituation.label}
+                    detail={documentsSituation.detail}
+                    badgeClassName={situationBadgeClassName(
+                      documentsSituation.tone,
+                    )}
+                  />
+                  <SummaryIndicator
+                    label="Prochaine action paiement"
+                    value={preReservationPaymentActionSummary.value}
+                    detail={preReservationPaymentActionSummary.detail}
+                    badgeClassName={getPreReservationDepositBadgeClassName(
+                      preReservationDepositState,
+                    )}
+                  />
+                  <SummaryIndicator
+                    label="Portée"
+                    value={scopeSummaryValue}
+                    detail={
+                      rankSummaryDetail
+                        ? `${scopeSummaryDetail} · ${rankSummaryDetail}`
+                        : scopeSummaryDetail
+                    }
+                  />
+                </div>
+
+                {recentActivity.length > 0 ? (
+                  <div className="mt-5 rounded-xl border bg-background p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold text-foreground">
+                        Activité récente
+                      </h3>
+                      <Link
+                        href={tabHref("echanges")}
+                        className="text-xs font-semibold text-accent hover:underline"
+                      >
+                        Tout le suivi →
+                      </Link>
+                    </div>
+                    <ol className="mt-3 space-y-3">
+                      {recentActivity.map((entry) => (
+                        <li
+                          key={entry.id}
+                          className="flex items-start justify-between gap-3 border-l-2 pl-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">
+                              {entry.label}
+                            </p>
+                            {entry.detail ? (
+                              <p className="mt-0.5 text-xs leading-5 text-muted">
+                                {entry.detail}
+                              </p>
+                            ) : null}
+                          </div>
+                          <time className="shrink-0 text-xs text-muted">
+                            {formatApplicationDate(entry.occurredAt)}
+                          </time>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {activeTab === "etapes" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-etapes"
+                aria-labelledby="adopter-journey-tab-etapes"
+                tabIndex={0}
+                className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <JourneyTimeline
+                  description="Synthèse indicative des grandes étapes, calculées à partir des paiements, documents, rendez-vous et de l’adoption."
+                  steps={adopterJourneySteps}
+                  title="Progression du parcours adoptant"
+                  titleId="adopter-journey-progress-title"
+                />
+                <div className="py-8">
+                  <div className="flex min-w-0 flex-col gap-6">
                 <section id="appointments" className="order-[35] rounded-2xl border bg-surface p-6 shadow-sm sm:p-8">
                   <div className="flex flex-col justify-between gap-3 border-b pb-4 sm:flex-row sm:items-start">
                     <div>
@@ -3419,6 +3696,71 @@ export default async function ReservationDetailPage({
                     </div>
                   ) : null}
                 </section>
+              </div>
+            </div>
+              </section>
+            ) : null}
+
+            {activeTab === "dossier" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-dossier"
+                aria-labelledby="adopter-journey-tab-dossier"
+                tabIndex={0}
+                className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <div className="flex min-w-0 flex-col gap-6">
+
+                <div className="rounded-2xl border bg-surface p-6 sm:p-8">
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <h2 className="text-xl font-semibold text-foreground">
+                        Dossier de la famille
+                      </h2>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                        Adoptants, candidature, portée, rang, préférences et
+                        animal attribué.
+                      </p>
+                    </div>
+                    {reservation.contact_id ? (
+                      <Link
+                        href={`/contacts/${reservation.contact_id}`}
+                        className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent"
+                      >
+                        Fiche contact →
+                      </Link>
+                    ) : null}
+                  </div>
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    <DossierCard
+                      title="Adoptants"
+                      items={dossierProjection.adoptants}
+                    />
+                    <DossierCard
+                      title="Candidature"
+                      items={dossierProjection.candidature}
+                    />
+                    <DossierCard
+                      title="Portée et rang"
+                      items={[
+                        ...dossierProjection.scope,
+                        ...dossierProjection.rang,
+                      ]}
+                    />
+                    <DossierCard
+                      title="Préférences"
+                      items={dossierProjection.preferences}
+                    />
+                    <DossierCard
+                      title="Départ"
+                      items={dossierProjection.departure}
+                    />
+                    <DossierCard
+                      title="Animal attribué"
+                      items={dossierProjection.animal}
+                    />
+                  </div>
+                </div>
 
                 <section id="reservation-details" className="order-[71] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold">
@@ -4363,6 +4705,43 @@ export default async function ReservationDetailPage({
                   </section>
                 ) : null}
 
+                <AdopterProfileReservationSection
+                  reservationId={id}
+                  currentSexPreference={reservation.reserved_sex_preference}
+                  role={adoptionActorRole}
+                />
+
+                <ReservationPostAdoptionQuestionnaireSection
+                  animalName={animalSummaryLabel}
+                  animalId={reservation.animal_id}
+                  reservationId={id}
+                />
+              </div>
+            </section>
+            ) : null}
+
+            {activeTab === "echanges" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-echanges"
+                aria-labelledby="adopter-journey-tab-echanges"
+                tabIndex={0}
+                className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <div className="rounded-2xl border border-dashed bg-surface p-6">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Échanges & suivi
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                    Emplacement prévu pour le flux unifié des e-mails, appels,
+                    messages et échanges entrants. La centralisation réelle des
+                    réponses, contacts manuels et événements techniques fera
+                    l’objet d’un lot dédié ; aucune capacité inexistante n’est
+                    simulée ici.
+                  </p>
+                </div>
+                <div className="mt-6 flex min-w-0 flex-col gap-6">
+
                 <section id="notes" className="order-[50] rounded-2xl border bg-surface p-6 sm:p-8">
                   <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                     <div>
@@ -4485,6 +4864,19 @@ export default async function ReservationDetailPage({
                     />
                   </div>
                 </section>
+              </div>
+            </section>
+            ) : null}
+
+            {activeTab === "finances" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-finances"
+                aria-labelledby="adopter-journey-tab-finances"
+                tabIndex={0}
+                className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <div className="flex min-w-0 flex-col gap-6">
 
                 <section id="payments" className="order-[10] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
@@ -4678,18 +5070,6 @@ export default async function ReservationDetailPage({
                     />
                   )
                 ) : null}
-
-                <AdopterProfileReservationSection
-                  reservationId={id}
-                  currentSexPreference={reservation.reserved_sex_preference}
-                  role={adoptionActorRole}
-                />
-
-                <ReservationPostAdoptionQuestionnaireSection
-                  animalName={animalSummaryLabel}
-                  animalId={reservation.animal_id}
-                  reservationId={id}
-                />
 
                 <section id="documents" className="order-[20] rounded-2xl border bg-surface p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6">
@@ -4903,7 +5283,30 @@ export default async function ReservationDetailPage({
                   )}
                 </section>
               </div>
-            </div>
+            </section>
+            ) : null}
+
+            {activeTab === "photos" ? (
+              <section
+                role="tabpanel"
+                id="adopter-journey-panel-photos"
+                aria-labelledby="adopter-journey-tab-photos"
+                tabIndex={0}
+                className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                <div className="rounded-2xl border border-dashed bg-surface p-6">
+                  <h2 className="text-lg font-semibold text-foreground">
+                    Photos
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
+                    Emplacement prévu pour la réception, le stockage et le
+                    rattachement des photos envoyées par l’adoptant. Ce lot
+                    futur n’est pas encore développé ; aucune capacité n’est
+                    simulée ici.
+                  </p>
+                </div>
+              </section>
+            ) : null}
           </>
         )}
       </div>

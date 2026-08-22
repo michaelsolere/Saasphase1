@@ -448,7 +448,7 @@ export type AdopterDossierInput = {
   rankInitial: number | null;
   rankActive: number | null;
   sexPreference: string | null;
-  preferenceFlexible: boolean;
+  preferenceFlexible?: boolean;
   adoptionDateLabel: string | null;
   animalId: string | null;
   animalLabel: string | null;
