@@ -1,10 +1,17 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  canRenderPrivateShell,
   isPublicRoute,
   isStandalonePrivateRoute,
   shouldShowPrivateSidebar,
 } from "../../src/lib/private-route-shell";
+
+test("conserve le shell pendant la résolution de session", () => {
+  expect(canRenderPrivateShell("loading")).toBe(true);
+  expect(canRenderPrivateShell("authenticated")).toBe(true);
+  expect(canRenderPrivateShell("unauthenticated")).toBe(false);
+});
 
 test("routes publiques explicites (préfixe inclus)", () => {
   expect(isPublicRoute("/login")).toBe(true);
