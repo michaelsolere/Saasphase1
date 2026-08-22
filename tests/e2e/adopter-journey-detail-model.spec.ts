@@ -348,6 +348,7 @@ test("projette les liens vers les opérations guidées sans simuler d'action ind
       hasDocumentsToPrepare: false,
       animalId: null,
       canOpenDepartureControl: false,
+      returnTo: "/reservations?view=current",
     }),
   ).toEqual([]);
 
@@ -357,6 +358,7 @@ test("projette les liens vers les opérations guidées sans simuler d'action ind
     hasDocumentsToPrepare: true,
     animalId: "A-1",
     canOpenDepartureControl: true,
+    returnTo: "/reservations?view=current",
   });
   expect(links.map((link) => link.key)).toEqual([
     "preparer",
@@ -366,17 +368,17 @@ test("projette les liens vers les opérations guidées sans simuler d'action ind
   expect(links[0]).toEqual({
     key: "preparer",
     label: "Préparer la réservation",
-    href: "/reservations/R-1/preparer",
+    href: "/reservations/R-1/preparer?return_to=%2Freservations%3Fview%3Dcurrent",
   });
   expect(links[1]).toEqual({
     key: "choice_planning",
     label: "Ouvrir le planning de choix",
-    href: "/litters/L-1/choice-appointments",
+    href: "/litters/L-1/choice-appointments?return_to=%2Freservations%3Fview%3Dcurrent",
   });
   expect(links[2]).toEqual({
     key: "departure_control",
     label: "Contrôle final du départ",
-    href: "/reservations/R-1/depart",
+    href: "/reservations/R-1/depart?return_to=%2Freservations%3Fview%3Dcurrent",
   });
 });
 

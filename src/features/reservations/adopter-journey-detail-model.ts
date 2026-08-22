@@ -369,18 +369,24 @@ export type AdopterJourneyGuidedLink = {
   href: string;
 };
 
+function addReturnTo(path: string, returnTo: string): string {
+  return `${path}?return_to=${encodeURIComponent(returnTo)}`;
+}
+
 export function projectAdopterJourneyGuidedLinks({
   reservationId,
   litterId,
   hasDocumentsToPrepare,
   animalId,
   canOpenDepartureControl,
+  returnTo,
 }: {
   reservationId: string;
   litterId: string | null;
   hasDocumentsToPrepare: boolean;
   animalId: string | null;
   canOpenDepartureControl: boolean;
+  returnTo: string;
 }): AdopterJourneyGuidedLink[] {
   const links: AdopterJourneyGuidedLink[] = [];
 
@@ -388,7 +394,10 @@ export function projectAdopterJourneyGuidedLinks({
     links.push({
       key: "preparer",
       label: "Préparer la réservation",
-      href: `/reservations/${encodeURIComponent(reservationId)}/preparer`,
+      href: addReturnTo(
+        `/reservations/${encodeURIComponent(reservationId)}/preparer`,
+        returnTo,
+      ),
     });
   }
 
@@ -396,7 +405,10 @@ export function projectAdopterJourneyGuidedLinks({
     links.push({
       key: "choice_planning",
       label: "Ouvrir le planning de choix",
-      href: `/litters/${encodeURIComponent(litterId)}/choice-appointments`,
+      href: addReturnTo(
+        `/litters/${encodeURIComponent(litterId)}/choice-appointments`,
+        returnTo,
+      ),
     });
   }
 
@@ -404,7 +416,10 @@ export function projectAdopterJourneyGuidedLinks({
     links.push({
       key: "departure_control",
       label: "Contrôle final du départ",
-      href: `/reservations/${encodeURIComponent(reservationId)}/depart`,
+      href: addReturnTo(
+        `/reservations/${encodeURIComponent(reservationId)}/depart`,
+        returnTo,
+      ),
     });
   }
 

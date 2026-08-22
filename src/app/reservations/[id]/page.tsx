@@ -2949,6 +2949,7 @@ export default async function ReservationDetailPage({
   const activeTab = normalizeAdopterJourneyDetailTab(query.tab);
   const tabHref = (tab: AdopterJourneyDetailTab) =>
     buildAdopterJourneyDetailPath(id, tab, { ...query, tab: undefined });
+  const financesHref = (anchor: string) => `${tabHref("finances")}#${anchor}`;
 
   const headerProjection = projectAdopterJourneyHeader({
     familyName: reservation?.contact_display_name ?? null,
@@ -2988,6 +2989,7 @@ export default async function ReservationDetailPage({
       !reservationIsFinal && (totalDocs === 0 || toPrepareDocs > 0),
     animalId: reservation?.animal_id ?? null,
     canOpenDepartureControl: canFinalizeAdoptionManually,
+    returnTo: workbenchReturnPath,
   });
 
   const recentActivityEntries: AdopterJourneyActivityEntry[] = [
@@ -3177,11 +3179,7 @@ export default async function ReservationDetailPage({
               aria-label="Sections du parcours adoptant"
               className="sticky top-0 z-10 -mx-4 mt-6 flex gap-1 overflow-x-auto border-b bg-background/95 px-4 backdrop-blur sm:mx-0 sm:px-0"
             >
-              <div
-                role="tablist"
-                aria-label="Onglets du parcours adoptant"
-                className="flex gap-1"
-              >
+              <div aria-label="Onglets du parcours adoptant" className="flex gap-1">
                 {ADOPTER_JOURNEY_DETAIL_TABS.map((tab) => {
                   const selected = activeTab === tab;
                   const future = isAdopterJourneyDetailFutureTab(tab);
@@ -3189,10 +3187,7 @@ export default async function ReservationDetailPage({
                     <Link
                       key={tab}
                       href={tabHref(tab)}
-                      role="tab"
-                      id={`adopter-journey-tab-${tab}`}
-                      aria-selected={selected}
-                      aria-controls={`adopter-journey-panel-${tab}`}
+                      aria-current={selected ? "page" : undefined}
                       className={`shrink-0 border-b-2 px-3 py-3 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-accent ${
                         selected
                           ? "border-accent text-accent"
@@ -3213,9 +3208,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "apercu" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-apercu"
-                aria-labelledby="adopter-journey-tab-apercu"
                 tabIndex={0}
                 className="mt-8 rounded-2xl border bg-surface p-6 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-accent sm:p-8"
               >
@@ -3430,9 +3423,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "etapes" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-etapes"
-                aria-labelledby="adopter-journey-tab-etapes"
                 tabIndex={0}
                 className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
@@ -3579,7 +3570,7 @@ export default async function ReservationDetailPage({
                         </p>
                       </div>
                       <a
-                        href="#documents"
+                        href={financesHref("documents")}
                         className="inline-flex w-fit rounded-lg border px-3 py-2 text-sm font-semibold text-accent transition hover:border-accent/40 hover:bg-accent-soft"
                       >
                         Voir les documents liés
@@ -3703,9 +3694,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "dossier" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-dossier"
-                aria-labelledby="adopter-journey-tab-dossier"
                 tabIndex={0}
                 className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
@@ -3787,7 +3776,7 @@ export default async function ReservationDetailPage({
                             {paymentCount} paiement{paymentCount > 1 ? "s" : ""} lié{paymentCount > 1 ? "s" : ""} · {balanceLabel}
                           </p>
                           <a
-                            href="#payments"
+                            href={financesHref("payments")}
                             className="inline-flex text-sm font-semibold text-accent hover:underline"
                           >
                             Voir les paiements liés
@@ -4020,7 +4009,7 @@ export default async function ReservationDetailPage({
                                 depuis la section Documents liés.
                               </p>
                               <a
-                                href="#documents"
+                                href={financesHref("documents")}
                                 className="mt-3 inline-flex w-fit rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90"
                               >
                                 Générer les documents contractuels
@@ -4722,9 +4711,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "echanges" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-echanges"
-                aria-labelledby="adopter-journey-tab-echanges"
                 tabIndex={0}
                 className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
@@ -4870,9 +4857,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "finances" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-finances"
-                aria-labelledby="adopter-journey-tab-finances"
                 tabIndex={0}
                 className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
@@ -5288,9 +5273,7 @@ export default async function ReservationDetailPage({
 
             {activeTab === "photos" ? (
               <section
-                role="tabpanel"
                 id="adopter-journey-panel-photos"
-                aria-labelledby="adopter-journey-tab-photos"
                 tabIndex={0}
                 className="mt-8 outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
