@@ -17,6 +17,13 @@ export type AdopterMilestoneKey =
   | "adoption";
 export type AdopterStepState = "done" | "todo" | "waiting" | "blocked" | "not_applicable";
 export type AdopterActionState = "blocked" | "overdue" | "due" | "normal" | "none";
+
+export function appendReturnToBeforeHash(path: string, returnTo: string): string {
+  const [pathnameAndQuery, hash] = path.split("#", 2);
+  const separator = pathnameAndQuery.includes("?") ? "&" : "?";
+  return `${pathnameAndQuery}${separator}return_to=${encodeURIComponent(returnTo)}${hash ? `#${hash}` : ""}`;
+}
+
 export type AdopterWorkbenchSort =
   | "scope_queue_rank"
   | "urgency"

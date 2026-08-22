@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  appendReturnToBeforeHash,
   buildAdopterWorkbenchPath,
   classifyAdopterView,
   deriveAdopterJourney,
@@ -9,6 +10,25 @@ import {
   hasAcceptedJourneyOpeningProof,
   type AdopterWorkbenchRecord,
 } from "../../src/features/reservations/adopter-workbench-model";
+
+test("place return_to avant une ancre déjà présente dans une action", () => {
+  expect(
+    appendReturnToBeforeHash(
+      "/reservations/R-1?tab=finances#payments",
+      "/reservations?view=current",
+    ),
+  ).toBe(
+    "/reservations/R-1?tab=finances&return_to=%2Freservations%3Fview%3Dcurrent#payments",
+  );
+  expect(
+    appendReturnToBeforeHash(
+      "/reservations/R-1/preparer",
+      "/reservations?view=current",
+    ),
+  ).toBe(
+    "/reservations/R-1/preparer?return_to=%2Freservations%3Fview%3Dcurrent",
+  );
+});
 
 function record(overrides: Partial<AdopterWorkbenchRecord> = {}): AdopterWorkbenchRecord {
   return {
