@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  ADOPTER_JOURNEY_DETAIL_TABS,
   buildAdopterJourneyDetailPath,
   isAdopterJourneyDetailFutureTab,
   normalizeAdopterJourneyDetailTab,
@@ -16,6 +17,17 @@ import {
   type AdopterJourneyActivityEntry,
   type AdopterJourneyStepLike,
 } from "../../src/features/reservations/adopter-journey-detail-model";
+
+test("conserve l'ordre des onglets du prototype Open 04", () => {
+  expect(ADOPTER_JOURNEY_DETAIL_TABS).toEqual([
+    "apercu",
+    "etapes",
+    "echanges",
+    "dossier",
+    "finances",
+    "photos",
+  ]);
+});
 
 test("normalise les onglets de la fiche parcours adoptant et revient à Aperçu pour une valeur inconnue", () => {
   expect(normalizeAdopterJourneyDetailTab(undefined)).toBe("apercu");

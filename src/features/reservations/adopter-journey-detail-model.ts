@@ -11,9 +11,9 @@ import {
 export const ADOPTER_JOURNEY_DETAIL_TABS = [
   "apercu",
   "etapes",
+  "echanges",
   "dossier",
   "finances",
-  "echanges",
   "photos",
 ] as const;
 
