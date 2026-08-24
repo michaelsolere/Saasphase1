@@ -965,6 +965,7 @@ export async function listLitterWeightHistoryCore(
     .eq("organization_id", authorization.organizationId)
     .eq("litter_id", authorization.litterId)
     .is("deleted_at", null)
+    .order("sex", { ascending: false })
     .order("birth_order", { ascending: true, nullsFirst: false })
     .order("id", { ascending: true });
 

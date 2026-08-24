@@ -567,12 +567,12 @@ test("saisie collective, historique, droits, isolation et mobile", async ({ page
     await expect(panel.getByRole("button", { name: "Nouvelle pesée" })).toBeVisible();
     const ineligibleAnimals = panel.getByTestId("ineligible-routine-weight-animals");
     await expect(ineligibleAnimals).toContainText("Animaux non proposés pour cette pesée");
-    await expect(ineligibleAnimals).toContainText("Chiot n° 3");
+    await expect(ineligibleAnimals).toContainText("Mâle 2");
     await expect(ineligibleAnimals).toContainText(
       "Adopté administrativement : la saisie de nouvelle pesée est actuellement indisponible.",
     );
     await expect(panel.getByTestId("litter-weight-animals-history")).toContainText(
-      "Chiot n° 3",
+      "Mâle 2",
     );
     expect(await panel.textContent()).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,

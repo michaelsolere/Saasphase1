@@ -2,6 +2,7 @@ import {
   litterWeightAnimalDetails,
   litterWeightAnimalName,
 } from "./litter-weight-animal-identity";
+import { buildSexOrdinals } from "./litter-weight-gain-summary";
 import type {
   LitterWeightHistoryAnimal,
   LitterWeightHistoryMeasurement,
@@ -16,6 +17,7 @@ export type LitterRoutineWeightEntry = {
   animalId: string;
   publicLabel: string;
   details: string;
+  collarColor: string | null;
   latestWeightGrams: number | null;
   latestMeasuredAt: string | null;
   weightDraft: string;
@@ -64,13 +66,16 @@ export function buildLitterRoutineWeightEntries({
     drafts.map(({ animalId, weightDraft }) => [animalId, weightDraft]),
   );
 
+  const sexOrdinals = buildSexOrdinals(animals);
+
   return animals.map((animal) => {
     const latestMeasurement = latestByAnimalId.get(animal.id);
     const weightDraft = draftByAnimalId.get(animal.id) ?? "";
     return {
       animalId: animal.id,
-      publicLabel: litterWeightAnimalName(animal),
+      publicLabel: litterWeightAnimalName(animal, sexOrdinals.get(animal.id)),
       details: litterWeightAnimalDetails(animal),
+      collarColor: animal.currentCollarColor || animal.initialCollarColor || null,
       latestWeightGrams:
         latestMeasurement?.grams ?? animal.birthWeightGrams ?? null,
       latestMeasuredAt: latestMeasurement?.measuredAt ?? null,

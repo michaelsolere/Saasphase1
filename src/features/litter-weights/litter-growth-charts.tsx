@@ -7,6 +7,7 @@ import type {
   LitterWeightHistoryMeasurement,
 } from "./litter-weights-core";
 import {
+  buildAgeDayTicks,
   buildLitterGrowthModel,
   buildGrowthChartDomain,
   buildRelativeGrowthChartDomain,
@@ -22,17 +23,7 @@ import {
 const CHART_WIDTH = 760;
 const CHART_HEIGHT = 320;
 const PLOT = { left: 68, top: 22, width: 670, height: 238 } as const;
-const SERIES_COLORS = [
-  "#0f766e",
-  "#b91c1c",
-  "#1d4ed8",
-  "#7e22ce",
-  "#b45309",
-  "#0369a1",
-  "#4d7c0f",
-  "#be185d",
-] as const;
-const LINE_PATTERNS = [undefined, "12 5", "3 5", "12 4 3 4"] as const;
+const DAY_MS = 24 * 60 * 60 * 1_000;
 const FORTY_EIGHT_HOURS = 48 * 60 * 60 * 1_000;
 const THIRTY_ONE_DAYS = 31 * 24 * 60 * 60 * 1_000;
 const FRENCH_DECIMAL = new Intl.NumberFormat("fr-FR", {
@@ -43,18 +34,10 @@ type GrowthChartSeries = {
   internalId: string;
   publicLabel: string;
   seriesIndex: number;
+  seriesColor: string;
+  collarColorLabel?: string | null;
   points: (LitterGrowthPoint | LitterRelativeGrowthPoint)[];
 };
-
-function seriesStyle(seriesIndex: number) {
-  return {
-    color: SERIES_COLORS[seriesIndex % SERIES_COLORS.length],
-    dash:
-      LINE_PATTERNS[
-        Math.floor(seriesIndex / SERIES_COLORS.length) % LINE_PATTERNS.length
-      ],
-  };
-}
 
 function formatAxisDate(timestamp: number, extent: number) {
   const options: Intl.DateTimeFormatOptions =
@@ -64,6 +47,11 @@ function formatAxisDate(timestamp: number, extent: number) {
         ? { day: "2-digit", month: "short" }
         : { dateStyle: "short" };
   return new Intl.DateTimeFormat("fr-FR", options).format(new Date(timestamp));
+}
+
+function formatAgeTick(timestamp: number, originTimestamp: number) {
+  const ageDays = Math.round((timestamp - originTimestamp) / DAY_MS);
+  return ageDays === 0 ? "J0" : `J${ageDays >= 0 ? "+" : ""}${ageDays}`;
 }
 
 function formatMeasurementDate(value: string) {
@@ -95,10 +83,34 @@ function AnimalGrowthIndicator({
   indicator: LitterGrowthIndicator;
 }) {
   const latest = indicator.latestMeasurement;
+  const gain = indicator.gainSummary;
 
   return (
     <li className="min-w-0 rounded-xl border bg-background p-4">
-      <h4 className="break-words font-semibold">{indicator.publicLabel}</h4>
+      <div className="flex flex-wrap items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="size-3 shrink-0 rounded-full border border-black/10"
+          style={{
+            backgroundColor: indicator.collarColor ?? "#cbd5e1",
+          }}
+        />
+        <h4 className="break-words font-semibold">{indicator.publicLabel}</h4>
+        {indicator.gainBelowPriorThreeDayAverage ? (
+          <span
+            className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900"
+            title="Prise de poids récente inférieure à la moyenne de ce chiot sur ses trois prises précédentes"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                d="M6 1 L11 10 H1 Z"
+                fill="#b45309"
+              />
+            </svg>
+            Croissance à surveiller
+          </span>
+        ) : null}
+      </div>
       {indicator.publicDetails ? (
         <p className="mt-1 break-words text-xs leading-5 text-muted">
           {indicator.publicDetails}
@@ -153,6 +165,48 @@ function AnimalGrowthIndicator({
           {formatSignedPercentage(indicator.relativeProgressPercentage)}
         </p>
       )}
+      {gain ? (
+        <div className="mt-3 space-y-1 border-t pt-2 text-sm">
+          {gain.gainSincePreviousGrams !== null ? (
+            <p>
+              <span className="font-medium">Gain dernière pesée :</span>{" "}
+              {formatSignedGrams(gain.gainSincePreviousGrams)}
+              {gain.latestGrams > 0 &&
+              gain.previousGrams !== null &&
+              gain.previousGrams > 0 ? (
+                <span className="text-muted">
+                  {" "}
+                  ({formatSignedPercentage(
+                    (gain.gainSincePreviousGrams / gain.previousGrams) * 100,
+                  )}
+                  )
+                </span>
+              ) : null}
+            </p>
+          ) : null}
+          {gain.gainOver3dGrams !== null &&
+          gain.gainOver3dPerDayGrams !== null ? (
+            <p>
+              <span className="font-medium">Prise de poids sur 3 jours :</span>{" "}
+              {formatSignedGrams(gain.gainOver3dGrams)}
+              {gain.reference3dGrams && gain.reference3dGrams > 0 ? (
+                <span className="text-muted">
+                  {" "}
+                  ({formatSignedPercentage(
+                    (gain.gainOver3dGrams / gain.reference3dGrams) * 100,
+                  )}
+                  , {formatSignedGrams(Math.round(gain.gainOver3dPerDayGrams))}/jour)
+                </span>
+              ) : null}
+            </p>
+          ) : (
+            <p className="text-muted">
+              Prise de poids sur 3 jours : indisponible (mesure de référence de
+              plus d’un jour requise).
+            </p>
+          )}
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -165,6 +219,7 @@ function Marker({
   animalLabel,
   seriesIndex,
   relative,
+  onHover,
 }: {
   point: LitterGrowthPoint | LitterRelativeGrowthPoint;
   x: number;
@@ -173,53 +228,123 @@ function Marker({
   animalLabel: string;
   seriesIndex: number;
   relative: boolean;
+  onHover: (info: MarkerHoverInfo | null) => void;
 }) {
+  const identity = animalLabel;
   const title = relative
-    ? `${animalLabel} · Indice ${formatIndex(
+    ? `${identity} · Indice ${formatIndex(
         (point as LitterRelativeGrowthPoint).index,
       )} · ${formatObservedInterval(
         (point as LitterRelativeGrowthPoint).elapsedMilliseconds,
       )} depuis la naissance · ${measurementTypeLabel(point.type)}`
-    : `${animalLabel} · ${point.grams} g · ${formatMeasurementDate(
+    : `${identity} · ${point.grams} g · ${formatMeasurementDate(
         point.measuredAt,
       )} · ${measurementTypeLabel(point.type)}`;
 
+  const hoverInfo: MarkerHoverInfo = { title, x, y, color };
+  const show = () => onHover(hoverInfo);
+  const hide = () => onHover(null);
+
   if (point.type === "birth") {
     return (
-      <circle
-        cx={x}
-        cy={y}
-        r="6"
-        fill="white"
-        stroke={color}
-        strokeWidth="4"
-        vectorEffect="non-scaling-stroke"
-        data-series-index={seriesIndex}
-        data-measurement-type="birth"
-      >
-        <title>{title}</title>
-      </circle>
+      <g>
+        <circle
+          cx={x}
+          cy={y}
+          r="9"
+          fill="transparent"
+          data-growth-hover-target="true"
+          aria-label={title}
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          onClick={show}
+        />
+        <circle
+          cx={x}
+          cy={y}
+          r="4"
+          fill="white"
+          stroke={color}
+          strokeWidth="2"
+          vectorEffect="non-scaling-stroke"
+          data-series-index={seriesIndex}
+          data-measurement-type="birth"
+          pointerEvents="none"
+        />
+      </g>
     );
   }
 
   return (
-    <rect
-      x={x - 6}
-      y={y - 6}
-      width="12"
-      height="12"
-      rx="1"
-      fill="white"
-      stroke={color}
-      strokeWidth="4"
-      vectorEffect="non-scaling-stroke"
-      data-series-index={seriesIndex}
-      data-measurement-type="routine"
-    >
-      <title>{title}</title>
-    </rect>
+    <g>
+      <circle
+        cx={x}
+        cy={y}
+        r="2.4"
+        fill={color}
+        stroke="none"
+        vectorEffect="non-scaling-stroke"
+        data-series-index={seriesIndex}
+        data-measurement-type="routine"
+        pointerEvents="none"
+      />
+      {/* Zone de survol transparente : garde l'infobulle avec un petit point. */}
+      <circle
+        cx={x}
+        cy={y}
+        r="8"
+        fill="transparent"
+        data-growth-hover-target="true"
+        aria-label={title}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onClick={show}
+      />
+    </g>
   );
 }
+
+type MarkerHoverInfo = { title: string; x: number; y: number; color: string };
+
+function ChartTooltip({ info }: { info: MarkerHoverInfo | null }) {
+  if (!info) return null;
+  const flipLeft = info.x > CHART_WIDTH * 0.62;
+  const flipTop = info.y < CHART_HEIGHT * 0.18;
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={
+          flipLeft
+            ? Math.max(4, info.x - TOOLTIP_WIDTH - 10)
+            : Math.min(CHART_WIDTH - TOOLTIP_WIDTH - 4, info.x + 10)
+        }
+        y={flipTop ? info.y + 12 : Math.max(4, info.y - 34)}
+        width={TOOLTIP_WIDTH}
+        height={26}
+        rx="6"
+        fill="#111827"
+        fillOpacity="0.94"
+      />
+      <text
+        data-growth-tooltip="true"
+        x={
+          flipLeft
+            ? Math.max(4, info.x - TOOLTIP_WIDTH - 10) + 8
+            : Math.min(CHART_WIDTH - TOOLTIP_WIDTH - 4, info.x + 10) + 8
+        }
+        y={flipTop ? info.y + 29 : Math.max(4, info.y - 34) + 17}
+        fontSize="11.5"
+        fill="#f9fafb"
+      >
+        {info.title.length > 58
+          ? `${info.title.slice(0, 57)}…`
+          : info.title}
+      </text>
+    </g>
+  );
+}
+
+const TOOLTIP_WIDTH = 330;
 
 function GrowthSvg({
   series,
@@ -232,6 +357,7 @@ function GrowthSvg({
 }) {
   const titleId = useId();
   const descriptionId = useId();
+  const [hoverInfo, setHoverInfo] = useState<MarkerHoverInfo | null>(null);
   const points = series.flatMap((item) => item.points);
   const relative = mode === "relative";
   const domain = relative
@@ -242,6 +368,20 @@ function GrowthSvg({
   const firstTimestamp = Math.min(...points.map((point) => point.timestamp));
   const lastTimestamp = Math.max(...points.map((point) => point.timestamp));
   const extent = lastTimestamp - firstTimestamp;
+  // Origine de l'âge : première mesure de naissance (absolute) ou zéro (relative).
+  const ageOrigin = relative
+    ? 0
+    : Math.min(
+        ...series.flatMap((item) =>
+          item.points
+            .filter((point) => point.type === "birth")
+            .map((point) => point.timestamp),
+        ),
+      );
+  const ageDayTicks =
+    extent >= DAY_MS && Number.isFinite(ageOrigin)
+      ? buildAgeDayTicks(domain, ageOrigin)
+      : [];
   const chartCoordinates = (
     point: LitterGrowthPoint | LitterRelativeGrowthPoint,
   ) =>
@@ -263,8 +403,8 @@ function GrowthSvg({
       <title id={titleId}>{accessibleLabel}</title>
       <desc id={descriptionId}>
         {relative
-          ? "Indice base 100 selon le temps écoulé depuis la mesure réelle de naissance de chaque animal. Les cercles représentent les mesures de naissance et les carrés les pesées de routine."
-          : "Poids réels en grammes selon la date et l’heure de mesure. Les cercles représentent les mesures de naissance et les carrés les pesées de routine."}
+          ? "Indice base 100 selon le temps écoulé depuis la mesure réelle de naissance de chaque animal. Les anneaux représentent les mesures de naissance et les points pleins les pesées de routine."
+          : "Poids réels en grammes selon l’âge en jours depuis la naissance. Les anneaux représentent les mesures de naissance et les points pleins les pesées de routine."}
       </desc>
 
       {domain.gramTicks.map((grams) => {
@@ -298,44 +438,49 @@ function GrowthSvg({
         );
       })}
 
-      {domain.timestampTicks.map((timestamp, index) => {
-        const x = projectGrowthPoint(
-          { timestamp, grams: domain.minGrams },
-          domain,
-          PLOT,
-        ).x;
-        return (
-          <g key={`time-${timestamp}`}>
-            <line
-              x1={x}
-              x2={x}
-              y1={PLOT.top}
-              y2={PLOT.top + PLOT.height}
-              stroke="currentColor"
-              strokeOpacity="0.08"
-              vectorEffect="non-scaling-stroke"
-            />
-            <text
-              x={x}
-              y={PLOT.top + PLOT.height + 25}
-              textAnchor={
-                index === 0
-                  ? "start"
-                  : index === domain.timestampTicks.length - 1
-                    ? "end"
-                    : "middle"
-              }
-              fontSize="12"
-              fill="currentColor"
-              opacity="0.72"
-            >
-              {relative
-                ? formatObservedInterval(timestamp)
-                : formatAxisDate(timestamp, extent)}
-            </text>
-          </g>
-        );
-      })}
+      {(ageDayTicks.length > 0 ? ageDayTicks : domain.timestampTicks).map(
+        (timestamp, index, allTicks) => {
+          const x = projectGrowthPoint(
+            { timestamp, grams: domain.minGrams },
+            domain,
+            PLOT,
+          ).x;
+          const useAgeLabels = ageDayTicks.length > 0;
+          return (
+            <g key={`time-${timestamp}`}>
+              <line
+                x1={x}
+                x2={x}
+                y1={PLOT.top}
+                y2={PLOT.top + PLOT.height}
+                stroke="currentColor"
+                strokeOpacity="0.08"
+                vectorEffect="non-scaling-stroke"
+              />
+              <text
+                x={x}
+                y={PLOT.top + PLOT.height + 25}
+                textAnchor={
+                  index === 0
+                    ? "start"
+                    : index === allTicks.length - 1
+                      ? "end"
+                      : "middle"
+                }
+                fontSize="12"
+                fill="currentColor"
+                opacity="0.72"
+              >
+                {relative
+                  ? formatObservedInterval(timestamp)
+                  : useAgeLabels
+                    ? formatAgeTick(timestamp, ageOrigin)
+                    : formatAxisDate(timestamp, extent)}
+              </text>
+            </g>
+          );
+        },
+      )}
 
       <line
         x1={PLOT.left}
@@ -357,7 +502,6 @@ function GrowthSvg({
       />
 
       {series.map((item) => {
-        const style = seriesStyle(item.seriesIndex);
         const projected = item.points.map((point) => ({
           ...projectGrowthPoint(chartCoordinates(point), domain, PLOT),
           point,
@@ -368,9 +512,8 @@ function GrowthSvg({
               <polyline
                 points={projected.map(({ x, y }) => `${x},${y}`).join(" ")}
                 fill="none"
-                stroke={style.color}
-                strokeWidth="3"
-                strokeDasharray={style.dash}
+                stroke={item.seriesColor}
+                strokeWidth="2.4"
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 vectorEffect="non-scaling-stroke"
@@ -383,15 +526,18 @@ function GrowthSvg({
                 point={point}
                 x={x}
                 y={y}
-                color={style.color}
+                color={item.seriesColor}
                 animalLabel={item.publicLabel}
                 seriesIndex={item.seriesIndex}
                 relative={relative}
+                onHover={setHoverInfo}
               />
             ))}
           </g>
         );
       })}
+
+      <ChartTooltip info={hoverInfo} />
     </svg>
   );
 }
@@ -400,7 +546,7 @@ function MarkerKey() {
   return (
     <p className="text-xs leading-5 text-muted">
       <span className="font-medium text-foreground">Types de points :</span>{" "}
-      naissance (cercle) · routine (carré)
+      naissance (anneau) · routine (point plein)
     </p>
   );
 }
@@ -415,7 +561,6 @@ function SeriesLegend({
   return (
     <ul className="flex flex-wrap gap-x-5 gap-y-3" aria-label={ariaLabel}>
       {series.map((item) => {
-        const style = seriesStyle(item.seriesIndex);
         return (
           <li
             key={item.internalId}
@@ -427,10 +572,10 @@ function SeriesLegend({
                 x2="29"
                 y1="6"
                 y2="6"
-                stroke={style.color}
-                strokeWidth="3"
-                strokeDasharray={style.dash}
+                stroke={item.seriesColor}
+                strokeWidth="2.4"
               />
+              <circle cx="15" cy="6" r="3" fill={item.seriesColor} />
             </svg>
             <span className="break-words">{item.publicLabel}</span>
           </li>
