@@ -58,6 +58,7 @@ import {
   getLitterRoutineWeightEntryProgress,
   removeWeightEntryFromUrl,
 } from "./litter-routine-weight-entry";
+import { buildSexOrdinals } from "./litter-weight-gain-summary";
 
 type RecordAction = (
   previousState: LitterRoutineWeightsActionState,
@@ -139,14 +140,17 @@ function routineWeightEligibilityReasonMessage(
 
 function IneligibleRoutineWeightAnimals({
   animals,
+  allAnimals,
 }: {
   animals: Array<{
     animal: LitterWeightHistoryAnimal;
     reasons: RoutineWeightEligibilityReason[];
   }>;
+  allAnimals: LitterWeightHistoryAnimal[];
 }) {
   if (animals.length === 0) return null;
 
+  const sexOrdinals = buildSexOrdinals(allAnimals);
   return (
     <section
       data-testid="ineligible-routine-weight-animals"
@@ -160,7 +164,7 @@ function IneligibleRoutineWeightAnimals({
         {animals.map(({ animal, reasons }) => (
           <li key={animal.id} className="min-w-0 rounded-lg bg-background/80 px-3 py-3">
             <p className="break-words text-sm font-semibold">
-              {litterWeightAnimalName(animal)}
+              {litterWeightAnimalName(animal, sexOrdinals.get(animal.id))}
             </p>
             <ul className="mt-1 space-y-1 text-sm leading-5">
               {reasons.map((reason) => (
@@ -297,7 +301,11 @@ function RoutineWeightDialog({
   );
 
   useEffect(() => {
-    if (!initiallyOpen || initialIntentConsumedRef.current) return;
+    if (!initiallyOpen) {
+      initialIntentConsumedRef.current = false;
+      return;
+    }
+    if (initialIntentConsumedRef.current) return;
     initialIntentConsumedRef.current = true;
     setMeasuredAt(currentLocalDateTime());
     setOpen(true);
@@ -471,7 +479,10 @@ function RoutineWeightDialog({
                 className="min-w-0 rounded-xl border bg-surface p-3"
               >
                 <legend className="max-w-full px-1 text-sm font-semibold">
-                  <span className="break-words">{entry.publicLabel}</span>
+                  <span className="break-words">
+                    {entry.publicLabel}
+                    {entry.collarColor ? ` · collier ${entry.collarColor}` : ""}
+                  </span>
                 </legend>
                 {entry.details ? (
                   <p className="break-words text-xs leading-5 text-muted">
@@ -665,7 +676,10 @@ function SessionsHistory({
   onSuccess: (message: string) => void;
 }) {
   const animalNameById = new Map(
-    animals.map((animal) => [animal.id, litterWeightAnimalName(animal)]),
+    animals.map((animal) => [
+      animal.id,
+      litterWeightAnimalName(animal, buildSexOrdinals(animals).get(animal.id)),
+    ]),
   );
   return (
     <details
@@ -878,7 +892,10 @@ export function LitterWeightPanel({
           />
         ) : null}
       </div>
-      <IneligibleRoutineWeightAnimals animals={ineligibleAnimals} />
+      <IneligibleRoutineWeightAnimals
+        animals={ineligibleAnimals}
+        allAnimals={animals}
+      />
       <LatestWeightBanner
         session={lastSession}
         animalCount={animals.length}

@@ -6,23 +6,38 @@ const sexLabels: Record<string, string> = {
   unknown: "Sexe inconnu",
 };
 
-export function litterWeightAnimalName(animal: LitterWeightHistoryAnimal) {
-  return (
-    animal.callName ||
-    animal.officialName ||
-    (animal.birthOrder
-      ? `Chiot n° ${animal.birthOrder}`
-      : "Animal de la portée")
-  );
+export function litterWeightAnimalName(
+  animal: LitterWeightHistoryAnimal,
+  sexOrdinal?: number | null,
+) {
+  if (animal.callName) return animal.callName;
+  if (animal.officialName) return animal.officialName;
+
+  const sexLabel = animal.sex ? sexLabels[animal.sex] : undefined;
+  const orderPart =
+    typeof animal.birthOrder === "number" && Number.isInteger(animal.birthOrder)
+      ? `${sexLabel ?? "Chiot"} ${
+          typeof sexOrdinal === "number" && Number.isInteger(sexOrdinal)
+            ? sexOrdinal
+            : animal.birthOrder
+        }`
+      : null;
+
+  return orderPart ?? "Animal de la portée";
+}
+
+export function litterWeightAnimalCollarColor(
+  animal: Pick<LitterWeightHistoryAnimal, "currentCollarColor" | "initialCollarColor">,
+) {
+  return (animal.currentCollarColor || animal.initialCollarColor || "")
+    .trim()
+    .toLocaleLowerCase("fr-FR");
 }
 
 export function litterWeightAnimalDetails(animal: LitterWeightHistoryAnimal) {
   const values = [
     animal.birthOrder ? `Ordre de naissance : ${animal.birthOrder}` : null,
     sexLabels[animal.sex] ?? animal.sex,
-    animal.currentCollarColor || animal.initialCollarColor
-      ? `Collier : ${animal.currentCollarColor || animal.initialCollarColor}`
-      : null,
   ];
 
   return values.filter(Boolean).join(" · ");

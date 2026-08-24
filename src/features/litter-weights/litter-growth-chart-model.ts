@@ -9,17 +9,29 @@ import {
   type AnimalWeightRelativePoint,
 } from "./animal-weight-relative-series";
 import {
+  litterWeightAnimalCollarColor,
   litterWeightAnimalDetails,
   litterWeightAnimalName,
 } from "./litter-weight-animal-identity";
+import { collarSeriesColor } from "./litter-collar-colors";
+import {
+  buildSexOrdinals,
+  summarizeAnimalWeightGain,
+  type AnimalWeightGainSummary,
+} from "./litter-weight-gain-summary";
 
 export type LitterGrowthPoint = AnimalWeightMeasurement;
+
+export type LitterGrowthSeriesColorSource = "collar" | "fallback";
 
 export type LitterGrowthSeries = {
   internalId: string;
   publicLabel: string;
   publicDetails: string;
   seriesIndex: number;
+  seriesColor: string;
+  seriesColorSource: LitterGrowthSeriesColorSource;
+  collarColorLabel: string | null;
   points: LitterGrowthPoint[];
   latestMeasurement: LitterGrowthPoint;
 };
@@ -31,6 +43,9 @@ export type LitterRelativeGrowthSeries = {
   publicLabel: string;
   publicDetails: string;
   seriesIndex: number;
+  seriesColor: string;
+  seriesColorSource: LitterGrowthSeriesColorSource;
+  collarColorLabel: string | null;
   birthMeasurement: LitterGrowthPoint;
   points: LitterRelativeGrowthPoint[];
   latestPoint: LitterRelativeGrowthPoint;
@@ -41,12 +56,17 @@ export type LitterGrowthIndicator = {
   publicLabel: string;
   publicDetails: string;
   seriesIndex: number;
+  seriesColor: string;
+  collarColor: string | null;
+  collarColorLabel: string | null;
   measurementCount: number;
   latestMeasurement: LitterGrowthPoint | null;
   previousMeasurement: LitterGrowthPoint | null;
   differenceGrams: number | null;
   intervalMilliseconds: number | null;
   relativeProgressPercentage: number | null;
+  gainSummary: AnimalWeightGainSummary | null;
+  gainBelowPriorThreeDayAverage: boolean;
 };
 
 export type LitterGrowthModel = {
@@ -63,6 +83,48 @@ export type GrowthChartDomain = {
   timestampTicks: number[];
   gramTicks: number[];
 };
+
+const AGE_TICK_TARGET = 6;
+const AGE_TICK_STEPS = [1, 2, 3, 5, 7, 10, 14, 20, 30, 60, 90, 180, 365] as const;
+
+function nextAgeTickStep(step: number) {
+  for (const candidate of AGE_TICK_STEPS) {
+    if (candidate > step) return candidate;
+  }
+  return Math.ceil((step + 1) / 10) * 10;
+}
+
+export function buildAgeDayTicks(
+  domain: Pick<GrowthChartDomain, "minTimestamp" | "maxTimestamp">,
+  originTimestamp: number,
+) {
+  const spanDays = Math.max(
+    0,
+    Math.ceil((domain.maxTimestamp - domain.minTimestamp) / DAY_MS),
+  );
+  if (spanDays === 0) return [];
+
+  let step = 0;
+  while (spanDays / nextAgeTickStep(step) > AGE_TICK_TARGET) {
+    step = nextAgeTickStep(step);
+  }
+  const tickStep = nextAgeTickStep(step);
+
+  // Graduations alignées sur la naissance (âge en jours entiers).
+  const ticks: number[] = [];
+  let ageDay = Math.ceil((domain.minTimestamp - originTimestamp - DAY_MS / 2) / DAY_MS);
+  while (ageDay * DAY_MS <= domain.maxTimestamp - originTimestamp + DAY_MS / 2) {
+    if (ageDay >= 0 && ageDay % tickStep === 0) {
+      ticks.push(originTimestamp + ageDay * DAY_MS);
+    }
+    ageDay += 1;
+  }
+
+  return ticks.length > 1
+    ? ticks
+    : [originTimestamp + Math.round(((domain.minTimestamp - originTimestamp) + (domain.maxTimestamp - originTimestamp)) / 2 / DAY_MS) * DAY_MS]
+        .filter((tick) => tick >= domain.minTimestamp && tick <= domain.maxTimestamp);
+}
 
 export type GrowthChartPlotArea = {
   left: number;
@@ -140,6 +202,26 @@ export function buildLitterGrowthModel(
     points.sort(compareGrowthPoints);
   }
 
+  const sexOrdinals = buildSexOrdinals(animals);
+  const gainSummaries = new Map<string, AnimalWeightGainSummary>();
+  for (const animal of animals) {
+    const summary = summarizeAnimalWeightGain(
+      (measurementsByAnimal.get(animal.id) ?? []).map((point) => ({
+        id: point.internalId,
+        revisionNo: 0,
+        animalId: animal.id,
+        sessionId: null,
+        type: point.type,
+        grams: point.grams,
+        measuredAt: point.measuredAt,
+        note: null,
+        createdBy: "",
+        createdAt: point.measuredAt,
+      })),
+      animal.birthWeightGrams,
+    );
+    if (summary) gainSummaries.set(animal.id, summary);
+  }
   const indicators: LitterGrowthIndicator[] = [];
   const series: LitterGrowthSeries[] = [];
   const relativeSeries: LitterRelativeGrowthSeries[] = [];
@@ -152,15 +234,37 @@ export function buildLitterGrowthModel(
     );
     const latestRelativePoint =
       relativeResult.status === "available" ? relativeResult.latestPoint : null;
+    const collarColorLabel =
+      animal.currentCollarColor || animal.initialCollarColor || null;
+    const collarColorCss = collarColorLabel
+      ? collarSeriesColor(collarColorLabel, seriesIndex).color
+      : null;
     const publicIdentity = {
       internalId: animal.id,
-      publicLabel: litterWeightAnimalName(animal),
+      publicLabel: [
+        litterWeightAnimalName(animal, sexOrdinals.get(animal.id)),
+        collarColorLabel ? `collier ${collarColorLabel}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
       publicDetails: litterWeightAnimalDetails(animal),
       seriesIndex,
+    };
+    const seriesStyle = collarSeriesColor(
+      litterWeightAnimalCollarColor(animal),
+      seriesIndex,
+    );
+    const colorIdentity = {
+      seriesColor: seriesStyle.color,
+      seriesColorSource: seriesStyle.source,
+      collarColorLabel,
     };
 
     indicators.push({
       ...publicIdentity,
+      ...colorIdentity,
+      collarColor: collarColorCss,
+      collarColorLabel,
       measurementCount: points.length,
       latestMeasurement,
       previousMeasurement,
@@ -175,11 +279,15 @@ export function buildLitterGrowthModel(
       relativeProgressPercentage: latestRelativePoint
         ? latestRelativePoint.index - 100
         : null,
+      gainSummary: gainSummaries.get(animal.id) ?? null,
+      gainBelowPriorThreeDayAverage:
+        gainSummaries.get(animal.id)?.gainBelowPriorThreeDayAverage ?? false,
     });
 
     if (!latestMeasurement) return;
     series.push({
       ...publicIdentity,
+      ...colorIdentity,
       points,
       latestMeasurement,
     });
@@ -187,6 +295,7 @@ export function buildLitterGrowthModel(
     if (relativeResult.status === "available") {
       relativeSeries.push({
         ...publicIdentity,
+        ...colorIdentity,
         birthMeasurement: relativeResult.birthMeasurement,
         points: relativeResult.points,
         latestPoint: relativeResult.latestPoint,

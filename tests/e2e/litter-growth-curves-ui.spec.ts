@@ -395,7 +395,7 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
     const aubeIndicator = indicators.getByRole("listitem").filter({ hasText: "Aube" });
     const singleIndicator = indicators
       .getByRole("listitem")
-      .filter({ hasText: "Chiot n° 3" });
+      .filter({ hasText: "Mâle 2" });
     const emptyIndicator = indicators
       .getByRole("listitem")
       .filter({ hasText: "Sans mesure" });
@@ -443,9 +443,9 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
       .getByRole("listitem")
       .allTextContents();
     expect(legendLabels.map((label) => label.trim())).toEqual([
-      "Aube",
-      "Boréal officiel",
-      "Chiot n° 3",
+      "Boréal officiel · collier Bleu",
+      "Mâle 2 · collier Vert",
+      "Aube · collier Rose",
     ]);
     await expect(entireView).toContainText("1 animal sans mesure réelle non tracé.");
     expect(await chart.locator("title").allTextContents()).not.toContainEqual(
@@ -471,16 +471,23 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
       .getByRole("listitem")
       .allTextContents();
     expect(relativeLegendLabels.map((label) => label.trim())).toEqual([
-      "Aube",
-      "Boréal officiel",
+      "Boréal officiel · collier Bleu",
+      "Aube · collier Rose",
     ]);
     await expect(relativeView).toContainText(
       "2 animaux sans mesure réelle de naissance exploitable non tracés.",
     );
-    const relativeTitles = await relativeChart.locator("title").allTextContents();
-    expect(relativeTitles).toContainEqual(expect.stringContaining("Indice 100"));
-    expect(relativeTitles).toContainEqual(expect.stringContaining("Indice 126,5"));
-    expect(relativeTitles).not.toContainEqual(expect.stringContaining("Chiot n° 3"));
+    const relativeHoverTargets = relativeChart.locator(
+      '[data-growth-hover-target="true"]',
+    );
+    await expect(relativeHoverTargets).toHaveCount(4);
+    await relativeHoverTargets.first().hover();
+    await expect(relativeChart.locator('[data-growth-tooltip="true"]')).toContainText(
+      "Boréal officiel · collier Bleu",
+    );
+    await expect(relativeChart.locator('[data-growth-tooltip="true"]')).toContainText(
+      "Indice 100",
+    );
     const relativeAttributes = await relativeView.locator("*").evaluateAll((elements) =>
       elements.flatMap((element) =>
         Array.from(element.attributes).map(
@@ -497,9 +504,9 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
     const selector = individualView.getByLabel("Animal");
     await expect(selector).toBeVisible();
     expect(await selector.locator("option").allTextContents()).toEqual([
-      "Aube",
-      "Boréal officiel",
-      "Chiot n° 3",
+      "Boréal officiel · collier Bleu",
+      "Mâle 2 · collier Vert",
+      "Aube · collier Rose",
     ]);
     const optionValues = await selector.locator("option").evaluateAll((options) =>
       options.map((option) => (option as HTMLOptionElement).value),
@@ -509,8 +516,10 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
     await expect(individualView).toContainText("Aube");
     await expect(individualView).toContainText("2 mesures réelles");
 
-    await selector.selectOption("2");
-    await expect(individualView.getByRole("heading", { name: "Chiot n° 3" })).toBeVisible();
+    await selector.selectOption("1");
+    await expect(
+      individualView.getByRole("heading", { name: "Mâle 2 · collier Vert" }),
+    ).toBeVisible();
     await expect(individualView).toContainText("1 mesure réelle");
     const expectedLastDate = await page.evaluate(() =>
       new Intl.DateTimeFormat("fr-FR", {
@@ -521,12 +530,22 @@ test("courbes absolues et relatives, viewer, erreur et mobile", async ({ page })
     await expect(individualView).toContainText(
       `Dernière mesure : 460 g · ${expectedLastDate}`,
     );
-    await expect(individualView.getByRole("img").locator("rect")).toHaveCount(1);
+    await expect(individualView.getByRole("img").locator('[data-measurement-type="routine"]')).toHaveCount(1);
     await expect(individualView.getByRole("img").locator("polyline")).toHaveCount(0);
+    const individualHoverTarget = individualView
+      .getByRole("img")
+      .locator('[data-growth-hover-target="true"]');
+    await individualHoverTarget.hover();
+    await expect(individualView.getByRole("img").locator('[data-growth-tooltip="true"]')).toContainText(
+      "Mâle 2 · collier Vert",
+    );
+    await expect(individualView.getByRole("img").locator('[data-growth-tooltip="true"]')).toContainText(
+      "460 g",
+    );
     await expect(individualView).toContainText(
       "Une seconde mesure permettra de tracer l’évolution.",
     );
-    await expect(individualView).toContainText("naissance (cercle) · routine (carré)");
+    await expect(individualView).toContainText("naissance (anneau) · routine (point plein)");
     expect(
       await individualView.getByRole("img").locator("title").allTextContents(),
     ).toContainEqual(expect.stringContaining("Pesée de routine"));

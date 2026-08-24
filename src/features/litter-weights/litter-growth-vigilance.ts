@@ -127,6 +127,9 @@ function compareAnimals(
   left: LitterWeightHistoryAnimal,
   right: LitterWeightHistoryAnimal,
 ) {
+  const sexDifference = (right.sex ?? "").localeCompare(left.sex ?? "", "fr");
+  if (sexDifference !== 0) return sexDifference;
+
   const leftOrder = left.birthOrder ?? Number.POSITIVE_INFINITY;
   const rightOrder = right.birthOrder ?? Number.POSITIVE_INFINITY;
   if (leftOrder !== rightOrder) return leftOrder - rightOrder;
