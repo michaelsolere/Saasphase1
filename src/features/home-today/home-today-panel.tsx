@@ -362,9 +362,11 @@ function TabPill({
 export function HomeTodayPanel({
   sections,
   quickActions = [],
+  activeTab = "adopter",
 }: {
   sections: Sections;
   quickActions?: LitterCareTodayQuickActions[];
+  activeTab?: "adopter" | "breeding";
 }) {
   const now = new Date();
   const todayDate =
@@ -404,13 +406,13 @@ export function HomeTodayPanel({
           href="/?tab=adopter"
           label="Parcours adoptant"
           count={tabs.adopterCount}
-          active={tabs.isEmpty || tabs.adopterCount > 0 || tabs.breedingCount === 0}
+          active={activeTab === "adopter"}
         />
         <TabPill
           href="/?tab=breeding"
           label="Élevage"
           count={tabs.breedingCount}
-          active={!tabs.isEmpty && tabs.adopterCount === 0 && tabs.breedingCount > 0}
+          active={activeTab === "breeding"}
         />
       </nav>
 
@@ -424,25 +426,29 @@ export function HomeTodayPanel({
         </section>
       ) : (
         <>
-          {/* Adopter journey is the default tab; breeding follows inline for
-              server-rendered simplicity (no client state needed). */}
-          {sections.adopter.failed
-            ? unavailableNote("La file parcours adoptant")
-            : renderGroupedSections(adopterSections, todayDate)}
-          {renderGroupedSections(breedingSections, todayDate, (section) =>
-            section.key === "litter_today" && !sections.breeding.failed ? (
-              <ul className="mt-3">
-                {renderLitterTodayRows({
-                  section,
-                  activeTasksByItemId,
-                  weighingsByItemId,
-                  quickActionsByTaskId,
-                  todayDate,
-                  canWrite: breedingQueue.canWrite,
-                })}
-              </ul>
-            ) : undefined,
-          )}
+          {/* Server-rendered tabs: only the active zone is rendered. The
+              adopter journey is the default tab. */}
+          {activeTab === "adopter" ? (
+            sections.adopter.failed
+              ? unavailableNote("La file parcours adoptant")
+              : renderGroupedSections(adopterSections, todayDate)
+          ) : null}
+          {activeTab === "breeding"
+            ? renderGroupedSections(breedingSections, todayDate, (section) =>
+                section.key === "litter_today" && !sections.breeding.failed ? (
+                  <ul className="mt-3">
+                    {renderLitterTodayRows({
+                      section,
+                      activeTasksByItemId,
+                      weighingsByItemId,
+                      quickActionsByTaskId,
+                      todayDate,
+                      canWrite: breedingQueue.canWrite,
+                    })}
+                  </ul>
+                ) : undefined,
+              )
+            : null}
           {!tabs.isEmpty && sections.breeding.failed
             ? unavailableNote("La file élevage")
             : null}

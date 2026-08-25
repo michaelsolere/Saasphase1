@@ -67,7 +67,13 @@ const quickLinks = [
   },
 ];
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
+  const activeTab = tab === "breeding" ? "breeding" : "adopter";
   const supabase = await createClient();
   const {
     data: { user },
@@ -169,7 +175,11 @@ export default async function Home() {
         </div>
       </header>
       <div className="pt-4">
-        <HomeTodayPanel sections={sections} quickActions={quickActions} />
+        <HomeTodayPanel
+          sections={sections}
+          quickActions={quickActions}
+          activeTab={activeTab}
+        />
       </div>
     </main>
   );
