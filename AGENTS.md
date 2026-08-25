@@ -2,6 +2,10 @@
 
 Ce projet est un SaaS de gestion d’élevage, d’abord personnel, puis potentiellement commercialisable.
 
+Le projet n’est plus cadré comme une « Phase 1 ». L’objectif est de faire évoluer la base existante vers un logiciel réellement fonctionnel, cohérent et bien pensé, sans simplifier excessivement les workflows ou l’architecture pour réduire l’effort de programmation.
+
+La réalisation reste incrémentale : concevoir les parcours dans leur ensemble, puis les livrer par lots bornés, utilisables et vérifiables. Une fonctionnalité avancée n’est ni interdite par principe ni ajoutée automatiquement ; elle doit répondre à un besoin réel et faire l’objet d’un cadrage proportionné.
+
 ## Stack cible
 
 - Next.js / React
@@ -47,12 +51,33 @@ Le workflow cible est :
 - Garder le modèle compatible chats plus tard.
 - Utiliser `species` sur les tables concernées.
 - Valeurs par défaut : `dog` et `Golden Retriever`.
-- Ne pas utiliser de lien tokenisé individualisé en Phase 1.
-- Prévoir les formulaires publics génériques.
+- Prévoir les formulaires publics génériques lorsque le premier contact ne justifie pas une invitation individualisée.
+- Les invitations individualisées sont autorisées lorsqu’elles améliorent réellement le parcours. Utiliser alors des jetons opaques, aléatoires, limités à une action, expirables et révocables ; ne pas exposer d’identifiant métier ou de donnée personnelle dans l’URL.
 - Prévoir les paiements avancés : arrhes, remboursement, avoir, report, retenue.
 - Prévoir les documents générés et les documents uploadés.
 - Prévoir les notes internes et documents liés au contact/candidature.
-- Ne pas coder Stripe, Clerk, synchronisation Google Agenda ou journal de mise-bas offline-first en Phase 1.
+- Stripe, Clerk, la synchronisation Google Agenda et le journal de mise-bas offline-first ne sont pas prioritaires par défaut. Les intégrer uniquement après validation du besoin, du workflow et du lot correspondant.
+
+## Doctrine produit
+
+- Ne pas simplifier au détriment du métier, de la traçabilité, de la sécurité ou de l’expérience utilisateur.
+- Ne pas surconcevoir sans usage concret : préférer un service externe adapté à la réimplémentation de ses fonctions spécialisées.
+- Distinguer l’état courant des événements historiques qui l’ont produit.
+- Ne pas confondre un signal technique avec une décision métier.
+- Toute mutation sensible ou exceptionnelle doit rester explicite, attribuée et historisée.
+- Concevoir complètement les cas nominaux, les erreurs, les reprises et les exceptions du lot traité.
+
+## Communications du parcours adoptant
+
+- Brevo est le canal automatisé d’envoi d’emails. Le SaaS conserve la logique métier, les contacts, les variables, les décisions et l’historique ; Brevo conserve les modèles HTML, effectue le transport et retourne les événements techniques.
+- Utiliser les paramètres transactionnels fournis par le SaaS plutôt que dupliquer la source de vérité métier dans les attributs et listes de contacts Brevo.
+- Distinguer les alertes internes, les emails Brevo et les contacts manuels externes.
+- Les envois collectifs sont déclenchés explicitement, les emails individuels sont relus et validés, et seuls les accusés de réception neutres peuvent être automatiques par défaut.
+- Les relances ordinaires peuvent être préautorisées ; vérifier leurs conditions juste avant l’envoi et suspendre toute automatisation en cas d’incident sensible.
+- Les événements de livraison, d’ouverture et de clic sont des signaux techniques. Une ouverture détectée ne prouve pas une lecture et ne déclenche aucune mutation métier.
+- Une réponse familiale structurée peut être révisée jusqu’à son échéance ou sa validation. Conserver chaque version et exiger une validation humaine avant d’appliquer une décision.
+- Un décès, une réduction de disponibilité ou toute autre situation sensible ouvre d’abord un incident interne. Aucun email sensible, changement de rang, report, remboursement ou retrait de place ne doit être déclenché silencieusement.
+- Présenter les communications, réponses, décisions, contacts manuels et événements techniques dans une chronologie unifiée. Les brouillons restent modifiables ; tout élément envoyé, reçu ou utilisé pour une décision est immuable ou rectifié par ajout d’une nouvelle trace.
 
 ## Méthode de travail
 

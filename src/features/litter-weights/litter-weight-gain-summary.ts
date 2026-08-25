@@ -104,6 +104,7 @@ function averagePriorThreeGains(
 export function summarizeAnimalWeightGain(
   points: readonly LitterWeightHistoryMeasurement[],
   birthGrams: number | null,
+  belowTrendDeviationPercent = 0,
 ): AnimalWeightGainSummary | null {
   const sorted = [...points].sort((left, right) => {
     const difference = Date.parse(left.measuredAt) - Date.parse(right.measuredAt);
@@ -144,6 +145,10 @@ export function summarizeAnimalWeightGain(
     gainBelowPriorThreeDayAverage:
       latestInterval !== null &&
       priorThreeGainAveragePerDayGrams !== null &&
-      latestInterval.gainPerDayGrams < priorThreeGainAveragePerDayGrams,
+      (belowTrendDeviationPercent > 0
+        ? latestInterval.gainPerDayGrams <=
+          priorThreeGainAveragePerDayGrams *
+            (1 - belowTrendDeviationPercent / 100)
+        : latestInterval.gainPerDayGrams < priorThreeGainAveragePerDayGrams),
   };
 }

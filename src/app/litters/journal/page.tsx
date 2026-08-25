@@ -48,6 +48,11 @@ import {
   LITTER_JOURNAL_TIME_ZONE,
 } from "@/features/litter-journal/date";
 import type { LitterJournalSelection } from "@/features/litter-journal/types";
+import {
+  buildLitterJournalPath,
+  normalizeLitterJournalTab,
+  type LitterJournalTab,
+} from "@/features/litter-journal/journal-tabs-model";
 import { loadWhelpingWorkspace } from "@/features/whelping/whelping-workspace";
 import { createClient } from "@/lib/supabase/server";
 import { listLitterWeightAdjustmentHistory, listLitterWeightHistory } from "@/features/litter-weights/litter-weights";
@@ -123,9 +128,10 @@ function ErrorMessage() {
 export default async function LitterJournalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ litter?: string; weightEntry?: string }>;
+  searchParams: Promise<{ litter?: string; weightEntry?: string; tab?: string }>;
 }) {
-  const { litter: requestedLitterId, weightEntry } = await searchParams;
+  const { litter: requestedLitterId, weightEntry, tab } = await searchParams;
+  const activeTab = normalizeLitterJournalTab(tab);
   const supabase = await createClient();
   const {
     data: { user },
@@ -666,6 +672,16 @@ export default async function LitterJournalPage({
             litterWeightSchedulePolicy={
               litterWeightHistoryLoaded?.weighingSchedulePolicy ?? null
             }
+            litterWeightGainAlertPolicy={
+              litterWeightHistoryLoaded?.gainAlertPolicy ?? {
+                version: 1,
+                lowestGainCount: 1,
+                belowTrendDeviationPercent: 0,
+              }
+            }
+            litterWeightGainAlertPolicyUnavailable={
+              litterWeightHistoryLoaded?.gainAlertPolicyUnavailable ?? true
+            }
             litterWeightTodayProjections={litterWeightTodayProjections}
             litterWeightRole={litterWeightHistoryLoaded?.role ?? null}
             litterWeightAction={litterWeightAction}
@@ -675,6 +691,10 @@ export default async function LitterJournalPage({
             litterWeightAdjustmentHistory={litterWeightAdjustmentHistoryLoaded?.entries ?? []}
             litterWeightAdjustmentHistoryLoadError={litterWeightAdjustmentHistoryLoaded === null}
             litterWeightsLoadError={litterWeightHistoryLoaded === null}
+            activeTab={activeTab}
+            tabPath={(nextTab: LitterJournalTab) =>
+              buildLitterJournalPath(journal?.selectedLitter?.id ?? null, nextTab)
+            }
           />
         ) : (
           <EmptyLitterJournal />

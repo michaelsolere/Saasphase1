@@ -37,3 +37,6 @@ supabase/.branches
 supabase/.temp
 .supabase-e2e
 .supabase-e2e-trial
+
+# Hermes agent workspace
+.hermes/

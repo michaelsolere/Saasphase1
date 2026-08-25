@@ -10,6 +10,11 @@ import {
   buildLitterWeightLatestSessionComparison,
   type LitterWeightLatestSessionComparison,
 } from "./litter-weighing-session-comparison";
+import {
+  DEFAULT_LITTER_GAIN_ALERT_POLICY,
+  parseLitterGainAlertPolicy,
+  type LitterGainAlertPolicyV1,
+} from "./litter-gain-alert-policy";
 import { buildLitterWeighingSessionStatistics } from "./litter-weighing-session-statistics";
 import {
   buildLitterWeighingScheduleFromHistory,
@@ -24,6 +29,8 @@ import type {
 } from "./litter-weighing-schedule-model";
 
 type Supabase = SupabaseClient<Database>;
+export type { LitterGainAlertPolicyV1 } from "./litter-gain-alert-policy";
+
 export type LitterWeightOrganizationRole =
   | "owner"
   | "admin"
@@ -252,6 +259,8 @@ export type ListLitterWeightHistoryResult =
       latestSessionComparison: LitterWeightLatestSessionComparison;
       weighingSchedule: LitterWeighingScheduleResult | null;
       weighingSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
+      gainAlertPolicy: LitterGainAlertPolicyV1;
+      gainAlertPolicyUnavailable: boolean;
     }
   | ErrorResult;
 
@@ -957,6 +966,36 @@ export async function listLitterWeightHistoryCore(
   const authorization = await authorizeLitterRead(input.litterId, supabase);
   if ("outcome" in authorization) return authorization;
 
+  const gainAlertPolicySettings = await supabase
+    .from("organization_settings")
+    .select("litter_gain_alert_policy")
+    .eq("organization_id", authorization.organizationId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  let gainAlertPolicy = DEFAULT_LITTER_GAIN_ALERT_POLICY;
+  let gainAlertPolicyUnavailable = false;
+  if (gainAlertPolicySettings.error) {
+    gainAlertPolicyUnavailable = true;
+    console.error(
+      "litter_gain_alert_policy_read_failed",
+      gainAlertPolicySettings.error,
+    );
+  } else if (gainAlertPolicySettings.data?.litter_gain_alert_policy !== null &&
+    gainAlertPolicySettings.data?.litter_gain_alert_policy !== undefined) {
+    const parsedGainAlertPolicy = parseLitterGainAlertPolicy(
+      gainAlertPolicySettings.data.litter_gain_alert_policy,
+    );
+    if (parsedGainAlertPolicy.ok) {
+      gainAlertPolicy = parsedGainAlertPolicy.policy;
+    } else {
+      gainAlertPolicyUnavailable = true;
+      console.error(
+        "litter_gain_alert_policy_invalid",
+        parsedGainAlertPolicy.error,
+      );
+    }
+  }
+
   const animals = await supabase
     .from("animals")
     .select(
@@ -1184,6 +1223,8 @@ export async function listLitterWeightHistoryCore(
     latestSessionComparison,
     weighingSchedule,
     weighingSchedulePolicy,
+    gainAlertPolicy,
+    gainAlertPolicyUnavailable,
     animals: animalRows.map((animal) => ({
       id: animal.id,
       ownershipStatus: animal.ownership_status,

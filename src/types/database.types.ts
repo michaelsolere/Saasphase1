@@ -4638,6 +4638,7 @@ export type Database = {
           dog_ultrasound_min_day: number
           dog_xray_day: number
           id: string
+          litter_gain_alert_policy: Json | null
           litter_weighing_schedule_policy: Json | null
           maternal_temperature_drop_policy: Json | null
           organization_id: string
@@ -4668,6 +4669,7 @@ export type Database = {
           dog_ultrasound_min_day?: number
           dog_xray_day?: number
           id?: string
+          litter_gain_alert_policy?: Json | null
           litter_weighing_schedule_policy?: Json | null
           maternal_temperature_drop_policy?: Json | null
           organization_id: string
@@ -4698,6 +4700,7 @@ export type Database = {
           dog_ultrasound_min_day?: number
           dog_xray_day?: number
           id?: string
+          litter_gain_alert_policy?: Json | null
           litter_weighing_schedule_policy?: Json | null
           maternal_temperature_drop_policy?: Json | null
           organization_id?: string

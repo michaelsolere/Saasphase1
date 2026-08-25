@@ -241,7 +241,7 @@ test("ne modifie ni animaux, ni mesures, ni brouillons sources", () => {
 
 test("construit et nettoie weightEntry en préservant paramètres et hash", () => {
   expect(buildLitterWeightEntryHref(ids.animals[0])).toBe(
-    `/litters/journal?litter=${ids.animals[0]}&weightEntry=1#litter-weights`,
+    `/litters/journal?litter=${ids.animals[0]}&tab=weights&weightEntry=1#litter-weights`,
   );
   expect(
     removeWeightEntryFromUrl(

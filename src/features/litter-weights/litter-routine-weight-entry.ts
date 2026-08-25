@@ -111,6 +111,7 @@ export function getLitterRoutineWeightEntryProgress(
 export function buildLitterWeightEntryHref(litterId: string) {
   const query = new URLSearchParams({
     litter: litterId,
+    tab: "weights",
     weightEntry: "1",
   });
   return `/litters/journal?${query.toString()}#litter-weights`;

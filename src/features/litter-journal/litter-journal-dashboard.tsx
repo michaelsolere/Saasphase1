@@ -7,6 +7,12 @@ import {
   getSpeciesLabel,
 } from "@/features/litters/formatters";
 
+import type { LitterJournalTab } from "./journal-tabs-model";
+import { LITTER_JOURNAL_TABS, LITTER_JOURNAL_TAB_LABELS } from "./journal-tabs-model";
+import { buildTodayActionQueue, type TodayQueueTaskInput } from "./today-action-queue-model";
+import { buildUnifiedHistory, type UnifiedHistoryEntry } from "./unified-history-model";
+import { buildLitterUnifiedHistoryInput } from "./litter-unified-history-projection";
+
 import { LitterJournalSelector } from "./litter-journal-selector";
 import {
   LitterCareTaskGenerationPanel,
@@ -23,7 +29,10 @@ import type {
 } from "./litter-care-tasks-actions";
 import type { LitterCareTaskSummary } from "./litter-care-tasks";
 import { LitterCareTodayPanel } from "./litter-care-today-panel";
-import type { LitterCareTodayQuickActions } from "./litter-care-today-quick-actions";
+import {
+  LitterCareTodayQuickActions,
+  type LitterCareTodayQuickActions as LitterCareTodayQuickActionsType,
+} from "./litter-care-today-quick-actions";
 import { LitterPlanTimelinePanel } from "./litter-plan-timeline-panel";
 import type {
   LitterPlanTimelineMetadataTarget,
@@ -64,6 +73,7 @@ import type {
   LitterWeightAdjustmentHistoryEntry,
   LitterWeightOrganizationRole,
   LitterWeighingSchedulePolicyMetadata,
+  LitterGainAlertPolicyV1,
 } from "@/features/litter-weights/litter-weights-core";
 import type { LitterWeightLatestSessionComparison } from "@/features/litter-weights/litter-weighing-session-comparison";
 import type { LitterWeighingScheduleResult } from "@/features/litter-weights/litter-weighing-schedule-model";
@@ -263,6 +273,8 @@ export function LitterJournalDashboard({
   litterWeightLatestSessionComparison,
   litterWeightSchedule,
   litterWeightSchedulePolicy,
+  litterWeightGainAlertPolicy,
+  litterWeightGainAlertPolicyUnavailable,
   litterWeightTodayProjections,
   litterWeightRole,
   litterWeightAction,
@@ -272,6 +284,8 @@ export function LitterJournalDashboard({
   litterWeightAdjustmentHistory,
   litterWeightAdjustmentHistoryLoadError,
   litterWeightsLoadError,
+  activeTab,
+  tabPath,
 }: {
   litters: LitterJournalListItem[];
   litter: LitterJournalListItem;
@@ -380,6 +394,8 @@ export function LitterJournalDashboard({
   litterWeightLatestSessionComparison: LitterWeightLatestSessionComparison;
   litterWeightSchedule: LitterWeighingScheduleResult | null;
   litterWeightSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
+  litterWeightGainAlertPolicy: LitterGainAlertPolicyV1;
+  litterWeightGainAlertPolicyUnavailable: boolean;
   litterWeightTodayProjections: readonly LitterWeighingTodayProjection[];
   litterWeightRole: LitterWeightOrganizationRole | null;
   litterWeightAction: ((
@@ -392,6 +408,8 @@ export function LitterJournalDashboard({
   litterWeightAdjustmentHistory: LitterWeightAdjustmentHistoryEntry[];
   litterWeightAdjustmentHistoryLoadError: boolean;
   litterWeightsLoadError: boolean;
+  activeTab: LitterJournalTab;
+  tabPath: (nextTab: LitterJournalTab) => string;
 }) {
   const contextualAge = getLitterJournalContextualAge(litter, details);
   const birthDate = litter.actual_birth_date ?? litter.expected_birth_date;
@@ -412,6 +430,186 @@ export function LitterJournalDashboard({
     }));
   const maternalObservationFormInstanceKey =
     `${publicMobileLitterIndex}:${publicMaternalObservations.length}`;
+
+  const todayQueue = buildTodayActionQueue(
+    litterCareTasks.map((task): TodayQueueTaskInput => ({
+      id: task.id,
+      title: task.title,
+      detail: task.description ?? null,
+      itemKind: task.itemKind === "recurring_task" ? "task" : task.itemKind,
+      status: task.status === "done" ? "resolved" : task.status,
+      scheduledFor: task.plannedFor ?? task.suggestedFor ?? task.retainedStartsOn ?? null,
+      scheduledEndsOn: task.suggestedEndsOn ?? task.retainedEndsOn ?? null,
+      suggestedFor: task.suggestedFor ?? null,
+    })),
+    litterCareTodayDate,
+  );
+  const litterCareTaskById = new Map(litterCareTasks.map((task) => [task.id, task]));
+  const resolutionActionByTaskId = new Map(
+    litterCareTodayQuickActions.map((action) => [action.taskId, action]),
+  );
+  const resolutionScheduleActionsByTaskId = new Map(
+    litterCareTodayScheduleActions.map((binding) => [binding.taskId, binding]),
+  );
+
+  const tabAnchors: Record<LitterJournalTab, string> = {
+    today: "litter-care-today",
+    planning: "litter-planning",
+    birth: "whelping",
+    weights: "litter-weights",
+    mother: "maternal-observations",
+    history: "litter-journal-history",
+  };
+
+  function renderTabPanel() {
+    switch (activeTab) {
+      case "today":
+        return (
+          <>
+            <TodayActionQueueCard
+              queue={todayQueue}
+              litterCareTaskById={litterCareTaskById}
+              resolutionActionByTaskId={resolutionActionByTaskId}
+              resolutionScheduleActionsByTaskId={resolutionScheduleActionsByTaskId}
+              tabPath={tabPath}
+            />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <SummaryCard litter={litter} />
+              <QuickLinks litter={litter} />
+            </div>
+            <LitterCareTodayPanel
+              tasks={litterCareTasks}
+              quickActions={litterCareTodayQuickActions}
+              scheduleActions={litterCareTodayScheduleActions}
+              todayDate={litterCareTodayDate}
+              todayLocalTime={litterCareTodayLocalTime}
+              weighingProjections={litterWeightTodayProjections}
+              canWriteWeighings={litterWeightAction !== null}
+              weighingUnavailable={litterWeightsLoadError}
+              unavailable={litterCareTasksLoadError}
+            />
+          </>
+        );
+      case "planning":
+        return (
+          <>
+            <LitterPlanTimelinePanel
+              timeline={litterPlanTimeline}
+              unavailable={litterPlanLoadError}
+              movePointActions={litterPlanTimelineMovePointActions}
+              moveWindowActions={litterPlanTimelineMoveWindowActions}
+              scheduleTargets={litterPlanTimelineScheduleTargets}
+              resolutionTargets={litterPlanTimelineResolutionTargets}
+              metadataTargets={litterPlanTimelineMetadataTargets}
+              programmerAction={litterPlanAdHocProgrammerAction}
+              programmerInstanceKey={litterPlanAdHocProgrammerInstanceKey}
+              programmerBusinessDate={litterPlanAdHocProgrammerBusinessDate}
+            />
+            <LitterCareTasksPanel
+              tasks={litterCareTasks}
+              resolutionActions={litterCareTaskResolutionActions}
+              scheduleActions={litterCareTaskScheduleActions}
+              loadError={litterCareTasksLoadError}
+            />
+            <LitterPlanningModelApplyPanel
+              panel={litterPlanningModelApplicationPanel}
+              actionsByPublicKey={litterPlanningModelApplyActions}
+              loadError={litterPlanningModelApplicationLoadError}
+            />
+            <LitterCareTaskGenerationPanel
+              entries={litterCareTaskGenerationEntries}
+              role={litterCareTaskGenerationRole}
+              action={litterCareTaskGenerationAction}
+              loadError={litterCareTaskGenerationLoadError}
+            />
+            <LitterPlanSeriesPanel
+              series={litterPlanSeries}
+              role={litterPlanSeriesRole}
+              actions={litterPlanSeriesActions}
+              loadError={litterPlanSeriesLoadError}
+            />
+          </>
+        );
+      case "birth":
+        return (
+          <WhelpingPanel
+            displayMode="journal"
+            session={whelpingSession}
+            events={whelpingEvents}
+            births={whelpingBirths}
+            role={whelpingRole}
+            loadError={whelpingLoadError}
+            openAction={openWhelpingAction}
+            eventAction={recordWhelpingEventAction}
+            expressMaleBirthAction={null}
+            expressFemaleBirthAction={null}
+            birthAction={recordWhelpingBirthAction}
+            birthWeightActions={recordWhelpingBirthWeightActions}
+            quickCompletionActions={whelpingQuickCompletionActions}
+            birthAdjustmentActions={whelpingBirthAdjustmentActions}
+            adjustmentHistory={whelpingBirthAdjustmentHistory}
+            adjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoadError}
+            closeAction={closeWhelpingSessionAction}
+            reopenAction={reopenWhelpingSessionAction}
+          />
+        );
+      case "weights":
+        return (
+          <LitterWeightPanel
+            litterId={litter.id}
+            animals={litterWeightAnimals}
+            sessions={litterWeightSessions}
+            measurements={litterWeightMeasurements}
+            latestSessionComparison={litterWeightLatestSessionComparison}
+            weighingSchedule={litterWeightSchedule}
+            weighingSchedulePolicy={litterWeightSchedulePolicy}
+            gainAlertPolicy={litterWeightGainAlertPolicy}
+            gainAlertPolicyUnavailable={litterWeightGainAlertPolicyUnavailable}
+            role={litterWeightRole}
+            action={litterWeightAction}
+            initialWeightEntryOpen={initialWeightEntryOpen}
+            measurementAdjustmentActions={litterWeightMeasurementAdjustmentActions}
+            sessionCancellationActions={litterWeightSessionCancellationActions}
+            adjustmentHistory={litterWeightAdjustmentHistory}
+            adjustmentHistoryLoadError={litterWeightAdjustmentHistoryLoadError}
+            loadError={litterWeightsLoadError}
+          />
+        );
+      case "mother":
+        return (
+          <>
+            <MaternalObservationsPanel
+              observations={publicMaternalObservations}
+              role={maternalObservationRole}
+              action={maternalObservationAction}
+              formInstanceKey={maternalObservationFormInstanceKey}
+              loadError={maternalObservationsLoadError}
+              temperatureDropPolicy={maternalTemperatureDropPolicy}
+              temperatureDropPolicyUnavailable={maternalTemperatureDropPolicyUnavailable}
+              taskLinksUnavailable={maternalObservationTaskLinksUnavailable}
+            />
+            <ContextCard litter={litter} details={details} />
+          </>
+        );
+      case "history": {
+        const unifiedHistory = buildUnifiedHistory(
+          buildLitterUnifiedHistoryInput({
+            weightSessions: litterWeightSessions,
+            maternalObservations: maternalObservations,
+            careTasks: litterCareTasks,
+            whelpingEvents: whelpingEvents,
+            whelpingBirths: whelpingBirths,
+          }),
+        );
+        return (
+          <UnifiedHistoryCard
+            entries={unifiedHistory}
+            loadError={litterWeightsLoadError && litterCareTasksLoadError}
+          />
+        );
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -479,108 +677,112 @@ export function LitterJournalDashboard({
             </dd>
           </div>
         </dl>
+
+        <nav
+          aria-label="Sections du journal"
+          className="-mx-5 mt-5 flex gap-1 overflow-x-auto border-b px-5 sm:-mx-6 sm:px-6"
+        >
+          {LITTER_JOURNAL_TABS.map((tab) => {
+            const selected = activeTab === tab;
+            return (
+              <Link
+                key={tab}
+                href={tabPath(tab)}
+                aria-current={selected ? "page" : undefined}
+                className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-3 text-sm font-semibold transition ${
+                  selected
+                    ? "border-accent text-accent"
+                    : "border-transparent text-muted hover:text-foreground"
+                }`}
+              >
+                {LITTER_JOURNAL_TAB_LABELS[tab]}
+              </Link>
+            );
+          })}
+        </nav>
       </section>
 
-      <LitterCareTodayPanel
-        tasks={litterCareTasks}
-        quickActions={litterCareTodayQuickActions}
-        scheduleActions={litterCareTodayScheduleActions}
-        todayDate={litterCareTodayDate}
-        todayLocalTime={litterCareTodayLocalTime}
-        weighingProjections={litterWeightTodayProjections}
-        canWriteWeighings={litterWeightAction !== null}
-        weighingUnavailable={litterWeightsLoadError}
-        unavailable={litterCareTasksLoadError}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ContextCard litter={litter} details={details} />
-        <SummaryCard litter={litter} />
+      <div aria-label={`Contenu de l’onglet ${LITTER_JOURNAL_TAB_LABELS[activeTab]}`}>
+        {renderTabPanel()}
       </div>
-      <LitterPlanningModelApplyPanel
-        panel={litterPlanningModelApplicationPanel}
-        actionsByPublicKey={litterPlanningModelApplyActions}
-        loadError={litterPlanningModelApplicationLoadError}
-      />
-      <LitterPlanTimelinePanel
-        timeline={litterPlanTimeline}
-        unavailable={litterPlanLoadError}
-        movePointActions={litterPlanTimelineMovePointActions}
-        moveWindowActions={litterPlanTimelineMoveWindowActions}
-        scheduleTargets={litterPlanTimelineScheduleTargets}
-        resolutionTargets={litterPlanTimelineResolutionTargets}
-        metadataTargets={litterPlanTimelineMetadataTargets}
-        programmerAction={litterPlanAdHocProgrammerAction}
-        programmerInstanceKey={litterPlanAdHocProgrammerInstanceKey}
-        programmerBusinessDate={litterPlanAdHocProgrammerBusinessDate}
-      />
-      <WhelpingPanel
-        displayMode="journal"
-        session={whelpingSession}
-        events={whelpingEvents}
-        births={whelpingBirths}
-        role={whelpingRole}
-        loadError={whelpingLoadError}
-        openAction={openWhelpingAction}
-        eventAction={recordWhelpingEventAction}
-        expressMaleBirthAction={null}
-        expressFemaleBirthAction={null}
-        birthAction={recordWhelpingBirthAction}
-        birthWeightActions={recordWhelpingBirthWeightActions}
-        quickCompletionActions={whelpingQuickCompletionActions}
-        birthAdjustmentActions={whelpingBirthAdjustmentActions}
-        adjustmentHistory={whelpingBirthAdjustmentHistory}
-        adjustmentHistoryLoadError={whelpingBirthAdjustmentHistoryLoadError}
-        closeAction={closeWhelpingSessionAction}
-        reopenAction={reopenWhelpingSessionAction}
-      />
-      <LitterWeightPanel
-        litterId={litter.id}
-        animals={litterWeightAnimals}
-        sessions={litterWeightSessions}
-        measurements={litterWeightMeasurements}
-        latestSessionComparison={litterWeightLatestSessionComparison}
-        weighingSchedule={litterWeightSchedule}
-        weighingSchedulePolicy={litterWeightSchedulePolicy}
-        role={litterWeightRole}
-        action={litterWeightAction}
-        initialWeightEntryOpen={initialWeightEntryOpen}
-        measurementAdjustmentActions={litterWeightMeasurementAdjustmentActions}
-        sessionCancellationActions={litterWeightSessionCancellationActions}
-        adjustmentHistory={litterWeightAdjustmentHistory}
-        adjustmentHistoryLoadError={litterWeightAdjustmentHistoryLoadError}
-        loadError={litterWeightsLoadError}
-      />
-      <MaternalObservationsPanel
-        observations={publicMaternalObservations}
-        role={maternalObservationRole}
-        action={maternalObservationAction}
-        formInstanceKey={maternalObservationFormInstanceKey}
-        loadError={maternalObservationsLoadError}
-        temperatureDropPolicy={maternalTemperatureDropPolicy}
-        temperatureDropPolicyUnavailable={maternalTemperatureDropPolicyUnavailable}
-        taskLinksUnavailable={maternalObservationTaskLinksUnavailable}
-      />
-      <LitterCareTaskGenerationPanel
-        entries={litterCareTaskGenerationEntries}
-        role={litterCareTaskGenerationRole}
-        action={litterCareTaskGenerationAction}
-        loadError={litterCareTaskGenerationLoadError}
-      />
-      <LitterPlanSeriesPanel
-        series={litterPlanSeries}
-        role={litterPlanSeriesRole}
-        actions={litterPlanSeriesActions}
-        loadError={litterPlanSeriesLoadError}
-      />
-      <LitterCareTasksPanel
-        tasks={litterCareTasks}
-        resolutionActions={litterCareTaskResolutionActions}
-        scheduleActions={litterCareTaskScheduleActions}
-        loadError={litterCareTasksLoadError}
-      />
-      <QuickLinks litter={litter} />
+      <span hidden aria-hidden="true" data-tab-anchor={tabAnchors[activeTab]} />
     </div>
+  );
+}
+
+function TodayActionQueueCard({
+  queue,
+  litterCareTaskById,
+  resolutionActionByTaskId,
+  resolutionScheduleActionsByTaskId,
+  tabPath,
+}: {
+  queue: ReturnType<typeof buildTodayActionQueue>;
+  litterCareTaskById: Map<string, LitterCareTaskSummary>;
+  resolutionActionByTaskId: Map<string, LitterCareTodayQuickActionsType>;
+  resolutionScheduleActionsByTaskId: Map<string, LitterCareTaskScheduleActionBinding>;
+  tabPath: (nextTab: LitterJournalTab) => string;
+}) {
+  if (queue.length === 0) {
+    return (
+      <section className="rounded-2xl border bg-surface p-5 sm:p-6">
+        <h2 className="text-lg font-semibold">File d’actions du jour</h2>
+        <p className="mt-2 text-sm text-muted">
+          Aucune tâche ouverte pour cette portée. Les jalons planifiés apparaîtront ici.
+        </p>
+      </section>
+    );
+  }
+  const urgencyStyles: Record<string, string> = {
+    overdue: "bg-amber-500",
+    today: "bg-accent",
+    upcoming: "bg-border",
+  };
+  const urgencyLabels: Record<string, string> = {
+    overdue: "En retard",
+    today: "Aujourd’hui",
+    upcoming: "Planifié",
+  };
+  return (
+    <section id="litter-care-today" className="rounded-2xl border bg-surface p-5 sm:p-6" data-testid="litter-journal-today-queue">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">File d’actions du jour</h2>
+        <Link href={tabPath("planning")} className="text-sm font-semibold text-accent hover:underline">
+          Voir le planning →
+        </Link>
+      </div>
+      <ul className="mt-4 divide-y">
+        {queue.map(({ task, urgency, dueLabel }) => {
+          const action = resolutionActionByTaskId.get(task.id);
+          const scheduleAction = resolutionScheduleActionsByTaskId.get(task.id) ?? null;
+          return (
+            <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  aria-hidden="true"
+                  className={`size-2 shrink-0 rounded-full ${urgencyStyles[urgency] ?? urgencyStyles.upcoming}`}
+                />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold">{task.title}</p>
+                  <p className="truncate text-xs text-muted">
+                    {[dueLabel ?? urgencyLabels[urgency], task.detail].filter(Boolean).join(" · ")}
+                  </p>
+                </div>
+              </div>
+              {action ? (
+                <div className="shrink-0">
+                  <LitterCareTodayQuickActions
+                    task={litterCareTaskById.get(task.id)!}
+                    actions={action}
+                    scheduleActions={scheduleAction}
+                  />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 
@@ -590,6 +792,89 @@ export function EmptyLitterJournal() {
       <h2 className="text-lg font-semibold">Aucune portée active</h2>
       <p className="mt-2 text-sm leading-6 text-muted">
         Le journal affichera ici les portées dont le suivi est en cours.
+      </p>
+    </section>
+  );
+}
+
+const UNIFIED_HISTORY_KIND_STYLES: Record<UnifiedHistoryEntry["kind"], string> = {
+  weighing_session: "bg-accent",
+  maternal_observation: "bg-sky-600",
+  care_task: "bg-emerald-600",
+  whelping_event: "bg-rose-500",
+};
+
+function formatHistoryTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function UnifiedHistoryCard({
+  entries,
+  loadError,
+}: {
+  entries: UnifiedHistoryEntry[];
+  loadError: boolean;
+}) {
+  if (loadError) {
+    return (
+      <section
+        id="litter-journal-history"
+        role="alert"
+        className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950 sm:p-6"
+      >
+        <h2 className="text-lg font-semibold">Historique momentanément indisponible</h2>
+        <p className="mt-2 text-sm">
+          Certaines sources de l’historique n’ont pas pu être chargées. Aucune donnée n’a été modifiée.
+        </p>
+      </section>
+    );
+  }
+  if (entries.length === 0) {
+    return (
+      <section id="litter-journal-history" className="rounded-2xl border border-dashed bg-surface p-8 text-center">
+        <h2 className="text-lg font-semibold">Aucun événement enregistré</h2>
+        <p className="mt-2 text-sm leading-6 text-muted">
+          Les pesées, observations, jalons réalisés et naissances apparaîtront ici dans un fil unique.
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section id="litter-journal-history" className="rounded-2xl border bg-surface p-5 sm:p-6" data-testid="litter-unified-history">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Historique de la portée</h2>
+        <p className="text-xs text-muted">
+          {entries.length} événement{entries.length > 1 ? "s" : ""} · du plus récent au plus ancien
+        </p>
+      </div>
+      <ol className="mt-4 divide-y">
+        {entries.map((entry) => (
+          <li key={entry.id} className="flex items-start justify-between gap-3 py-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <span
+                aria-hidden="true"
+                className={`mt-1.5 size-2 shrink-0 rounded-full ${UNIFIED_HISTORY_KIND_STYLES[entry.kind]}`}
+              />
+              <div className="min-w-0">
+                <p className="break-words text-sm font-semibold">{entry.label}</p>
+                {entry.detail ? (
+                  <p className="mt-0.5 break-words text-xs leading-5 text-muted">{entry.detail}</p>
+                ) : null}
+              </div>
+            </div>
+            <time dateTime={entry.occurredAt} className="shrink-0 text-xs text-muted">
+              {formatHistoryTimestamp(entry.occurredAt)}
+            </time>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 text-xs text-muted">
+        Couleur des points : vert = pesée · bleu = observation de la mère · émeraude = jalon de soins · rose = mise-bas.
       </p>
     </section>
   );

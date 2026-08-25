@@ -53,9 +53,7 @@ export function LitterWeighingTodayCard({
     (projection.state === "due_today" || projection.state === "overdue");
   const href = canOpenEntry
     ? buildLitterWeightEntryHref(projection.litterId)
-    : context === "journal"
-      ? "#litter-weights"
-      : `/litters/journal?litter=${encodeURIComponent(projection.litterId)}#litter-weights`;
+    : `/litters/journal?litter=${encodeURIComponent(projection.litterId)}&tab=weights#litter-weights`;
   const description = detail(projection);
 
   return (

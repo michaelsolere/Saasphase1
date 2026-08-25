@@ -14,6 +14,7 @@ import {
 } from "@/features/settings/organization-logo-service";
 import type { OrganizationLogoValidationCode } from "@/features/settings/organization-logo-image";
 import { parseLitterWeighingSchedulePolicy } from "@/features/litter-weights/litter-weighing-schedule-model";
+import { parseLitterGainAlertPolicy } from "@/features/litter-weights/litter-gain-alert-policy";
 import { parseMaternalTemperatureDropPolicy } from "@/features/litter-journal/maternal-temperature-drop-policy";
 import { testBrevoConnection } from "@/lib/brevo/server";
 import { createClient } from "@/lib/supabase/server";
@@ -97,6 +98,12 @@ function litterWeighingPolicyStatusUrl(
   outcome: "success" | "reset" | "error",
 ) {
   return `${settingsPath}?litter_weighing_policy_status=${outcome}#litter-weighing-policy`;
+}
+
+function litterGainAlertPolicyStatusUrl(
+  outcome: "success" | "disabled" | "error",
+) {
+  return `${settingsPath}?litter_gain_alert_policy_status=${outcome}#litter-gain-alert-policy`;
 }
 
 function maternalTemperatureDropPolicyStatusUrl(
@@ -526,6 +533,104 @@ export async function updateMaternalTemperatureDropPolicy(formData: FormData) {
   revalidatePath(settingsPath);
   revalidatePath("/litters/journal");
   redirect(maternalTemperatureDropPolicyStatusUrl("success"));
+}
+
+export async function updateLitterGainAlertPolicy(formData: FormData) {
+  const organizationId = normalizeOptionalText(formData.get("organization_id"), 64);
+  const intent = normalizeOptionalText(formData.get("intent"), 32);
+  if (
+    !organizationId ||
+    (intent !== "enable" && intent !== "disable")
+  ) {
+    redirect(litterGainAlertPolicyStatusUrl("error"));
+  }
+
+  let policy: Json | null = null;
+  if (intent === "enable") {
+    const policyJson = formData.get("policy_json");
+    if (typeof policyJson !== "string") {
+      redirect(litterGainAlertPolicyStatusUrl("error"));
+    }
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(policyJson);
+    } catch {
+      redirect(litterGainAlertPolicyStatusUrl("error"));
+    }
+    const parsedPolicy = parseLitterGainAlertPolicy(parsedJson);
+    if (!parsedPolicy.ok) {
+      redirect(litterGainAlertPolicyStatusUrl("error"));
+    }
+    policy = JSON.parse(JSON.stringify(parsedPolicy.policy)) as Json;
+  }
+
+  const { supabase, userId } = await requireAdminOrganization(
+    organizationId,
+    "litter_gain_alert_policy_status",
+    "litter-gain-alert-policy",
+  );
+  const timestamp = new Date().toISOString();
+  const { data: existingSettings, error: readError } = await supabase
+    .from("organization_settings")
+    .select("id, deleted_at")
+    .eq("organization_id", organizationId)
+    .maybeSingle();
+
+  if (readError) {
+    redirect(litterGainAlertPolicyStatusUrl("error"));
+  }
+
+  const updatePayload = {
+    litter_gain_alert_policy: intent === "enable" ? policy : null,
+    deleted_at: null,
+    updated_by: userId,
+    updated_at: timestamp,
+  };
+
+  if (existingSettings) {
+    const { error } = await supabase
+      .from("organization_settings")
+      .update(updatePayload)
+      .eq("id", existingSettings.id)
+      .eq("organization_id", organizationId);
+    if (error) redirect(litterGainAlertPolicyStatusUrl("error"));
+  } else if (intent === "enable") {
+    const { error: insertError } = await supabase
+      .from("organization_settings")
+      .insert({
+        organization_id: organizationId,
+        ...updatePayload,
+        created_by: userId,
+      });
+    if (insertError?.code === "23505") {
+      const { data: concurrentSettings, error: retryReadError } = await supabase
+        .from("organization_settings")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+      if (retryReadError || !concurrentSettings) {
+        redirect(litterGainAlertPolicyStatusUrl("error"));
+      }
+      const { error: retryUpdateError } = await supabase
+        .from("organization_settings")
+        .update(updatePayload)
+        .eq("id", concurrentSettings.id)
+        .eq("organization_id", organizationId);
+      if (retryUpdateError) {
+        redirect(litterGainAlertPolicyStatusUrl("error"));
+      }
+    } else if (insertError) {
+      redirect(litterGainAlertPolicyStatusUrl("error"));
+    }
+  }
+
+  revalidatePath(settingsPath);
+  revalidatePath("/litters/journal");
+  redirect(
+    litterGainAlertPolicyStatusUrl(
+      intent === "enable" ? "success" : "disabled",
+    ),
+  );
 }
 
 export async function setDefaultGestationPlanningModelAction(formData: FormData) {
