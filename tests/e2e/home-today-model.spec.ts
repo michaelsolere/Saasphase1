@@ -150,7 +150,8 @@ test.describe("home-today-model", () => {
       "decision-suspended",
       "decision-uncertain",
     ]);
-    expect(result.due.map((row) => row.instanceId)).toEqual(["due-now", "due-past"]);
+    // Most urgent first: the overdue row precedes the one due right now.
+    expect(result.due.map((row) => row.instanceId)).toEqual(["due-past", "due-now"]);
     expect(result.ignored.map((row) => row.instanceId)).toEqual([
       "decision-incident",
       "future",
