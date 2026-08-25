@@ -554,18 +554,23 @@ function MarkerKey() {
 function SeriesLegend({
   series,
   ariaLabel,
+  hiddenIds,
+  onToggle,
 }: {
   series: GrowthChartSeries[];
   ariaLabel: string;
+  /** Identifiants internes des séries actuellement masquées. */
+  hiddenIds?: ReadonlySet<string>;
+  /** Présence de ce callback = légende cliquable (masquer/afficher une courbe). */
+  onToggle?: (internalId: string) => void;
 }) {
+  const interactive = Boolean(onToggle);
   return (
     <ul className="flex flex-wrap gap-x-5 gap-y-3" aria-label={ariaLabel}>
       {series.map((item) => {
-        return (
-          <li
-            key={item.internalId}
-            className="flex min-w-0 items-center gap-2 text-sm"
-          >
+        const hidden = hiddenIds?.has(item.internalId) ?? false;
+        const content = (
+          <>
             <svg width="30" height="12" viewBox="0 0 30 12" aria-hidden="true">
               <line
                 x1="1"
@@ -578,6 +583,35 @@ function SeriesLegend({
               <circle cx="15" cy="6" r="3" fill={item.seriesColor} />
             </svg>
             <span className="break-words">{item.publicLabel}</span>
+          </>
+        );
+        if (!interactive) {
+          return (
+            <li
+              key={item.internalId}
+              className="flex min-w-0 items-center gap-2 text-sm"
+            >
+              {content}
+            </li>
+          );
+        }
+        return (
+          <li key={item.internalId} className="flex min-w-0 items-center">
+            <button
+              type="button"
+              onClick={() => onToggle?.(item.internalId)}
+              aria-pressed={!hidden}
+              title={
+                hidden
+                  ? `Afficher la courbe de ${item.publicLabel}`
+                  : `Masquer la courbe de ${item.publicLabel}`
+              }
+              className={`flex min-w-0 items-center gap-2 rounded-lg px-1 py-0.5 text-sm transition hover:bg-accent/5 ${
+                hidden ? "opacity-40" : ""
+              }`}
+            >
+              {content}
+            </button>
           </li>
         );
       })}
@@ -592,14 +626,57 @@ function EntireLitterView({
   series: LitterGrowthSeries[];
   animalsWithoutMeasurements: number;
 }) {
+  const [hiddenSeriesIds, setHiddenSeriesIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  function toggleSeries(internalId: string) {
+    setHiddenSeriesIds((current) => {
+      const next = new Set(current);
+      if (next.has(internalId)) {
+        next.delete(internalId);
+      } else {
+        next.add(internalId);
+      }
+      return next;
+    });
+  }
+  const visibleSeries =
+    hiddenSeriesIds.size === 0
+      ? series
+      : series.filter((item) => !hiddenSeriesIds.has(item.internalId));
+
   return (
     <div className="space-y-4" data-testid="entire-litter-growth-view">
       <GrowthSvg
-        series={series}
+        series={visibleSeries}
         accessibleLabel={`Courbes de croissance de la portée, ${series.length} séries animales`}
       />
       <MarkerKey />
-      <SeriesLegend series={series} ariaLabel="Légende des animaux" />
+      <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-2">
+        <SeriesLegend
+          series={series}
+          ariaLabel="Chiots affichés — cliquer pour masquer ou afficher une courbe"
+          hiddenIds={hiddenSeriesIds}
+          onToggle={toggleSeries}
+        />
+        {series.length > 1 ? (
+          <button
+            type="button"
+            onClick={() =>
+              setHiddenSeriesIds((current) =>
+                current.size === 0
+                  ? new Set(series.map((item) => item.internalId))
+                  : new Set(),
+              )
+            }
+            className="shrink-0 text-xs font-semibold text-accent hover:underline"
+          >
+            {hiddenSeriesIds.size === 0
+              ? "Tout désélectionner"
+              : `Tout sélectionner (${series.length - hiddenSeriesIds.size}/${series.length})`}
+          </button>
+        ) : null}
+      </div>
       {animalsWithoutMeasurements > 0 ? (
         <p className="text-sm text-muted">
           {animalsWithoutMeasurements}{" "}
@@ -713,14 +790,17 @@ function IndividualAnimalView({ series }: { series: LitterGrowthSeries[] }) {
 export function LitterGrowthCharts({
   animals,
   measurements,
+  belowTrendDeviationPercent = 0,
 }: {
   animals: LitterWeightHistoryAnimal[];
   measurements: LitterWeightHistoryMeasurement[];
+  belowTrendDeviationPercent?: number;
 }) {
   const [view, setView] = useState<"litter" | "animal" | "relative">("litter");
   const { indicators, series, relativeSeries } = buildLitterGrowthModel(
     animals,
     measurements,
+    belowTrendDeviationPercent,
   );
   const animalsWithoutMeasurements = animals.length - series.length;
   const ineligibleRelativeAnimalCount = animals.length - relativeSeries.length;

@@ -1,15 +1,13 @@
 "use client";
 
-import { Pencil, Plus, Scale, Trash2 } from "lucide-react";
+import { Pencil, Scale, Trash2 } from "lucide-react";
 import {
   useActionState,
-  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
@@ -25,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 
 import {
-  initialLitterRoutineWeightsActionState,
   initialLitterWeightAdjustmentActionState,
   type LitterWeightAdjustmentActionState,
   type LitterRoutineWeightsActionState,
@@ -37,6 +34,7 @@ import type {
   LitterWeightAdjustmentHistoryEntry,
   LitterWeightOrganizationRole,
   LitterWeighingSchedulePolicyMetadata,
+  LitterGainAlertPolicyV1,
 } from "./litter-weights-core";
 import type { LitterWeightLatestSessionComparison } from "./litter-weighing-session-comparison";
 import type { LitterWeighingScheduleResult } from "./litter-weighing-schedule-model";
@@ -53,12 +51,10 @@ import {
   type RoutineWeightEligibilityReason,
 } from "./routine-weight-eligibility";
 import {
-  buildLitterRoutineWeightEntries,
   buildLitterWeightEntryHref,
-  getLitterRoutineWeightEntryProgress,
-  removeWeightEntryFromUrl,
 } from "./litter-routine-weight-entry";
 import { buildSexOrdinals } from "./litter-weight-gain-summary";
+import { RoutineWeightInlineEntry } from "./routine-weight-inline-entry";
 
 type RecordAction = (
   previousState: LitterRoutineWeightsActionState,
@@ -72,25 +68,6 @@ const inputClass =
   "mt-2 min-h-11 w-full min-w-0 rounded-xl border bg-background px-3 py-2 text-base outline-none transition focus:border-accent focus:ring-1 focus:ring-accent sm:text-sm";
 const labelClass = "text-sm font-semibold";
 
-function currentLocalDateTime() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60_000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function localDateTimeToIso(value: string) {
-  if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
-}
-
-function browserTimezone() {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  } catch {
-    return "UTC";
-  }
-}
 
 function formatDateTime(value: string, timezoneName?: string) {
   const options: Intl.DateTimeFormatOptions = {
@@ -177,450 +154,6 @@ function IneligibleRoutineWeightAnimals({
         ))}
       </ul>
     </section>
-  );
-}
-
-function SubmitButton({
-  label = "Enregistrer",
-  name,
-  value,
-}: {
-  label?: string;
-  name?: string;
-  value?: string;
-}) {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      name={name}
-      value={value}
-      disabled={pending}
-      className="min-h-11"
-    >
-      {pending ? "Enregistrement..." : label}
-    </Button>
-  );
-}
-
-function ActionMessage({ state }: { state: LitterRoutineWeightsActionState }) {
-  if (state.status === "idle" || !state.message) return null;
-  return (
-    <p
-      role={state.status === "error" ? "alert" : "status"}
-      className={
-        state.status === "error"
-          ? "rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-          : "rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-950"
-      }
-    >
-      {state.message}
-    </p>
-  );
-}
-
-function RoutineWeightDialog({
-  animals,
-  measurements,
-  action,
-  onSuccess,
-  initiallyOpen,
-}: {
-  animals: LitterWeightHistoryAnimal[];
-  measurements: LitterWeightHistoryMeasurement[];
-  action: RecordAction;
-  onSuccess: (message: string) => void;
-  initiallyOpen: boolean;
-}) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [measuredAt, setMeasuredAt] = useState(currentLocalDateTime);
-  const [weightDrafts, setWeightDrafts] = useState(() =>
-    animals.map((animal) => ({ animalId: animal.id, weightDraft: "" })),
-  );
-  const [sessionNoteDraft, setSessionNoteDraft] = useState("");
-  const [individualNoteDrafts, setIndividualNoteDrafts] = useState(() =>
-    animals.map((animal) => ({ animalId: animal.id, noteDraft: "" })),
-  );
-  const [clientError, setClientError] = useState<string | null>(null);
-  const [showPartialConfirmation, setShowPartialConfirmation] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
-  const weightInputRefs = useRef<Array<HTMLInputElement | null>>([]);
-  const measuredAtIsoRef = useRef<HTMLInputElement>(null);
-  const timezoneNameRef = useRef<HTMLInputElement>(null);
-  const initialIntentConsumedRef = useRef(false);
-  const entries = useMemo(
-    () =>
-      buildLitterRoutineWeightEntries({
-        animals,
-        measurements,
-        drafts: weightDrafts,
-      }),
-    [animals, measurements, weightDrafts],
-  );
-  const progress = useMemo(
-    () => getLitterRoutineWeightEntryProgress(entries),
-    [entries],
-  );
-  const individualNoteDraftByAnimalId = useMemo(
-    () =>
-      new Map(
-        individualNoteDrafts.map(({ animalId, noteDraft }) => [
-          animalId,
-          noteDraft,
-        ]),
-      ),
-    [individualNoteDrafts],
-  );
-  const submitAction = useCallback(
-    async (previousState: LitterRoutineWeightsActionState, formData: FormData) => {
-      const nextState = await action(previousState, formData);
-      if (nextState.status === "success" && nextState.message) {
-        setWeightDrafts(
-          animals.map((animal) => ({ animalId: animal.id, weightDraft: "" })),
-        );
-        setSessionNoteDraft("");
-        setIndividualNoteDrafts(
-          animals.map((animal) => ({ animalId: animal.id, noteDraft: "" })),
-        );
-        setClientError(null);
-        setShowPartialConfirmation(false);
-        formRef.current?.reset();
-        setMeasuredAt(currentLocalDateTime());
-        setOpen(false);
-        onSuccess(nextState.message);
-        router.refresh();
-      }
-      return nextState;
-    },
-    [action, animals, onSuccess, router],
-  );
-  const [state, formAction] = useActionState(
-    submitAction,
-    initialLitterRoutineWeightsActionState,
-  );
-
-  useEffect(() => {
-    if (!initiallyOpen) {
-      initialIntentConsumedRef.current = false;
-      return;
-    }
-    if (initialIntentConsumedRef.current) return;
-    initialIntentConsumedRef.current = true;
-    setMeasuredAt(currentLocalDateTime());
-    setOpen(true);
-    const nextUrl = removeWeightEntryFromUrl(window.location.href);
-    window.history.replaceState(window.history.state, "", nextUrl);
-    router.replace(nextUrl, { scroll: false });
-  }, [initiallyOpen, router]);
-
-  function handleOpenChange(nextOpen: boolean) {
-    if (nextOpen) setMeasuredAt(currentLocalDateTime());
-    setOpen(nextOpen);
-  }
-
-  function prepareSubmission() {
-    if (measuredAtIsoRef.current) {
-      measuredAtIsoRef.current.value = localDateTimeToIso(measuredAt);
-    }
-    if (timezoneNameRef.current) {
-      timezoneNameRef.current.value = browserTimezone();
-    }
-  }
-
-  function focusWeight(index: number) {
-    window.requestAnimationFrame(() => {
-      weightInputRefs.current[index]?.focus();
-    });
-  }
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    prepareSubmission();
-    if (progress.validWeightCount === 0) {
-      event.preventDefault();
-      setShowPartialConfirmation(false);
-      setClientError("Saisissez au moins un poids.");
-      focusWeight(0);
-      return;
-    }
-
-    const submitter = (event.nativeEvent as SubmitEvent)
-      .submitter as HTMLButtonElement | null;
-    const partialConfirmed =
-      submitter?.name === "partial_confirmation" &&
-      submitter.value === "confirmed";
-    if (progress.missingAnimalLabels.length > 0 && !partialConfirmed) {
-      event.preventDefault();
-      setClientError(null);
-      setShowPartialConfirmation(true);
-    }
-  }
-
-  function updateWeightDraft(animalId: string, weightDraft: string) {
-    setWeightDrafts((current) =>
-      current.map((draft) =>
-        draft.animalId === animalId ? { ...draft, weightDraft } : draft,
-      ),
-    );
-    setClientError(null);
-    setShowPartialConfirmation(false);
-  }
-
-  function updateSessionNoteDraft(noteDraft: string) {
-    setSessionNoteDraft(noteDraft);
-    setClientError(null);
-    setShowPartialConfirmation(false);
-  }
-
-  function updateIndividualNoteDraft(animalId: string, noteDraft: string) {
-    setIndividualNoteDrafts((current) =>
-      current.some((draft) => draft.animalId === animalId)
-        ? current.map((draft) =>
-            draft.animalId === animalId ? { ...draft, noteDraft } : draft,
-          )
-        : [...current, { animalId, noteDraft }],
-    );
-    setClientError(null);
-    setShowPartialConfirmation(false);
-  }
-
-  function completeSession() {
-    setShowPartialConfirmation(false);
-    const firstMissingIndex = entries.findIndex(
-      ({ weightDraft }) => weightDraft.trim() === "",
-    );
-    focusWeight(firstMissingIndex >= 0 ? firstMissingIndex : 0);
-  }
-
-  const progressLabel = `${progress.validWeightCount} poids ${
-    progress.validWeightCount > 1 ? "saisis" : "saisi"
-  } sur ${entries.length}`;
-
-  return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button type="button" className="min-h-11">
-          <Plus aria-hidden="true" />
-          Nouvelle pesée
-        </Button>
-      </DialogTrigger>
-      <DialogContent
-        className="max-h-[92vh] w-[calc(100%-1rem)] max-w-[calc(100%-1rem)] overflow-x-hidden overflow-y-auto rounded-xl p-0 [&>button]:min-h-11 [&>button]:min-w-11 sm:max-w-2xl"
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          focusWeight(0);
-        }}
-      >
-        <DialogHeader>
-          <div className="px-4 pt-5 sm:px-6 sm:pt-6">
-            <DialogTitle>Nouvelle pesée</DialogTitle>
-            <DialogDescription className="mt-2">
-              Renseignez uniquement les animaux pesés pendant cette séance.
-            </DialogDescription>
-          </div>
-        </DialogHeader>
-        <form
-          ref={formRef}
-          action={formAction}
-          onSubmit={handleSubmit}
-          className="min-w-0"
-        >
-          <input ref={measuredAtIsoRef} type="hidden" name="measured_at" />
-          <input ref={timezoneNameRef} type="hidden" name="timezone_name" />
-          <div className="space-y-4 px-4 pb-4 sm:px-6">
-            <p
-              aria-live="polite"
-              aria-atomic="true"
-              className="text-sm font-semibold text-foreground"
-              data-testid="routine-weight-progress"
-            >
-              {progressLabel}
-            </p>
-            <details className="rounded-xl border px-3 py-2">
-              <summary className="flex min-h-11 cursor-pointer items-center font-semibold">
-                Date, heure et note de séance
-              </summary>
-              <div className="space-y-4 pb-2 pt-2">
-                <div>
-                  <label className={labelClass} htmlFor="routine-weight-measured-at">
-                    Date et heure de la pesée
-                  </label>
-                  <input
-                    id="routine-weight-measured-at"
-                    className={inputClass}
-                    type="datetime-local"
-                    value={measuredAt}
-                    onChange={(event) => setMeasuredAt(event.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className={labelClass} htmlFor="routine-weight-note">
-                    Note commune (facultative)
-                  </label>
-                  <textarea
-                    id="routine-weight-note"
-                    className={inputClass}
-                    name="note"
-                    rows={3}
-                    maxLength={5000}
-                    value={sessionNoteDraft}
-                    onChange={(event) =>
-                      updateSessionNoteDraft(event.target.value)
-                    }
-                  />
-                </div>
-              </div>
-            </details>
-            <div className="space-y-3" aria-label="Animaux à peser">
-            {entries.map((entry, index) => (
-              <fieldset
-                key={entry.animalId}
-                className="min-w-0 rounded-xl border bg-surface p-3"
-              >
-                <legend className="max-w-full px-1 text-sm font-semibold">
-                  <span className="break-words">
-                    {entry.publicLabel}
-                    {entry.collarColor ? ` · collier ${entry.collarColor}` : ""}
-                  </span>
-                </legend>
-                {entry.details ? (
-                  <p className="break-words text-xs leading-5 text-muted">
-                    {entry.details}
-                  </p>
-                ) : null}
-                <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_8.5rem] items-end gap-3">
-                  <div className="min-w-0">
-                    <p className="break-words text-xs text-muted">
-                      {entry.latestWeightGrams === null
-                        ? "Dernier poids : non renseigné"
-                        : `Dernier poids : ${formatGrams(entry.latestWeightGrams)}`}
-                    </p>
-                  </div>
-                  <div className="min-w-0">
-                    <label className={labelClass} htmlFor={`routine-weight-${index}`}>
-                      Poids (g)
-                    </label>
-                    <input
-                      ref={(element) => {
-                        weightInputRefs.current[index] = element;
-                      }}
-                      id={`routine-weight-${index}`}
-                      className={`${inputClass} mt-1 text-right font-semibold`}
-                      name={`weight_${index}`}
-                      type="number"
-                      inputMode="numeric"
-                      min="1"
-                      max="100000"
-                      step="1"
-                      enterKeyHint={
-                        index === entries.length - 1 ? "done" : "next"
-                      }
-                      value={entry.weightDraft}
-                      onChange={(event) =>
-                        updateWeightDraft(entry.animalId, event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" || index === entries.length - 1) {
-                          return;
-                        }
-                        event.preventDefault();
-                        focusWeight(index + 1);
-                      }}
-                    />
-                  </div>
-                </div>
-                <details className="mt-2">
-                  <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-accent">
-                    Ajouter une note
-                  </summary>
-                  <div className="pb-1">
-                    <label className={labelClass} htmlFor={`routine-weight-note-${index}`}>
-                      Note individuelle (facultative)
-                    </label>
-                    <input
-                      id={`routine-weight-note-${index}`}
-                      className={inputClass}
-                      name={`item_note_${index}`}
-                      maxLength={5000}
-                      value={
-                        individualNoteDraftByAnimalId.get(entry.animalId) ?? ""
-                      }
-                      onChange={(event) =>
-                        updateIndividualNoteDraft(
-                          entry.animalId,
-                          event.target.value,
-                        )
-                      }
-                    />
-                  </div>
-                </details>
-              </fieldset>
-            ))}
-            </div>
-            {clientError ? (
-              <p
-                role="alert"
-                className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950"
-              >
-                {clientError}
-              </p>
-            ) : null}
-            {showPartialConfirmation ? (
-              <section
-                role="status"
-                aria-label="Confirmation de séance partielle"
-                className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-                data-testid="routine-weight-partial-confirmation"
-              >
-                <p className="font-semibold">
-                  {progress.validWeightCount} poids sur {entries.length} seront
-                  enregistrés.
-                </p>
-                <p className="mt-2">Chiots non pesés :</p>
-                <ul className="mt-1 list-disc space-y-1 pl-5">
-                  {progress.missingAnimalLabels.map((label, index) => (
-                    <li key={`${label}:${index}`} className="break-words">
-                      {label}
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-11"
-                    onClick={completeSession}
-                  >
-                    Compléter la séance
-                  </Button>
-                  <SubmitButton
-                    label={`Enregistrer ${progress.validWeightCount} poids`}
-                    name="partial_confirmation"
-                    value="confirmed"
-                  />
-                </div>
-              </section>
-            ) : null}
-            <ActionMessage state={state} />
-          </div>
-          <DialogFooter className="sticky bottom-0 z-10 gap-2 border-t bg-background px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] sm:px-6">
-            <p
-              aria-hidden="true"
-              className="mr-auto self-center text-sm font-semibold"
-            >
-              {progressLabel}
-            </p>
-            <DialogClose asChild>
-              <Button type="button" variant="outline" className="min-h-11">
-                Annuler
-              </Button>
-            </DialogClose>
-            <SubmitButton />
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -794,6 +327,8 @@ export function LitterWeightPanel({
   latestSessionComparison,
   weighingSchedule,
   weighingSchedulePolicy,
+  gainAlertPolicy,
+  gainAlertPolicyUnavailable,
   role,
   action,
   measurementAdjustmentActions,
@@ -801,7 +336,6 @@ export function LitterWeightPanel({
   adjustmentHistory,
   adjustmentHistoryLoadError,
   loadError,
-  initialWeightEntryOpen = false,
 }: {
   litterId: string | null;
   animals: LitterWeightHistoryAnimal[];
@@ -810,6 +344,8 @@ export function LitterWeightPanel({
   latestSessionComparison: LitterWeightLatestSessionComparison;
   weighingSchedule: LitterWeighingScheduleResult | null;
   weighingSchedulePolicy: LitterWeighingSchedulePolicyMetadata | null;
+  gainAlertPolicy: LitterGainAlertPolicyV1;
+  gainAlertPolicyUnavailable: boolean;
   role: LitterWeightOrganizationRole | null;
   action: RecordAction | null;
   measurementAdjustmentActions: LitterWeightMeasurementAdjustmentAction[];
@@ -883,12 +419,12 @@ export function LitterWeightPanel({
           </p>
         </div>
         {canWrite ? (
-          <RoutineWeightDialog
+          <RoutineWeightInlineEntry
             animals={eligibleAnimals}
             measurements={measurements}
             action={action}
             onSuccess={setConfirmation}
-            initiallyOpen={initialWeightEntryOpen}
+            gainAlertPolicy={gainAlertPolicy}
           />
         ) : null}
       </div>
@@ -911,6 +447,11 @@ export function LitterWeightPanel({
         signals={vigilanceSignals}
         weightEntryHref={vigilanceWeightEntryHref}
       />
+      {gainAlertPolicyUnavailable ? (
+        <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+          Les repères personnalisés sont momentanément indisponibles ; les valeurs recommandées sont utilisées.
+        </p>
+      ) : null}
       <nav className="mt-5 flex w-fit max-w-full overflow-x-auto rounded-lg border p-1" aria-label="Vue poids et croissance">
         {(["table", "charts", "schedule"] as const).map((view) => (
           <button
@@ -936,7 +477,11 @@ export function LitterWeightPanel({
             measurements={measurements}
           />
         ) : mainView === "charts" ? (
-          <LitterGrowthCharts animals={animals} measurements={measurements} />
+          <LitterGrowthCharts
+            animals={animals}
+            measurements={measurements}
+            belowTrendDeviationPercent={gainAlertPolicy.belowTrendDeviationPercent}
+          />
         ) : (
           <LitterWeighingScheduleSummary
             schedule={weighingSchedule}

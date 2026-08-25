@@ -162,6 +162,7 @@ function linearTicks(min: number, max: number, count = TICK_COUNT) {
 export function buildLitterGrowthModel(
   animals: readonly LitterWeightHistoryAnimal[],
   measurements: readonly LitterWeightHistoryMeasurement[],
+  belowTrendDeviationPercent = 0,
 ): LitterGrowthModel {
   const measurementsByAnimal = new Map<string, LitterGrowthPoint[]>();
   const relativeMeasurementsByAnimal = new Map<
@@ -219,6 +220,7 @@ export function buildLitterGrowthModel(
         createdAt: point.measuredAt,
       })),
       animal.birthWeightGrams,
+      belowTrendDeviationPercent,
     );
     if (summary) gainSummaries.set(animal.id, summary);
   }

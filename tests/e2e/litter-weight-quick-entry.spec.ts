@@ -53,7 +53,6 @@ const puppyLabels = [
 const historicalWeights = [600, 610, 620, 630] as const;
 const submittedWeights = [650, 660, 670] as const;
 const sessionNoteDraft = "Séance express à conserver";
-const invalidIndividualNoteDraft = "Note sans poids à conserver";
 const sql = (value: string) => runE2eSqlSync(value);
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 const expectedGrowthComparisonSnapshot = {
@@ -334,107 +333,69 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
     await expect(dueCard).toBeVisible();
     await expect(dueCard.getByRole("button")).toHaveCount(0);
     const entryLink = dueCard.getByRole("link", { name: "Saisir la pesée" });
-    const expectedEntryHref = `/litters/journal?litter=${ids.litter}&weightEntry=1#litter-weights`;
+    const expectedEntryHref = `/litters/journal?litter=${ids.litter}&tab=weights&weightEntry=1#litter-weights`;
     await expect(entryLink).toHaveAttribute("href", expectedEntryHref);
     await entryLink.click();
 
-    await expect(page.getByRole("dialog", { name: "Nouvelle pesée" })).toBeVisible();
+    // La saisie est désormais intégrée dans la page (grille compacte), sans modale.
+    const entry = page.getByTestId("routine-weight-inline-entry");
+    await expect(entry).toBeVisible();
     expect(navigatedUrls.some((url) => url.endsWith(expectedEntryHref))).toBe(true);
     await expect(page).toHaveURL(
       new RegExp(
-        `/litters/journal\\?litter=${ids.litter}#litter-weights$`,
+        `litter=${ids.litter}&tab=weights&weightEntry=1#litter-weights$`,
       ),
     );
-    expect(page.url()).not.toContain("weightEntry");
     expect(growthComparisonSnapshot()).toEqual(growthBeforeFixtures);
 
-    const dialog = page.getByRole("dialog", { name: "Nouvelle pesée" });
-    const weightInputs = dialog.getByLabel("Poids (g)");
+    const weightInputs = entry.getByLabel(/Poids de .+ en grammes/);
     await expect(weightInputs).toHaveCount(4);
-    await expect(weightInputs.nth(0)).toBeFocused();
     for (const grams of historicalWeights) {
-      await expect(dialog.getByText(`Dernier poids : ${grams} g`)).toBeVisible();
+      await expect(entry.getByText(`${grams} g`, { exact: true }).first()).toBeVisible();
     }
 
-    await weightInputs.nth(0).fill(String(submittedWeights[0]));
-    await weightInputs.nth(0).press("Enter");
-    await expect(weightInputs.nth(1)).toBeFocused();
-    await weightInputs.nth(1).fill(String(submittedWeights[1]));
-    await weightInputs.nth(1).press("Enter");
-    await expect(weightInputs.nth(2)).toBeFocused();
-    await weightInputs.nth(2).fill(String(submittedWeights[2]));
-    await expect(dialog.getByTestId("routine-weight-progress")).toHaveText(
-      "3 poids saisis sur 4",
+    // Les animaux sont triés par sexe puis ordre de naissance : on cible chaque
+    // chiot par son libellé public plutôt que par position, et on laisse le
+    // dernier (Collier vert) sans mesure pour la séance partielle.
+    const missingPuppyInput = entry.getByLabel(
+      `Poids de ${puppyLabels[3]} en grammes`,
     );
-    await dialog
+    await expect(missingPuppyInput).toBeVisible();
+    for (const [index, grams] of submittedWeights.entries()) {
+      await entry
+        .getByLabel(`Poids de ${puppyLabels[index]} en grammes`)
+        .fill(String(grams));
+    }
+    await expect(entry.getByTestId("routine-weight-inline-progress")).toHaveText(
+      "3 / 4 saisis",
+    );
+    await entry
       .getByText("Date, heure et note de séance", { exact: true })
       .click();
-    const measuredAtInput = dialog.getByLabel("Date et heure de la pesée");
+    const measuredAtInput = entry.getByLabel("Date et heure de la pesée");
     const selectedMeasuredAt = await measuredAtInput.inputValue();
     expect(selectedMeasuredAt).not.toBe("");
-    const sessionNoteInput = dialog.getByLabel("Note commune (facultative)");
+    const sessionNoteInput = entry.getByLabel("Note commune (facultative)");
     await sessionNoteInput.fill(sessionNoteDraft);
-    const missingPuppyFieldset = dialog
-      .locator("fieldset")
-      .filter({ hasText: puppyLabels[3] });
-    await missingPuppyFieldset
-      .getByText("Ajouter une note", { exact: true })
-      .click();
-    const missingPuppyNoteInput = missingPuppyFieldset.getByLabel(
-      "Note individuelle (facultative)",
-    );
-    await missingPuppyNoteInput.fill(invalidIndividualNoteDraft);
     await expectNoHorizontalOverflow(page);
 
-    await dialog.getByRole("button", { name: "Enregistrer", exact: true }).click();
-    await expect(
-      dialog.getByTestId("routine-weight-partial-confirmation"),
-    ).toBeVisible();
-    await expect(dialog).toContainText("3 poids sur 4 seront enregistrés.");
-    await expect(dialog).toContainText("Collier vert");
+    // Soumission sans confirmation : la séance partielle exige une validation explicite.
+    await entry.getByRole("button", { name: "Enregistrer la séance" }).click();
+    const partialConfirmation = entry.getByText(/Séance partielle :/);
+    await expect(partialConfirmation).toBeVisible();
+    await expect(partialConfirmation).toContainText(puppyLabels[3]);
     expect(organizationWeightCounts()).toEqual({
       sessions: 1,
       measurements: 4,
       commands: 0,
     });
 
-    await dialog
-      .getByRole("button", { name: "Enregistrer 3 poids", exact: true })
+    await entry
+      .getByRole("button", { name: "Confirmer la séance partielle" })
       .click();
-    await expect(dialog.getByRole("alert")).toContainText(
-      "Une note individuelle doit être accompagnée d’un poids.",
-    );
-    expect(organizationWeightCounts()).toEqual({
-      sessions: 1,
-      measurements: 4,
-      commands: 0,
+    await expect(page.getByText("3 poids ont été enregistrés.")).toBeVisible({
+      timeout: 30_000,
     });
-    for (const [index, grams] of submittedWeights.entries()) {
-      await expect(weightInputs.nth(index)).toHaveValue(String(grams));
-    }
-    await expect(weightInputs.nth(3)).toHaveValue("");
-    await expect(sessionNoteInput).toHaveValue(sessionNoteDraft);
-    await expect(missingPuppyNoteInput).toHaveValue(invalidIndividualNoteDraft);
-    await expect(measuredAtInput).toHaveValue(selectedMeasuredAt);
-
-    await missingPuppyNoteInput.fill("");
-    await expect(
-      dialog.getByTestId("routine-weight-partial-confirmation"),
-    ).toHaveCount(0);
-    await dialog.getByRole("button", { name: "Enregistrer", exact: true }).click();
-    await expect(
-      dialog.getByTestId("routine-weight-partial-confirmation"),
-    ).toBeVisible();
-    expect(organizationWeightCounts()).toEqual({
-      sessions: 1,
-      measurements: 4,
-      commands: 0,
-    });
-    await dialog
-      .getByRole("button", { name: "Enregistrer 3 poids", exact: true })
-      .click();
-    await expect(dialog).not.toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("3 poids ont été enregistrés.")).toBeVisible();
 
     generatedRows = registerGeneratedRows();
     const newSessionIds = generatedRows.sessions.filter(
@@ -479,6 +440,9 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
       `),
     ).toBe("0");
 
+    // Après enregistrement, retour sur l'onglet Aujourd'hui du Journal : la
+    // carte de la portée passe dans « Traité aujourd'hui ».
+    await page.goto(`/litters/journal?litter=${ids.litter}&tab=today`);
     const journalToday = page
       .locator("#litter-care-today-heading")
       .locator("xpath=ancestor::section[1]");
@@ -486,7 +450,7 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
       journalToday
         .locator("section[aria-label='Traité aujourd’hui']")
         .getByTestId("litter-weighing-today-card"),
-    ).toContainText("3 poids enregistrés");
+    ).toContainText("1 séance · 3 poids enregistrés");
 
     const technicalIds = [
       ids.historicalSession,
@@ -505,10 +469,6 @@ test("LITTER-WEIGHT-QUICK-ENTRY-01 — saisie mobile partielle depuis Aujourd’
     }
 
     await page.reload();
-    await expect(page.getByRole("dialog", { name: "Nouvelle pesée" })).toHaveCount(
-      0,
-    );
-    expect(page.url()).not.toContain("weightEntry");
     await expectNoHorizontalOverflow(page);
     expect(pageErrors).toEqual([]);
     expect(consoleErrors).toEqual([]);

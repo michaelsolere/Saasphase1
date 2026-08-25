@@ -299,12 +299,15 @@ test("LITTER-WEIGHING-TODAY-INTEGRATION-01 — Journal, Aujourd’hui élevage e
     const journalWeightLink = journalHandled.getByRole("link", {
       name: "Ouvrir les pesées",
     });
-    await expect(journalWeightLink).toHaveAttribute("href", "#litter-weights");
+    await expect(journalWeightLink).toHaveAttribute(
+      "href",
+      `/litters/journal?litter=${ids.handledLitter}&tab=weights#litter-weights`,
+    );
     await journalWeightLink.focus();
     await expect(journalWeightLink).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(
-      new RegExp(`${ids.handledLitter}#litter-weights$`),
+      new RegExp(`litter=${ids.handledLitter}&tab=weights#litter-weights$`),
     );
     await expect(page.locator("#litter-weights")).toBeVisible();
     await expectNoHorizontalOverflow(page);
@@ -331,10 +334,10 @@ test("LITTER-WEIGHING-TODAY-INTEGRATION-01 — Journal, Aujourd’hui élevage e
       .filter({ hasText: handledLitterLabel });
     await expect(handledOverdueCard).toContainText("3 pesées en retard");
     await expect(handledCard.getByRole("button")).toHaveCount(0);
-    const dueLink = dueCard.getByRole("link", { name: "Ouvrir les pesées" });
+    const dueLink = dueCard.getByRole("link", { name: "Saisir la pesée" });
     await expect(dueLink).toHaveAttribute(
       "href",
-      `/litters/journal?litter=${ids.dueLitter}#litter-weights`,
+      `/litters/journal?litter=${ids.dueLitter}&tab=weights&weightEntry=1#litter-weights`,
     );
     await expectNoHorizontalOverflow(page);
 
@@ -351,7 +354,7 @@ test("LITTER-WEIGHING-TODAY-INTEGRATION-01 — Journal, Aujourd’hui élevage e
     await expect(dueLink).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(
-      new RegExp(`${ids.dueLitter}#litter-weights$`),
+      new RegExp(`litter=${ids.dueLitter}&tab=weights&weightEntry=1#litter-weights$`),
     );
     await expect(page.locator("#litter-weights")).toBeVisible();
     await expectNoHorizontalOverflow(page);

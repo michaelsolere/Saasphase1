@@ -9,6 +9,7 @@ import {
   updateOrganizationIdentity,
   upsertDefaultRepresentative,
 } from "@/features/settings/actions";
+import { parseLitterGainAlertPolicy } from "@/features/litter-weights/litter-gain-alert-policy";
 import {
   DEFAULT_LITTER_WEIGHING_SCHEDULE_POLICY,
   parseLitterWeighingSchedulePolicy,
@@ -24,6 +25,7 @@ import {
 } from "@/features/settings/gestation-default-planning";
 import { GestationDefaultPlanningSettings } from "@/features/settings/gestation-default-planning-settings";
 import { LitterWeighingPolicySettings } from "@/features/settings/litter-weighing-policy-settings";
+import { LitterGainAlertPolicySettings } from "@/features/settings/litter-gain-alert-policy-settings";
 import { MaternalTemperatureDropPolicySettings } from "@/features/settings/maternal-temperature-drop-policy-settings";
 import { OrganizationLogoSettings } from "@/features/settings/organization-logo-settings";
 import { getBrevoConfigurationStatus } from "@/lib/brevo/server";
@@ -44,6 +46,11 @@ type StatusValue = "success" | "error" | undefined;
 type LitterWeighingPolicyStatusValue =
   | "success"
   | "reset"
+  | "error"
+  | undefined;
+type LitterGainAlertPolicyStatusValue =
+  | "success"
+  | "disabled"
   | "error"
   | undefined;
 type MaternalTemperatureDropPolicyStatusValue =
@@ -182,6 +189,33 @@ function GestationDefaultPlanningStatusMessage({
   const message = isSuccess
     ? "Le planning de gestation automatique a bien été enregistré."
     : "Impossible de modifier le planning de gestation automatique.";
+  return (
+    <section
+      role={isSuccess ? "status" : "alert"}
+      className={`rounded-2xl border px-6 py-5 text-sm ${
+        isSuccess
+          ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+          : "border-amber-200 bg-amber-50 text-amber-950"
+      }`}
+    >
+      {message}
+    </section>
+  );
+}
+
+function LitterGainAlertPolicyStatusMessage({
+  value,
+}: {
+  value: LitterGainAlertPolicyStatusValue;
+}) {
+  if (!value) return null;
+  const isSuccess = value !== "error";
+  const message =
+    value === "success"
+      ? "Les repères de prise de poids ont bien été enregistrés."
+      : value === "disabled"
+        ? "Les repères personnalisés sont désactivés ; les valeurs recommandées restent utilisées."
+        : "Impossible de modifier les repères. Vérifiez les valeurs saisies puis réessayez.";
   return (
     <section
       role={isSuccess ? "status" : "alert"}
@@ -368,6 +402,7 @@ export default async function OrganizationSettingsPage({
     branding_status?: "success" | "removed" | "error";
     branding_error?: BrandingErrorValue;
     litter_weighing_policy_status?: LitterWeighingPolicyStatusValue;
+    litter_gain_alert_policy_status?: LitterGainAlertPolicyStatusValue;
     maternal_temperature_drop_policy_status?: MaternalTemperatureDropPolicyStatusValue;
     gestation_default_planning_status?: GestationDefaultPlanningStatusValue;
   }>;
@@ -448,7 +483,7 @@ export default async function OrganizationSettingsPage({
   const { data: organizationSettings, error: organizationSettingsError } = await supabase
     .from("organization_settings")
     .select(
-      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy, maternal_temperature_drop_policy, default_gestation_planning_model_id",
+      "default_male_puppy_price_cents, default_female_puppy_price_cents, default_puppy_price_cents, litter_weighing_schedule_policy, litter_gain_alert_policy, maternal_temperature_drop_policy, default_gestation_planning_model_id",
     )
     .eq("organization_id", membership.organization_id)
     .is("deleted_at", null)
@@ -566,6 +601,17 @@ export default async function OrganizationSettingsPage({
     persistedPolicyResult?.ok === true ? persistedPolicyResult.policy : null;
   const hasInvalidPersistedLitterWeighingPolicy =
     Boolean(organizationSettingsError) || persistedPolicyResult?.ok === false;
+  const persistedGainAlertPolicyResult =
+    organizationSettings?.litter_gain_alert_policy === null ||
+    organizationSettings?.litter_gain_alert_policy === undefined
+      ? null
+      : parseLitterGainAlertPolicy(organizationSettings.litter_gain_alert_policy);
+  const customLitterGainAlertPolicy =
+    persistedGainAlertPolicyResult?.ok === true
+      ? persistedGainAlertPolicyResult.policy
+      : null;
+  const hasInvalidPersistedLitterGainAlertPolicy =
+    Boolean(organizationSettingsError) || persistedGainAlertPolicyResult?.ok === false;
   const persistedTemperatureDropPolicyResult =
     organizationSettings?.maternal_temperature_drop_policy === null ||
     organizationSettings?.maternal_temperature_drop_policy === undefined
@@ -713,6 +759,9 @@ export default async function OrganizationSettingsPage({
         <LitterWeighingPolicyStatusMessage
           value={query.litter_weighing_policy_status}
         />
+        <LitterGainAlertPolicyStatusMessage
+          value={query.litter_gain_alert_policy_status}
+        />
         <MaternalTemperatureDropPolicyStatusMessage
           value={query.maternal_temperature_drop_policy_status}
         />
@@ -820,6 +869,13 @@ export default async function OrganizationSettingsPage({
         customPolicy={customLitterWeighingPolicy}
         recommendedPolicy={recommendedPolicyResult.policy}
         hasInvalidPersistedPolicy={hasInvalidPersistedLitterWeighingPolicy}
+      />
+
+      <LitterGainAlertPolicySettings
+        organizationId={organization.id}
+        canEdit={canEdit}
+        policy={customLitterGainAlertPolicy}
+        hasInvalidPersistedPolicy={hasInvalidPersistedLitterGainAlertPolicy}
       />
 
       <MaternalTemperatureDropPolicySettings

@@ -366,10 +366,11 @@ test("affiche le cockpit journal actif en lecture seule sans divulguer les autre
     await expect(page.getByRole("heading", { name: `${fixturePrefix} échéance proche` })).toBeVisible();
     await expect(page.getByText("Mère Journal E2E")).toBeVisible();
     await expect(page.getByText("Père Journal E2E")).toBeVisible();
+    // Onglet Aujourd'hui (par défaut) : en-tête commun, synthèse et accès rapides.
     await expect(page.getByText("Gestation confirmée")).toBeVisible();
     await expect(page.getByText("J+20 depuis l’ovulation estimée")).toBeVisible();
     await expect(page.getByText("Repère indicatif, non diagnostique.")).toBeVisible();
-    await expect(page.getByText("Échographie")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Synthèse de la portée" })).toBeVisible();
     await expect(page.getByText("8", { exact: true })).toBeVisible();
     await expect(page.getByText("2", { exact: true })).toHaveCount(1);
     await expect(page.getByText("Non renseigné").first()).toBeVisible();
@@ -377,8 +378,14 @@ test("affiche le cockpit journal actif en lecture seule sans divulguer les autre
     await expect(page.getByRole("link", { name: "Reproduction de la mère" })).toHaveAttribute("href", `/animals/${ids.mother}/reproduction`);
     await expect(page.getByRole("link", { name: "Fiche de la mère" })).toHaveAttribute("href", `/animals/${ids.mother}`);
     await expect(page.getByRole("link", { name: "Fiche du père" })).toHaveAttribute("href", `/animals/${ids.father}`);
+
+    // Onglet Mère : contexte reproductif avec méthode de confirmation.
+    await page.goto(`/litters/journal?litter=${ids.upcoming}&tab=mother`);
     await expect(page.getByRole("heading", { name: "Contexte reproductif" })).toHaveCount(1);
-    await expect(page.getByRole("heading", { name: "Synthèse de la portée" })).toHaveCount(1);
+    await expect(page.getByText("Échographie")).toBeVisible();
+
+    // Retour à l'onglet par défaut pour la suite du scénario.
+    await page.goto(`/litters/journal?litter=${ids.upcoming}`);
 
     await selector.selectOption(ids.mated);
     await expect(page).toHaveURL(new RegExp(`\\?litter=${ids.mated}$`));

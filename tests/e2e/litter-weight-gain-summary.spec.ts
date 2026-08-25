@@ -120,6 +120,17 @@ test.describe("summarizeAnimalWeightGain", () => {
     expect(summary!.gainBelowPriorThreeDayAverage).toBe(false);
   });
 
+  test("applique le seuil de retrait paramétrable", () => {
+    const points = [
+      measurement("m0", "a", iso(4), 700),
+      measurement("m1", "a", iso(3), 800),
+      measurement("m2", "a", iso(2), 900),
+      measurement("m3", "a", iso(1), 1000),
+      measurement("m4", "a", iso(0), 1075),
+    ];
+    expect(summarizeAnimalWeightGain(points, 400, 20)!.gainBelowPriorThreeDayAverage).toBe(true);
+    expect(summarizeAnimalWeightGain(points, 400, 30)!.gainBelowPriorThreeDayAverage).toBe(false);
+  });
   test("retourne null sans mesure", () => {
     expect(summarizeAnimalWeightGain([], 400)).toBeNull();
   });

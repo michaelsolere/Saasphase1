@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Journal des portées — Hybride</title>
+  <style>
+    :root{--bg:#f7f7f4;--surface:#fff;--ink:#20231f;--muted:#687066;--line:#dfe4dc;--green:#315c43;--soft:#e3eee7;--amber:#a16207;--amber-soft:#fff7df;--shadow:0 12px 35px rgba(32,35,31,.06)}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased}button,select{font:inherit}button{cursor:pointer}a{text-decoration:none;color:inherit}
+    .shell{min-height:100vh;display:grid;grid-template-columns:224px minmax(0,1fr)}.sidebar{background:var(--surface);border-right:1px solid var(--line);padding:20px 14px;display:flex;flex-direction:column}.brand{display:flex;gap:10px;align-items:center;padding:2px 8px 16px;border-bottom:1px solid var(--line)}.mark{width:36px;height:36px;border-radius:12px;background:var(--green);color:var(--surface);display:grid;place-items:center;font-size:17px}.brand strong{display:block;font-size:13px}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:1px}.nav-label{padding:18px 10px 8px;color:var(--muted);font-size:10px;letter-spacing:.11em;text-transform:uppercase;font-weight:800}.nav{display:grid;gap:3px}.nav a{padding:9px 10px;border-radius:8px;color:var(--muted);font-weight:700}.nav a:hover{background:var(--bg);color:var(--ink)}.nav a.active{background:var(--soft);color:var(--green)}.nav a.sub{padding-left:25px;font-size:13px}.org{margin-top:auto;border-top:1px solid var(--line);padding:13px 10px 3px;color:var(--muted);font-size:11px}.org strong{display:block;color:var(--ink);font-size:12px;margin-top:2px}
+    main{min-width:0}.topbar{height:58px;border-bottom:1px solid var(--line);background:rgba(255,255,255,.85);backdrop-filter:blur(9px);display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,4vw,54px);position:sticky;top:0;z-index:6}.crumb{color:var(--muted);font-size:12px}.top-actions{display:flex;gap:8px}.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:8px 11px;color:var(--green);font-weight:800}.btn:hover{background:var(--bg)}.btn.primary{background:var(--green);border-color:var(--green);color:var(--surface)}.btn.primary:hover{background:#274b36}.btn.small{padding:5px 9px;font-size:12px}
+    .page{max-width:1280px;margin:0 auto;padding:26px clamp(20px,4vw,54px) 64px}.eyebrow{font-size:10px;color:var(--green);font-weight:800;letter-spacing:.12em;text-transform:uppercase}.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding-bottom:18px}.hero h1{font-size:29px;line-height:1.15;letter-spacing:-.03em;margin:7px 0 7px}.hero p{margin:0;color:var(--muted)}.header-side{display:flex;align-items:center;gap:9px;flex-shrink:0}.select{min-width:215px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:9px 32px 9px 11px}.badge{display:inline-flex;align-items:center;gap:6px;border:1px solid #b9d7c4;background:var(--soft);color:var(--green);border-radius:999px;padding:6px 10px;font-size:11px;font-weight:800;white-space:nowrap}.badge:before{content:"";width:7px;height:7px;border-radius:50%;background:#36a269}.meta{display:flex;flex-wrap:wrap;gap:9px;color:var(--muted);font-size:12px;margin-bottom:15px}.meta span{padding-right:10px;border-right:1px solid var(--line)}.meta span:last-child{border-right:0}
+    .alert{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid #f2d28c;background:var(--amber-soft);border-radius:10px;padding:11px 13px;margin-bottom:17px}.alert strong{color:#713f12;font-size:13px}.alert p{margin:2px 0 0;color:#7c5b25;font-size:12px}.alert-actions{display:flex;gap:7px;flex-shrink:0}
+    .tabs{display:flex;gap:4px;overflow:auto;border-bottom:1px solid var(--line);position:sticky;top:58px;z-index:5;background:rgba(247,247,244,.94);backdrop-filter:blur(8px)}.tab{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-weight:800;padding:12px 13px 11px;white-space:nowrap}.tab:hover{color:var(--ink)}.tab.active{border-color:var(--green);color:var(--green)}
+    .panel{display:none;padding-top:20px}.panel.active{display:block}.columns{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.85fr);gap:17px}.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:17px}.card h2{font-size:16px;margin:0;letter-spacing:-.01em}.card h3{font-size:13px;margin:0}.sub{color:var(--muted);font-size:12px;margin:4px 0 0}.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:13px}.link-btn{border:0;background:transparent;color:var(--green);font-weight:800;font-size:13px;padding:0}
+    .queue{display:grid}.queue-row{display:grid;grid-template-columns:4px minmax(0,1fr) 92px 84px auto;gap:11px;align-items:center;border-top:1px solid var(--line);padding:11px 0}.queue-row:first-child{border-top:0;padding-top:2px}.priority{width:4px;height:34px;border-radius:4px;background:#d5dbd4}.priority.high{background:#d97706}.q-title{font-weight:800;font-size:13px}.q-detail{color:var(--muted);font-size:11px;margin-top:2px}.date{color:var(--muted);font-size:12px}.state{justify-self:start;display:inline-flex;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap}.state.todo{border-color:#f2d28c;background:var(--amber-soft);color:var(--amber)}.state.done{border-color:#b9d7c4;background:var(--soft);color:var(--green)}
+    .metric-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.metric{border:1px solid var(--line);border-radius:9px;padding:11px}.metric small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.05em;font-weight:800}.metric strong{display:block;font-size:19px;margin-top:3px}.metric em{display:block;font-style:normal;color:var(--muted);font-size:11px;margin-top:1px}.divider{border-top:1px solid var(--line);margin:15px 0}.facts{display:grid;gap:10px}.fact{display:flex;justify-content:space-between;gap:12px;font-size:13px}.fact dt{color:var(--muted)}.fact dd{margin:0;text-align:right;font-weight:700}
+    .activity-list{display:grid;gap:12px}.activity{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:10px;align-items:start}.dot{width:8px;height:8px;border-radius:50%;background:var(--green);margin-top:6px}.dot.amber{background:#d97706}.activity strong{font-size:13px}.activity p{margin:1px 0 0;color:var(--muted);font-size:12px}.activity time{color:var(--muted);font-size:11px;white-space:nowrap}
+    .table{width:100%;border-collapse:collapse}.table th{text-align:left;text-transform:uppercase;letter-spacing:.06em;font-size:10px;color:var(--muted);padding-bottom:9px}.table td{border-top:1px solid var(--line);padding:11px 6px 11px 0;font-size:13px;vertical-align:top}.pill{display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;white-space:nowrap}.pill.green{border-color:#b9d7c4;background:var(--soft);color:var(--green)}.pill.amber{border-color:#f2d28c;background:var(--amber-soft);color:var(--amber)}
+    .chart{height:185px;border:1px solid var(--line);border-radius:9px;background:#fbfcfa;overflow:hidden;position:relative}.chart svg{width:100%;height:100%}.chart-label{position:absolute;left:12px;top:9px;font-size:11px;color:var(--muted)}.config{margin-top:14px;border:1px dashed #b7c3b9;border-radius:10px;overflow:hidden}.config summary{list-style:none;padding:11px 12px;color:var(--green);font-weight:800;font-size:12px}.config summary::-webkit-details-marker{display:none}.config summary:after{content:"＋";float:right}.config[open] summary:after{content:"−"}.config-body{border-top:1px solid var(--line);padding:12px;background:#fbfcfa;color:var(--muted);font-size:12px}
+    .timeline-list{display:grid;gap:12px}.event{display:grid;grid-template-columns:8px minmax(0,1fr) auto;gap:10px;align-items:start}.event strong{font-size:13px}.event p{margin:1px 0 0;color:var(--muted);font-size:12px}.event time{color:var(--muted);font-size:11px;white-space:nowrap}
+    .inline-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}
+.wtabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:16px 0 14px;overflow:auto}.wtabs:first-child{margin-top:0}
+.wtab{border:0;background:transparent;color:var(--muted);font-weight:800;padding:9px 10px;border-bottom:2px solid transparent;white-space:nowrap;font-size:13px}.wtab:hover{color:var(--ink)}.wtab.active{border-color:var(--green);color:var(--green)}
+.wview{display:none}.wview.active{display:block}
+.entry-card{border:1px solid #b9d7c4;background:linear-gradient(180deg,#f4faf6,#fff);border-radius:12px;padding:16px;margin-bottom:17px}
+.entry-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:13px}
+.entry-cell{border:1px solid var(--line);border-radius:9px;padding:10px;background:#fff}
+.entry-cell span{display:block;font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.entry-cell b{display:block;font-size:12px;margin:3px 0 7px}
+.entry-cell input{width:100%;border:1px solid var(--input,#dfe4dc);border-radius:7px;padding:7px 9px;font-size:15px;font-weight:700;color:var(--ink);background:#fbfcfa}
+.entry-cell input:focus{outline:2px solid var(--green);outline-offset:-1px;border-color:var(--green)}
+.spark-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:13px}
+.spark{border:1px solid var(--line);border-radius:9px;padding:10px;background:#fbfcfa}
+.spark b{display:block;font-size:12px}.spark em{display:block;font-style:normal;color:var(--muted);font-size:11px;margin-top:2px}
+.spark svg{width:100%;height:34px;display:block;margin-top:7px}
+.swatch{width:11px;height:11px;border-radius:50%;display:inline-block;flex-shrink:0;border:1px solid rgba(0,0,0,.18);vertical-align:-1px}
+.legend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 14px;margin:12px 0 0;padding:0}.legend li{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.gtabs{display:flex;gap:4px;margin-bottom:14px;overflow:auto}.gtab{border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:800;white-space:nowrap}.gtab:hover{color:var(--ink)}.gtab.active{background:var(--green);border-color:var(--green);color:#fff}
+.gview{display:none}.gview.active{display:block}
+.table-scroll{overflow-x:auto;margin-top:4px}
+.ind-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.ind-card{border:1px solid var(--line);border-radius:9px;padding:11px;background:#fff;display:flex;gap:9px;align-items:flex-start}
+.ind-card .swatch{margin-top:4px;width:12px;height:12px}
+.ind-card h4{font-size:13px;margin:0}.ind-card p{font-size:11px;color:var(--muted);margin:3px 0 0}
+.ind-flag{display:inline-flex;border:1px solid #f2d28c;background:var(--amber-soft);color:var(--amber);border-radius:999px;padding:2px 7px;font-size:10px;font-weight:800;margin-left:6px;vertical-align:1px}
+.vig-list{display:grid;gap:9px;margin-top:12px}
+.vig-item{border-radius:10px;padding:11px 12px;font-size:12px}
+.vig-item.attention{border:1px solid #f2d28c;background:var(--amber-soft)}.vig-item.attention strong{color:#713f12}.vig-item.attention p{color:#7c5b25;margin:2px 0 0}
+.vig-item.info{border:1px solid #b9d7c4;background:var(--soft)}.vig-item.info strong{color:var(--green)}.vig-item.info p{color:#294835;margin:2px 0 0}
+.vig-tag{float:right;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.select-inline{border:1px solid var(--line);border-radius:7px;background:#fff;color:var(--ink);padding:6px 8px;font-size:12px;font-weight:700}.toast{position:fixed;right:20px;bottom:20px;background:#20231f;color:var(--surface);border-radius:9px;padding:11px 14px;font-size:12px;box-shadow:0 10px 28px rgba(0,0,0,.2);opacity:0;transform:translateY(9px);transition:.2s;pointer-events:none;z-index:50}.toast.show{opacity:1;transform:none}
+.wtable{width:100%;border-collapse:collapse}
+.wtable th{text-align:left;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:800;padding:0 7px 5px 0;border:0;white-space:nowrap}
+.wtable td{border-top:1px solid var(--line);padding:3px 7px 3px 0;font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wtable tbody tr:first-child td{border-top:0}
+.wtable input{width:62px;border:1px solid var(--line);border-radius:6px;padding:3px 7px;font-size:13px;font-weight:700;color:var(--ink);background:#fbfcfa}
+.wtable input:focus{outline:2px solid var(--green);outline-offset:-1px;border-color:var(--green)}
+.delta-ok{color:var(--green)}.delta-low{color:#a16207;font-weight:800}
+.low-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#d97706;margin-right:5px;vertical-align:0}
+    @media(max-width:1080px){.shell{grid-template-columns:74px minmax(0,1fr)}.sidebar{padding:14px 8px}.brand{justify-content:center;border:0;padding-bottom:4px}.brand>div:last-child,.nav-label,.nav a span,.org{display:none}.nav a{font-size:0;text-align:center}.nav a:before{content:"•";font-size:18px}.nav a.sub{padding-left:8px}.columns{grid-template-columns:1fr}}
+    @media(max-width:720px){.shell{display:block}.sidebar{display:none}.topbar{padding:0 15px}.page{padding:21px 15px 48px}.hero{align-items:flex-start;flex-direction:column;gap:12px}.hero h1{font-size:24px}.header-side{width:100%;justify-content:space-between}.select{min-width:0;flex:1}.alert{align-items:flex-start;flex-direction:column}.queue-row{grid-template-columns:4px minmax(0,1fr) auto}.queue-row .date,.queue-row .state{grid-column:2}.queue-row .row-end{grid-column:3;grid-row:1 / span 2;justify-self:end}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tabs{top:58px}}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><div class="mark">✦</div><div><strong>SaaS Élevage</strong><small>Espace privé</small></div></div>
+      <div class="nav-label">Navigation</div>
+      <nav class="nav" aria-label="Navigation principale"><a href="#">Tableau de bord</a><a href="#">Parcours adoptants</a><a href="#">Paiements</a><a href="#">Documents</a><a href="#" class="active">Portées · Journal</a><a href="#" class="sub active">Journal</a><a href="#" class="sub">Positionnements</a><a href="#">Animaux</a></nav>
+      <div class="org">Organisation active<strong>La Poulanière</strong></div>
+    </aside>
+    <main>
+      <div class="topbar"><span class="crumb">Portées / Journal</span><div class="top-actions"><button class="btn" data-toast="Le calendrier détaillé s’ouvrirait ici.">Calendrier</button><button class="btn" data-toast="La comparaison de portées s’ouvrirait ici.">Comparer</button></div></div>
+      <div class="page">
+        <header class="hero">
+          <div><div class="eyebrow">Suivi opérationnel</div><h1>Journal des portées</h1><p>Traiter les actions du jour d’abord, explorer le reste par onglet.</p></div>
+          <div class="header-side"><select class="select" aria-label="Portée affichée"><option>Oslo × Nox · née le 14 juin</option><option>Uma × Rio · née le 03 mai</option><option>Sansa × Tao · à venir</option></select><span class="badge">Suivi actif</span></div>
+        </header>
+        <div class="meta"><span>Golden Retriever</span><span>J+12</span><span>8 vivants</span><span>5 réservés · 3 disponibles</span><span>Mère : Oslo · stable</span></div>
+        <div class="alert"><div><strong>Priorité du jour : pesée de la portée et contrôle de la mère.</strong><p>Deux actions ouvertes avant la fin de journée. Rien d’autre ne bloque le suivi.</p></div><div class="alert-actions"><button class="btn small primary" data-toast="La séance de pesée s’ouvrirait ici.">Saisir les poids</button><button class="btn small" data-toast="Le formulaire d’observation s’ouvrirait ici.">Observer la mère</button></div></div>
+
+        <nav class="tabs" aria-label="Sections du journal"><button class="tab active" data-tab="today">Aujourd’hui (2)</button><button class="tab" data-tab="planning">Planning</button><button class="tab" data-tab="birth">Mise-bas</button><button class="tab" data-tab="weights">Poids & croissance</button><button class="tab" data-tab="mother">Mère</button><button class="tab" data-tab="history">Historique</button></nav>
+
+        <!-- Onglet Aujourd'hui : file dense + repères -->
+        <section class="panel active" data-panel="today">
+          <div class="columns">
+            <div class="card">
+              <div class="card-head"><div><h2>File d’actions de la portée</h2><p class="sub">Triées par urgence puis échéance. Terminer ici met à jour l’historique.</p></div><button class="link-btn" data-toast="Les filtres de la file s’ouvriraient ici.">Filtrer</button></div>
+              <div class="queue">
+                <div class="queue-row"><span class="priority high"></span><div><div class="q-title">Pesée de la portée</div><div class="q-detail">8 animaux · séance de routine · avant 18:00</div></div><span class="date">Aujourd’hui</span><span class="state todo">À faire</span><button class="btn small row-end" data-complete>Terminer</button></div>
+                <div class="queue-row"><span class="priority high"></span><div><div class="q-title">Contrôle de la mère</div><div class="q-detail">Température, appétit, état général</div></div><span class="date">Aujourd’hui</span><span class="state todo">À faire</span><button class="btn small row-end" data-complete>Terminer</button></div>
+                <div class="queue-row"><span class="priority"></span><div><div class="q-title">Vermifuge</div><div class="q-detail">Jalon ponctuel · portée</div></div><span class="date">28 juin</span><span class="state">Planifié</span><button class="btn small row-end" data-toast="Le détail du jalon s’ouvrirait ici.">Ouvrir</button></div>
+                <div class="queue-row"><span class="priority"></span><div><div class="q-title">Première sortie de caisse</div><div class="q-detail">Réalisé le 25 juin à 10:30 · tracé dans l’historique</div></div><span class="date">25 juin</span><span class="state done">Terminé</span><button class="btn small row-end" data-toast="La trace du jalon s’ouvrirait ici.">Voir</button></div>
+              </div>
+              <div class="inline-actions"><button class="btn primary" data-toast="Le formulaire d’ajout d’un jalon s’ouvrirait ici.">+ Ajouter un jalon</button><button class="btn" data-toast="Le planning complet s’afficherait dans l’onglet Planning.">Voir le planning →</button></div>
+            </div>
+            <aside class="card">
+              <div class="card-head"><div><h2>Repères</h2><p class="sub">Le contexte utile, sans répéter toute la fiche.</p></div></div>
+              <div class="metric-grid">
+                <div class="metric"><small>Vivants</small><strong>8/8</strong><em>aucun décès enregistré</em></div>
+                <div class="metric"><small>Dernière pesée</small><strong>+42 g</strong><em>moyenne depuis hier</em></div>
+                <div class="metric"><small>Mère</small><strong>Stable</strong><em>dernier contrôle hier</em></div>
+                <div class="metric"><small>Prochaine échéance</small><strong>J+13</strong><em>pesée du 27 juin</em></div>
+              </div>
+              <div class="divider"></div>
+              <dl class="facts"><div class="fact"><dt>Naissance réelle</dt><dd>14 juin 2026</dd></div><div class="fact"><dt>Père</dt><dd>Nox des Prés Verts</dd></div><div class="fact"><dt>Réservations liées</dt><dd>5 dossiers</dd></div></dl>
+              <div class="inline-actions"><button class="btn" data-toast="La fiche complète de la portée s’ouvrirait ici.">Ouvrir la fiche portée</button></div>
+            </aside>
+          </div>
+          <div class="card" style="margin-top:17px">
+            <div class="card-head"><div><h2>Activité récente</h2><p class="sub">Les derniers événements significatifs, tous domaines confondus.</p></div><button class="link-btn" data-tab-link="history">Tout l’historique →</button></div>
+            <div class="activity-list">
+              <div class="activity"><span class="dot"></span><div><strong>Pesée de routine enregistrée</strong><p>8 mesures · moyenne 612 g · progression positive</p></div><time>Aujourd’hui, 09:42</time></div>
+              <div class="activity"><span class="dot amber"></span><div><strong>Température de la mère non renseignée</strong><p>Donnée manquante signalée lors du contrôle quotidien</p></div><time>Hier, 18:15</time></div>
+              <div class="activity"><span class="dot"></span><div><strong>Jalon « première sortie de caisse » terminé</strong><p>Réalisé par vous · plan de soins</p></div><time>Hier, 10:30</time></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Onglet Planning -->
+        <section class="panel" data-panel="planning">
+          <div class="card">
+            <div class="card-head"><div><h2 style="font-size:21px">Planning actif</h2><p class="sub">6 jalons visibles · le quotidien reste pilotable depuis « Aujourd’hui ».</p></div><button class="btn primary" data-toast="Le formulaire d’ajout d’un jalon s’ouvrirait ici.">+ Ajouter un jalon</button></div>
+            <table class="table">
+              <thead><tr><th>Élément</th><th>Échéance</th><th>État</th><th>Source</th><th></th></tr></thead>
+              <tbody>
+                <tr><td><strong>Pesée de la portée</strong><br><span class="sub">Quotidien · portée</span></td><td>Aujourd’hui</td><td><span class="pill amber">À faire</span></td><td>Modèle soins</td><td><button class="btn small" data-toast="Le jalon s’ouvrirait en détail.">Ouvrir</button></td></tr>
+                <tr><td><strong>Contrôle de la mère</strong><br><span class="sub">Quotidien · mère</span></td><td>Aujourd’hui</td><td><span class="pill amber">À faire</span></td><td>Modèle soins</td><td><button class="btn small" data-toast="Le jalon s’ouvrirait en détail.">Ouvrir</button></td></tr>
+                <tr><td><strong>Première sortie de caisse</strong><br><span class="sub">Ponctuel · portée</span></td><td>25 juin</td><td><span class="pill green">Terminé</span></td><td>Série soins</td><td><button class="btn small" data-toast="La trace du jalon s’ouvrirait ici.">Trace</button></td></tr>
+                <tr><td><strong>Vermifuge</strong><br><span class="sub">Ponctuel · animaux</span></td><td>28 juin</td><td><span class="pill">Planifié</span></td><td>Jalon isolé</td><td><button class="btn small" data-toast="Le jalon s’ouvrirait en détail.">Ouvrir</button></td></tr>
+              </tbody>
+            </table>
+            <details class="config">
+              <summary>Afficher la configuration du planning</summary>
+              <div class="config-body">Application d’un modèle de planning, séries récurrentes, jalons isolés et ajustements sont regroupés ici. Ils restent accessibles mais n’encombrent plus le suivi quotidien.</div>
+            </details>
+          </div>
+        </section>
+
+        <!-- Onglet Mise-bas -->
+        <section class="panel" data-panel="birth">
+          <div class="columns">
+            <div class="card">
+              <div class="card-head"><div><h2>Bilan de mise-bas</h2><p class="sub">Session clôturée le 14 juin à 06:40 · corrections historisées consultables.</p></div><span class="pill green">Clôturée</span></div>
+              <div class="metric-grid">
+                <div class="metric"><small>Mâles</small><strong>4</strong></div>
+                <div class="metric"><small>Femelles</small><strong>4</strong></div>
+                <div class="metric"><small>Vivants</small><strong>8/8</strong></div>
+                <div class="metric"><small>Poids de naissance</small><strong>8/8</strong></div>
+              </div>
+              <div class="inline-actions"><button class="btn" data-toast="L’historique des corrections s’ouvrirait ici.">Voir les corrections</button></div>
+            </div>
+            <aside class="card"><h2>Chronologie de la session</h2><div class="timeline-list" style="margin-top:13px"><div class="event"><span class="dot"></span><div><strong>Premier chiot</strong><p>Naissance enregistrée</p></div><time>01:12</time></div><div class="event"><span class="dot"></span><div><strong>Dernier chiot</strong><p>Naissance enregistrée</p></div><time>05:58</time></div><div class="event"><span class="dot"></span><div><strong>Session clôturée</strong><p>Bilan vérifié</p></div><time>06:40</time></div></div></aside>
+          </div>
+        </section>
+
+        <!-- Onglet Poids -->
+        <section class="panel" data-panel="weights">
+          <div class="card">
+            <div class="card-head"><div><h2 style="font-size:21px">Poids & croissance</h2><p class="sub">Mesures réelles uniquement · repères descriptifs, sans interprétation médicale. La saisie du jour reste dans la page.</p></div></div>
+
+            <div class="entry-card" id="weight-entry">
+              <div class="card-head" style="margin-bottom:7px"><div><h3>Séance de pesée — aujourd’hui · J+12</h3><p class="sub">Saisis le poids : les variations se calculent automatiquement · Tab ou Entrée pour passer au suivant · enregistrement groupé en une action.</p></div><span class="pill amber" id="entry-progress">0 / 8 saisis</span></div>
+              <div id="gain-alerts"></div>
+              <div style="overflow-x:auto"><table class="wtable" id="entry-table"></table></div>
+              <div class="inline-actions" style="margin-top:10px;margin-top:10px">
+                <button class="btn primary" id="save-weights">Enregistrer la séance</button>
+                <button class="btn" id="reset-weights">Effacer les saisies</button>
+                <span class="sub" style="align-self:center;margin:0">Une séance partielle reste possible et serait signalée « incomplète ».</span>
+              </div>
+            </div>
+
+            <nav class="wtabs" aria-label="Vues poids et croissance">
+              <button class="wtab active" data-wtab="curves">Graphiques</button>
+              <button class="wtab" data-wtab="growth">Croissance &amp; planning</button>
+              <button class="wtab" data-wtab="compare">Comparaison</button>
+              <button class="wtab" data-wtab="adjustments">Séances &amp; ajustements</button>
+            </nav>
+
+            <!-- Vue Graphiques : portée entière / progression relative / animal individuel -->
+            <div class="wview active" data-wview="curves">
+              <nav class="gtabs" aria-label="Vues graphiques"><button class="gtab active" data-gtab="litter">Portée entière</button><button class="gtab" data-gtab="relative">Progression relative</button><button class="gtab" data-gtab="individual">Animal individuel</button></nav>
+
+              <div class="gview active" data-gview="litter">
+                <svg id="litter-chart" viewBox="0 0 760 240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Courbes de croissance de la portée, 8 séries animales" style="width:100%;height:auto;border:1px solid var(--line);border-radius:9px;background:#fff">
+                  <g font-family="Arial" font-size="9" fill="#687066">
+                    <text x="6" y="14">grammes</text>
+                    <text x="740" y="234" text-anchor="end">J+12</text><text x="560" y="234" text-anchor="middle">J+10</text><text x="380" y="234" text-anchor="middle">J+8</text><text x="200" y="234" text-anchor="middle">Naissance</text>
+                    <text x="6" y="46">#650</text><text x="6" y="96">#550</text><text x="6" y="146">#450</text><text x="6" y="196">#350</text>
+                  </g>
+                  <path d="M0 45 H752 M0 95 H752 M0 145 H752 M0 195 H752" stroke="#edf0eb"/>
+                  <!-- mâles d'abord : bleu(1) vert(2) noir(3) rouge(4) puis femelles rose(1) violet(2) jaune(3) orange(4) -->
+                  <polyline data-series-id="s1" points="200,196 290,168 380,140 470,112 560,84 650,58 740,34" fill="none" stroke="#2563eb" stroke-width="2.6"/>
+                  <polyline data-series-id="s2" points="200,193 290,166 380,137 470,109 560,81 650,55 740,30" fill="none" stroke="#16a34a" stroke-width="2.6"/>
+                  <polyline data-series-id="s3" points="200,199 290,173 380,147 470,120 560,94 650,70 740,48" fill="none" stroke="#111827" stroke-width="2.6"/>
+                  <polyline data-series-id="s4" points="200,191 290,163 380,134 470,105 560,77 650,50 740,26" fill="none" stroke="#dc2626" stroke-width="2.6"/>
+                  <polyline data-series-id="s5" points="200,198 290,171 380,143 470,115 560,87 650,62 740,38" fill="none" stroke="#ec4899" stroke-width="2.6"/>
+                  <polyline data-series-id="s6" points="200,195 290,167 380,138 470,110 560,82 650,56 740,32" fill="none" stroke="#7c3aed" stroke-width="2.6"/>
+                  <polyline data-series-id="s7" points="200,201 290,176 380,150 470,124 560,98 650,74 740,52" fill="none" stroke="#eab308" stroke-width="2.6"/>
+                  <polyline data-series-id="s8" points="200,194 290,165 380,135 470,107 560,79 650,53 740,29" fill="none" stroke="#f97316" stroke-width="2.6"/>
+                  <!-- point de vigilance : dernière prise de « mâle 3 - collier noir » sous sa moyenne des 3 précédentes -->
+                  <circle cx="740" cy="48" r="6.5" fill="none" stroke="#d97706" stroke-width="2"/>
+                  <circle cx="740" cy="48" r="3.5" fill="#111827"/>
+                  <g fill="#315c43">
+                    <circle cx="740" cy="34" r="3"/><circle cx="740" cy="30" r="3"/><circle cx="740" cy="26" r="3"/><circle cx="740" cy="38" r="3"/><circle cx="740" cy="32" r="3"/><circle cx="740" cy="52" r="3" stroke="#d97706"/><circle cx="740" cy="29" r="3"/>
+                  </g>
+                  <g>
+                    <rect x="470" y="18" width="272" height="20" rx="5" fill="#fff7df" stroke="#f2d28c"/>
+                    <circle cx="484" cy="28" r="3.5" fill="#111827" stroke="#d97706" stroke-width="1.6"/>
+                    <text x="494" y="31.5" font-family="Arial" font-size="9.5" fill="#713f12">Mâle 3 · collier noir — prise inférieure à sa moyenne</text>
+                  </g>
+                </svg>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:10px">
+                  <ul class="legend" id="series-legend" aria-label="Chiots affichés — cliquer pour masquer ou afficher une courbe"></ul>
+                  <button class="link-btn" id="toggle-all" type="button">Tout désélectionner</button>
+                </div>
+                <p class="sub" style="margin-top:10px">Repères de lecture : cercle plein = mesure réelle · cercle cerclé d’ambre = prise de poids inférieure à la moyenne des trois prises précédentes de cet animal · aucune interpolation entre les mesures.</p>
+              </div>
+
+              <div class="gview" data-gview="relative">
+                <p class="sub" style="margin-bottom:10px">Indice 100 = poids de naissance réel. Les courbes comparent la progression proportionnelle des animaux, indépendamment de leur poids de départ.</p>
+                <svg viewBox="0 0 760 210" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Courbes de progression relative de la portée, 8 séries animales éligibles" style="width:100%;height:auto;border:1px solid var(--line);border-radius:9px;background:#fff">
+                  <g font-family="Arial" font-size="9" fill="#687066">
+                    <text x="6" y="14">indice (naissance = 100)</text>
+                    <text x="740" y="204" text-anchor="end">J+12</text>
+                    <text x="6" y="44">160</text><text x="6" y="94">130</text><text x="6" y="144">115</text><text x="6" y="184">100</text>
+                  </g>
+                  <path d="M0 40 H752 M0 90 H752 M0 140 H752 M0 180 H752" stroke="#edf0eb"/>
+                  <line x1="0" y1="180" x2="752" y2="180" stroke="#dfe4dc"/>
+                  <polyline points="60,180 220,142 400,104 580,66 740,42" fill="none" stroke="#2563eb" stroke-width="2.4"/>
+                  <polyline points="60,180 220,138 400,99 580,61 740,37" fill="none" stroke="#16a34a" stroke-width="2.4"/>
+                  <polyline points="60,180 220,148 400,113 580,76 740,54" fill="none" stroke="#111827" stroke-width="2.4"/>
+                  <polyline points="60,180 220,136 400,96 580,59 740,35" fill="none" stroke="#dc2626" stroke-width="2.4"/>
+                  <polyline points="60,180 220,145 400,108 580,70 740,46" fill="none" stroke="#ec4899" stroke-width="2.4"/>
+                  <polyline points="60,180 220,139 400,101 580,63 740,39" fill="none" stroke="#7c3aed" stroke-width="2.4"/>
+                  <polyline points="60,180 220,150 400,116 580,80 740,58" fill="none" stroke="#eab308" stroke-width="2.4"/>
+                  <polyline points="60,180 220,137 400,97 580,60 740,36" fill="none" stroke="#f97316" stroke-width="2.4"/>
+                  <circle cx="740" cy="58" r="3.5" fill="#eab308"/>
+                  <circle cx="740" cy="54" r="3.5" fill="#111827"/>
+                </svg>
+                <ul class="legend" aria-label="Légende de la progression relative">
+                  <li><span class="swatch" style="background:#2563eb"></span>Mâle 1</li><li><span class="swatch" style="background:#16a34a"></span>Mâle 2</li><li><span class="swatch" style="background:#111827"></span>Mâle 3</li><li><span class="swatch" style="background:#dc2626"></span>Mâle 4</li>
+                  <li><span class="swatch" style="background:#ec4899"></span>Femelle 1</li><li><span class="swatch" style="background:#7c3aed"></span>Femelle 2</li><li><span class="swatch" style="background:#eab308"></span>Femelle 3</li><li><span class="swatch" style="background:#f97316"></span>Femelle 4</li>
+                </ul>
+              </div>
+
+              <div class="gview" data-gview="individual">
+                <label class="sub" for="indiv-select" style="display:block;margin-bottom:8px">Animal observé</label>
+                <select id="indiv-select" class="select-inline" aria-label="Animal individuel">
+                  <option>Mâle 1 · collier bleu</option><option>Mâle 2 · collier vert</option><option selected>Mâle 3 · collier noir</option><option>Mâle 4 · collier rouge</option><option>Femelle 1 · collier rose</option><option>Femelle 2 · collier violet</option><option>Femelle 3 · collier jaune</option><option>Femelle 4 · collier orange</option>
+                </select>
+                <div class="spark-grid" style="margin-top:13px;grid-template-columns:repeat(3,minmax(0,1fr))">
+                  <div class="metric"><small>Dernier poids connu</small><strong>589 g</strong><em>J+12 · mesure réelle</em></div>
+                  <div class="metric"><small>Variation récente</small><strong>+33 g</strong><em>sur 24 h observées</em></div>
+                  <div class="metric"><small>Progression depuis naissance</small><strong>+37 %</strong><em>indice naissance ≈ 137</em></div>
+                </div>
+                <svg viewBox="0 0 760 190" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Courbe individuelle de mâle 3, collier noir" style="width:100%;height:auto;margin-top:13px;border:1px solid var(--line);border-radius:9px;background:#fff">
+                  <g font-family="Arial" font-size="9" fill="#687066"><text x="6" y="14">grammes</text><text x="740" y="184" text-anchor="end">J+12</text><text x="200" y="184" text-anchor="middle">Naissance</text><text x="6" y="50">600</text><text x="6" y="100">500</text><text x="6" y="150">400</text></g>
+                  <path d="M0 50 H752 M0 100 H752 M0 150 H752" stroke="#edf0eb"/>
+                  <polyline points="200,152 300,128 420,102 560,78 700,58 740,54" fill="none" stroke="#111827" stroke-width="3"/>
+                  <circle cx="200" cy="152" r="4" fill="#111827"/><circle cx="300" cy="128" r="4" fill="#111827"/><circle cx="420" cy="102" r="4" fill="#111827"/><circle cx="560" cy="78" r="4" fill="#111827"/><circle cx="700" cy="58" r="4" fill="#111827"/>
+                  <circle cx="740" cy="54" r="6" fill="none" stroke="#d97706" stroke-width="2"/><circle cx="740" cy="54" r="3.5" fill="#111827"/>
+                  <text x="480" y="40" font-family="Arial" font-size="10" fill="#7c5b25">Dernière prise sous la moyenne des 3 précédentes</text>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Vue Croissance & planning : tableau fusionné (par chiot / par jour) + planning -->
+            <div class="wview" data-wview="growth">
+              <div class="card-head"><div><h3>Croissance de la portée</h3><p class="sub">Mesures réelles uniquement · naissance et routine J0 restent distinctes.</p></div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                  <select class="select-inline" aria-label="Organisation du tableau" id="table-view"><option value="puppy">Par chiot</option><option value="day">Par jour</option></select>
+                  <select class="select-inline" aria-label="Valeur affichée"><option>Poids</option><option>Gain depuis la mesure précédente</option><option>Indice naissance</option></select>
+                  <select class="select-inline" aria-label="Période"><option>Tout</option><option>Semaine 1</option><option>Semaine 2</option><option>Dernières mesures</option></select>
+                </div>
+              </div>
+              <div class="table-scroll" id="table-puppy-view">
+                <table class="wtable" style="min-width:860px">
+                  <thead><tr><th>Chiot</th><th>Collier</th><th>Naissance</th><th>J+8</th><th>J+9</th><th>J+10</th><th>J+11</th><th>J+12</th><th>Δ 24 h</th><th>Δ 3 j</th><th>Total naissance → J12</th></tr></thead>
+                  <tbody>
+                    <tr><td><strong>Mâle 1</strong></td><td><span class="swatch" style="background:#2563eb"></span> bleu</td><td>425 g</td><td>520 g</td><td>552 g</td><td>574 g</td><td>590 g</td><td>604 g</td><td class="delta-ok">+2,4 %</td><td class="delta-ok">+5,3 %</td><td>+179 g (+42 %)</td></tr>
+                    <tr><td><strong>Mâle 2</strong></td><td><span class="swatch" style="background:#16a34a"></span> vert</td><td>430 g</td><td>526 g</td><td>554 g</td><td>578 g</td><td>598 g</td><td>618 g</td><td class="delta-ok">+3,3 %</td><td class="delta-ok">+6,9 %</td><td>+188 g (+44 %)</td></tr>
+                    <tr><td><span class="low-dot"></span><strong>Mâle 3</strong></td><td><span class="swatch" style="background:#111827"></span> noir</td><td>420 g</td><td>512 g</td><td>536 g</td><td>552 g</td><td>556 g</td><td>589 g</td><td class="delta-low">+5,9 %*</td><td class="delta-low">+6,7 %*</td><td>+169 g (+40 %)</td></tr>
+                    <tr><td><strong>Mâle 4</strong></td><td><span class="swatch" style="background:#dc2626"></span> rouge</td><td>434 g</td><td>530 g</td><td>561 g</td><td>583 g</td><td>600 g</td><td>631 g</td><td class="delta-ok">+5,2 %</td><td class="delta-ok">+8,2 %</td><td>+197 g (+45 %)</td></tr>
+                    <tr><td><strong>Femelle 1</strong></td><td><span class="swatch" style="background:#ec4899"></span> rose</td><td>422 g</td><td>518 g</td><td>546 g</td><td>570 g</td><td>586 g</td><td>597 g</td><td class="delta-ok">+1,9 %</td><td class="delta-ok">+4,7 %</td><td>+175 g (+41 %)</td></tr>
+                    <tr><td><strong>Femelle 2</strong></td><td><span class="swatch" style="background:#7c3aed"></span> violet</td><td>429 g</td><td>524 g</td><td>552 g</td><td>576 g</td><td>592 g</td><td>622 g</td><td class="delta-ok">+5,1 %</td><td class="delta-ok">+8,0 %</td><td>+193 g (+45 %)</td></tr>
+                    <tr><td><span class="low-dot"></span><strong>Femelle 3</strong></td><td><span class="swatch" style="background:#eab308"></span> jaune</td><td>418 g</td><td>510 g</td><td style="color:var(--muted)">— absente J+9</td><td>549 g</td><td>553 g</td><td>586 g</td><td class="delta-low">+6,0 %*</td><td class="delta-low">+6,7 %*</td><td>+168 g (+40 %)</td></tr>
+                    <tr><td><strong>Femelle 4</strong></td><td><span class="swatch" style="background:#f97316"></span> orange</td><td>431 g</td><td>527 g</td><td>556 g</td><td>580 g</td><td>595 g</td><td>615 g</td><td class="delta-ok">+3,4 %</td><td class="delta-ok">+6,4 %</td><td>+184 g (+43 %)</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="sub" style="margin-top:8px"><span class="low-dot"></span>Prise la plus faible du groupe sur l’indicateur concerné · * progression en retrait par rapport à la moyenne des prises précédentes du même animal. Valeurs descriptives, sans interprétation médicale.</p>
+              <p class="sub" style="margin-top:6px">Le tableau affiche <strong>toutes les séances enregistrées</strong> : il défile horizontalement (colonne « Chiot » figée) quand la portée grandit, et le filtre « Période » limite l’affichage à une semaine ou aux dernières mesures. La vue « Par jour » transpose le tableau pour les portées nombreuses.</p>
+              <div class="divider"></div>
+              <div class="card-head"><div><h3>Planning des pesées</h3><p class="sub">Fréquence quotidienne jusqu’à J+21, puis tous les 3 jours · politique paramétrée au niveau de l’organisation.</p></div></div>
+              <div class="meta" style="margin-bottom:10px;margin-bottom:8px"><span>Prochaine séance : J+13 · demain</span><span>Statut : à jour</span><span>Politique : quotidienne → tous les 3 jours après J+21</span></div>
+              <table class="wtable" style="min-width:520px">
+                <thead><tr><th>Séance</th><th>Date prévue</th><th>État</th><th>Couverture</th><th>Poids moyen</th><th>Δ moyenne</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>J+12</strong> · aujourd’hui</td><td>26 juin</td><td><span class="pill amber">À saisir</span></td><td>—</td><td>—</td><td>—</td></tr>
+                  <tr><td><strong>J+11</strong></td><td>25 juin</td><td><span class="pill green">Complète</span></td><td>8/8</td><td>584 g</td><td class="delta-ok">+2,5 %</td></tr>
+                  <tr><td><strong>J+10</strong></td><td>24 juin</td><td><span class="pill green">Complète</span></td><td>8/8</td><td>570 g</td><td class="delta-ok">+9,4 %</td></tr>
+                  <tr><td><strong>J+9</strong></td><td>23 juin</td><td><span class="pill">Partielle</span></td><td>7/8</td><td>541 g</td><td class="delta-ok">+3,8 %</td></tr>
+                  <tr><td><strong>J+8</strong></td><td>22 juin</td><td><span class="pill green">Complète</span></td><td>8/8</td><td>521 g</td><td class="delta-ok">+22,3 %</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Vue Comparaison -->
+            <div class="wview" data-wview="compare">
+              <div class="card-head"><div><h3>Comparer avec une autre portée</h3><p class="sub">Poids observés au même jour d’âge · aucune interpolation entre portées.</p></div><button class="btn small" data-toast="La page de comparaison dédiée s’ouvrirait ici.">Ouvrir la comparaison complète →</button></div>
+              <svg viewBox="0 0 760 190" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Comparaison moyenne de deux portées au même jour d'âge" style="width:100%;height:auto;border:1px solid var(--line);border-radius:9px;background:#fff">
+                <g font-family="Arial" font-size="9" fill="#687066"><text x="6" y="14">grammes</text><text x="740" y="184" text-anchor="end">jour d’âge comparé</text><text x="6" y="46">#640</text><text x="6" y="106">#480</text><text x="6" y="166">#320</text></g>
+                <path d="M0 46 H752 M0 106 H752 M0 166 H752" stroke="#edf0eb"/>
+                <polyline points="40,164 170,138 320,108 470,80 620,54 740,36" fill="none" stroke="#315c43" stroke-width="3.4"/>
+                <polyline points="40,170 170,148 320,122 470,96 620,72 740,56" fill="none" stroke="#94a68f" stroke-width="3" stroke-dasharray="9 6"/>
+                <circle cx="740" cy="36" r="4.5" fill="#315c43"/><circle cx="740" cy="56" r="4.5" fill="#94a68f"/>
+              </svg>
+              <div class="legend"><li><svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true"><line x1="1" x2="25" y1="5" y2="5" stroke="#315c43" stroke-width="3"/></svg>Oslo × Nox (portée courante)</li><li><svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true"><line x1="1" x2="25" y1="5" y2="5" stroke="#94a68f" stroke-width="3" stroke-dasharray="8 5"/></svg>Uma × Rio (portée plus âgée)</li></div>
+            </div>
+
+            <!-- Vue Séances & ajustements -->
+            <div class="wview" data-wview="adjustments">
+              <div class="card-head"><div><h3>Niveau d’alerte des prises de poids</h3><p class="sub">Paramétrable par l’organisation (comme la cadence des pesées) · valeurs descriptives, jamais médicales.</p></div><button class="btn small" data-toast="Le réglage serait enregistré au niveau de l’organisation.">Enregistrer</button></div>
+              <table class="wtable" style="min-width:640px">
+                <thead><tr><th>Alerte</th><th>Déclenchement</th><th>Seuil</th><th>Affichage</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Baisse de poids</strong></td><td>Poids inférieur à la séance précédente</td><td><select class="select-inline"><option>Toujours</option></select></td><td><span class="pill amber">Encart + tableau</span></td></tr>
+                  <tr><td><strong>Prise faible du jour</strong></td><td>Δ 24 h ou Δ 3 j le plus bas du groupe</td><td><select class="select-inline"><option>1 chiot le plus faible</option><option>2 plus faibles</option><option>Sous la moyenne du groupe − X %</option></select></td><td><span class="pill amber">Encart + tableau</span></td></tr>
+                  <tr><td><strong>Progression en retrait</strong></td><td>Prise sous la moyenne des 3 prises précédentes de l’animal</td><td><select class="select-inline"><option>Écart ≥ 20 %</option><option selected>Écart ≥ 30 %</option><option>Écart ≥ 50 %</option></select></td><td><span class="pill amber">Cercle ambre graphique</span></td></tr>
+                  <tr><td><strong>Séance incomplète</strong></td><td>Animaux éligibles sans mesure</td><td><select class="select-inline"><option>Dès 1 manquant</option></select></td><td><span class="pill">Information</span></td></tr>
+                </tbody>
+              </table>
+              <p class="sub" style="margin-top:8px">Dans le SaaS, ce réglage rejoindrait « Paramètres » à côté de « Cadence des pesées » et du suivi de température maternelle — même modèle : des repères modifiables, pas des seuils vétérinaires.</p>
+              <div class="divider"></div>
+              <div class="vig-list" style="margin-top:0">
+                <div class="vig-item attention"><span class="vig-tag">À surveiller</span><strong>Mâle 3 · collier noir et Femelle 3 · collier jaune — prise récente sous leur moyenne des 3 prises précédentes.</strong><p>Signal descriptif uniquement : à relire humainement, jamais converti en alerte médicale automatique.</p></div>
+                <div class="vig-item info"><span class="vig-tag">Information</span><strong>Pesée prévue aujourd’hui non encore enregistrée.</strong><p>Échéance du 26 juin, à J+12. La saisie intégrée ci-dessus clôture ce point.</p></div>
+              </div>
+              <div class="divider"></div>
+              <div class="card-head"><div><h3>Séances récentes</h3><p class="sub">Chaque séance reste corrigeable : correction d’une mesure ou annulation d’une séance, toujours tracées.</p></div></div>
+              <div class="table-scroll">
+                <table class="table" style="min-width:720px">
+                  <thead><tr><th>Séance</th><th>Animaux mesurés</th><th>Poids moyen</th><th>Variation moyenne</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    <tr><td><strong>J+12</strong> · aujourd’hui</td><td>en cours de saisie</td><td>—</td><td>—</td><td><button class="btn small" data-toast="La saisie est dans la page, au-dessus.">Reprendre la saisie</button></td></tr>
+                    <tr><td><strong>J+11</strong> · 25 juin</td><td>8/8</td><td>584 g</td><td>+14 g</td><td><button class="btn small" data-toast="Le formulaire de correction s’ouvrirait ici.">Corriger une mesure</button> <button class="btn small" data-toast="L’annulation historisée s’ouvrirait ici.">Annuler</button></td></tr>
+                    <tr><td><strong>J+10</strong> · 24 juin</td><td>8/8</td><td>570 g</td><td>+49 g</td><td><button class="btn small" data-toast="Le formulaire de correction s’ouvrirait ici.">Corriger une mesure</button> <button class="btn small" data-toast="L’annulation historisée s’ouvrirait ici.">Annuler</button></td></tr>
+                    <tr><td><strong>J+9</strong> · 23 juin</td><td>7/8 · Femelle 3 absente</td><td>541 g</td><td>+20 g</td><td><button class="btn small" data-toast="Le formulaire de correction s’ouvrirait ici.">Corriger une mesure</button> <button class="btn small" data-toast="L’annulation historisée s’ouvrirait ici.">Annuler</button></td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="divider"></div>
+              <div class="card-head"><div><h3>Ajustements tracés</h3><p class="sub">Rien n’est écrasé silencieusement : chaque correction conserve la valeur d’origine et le motif.</p></div></div>
+              <div class="table-scroll">
+                <table class="table" style="min-width:720px">
+                  <thead><tr><th>Date</th><th>Animal</th><th>Modification</th><th>Auteur</th></tr></thead>
+                  <tbody>
+                    <tr><td>25 juin · 10:12</td><td>Femelle 2 · collier violet</td><td>Correction 590 g → 592 g (relecture balance)</td><td>Vous</td></tr>
+                    <tr><td>24 juin · 09:05</td><td>Mâle 4 · collier rouge</td><td>Annulation d’une mesure doublonnée</td><td>Vous</td></tr>
+                    <tr><td>23 juin · 17:44</td><td>Femelle 1 · collier rose</td><td>Correction 520 g → 518 g (erreur de saisie)</td><td>Vous</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Onglet Mère -->
+        <section class="panel" data-panel="mother">
+          <div class="columns">
+            <div class="card">
+              <div class="card-head"><div><h2 style="font-size:21px">Suivi de la mère</h2><p class="sub">Observations dédiées, sans répéter le contexte reproductif.</p></div><button class="btn primary" data-toast="Le formulaire d’observation s’ouvrirait ici.">+ Ajouter une observation</button></div>
+              <table class="table">
+                <thead><tr><th>Date</th><th>Observation</th><th>État</th></tr></thead>
+                <tbody>
+                  <tr><td>25 juin</td><td><strong>Appétit normal</strong><br><span class="sub">Allaitement régulier · comportement attentif</span></td><td><span class="pill green">Stable</span></td></tr>
+                  <tr><td>24 juin</td><td><strong>Température non renseignée</strong><br><span class="sub">Point de vigilance à compléter, pas une alerte médicale</span></td><td><span class="pill amber">À compléter</span></td></tr>
+                  <tr><td>15 juin</td><td><strong>Récupération normale</strong><br><span class="sub">Observation post-mise-bas</span></td><td><span class="pill green">Stable</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <aside class="card"><h2>Points ouverts</h2><p class="sub">Une seule donnée attendue.</p><div class="alert" style="margin-top:13px;margin-bottom:0"><div><strong>Température manquante</strong><p>C’est une donnée incomplète, pas un diagnostic.</p></div></div><div class="inline-actions"><button class="btn" data-toast="La fiche de la mère s’ouvrirait ici.">Fiche d’Oslo</button></div></aside>
+          </div>
+        </section>
+
+        <!-- Onglet Historique -->
+        <section class="panel" data-panel="history">
+          <div class="card">
+            <div class="card-head"><div><h2 style="font-size:21px">Historique unifié</h2><p class="sub">Mesures, soins, mise-bas et observations dans une chronologie unique.</p></div><button class="btn" data-toast="Les filtres d’historique s’ouvriraient ici.">Filtrer</button></div>
+            <div class="activity-list">
+              <div class="activity"><span class="dot"></span><div><strong>Pesée de routine enregistrée</strong><p>8 mesures · moyenne 612 g · par vous</p></div><time>26 juin, 09:42</time></div>
+              <div class="activity"><span class="dot"></span><div><strong>Observation de la mère ajoutée</strong><p>État général stable · température à compléter</p></div><time>25 juin, 18:15</time></div>
+              <div class="activity"><span class="dot"></span><div><strong>Jalon terminé</strong><p>Première sortie de caisse</p></div><time>25 juin, 10:30</time></div>
+              <div class="activity"><span class="dot"></span><div><strong>Session de mise-bas clôturée</strong><p>8 naissances enregistrées · bilan vérifié</p></div><time>14 juin, 06:40</time></div>
+              <div class="activity"><span class="dot"></span><div><strong>Portée créée</strong><p>Oslo × Nox · Golden Retriever</p></div><time>03 avril</time></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <script>
+    const tabs=[...document.querySelectorAll('[data-tab]')],panels=[...document.querySelectorAll('[data-panel]')],toast=document.querySelector('.toast');let timer;
+    function openTab(name){tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===name));panels.forEach(p=>p.classList.toggle('active',p.dataset.panel===name));}
+    tabs.forEach(t=>t.addEventListener('click',()=>openTab(t.dataset.tab)));
+    document.querySelectorAll('[data-tab-link]').forEach(b=>b.addEventListener('click',()=>openTab(b.dataset.tabLink)));
+    document.querySelectorAll('[data-complete]').forEach(button=>button.addEventListener('click',()=>{const row=button.closest('.queue-row');const state=row.querySelector('.state');state.textContent='Terminé';state.className='state done';const title=row.querySelector('.q-detail');if(title&&!title.dataset.original){title.dataset.original=title.textContent;}button.textContent='Voir';button.removeAttribute('data-complete');notify('Action marquée terminée — elle resterait tracée dans l’historique.');}));
+    function notify(message){toast.textContent=message;toast.classList.add('show');clearTimeout(timer);timer=setTimeout(()=>toast.classList.remove('show'),2600);}
+    document.querySelectorAll('[data-toast]').forEach(b=>b.addEventListener('click',()=>notify(b.dataset.toast)));
+    // Sous-onglets de l'onglet Poids
+    const wtabs=[...document.querySelectorAll('[data-wtab]')],wviews=[...document.querySelectorAll('[data-wview]')];
+    wtabs.forEach(t=>t.addEventListener('click',()=>{wtabs.forEach(x=>x.classList.toggle('active',x===t));wviews.forEach(v=>v.classList.toggle('active',v.dataset.wview===t.dataset.wtab));}));
+    // Sous-onglets des graphiques (portée entière / relative / individuel)
+    const gtabs=[...document.querySelectorAll('[data-gtab]')],gviews=[...document.querySelectorAll('[data-gview]')];
+    gtabs.forEach(t=>t.addEventListener('click',()=>{gtabs.forEach(x=>x.classList.toggle('active',x===t));gviews.forEach(v=>v.classList.toggle('active',v.dataset.gview===t.dataset.gtab));}));
+    // Tableau : par chiot / par jour
+    const tableView=document.getElementById('table-view');
+    if(tableView){tableView.addEventListener('change',()=>{const byPuppy=tableView.value==='puppy';document.getElementById('table-puppy-view').hidden=!byPuppy;document.getElementById('table-day-view').hidden=byPuppy;});}
+    // Saisie des poids en tableau épuré — chiots « sexe N · collier X », mâles d'abord,
+    // variations Δ 24 h / Δ 3 j calculées en direct, alerte sur les prises les plus faibles.
+    const PUPPIES=[
+      {label:'Mâle 1',collar:'bleu',hex:'#2563eb',prev:590,prev3:552},
+      {label:'Mâle 2',collar:'vert',hex:'#16a34a',prev:598,prev3:578},
+      {label:'Mâle 3',collar:'noir',hex:'#111827',prev:556,prev3:512},
+      {label:'Mâle 4',collar:'rouge',hex:'#dc2626',prev:600,prev3:583},
+      {label:'Femelle 1',collar:'rose',hex:'#ec4899',prev:586,prev3:570},
+      {label:'Femelle 2',collar:'violet',hex:'#7c3aed',prev:592,prev3:576},
+      {label:'Femelle 3',collar:'jaune',hex:'#eab308',prev:553,prev3:549},
+      {label:'Femelle 4',collar:'orange',hex:'#f97316',prev:595,prev3:580},
+    ];
+    function pct(from,to){return from>0?`+${(((to-from)/from)*100).toFixed(1).replace('.',',')} %`:'—';}
+    const entryTable=document.getElementById('entry-table'),progress=document.getElementById('entry-progress'),gainAlerts=document.getElementById('gain-alerts');
+    entryTable.innerHTML=`<thead><tr><th>Chiot</th><th>Collier</th><th>J+9</th><th>J+11</th><th>Aujourd’hui (g)</th><th>Δ 24 h</th><th>Δ 3 j</th></tr></thead><tbody>${PUPPIES.map(p=>`<tr data-row="${p.label}"><td><strong>${p.label}</strong></td><td><span class="swatch" style="background:${p.hex}"></span> ${p.collar}</td><td>${p.prev3} g</td><td>${p.prev} g</td><td><input type="number" min="0" step="1" inputmode="decimal" placeholder="—" data-weight aria-label="Poids de ${p.label}, collier ${p.collar}, en grammes"></td><td class="delta-cell delta-ok">—</td><td class="delta-cell3 delta-ok">—</td></tr>`).join('')}</tbody>`;
+    const weightInputs=[...document.querySelectorAll('[data-weight]')];
+    function updateProgress(){const filled=weightInputs.filter(i=>i.value.trim()!=='').length;progress.textContent=`${filled} / ${weightInputs.length} saisis`;}
+    function updateDeltas(){
+      const entries=PUPPIES.map((p,i)=>{const raw=weightInputs[i].value.trim();const grams=raw===''?null:Number(raw);return{p,grams,d24:grams!==null&&grams>p.prev?((grams-p.prev)/p.prev)*100:null,d72:grams!==null&&grams>p.prev3?((grams-p.prev3)/p.prev3)*100:null};});
+      // alertes : plus faible Δ 24 h et plus faible Δ 3 j parmi les saisies complètes
+      const with24=entries.filter(e=>e.d24!==null),with72=entries.filter(e=>e.d72!==null);
+      const low24=new Set(),low72=new Set();
+      if(with24.length>=2)low24.add(with24.reduce((a,b)=>a.d24<b.d24?a:b).p.label);
+      if(with72.length>=2)low72.add(with72.reduce((a,b)=>a.d72<b.d72?a:b).p.label);
+      PUPPIES.forEach((p,i)=>{
+        const row=entryTable.querySelector(`tr[data-row="${p.label}"]`);
+        const e=entries[i];
+        row.querySelector('.delta-cell').textContent=e.grams===null?'—':(e.grams<=p.prev?'↓':pct(p.prev,e.grams));
+        row.querySelector('.delta-cell').className='delta-cell '+(e.grams===null||e.grams>p.prev?'delta-ok':'delta-low');
+        row.querySelector('.delta-cell3').textContent=e.grams===null?'—':(e.grams<=p.prev3?'↓':pct(p.prev3,e.grams));
+        row.querySelector('.delta-cell3').className='delta-cell3 '+(e.grams===null||e.grams>p.prev3?'delta-ok':'delta-low');
+        row.querySelector('strong').innerHTML=(low24.has(p.label)||low72.has(p.label)?'<span class="low-dot"></span>':'')+p.label;
+        row.querySelector('.delta-low,.delta-ok');
+        if(low24.has(p.label)){row.querySelector('.delta-cell').classList.add('delta-low');row.querySelector('.delta-cell').textContent+=' *';}
+        if(low72.has(p.label)){row.querySelector('.delta-cell3').classList.add('delta-low');row.querySelector('.delta-cell3').textContent+=' *';}
+      });
+      const flagged=[...new Set([...low24,...low72])];
+      gainAlerts.innerHTML=flagged.length?`<div class="vig-item attention" style="margin-bottom:9px"><span class="vig-tag">À surveiller</span><strong>Prise la plus faible du jour : ${flagged.join(', ')}.</strong><p>Variation en retrait par rapport au reste de la portée — signal descriptif, à relire humainement.</p></div>`:'';
+      return{filled:weightInputs.filter(i=>i.value.trim()!=='').length,flagged};
+    }
+    weightInputs.forEach((input,index)=>{
+      input.addEventListener('input',()=>{updateDeltas();updateProgress();});
+      input.addEventListener('keydown',e=>{
+        if(e.key==='Enter'){e.preventDefault();(weightInputs[index+1]||document.getElementById('save-weights')).focus();}
+      });
+    });
+    document.getElementById('save-weights').addEventListener('click',()=>{
+      const filled=weightInputs.filter(i=>i.value.trim()!=='');
+      if(!filled.length){notify('Aucun poids saisi — renseignez au moins un animal ou effacez la saisie.');return;}
+      const partial=filled.length<weightInputs.length;
+      notify(partial?`Séance partielle enregistrée (${filled.length}/${weightInputs.length}) — elle serait signalée comme séance incomplète.`:`Séance complète enregistrée (${filled.length} animaux) — la file « Aujourd’hui » serait mise à jour.`);
+    });
+    document.getElementById('reset-weights').addEventListener('click',()=>{weightInputs.forEach(i=>i.value='');updateDeltas();updateProgress();notify('Champs réinitialisés (prototype).');});
+    // Légende interactive unique sous le graphique : échantillon de ligne couleur collier + nom,
+    // un clic masque/affiche la courbe. Pas de cases à cocher, pas de doublon avec une rangée au-dessus.
+    const SERIES=[['s1','#2563eb','Mâle 1 · bleu'],['s2','#16a34a','Mâle 2 · vert'],['s3','#111827','Mâle 3 · noir'],['s4','#dc2626','Mâle 4 · rouge'],['s5','#ec4899','Femelle 1 · rose'],['s6','#7c3aed','Femelle 2 · violet'],['s7','#eab308','Femelle 3 · jaune'],['s8','#f97316','Femelle 4 · orange']];
+    const seriesLegend=document.getElementById('series-legend'),toggleAll=document.getElementById('toggle-all');
+    seriesLegend.innerHTML=SERIES.map(([id,hex,label])=>`<li><button type="button" class="legend-toggle" data-series="${id}" aria-pressed="true" title="Masquer ou afficher la courbe" style="display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;padding:0;cursor:pointer;font:inherit;color:${hex}"><svg width="26" height="10" viewBox="0 0 26 10" aria-hidden="true"><line x1="1" x2="25" y1="5" y2="5" stroke="${hex}" stroke-width="2.4"/><circle cx="13" cy="5" r="2.6" fill="${hex}"/></svg><span>${label}</span></button></li>`).join('');
+    function applySeriesVisibility(){
+      SERIES.forEach(([id])=>{
+        const entry=seriesLegend.querySelector(`[data-series="${id}"]`);
+        const on=entry.getAttribute('aria-pressed')==='true';
+        entry.style.opacity=on?'':'0.38';
+        document.querySelectorAll(`#litter-chart polyline[data-series-id="${id}"]`).forEach(pl=>pl.style.display=on?'':'none');
+      });
+      const visibleCount=SERIES.filter(([id])=>seriesLegend.querySelector(`[data-series="${id}"]`).getAttribute('aria-pressed')==='true').length;
+      toggleAll.textContent=visibleCount===0?'Tout sélectionner':(visibleCount===SERIES.length?'Tout désélectionner':`Tout sélectionner (${visibleCount}/${SERIES.length})`);
+    }
+    seriesLegend.addEventListener('click',e=>{
+      const button=e.target.closest('[data-series]');
+      if(!button)return;
+      button.setAttribute('aria-pressed',button.getAttribute('aria-pressed')==='true'?'false':'true');
+      applySeriesVisibility();
+    });
+    toggleAll.addEventListener('click',()=>{const entries=[...seriesLegend.querySelectorAll('[data-series]')];const anyOn=entries.some(b=>b.getAttribute('aria-pressed')==='true');entries.forEach(b=>b.setAttribute('aria-pressed',anyOn?'false':'true'));applySeriesVisibility();});
+  </script>
+</body>
+</html>

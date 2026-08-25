@@ -88,6 +88,14 @@ Supabase :
 pnpm test:e2e:pure -- tests/e2e/breeding-calendar-core.spec.ts
 ```
 
+Certaines specs exigent en plus une variable d’environnement explicite et
+refusent de s’exécuter sans elle. C’est le cas de la spec post-naissance
+`tests/e2e/post-birth-positioning.spec.ts`, qui exige `SUPABASE_PROJECT_ID`
+(ainsi que les autres variables E2E fournies par le runner) : elle ne peut
+tourner que dans un environnement configuré pour l’E2E Supabase, pas sur un
+poste où cette variable est absente — son échec immédiat y est attendu et ne
+signale pas un bug de l’application.
+
 Les démonstrations durables utilisent la même isolation E2E, mais un cycle
 explicite distinct de Playwright. Elles conservent le serveur `3100` et leurs
 données après la fin de la commande de création, jusqu’au cleanup demandé :
