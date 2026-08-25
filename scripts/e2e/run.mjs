@@ -267,6 +267,7 @@ async function main() {
       "tests/e2e/post-adoption-questionnaire-instance-reconciliation.spec.ts",
       "tests/e2e/post-adoption-questionnaire-public-collection.spec.ts",
       "tests/e2e/post-adoption-results-internal-read.spec.ts",
+      "tests/e2e/contact-360-ui.spec.ts",
       "tests/e2e/adoption-handover-foundation.spec.ts",
       "tests/e2e/adopter-financial-resolution-foundation.spec.ts",
       "tests/e2e/adopter-financial-resolution-ui.spec.ts",
