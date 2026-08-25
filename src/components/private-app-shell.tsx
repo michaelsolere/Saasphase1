@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { MainSidebar } from "@/components/main-sidebar";
 import { createClient } from "@/lib/supabase/client";
@@ -25,9 +25,14 @@ export function PrivateAppShell({
   positioningAttentionCount: number;
 }>) {
   const pathname = usePathname();
+  // Trust the server-rendered auth state until Supabase proves otherwise:
+  // "unauthenticated" is only reachable after an actual negative session
+  // check, never from the transient "loading" phase (prevents the sidebar
+  // flashing off right after login redirects).
   const [authStatus, setAuthStatus] = useState<AuthStatus>(
     initialIsAuthenticated ? "authenticated" : "loading",
   );
+  const hasResolvedSessionRef = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
@@ -44,21 +49,34 @@ export function PrivateAppShell({
 
     supabase.auth.getSession().then(({ data }) => {
       if (isMounted) {
-        setAuthStatus(data.session ? "authenticated" : "unauthenticated");
+        hasResolvedSessionRef.current = true;
+        if (!data.session && !initialIsAuthenticated) {
+          setAuthStatus("unauthenticated");
+        } else if (data.session) {
+          setAuthStatus("authenticated");
+        }
       }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthStatus(session ? "authenticated" : "unauthenticated");
+      if (!isMounted) return;
+      // Ignore sign-in events that merely confirm the server-known state;
+      // only act once the initial session lookup has settled. The stale
+      // closure on hasResolvedSession is intentional: this guard only needs
+      // the value captured when the effect mounted (initial lookup pending).
+      setAuthStatus((current) => {
+        if (!hasResolvedSessionRef.current) return current;
+        return session ? "authenticated" : "unauthenticated";
+      });
     });
 
     return () => {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, []);
+  }, [initialIsAuthenticated]);
 
   const canRenderShell = canRenderPrivateShell(authStatus);
   const shouldShowSidebar = shouldShowPrivateSidebar(pathname, canRenderShell);

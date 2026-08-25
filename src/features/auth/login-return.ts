@@ -1,4 +1,6 @@
-export const defaultLoginSuccessPath = "/candidatures?connexion=success";
+// HOME-TODAY-01: `/` is the single daily action queue, so it is the natural
+// post-login landing page (previously /candidatures?connexion=success).
+export const defaultLoginSuccessPath = "/";
 
 export function validateLoginReturnPath(value: unknown): string | null {
   if (typeof value !== "string") return null;
