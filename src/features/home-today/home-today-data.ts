@@ -130,6 +130,7 @@ export async function readHomeTodayAdopter(): Promise<ReaderResult<HomeTodayAdop
 
     if (
       applicationsResult.error ||
+      suspectResult.error ||
       paymentsResult.error ||
       documentsResult.error ||
       reservationsResult.error

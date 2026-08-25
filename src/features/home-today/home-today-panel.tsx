@@ -416,7 +416,10 @@ export function HomeTodayPanel({
         />
       </nav>
 
-      {tabs.isEmpty ? (
+      {tabs.isEmpty && !sections.adopter.failed ? (
+        // Empty state only when the (successful) reads genuinely found
+        // nothing. A failed adopter read must never masquerade as "all
+        // caught up" — its unavailable note renders instead below.
         <section className="rounded-2xl border bg-surface p-16 text-center">
           <p className="text-4xl">🎉</p>
           <h2 className="mt-2 text-xl font-semibold">Tout est à jour</h2>
@@ -424,17 +427,18 @@ export function HomeTodayPanel({
             Aucune action ne demande votre attention aujourd’hui.
           </p>
         </section>
-      ) : (
-        <>
-          {/* Server-rendered tabs: only the active zone is rendered. The
-              adopter journey is the default tab. */}
-          {activeTab === "adopter" ? (
-            sections.adopter.failed
-              ? unavailableNote("La file parcours adoptant")
-              : renderGroupedSections(adopterSections, todayDate)
-          ) : null}
-          {activeTab === "breeding"
-            ? renderGroupedSections(breedingSections, todayDate, (section) =>
+      ) : null}
+      {(activeTab === "adopter" || !tabs.isEmpty) && sections.adopter.failed ? (
+        unavailableNote("La file parcours adoptant")
+      ) : null}
+      {(activeTab === "breeding" || (!tabs.isEmpty && activeTab === "adopter")) &&
+      sections.breeding.failed ? (
+        unavailableNote("La file élevage")
+      ) : null}
+      {!tabs.isEmpty
+        ? (activeTab === "adopter"
+            ? renderGroupedSections(adopterSections, todayDate)
+            : renderGroupedSections(breedingSections, todayDate, (section) =>
                 section.key === "litter_today" && !sections.breeding.failed ? (
                   <ul className="mt-3">
                     {renderLitterTodayRows({
@@ -447,13 +451,8 @@ export function HomeTodayPanel({
                     })}
                   </ul>
                 ) : undefined,
-              )
-            : null}
-          {!tabs.isEmpty && sections.breeding.failed
-            ? unavailableNote("La file élevage")
-            : null}
-        </>
-      )}
+              ))
+        : null}
     </div>
   );
 }
