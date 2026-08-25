@@ -1,31 +1,12 @@
 import Link from "next/link";
+
 import { createClient } from "@/lib/supabase/server";
-import {
-  getSexPreferenceLabel,
-} from "@/features/applications/formatters";
-import { APPLICATION_TO_VALIDATE_STATUSES } from "@/features/applications/statuses";
-import {
-  formatPrice,
-  getReservationStatusLabel,
-} from "@/features/reservations/formatters";
-import { reservationNeedsAttention } from "@/features/reservations/attention";
-import { isActionableLinkedReservation } from "@/features/reservations/linked-reservation";
-import { isFinalReservationStatus } from "@/features/reservations/statuses";
-import {
-  getPaymentTypeLabel,
-} from "@/features/payments/formatters";
-import {
-  getDocumentTypeLabel,
-  getDocumentStatusLabel,
-} from "@/features/documents/formatters";
-import {
-  getLitterStatusLabel,
-  formatLitterDate,
-} from "@/features/litters/formatters";
-import {
-  readCompleteDepositCentsByOrganizationId,
-  resolveDepositSettings,
-} from "@/features/payments/deposit-thresholds";
+import { HomeTodayPanel } from "@/features/home-today/home-today-panel";
+import { loadHomeTodaySections } from "@/features/home-today/home-today-data";
+import { resolveLitterCareTaskAction } from "@/features/litter-journal/litter-care-tasks-actions";
+import type { LitterCareTodayQuickActions } from "@/features/litter-journal/litter-care-today-quick-actions";
+import type { LitterCareTaskSummary } from "@/features/litter-journal/litter-care-tasks-core";
+import { projectLitterCareToday } from "@/features/litter-journal/litter-care-today";
 
 export const dynamic = "force-dynamic";
 
@@ -86,14 +67,20 @@ const quickLinks = [
   },
 ];
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
+  const activeTab = tab === "breeding" ? "breeding" : "adopter";
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    // Unauthenticated landing page view
+    // Unauthenticated landing page view (unchanged)
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10 sm:px-10 lg:px-12">
         <header className="flex items-center justify-between border-b pb-6">
@@ -167,491 +154,71 @@ export default async function Home() {
     );
   }
 
-  // 1. Authenticated Dashboard view data fetching
-  // Load applications needing review
-  const { data: rawApplications } = await supabase
-    .from("application_overview")
-    .select("id, contact_display_name, status, desired_sex_preference, breed, has_started_adopter_journey, submitted_at, created_at")
-    .in("status", APPLICATION_TO_VALIDATE_STATUSES)
-    .eq("has_started_adopter_journey", false)
-    .order("created_at", { ascending: false });
-  const applicationsNeedReview = rawApplications || [];
-  const { count: suspectFormSubmissionsCount } = await supabase
-    .from("form_submissions")
-    .select("id", { count: "exact", head: true })
-    .is("deleted_at", null)
-    .or("status.eq.duplicate_suspected,duplicate_resolution.eq.pending_human_review");
-
-  // Load requested/pending payments
-  const { data: rawPayments } = await supabase
-    .from("payments")
-    .select("id, amount_cents, currency, payment_type, status, due_date, created_at, contact_id, reservation_id")
-    .in("status", ["requested", "pending", "partially_paid"])
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
-  // Load documents to generate or sent (not signed)
-  const { data: rawDocuments } = await supabase
-    .from("documents")
-    .select("id, title, document_type, status, signature_required, created_at, contact_id, reservation_id")
-    .in("status", ["to_generate", "sent"])
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
-
-  // Load reservations for attention checks
-  const { data: rawReservations } = await supabase
-    .from("reservation_overview")
-    .select("id, organization_id, contact_id, contact_display_name, status, financial_resolution, reserved_sex_preference, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, created_at")
-    .neq("status", "pre_reservation_requested")
-    .order("created_at", { ascending: false });
-  const organizationIds = Array.from(
-    new Set(
-      (rawReservations || [])
-        .map((reservation) => reservation.organization_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-  const completeDepositCentsByOrganizationId =
-    await readCompleteDepositCentsByOrganizationId({
-      supabase,
-      organizationIds,
-    });
-  const reservationIds = (rawReservations || [])
-    .map((reservation) => reservation.id)
-    .filter((id): id is string => Boolean(id));
-  const { data: rawPaidArrhesPayments } = reservationIds.length > 0
-    ? await supabase
-        .from("payments")
-        .select("reservation_id, amount_cents")
-        .in("reservation_id", reservationIds)
-        .in("payment_type", ["arrhes", "pre_reservation_deposit_refundable"])
-        .eq("status", "paid")
-        .is("deleted_at", null)
-    : { data: [] };
-  const paidArrhesCentsByReservationId = new Map<string, number>();
-
-  for (const payment of rawPaidArrhesPayments || []) {
-    if (!payment.reservation_id) {
-      continue;
-    }
-
-    paidArrhesCentsByReservationId.set(
-      payment.reservation_id,
-      (paidArrhesCentsByReservationId.get(payment.reservation_id) ?? 0) +
-        payment.amount_cents,
-    );
-  }
-  const reservationStatusById = new Map<string, string | null | undefined>();
-  for (const reservation of rawReservations || []) {
-    if (reservation.id) {
-      reservationStatusById.set(reservation.id, reservation.status);
-    }
-  }
-  const paymentsNeedAttention = (rawPayments || []).filter((payment) =>
-    isActionableLinkedReservation(payment.reservation_id, reservationStatusById),
-  );
-  const documentsNeedAttention = (rawDocuments || []).filter((document) =>
-    isActionableLinkedReservation(document.reservation_id, reservationStatusById),
-  );
-  const reservationsNeedAttention = (rawReservations || []).filter((r) => {
-    const paidArrhesCents = r.id
-      ? paidArrhesCentsByReservationId.get(r.id) ?? 0
-      : 0;
-    const completeDepositCents = r.organization_id
-      ? completeDepositCentsByOrganizationId.get(r.organization_id) ??
-        resolveDepositSettings(null).completeDepositCents
-      : resolveDepositSettings(null).completeDepositCents;
-    return reservationNeedsAttention(r, paidArrhesCents, completeDepositCents);
-  });
-
-  // Load litters in progress
-  const { data: rawLitters } = await supabase
-    .from("litters")
-    .select("id, name, status, expected_birth_date, actual_birth_date, mating_date, expected_puppy_count")
-    .order("created_at", { ascending: false });
-  const littersInProgress = (rawLitters || []).filter(
-    (l) => l.status !== "closed" && l.status !== "cancelled" && l.status !== "archived"
-  );
-
-  // Collect and resolve unique contact names for payments and documents
-  const contactIds = Array.from(
-    new Set([
-      ...paymentsNeedAttention.map((p) => p.contact_id).filter(Boolean),
-      ...documentsNeedAttention.map((d) => d.contact_id).filter(Boolean),
-    ])
-  ) as string[];
-
-  const contactMap: Record<string, string> = {};
-  if (contactIds.length > 0) {
-    const { data: contactsData } = await supabase
-      .from("contacts")
-      .select("id, display_name")
-      .in("id", contactIds);
-    if (contactsData) {
-      contactsData.forEach((c) => {
-        if (c.id && c.display_name) {
-          contactMap[c.id] = c.display_name;
-        }
-      });
-    }
-  }
+  // Authenticated view: the single today action queue across all modules.
+  const sections = await loadHomeTodaySections();
+  const quickActions = buildHomeTodayLitterCareQuickActions(sections);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10 sm:px-10 lg:px-12">
-      <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-center sm:justify-between">
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-8 sm:px-8">
+      <header className="flex flex-wrap items-end justify-between gap-3 border-b pb-5">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wide text-accent">
-            Espace privé · Tableau de bord
+          <p className="text-xs font-bold uppercase tracking-wide text-accent">
+            Espace privé · Aujourd’hui
           </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl text-foreground">
-            SaaS Élevage
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+            Qu’est-ce qui demande mon attention ?
           </h1>
-          <p className="mt-2 text-sm text-muted">
-            Qu’est-ce qui demande mon attention aujourd’hui ?
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            La file d’actions du jour, tous modules. Les sections sans action du
+            jour sont masquées.
           </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200/50">
-            Connecté
-          </span>
         </div>
       </header>
-
-      {/* Grid of Dashboard Flow Cards */}
-      <section className="py-8">
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* 1. Candidats à suivre */}
-          <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Candidats à valider</h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  applicationsNeedReview.length > 0
-                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                    : "bg-muted-soft text-muted border border-border"
-                }`}>
-                  {applicationsNeedReview.length}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {applicationsNeedReview.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucun candidat à relire pour l’instant.</p>
-                ) : (
-                  applicationsNeedReview.slice(0, 5).map((app) => (
-                    <div key={app.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <Link
-                          href={`/candidatures/${app.id}`}
-                          className="block font-semibold text-accent hover:underline"
-                        >
-                          {app.contact_display_name ?? "Candidat anonyme"}
-                        </Link>
-                        <span className="text-xs text-muted">
-                          {app.breed ?? "Race non spécifiée"} · {getSexPreferenceLabel(app.desired_sex_preference)}
-                        </span>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted sm:text-right">
-                        {app.submitted_at || app.created_at ? formatLitterDate(app.submitted_at || app.created_at) : ""}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {(suspectFormSubmissionsCount ?? 0) > 0 ? (
-                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p>
-                      {suspectFormSubmissionsCount} soumission
-                      {suspectFormSubmissionsCount === 1 ? "" : "s"} publique
-                      {suspectFormSubmissionsCount === 1 ? "" : "s"} suspecte
-                      {suspectFormSubmissionsCount === 1 ? "" : "s"} à examiner.
-                    </p>
-                    <Link
-                      href="/form-submissions"
-                      className="shrink-0 font-semibold text-amber-900 underline-offset-4 hover:underline"
-                    >
-                      Voir les soumissions →
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="mt-6 border-t pt-4">
-              <Link
-                href="/candidatures"
-                className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
-              >
-                Voir les candidats à valider ({applicationsNeedReview.length}) →
-              </Link>
-            </div>
-          </div>
-
-          {/* 2. Paiements attendus */}
-          <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Paiements attendus</h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  paymentsNeedAttention.length > 0
-                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                    : "bg-muted-soft text-muted border border-border"
-                }`}>
-                  {paymentsNeedAttention.length}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {paymentsNeedAttention.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucun paiement attendu pour l’instant.</p>
-                ) : (
-                  paymentsNeedAttention.slice(0, 5).map((pay) => {
-                    const contactName = pay.contact_id ? contactMap[pay.contact_id] : null;
-                    return (
-                      <div key={pay.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/payments/${pay.id}`}
-                            className="block font-semibold text-accent hover:underline"
-                          >
-                            {formatPrice(pay.amount_cents, pay.currency)} — {getPaymentTypeLabel(pay.payment_type)}
-                          </Link>
-                          <span className="text-xs text-muted">
-                            {contactName ? `Contact : ${contactName}` : "Contact non chargé"}
-                          </span>
-                        </div>
-                        <span className="shrink-0 text-xs font-medium text-muted sm:text-right">
-                          {pay.due_date ? `Échéance : ${formatLitterDate(pay.due_date)}` : "Sans échéance"}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 border-t pt-4">
-              <Link
-                href="/payments?filter=expected"
-                className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
-              >
-                Voir les paiements attendus ({paymentsNeedAttention.length}) →
-              </Link>
-            </div>
-          </div>
-
-          {/* 3. Documents à traiter */}
-          <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Documents à traiter</h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  documentsNeedAttention.length > 0
-                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                    : "bg-muted-soft text-muted border border-border"
-                }`}>
-                  {documentsNeedAttention.length}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {documentsNeedAttention.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucun document à traiter pour l’instant.</p>
-                ) : (
-                  documentsNeedAttention.slice(0, 5).map((doc) => {
-                    const contactName = doc.contact_id ? contactMap[doc.contact_id] : null;
-                    return (
-                      <div key={doc.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/documents/${doc.id}`}
-                            className="block font-semibold text-accent hover:underline"
-                          >
-                            {doc.title || getDocumentTypeLabel(doc.document_type)}
-                          </Link>
-                          <span className="text-xs text-muted">
-                            {contactName ? `Contact : ${contactName}` : "Contact non chargé"}
-                          </span>
-                        </div>
-                        <span className="h-fit self-start rounded border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 sm:self-center sm:text-right">
-                          {getDocumentStatusLabel(doc.status, doc.document_type)}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 border-t pt-4">
-              <Link
-                href="/documents?filter=to_process"
-                className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
-              >
-                Voir les documents à traiter ({documentsNeedAttention.length}) →
-              </Link>
-            </div>
-          </div>
-
-          {/* 4. Parcours adoptants à suivre */}
-          <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Parcours adoptants à suivre</h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  reservationsNeedAttention.length > 0
-                    ? "bg-amber-50 text-amber-700 border border-amber-200"
-                    : "bg-muted-soft text-muted border border-border"
-                }`}>
-                  {reservationsNeedAttention.length}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {reservationsNeedAttention.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucun parcours adoptant à suivre pour l’instant.</p>
-                ) : (
-                  reservationsNeedAttention.slice(0, 5).map((res) => {
-                    const paidArrhesCents = res.id
-                      ? paidArrhesCentsByReservationId.get(res.id) ?? 0
-                      : 0;
-                    const isArrhesCompleteNoAnimal =
-                      paidArrhesCents >=
-                        (res.organization_id
-                          ? completeDepositCentsByOrganizationId.get(
-                              res.organization_id,
-                            ) ?? resolveDepositSettings(null).completeDepositCents
-                          : resolveDepositSettings(null).completeDepositCents) &&
-                      !res.animal_id &&
-                      res.status !== "animal_assigned" &&
-                      !isFinalReservationStatus(res.status);
-                    let detailText = getReservationStatusLabel(res.status);
-                    if (isArrhesCompleteNoAnimal) {
-                      detailText = "Arrhes complètes — animal non attribué";
-                    }
-                    const isPreReservationPaid =
-                      res.status === "pre_reservation_paid";
-                    if (isPreReservationPaid) {
-                      detailText = isArrhesCompleteNoAnimal
-                        ? "Pré-réservation réglée — arrhes complètes"
-                        : "Pré-réservation réglée";
-                    }
-                    const hasPendingFinancialResolution =
-                      res.financial_resolution === "pending";
-                    if (hasPendingFinancialResolution) {
-                      detailText = "Résolution financière à traiter";
-                    }
-                    return (
-                      <div key={res.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/reservations/${res.id}${
-                              hasPendingFinancialResolution
-                                ? "#financial-resolution"
-                                : ""
-                            }`}
-                            className="block font-semibold text-accent hover:underline"
-                          >
-                            {res.contact_display_name ?? "Contact anonyme"}
-                          </Link>
-                          <span className="text-xs text-muted font-normal">
-                            {res.litter_name || res.litter_group_name || "Aucune portée liée"}
-                          </span>
-                        </div>
-                        <span className={`h-fit max-w-full self-start whitespace-normal rounded border px-2 py-0.5 text-left text-[11px] font-medium sm:max-w-[170px] sm:self-center sm:text-right ${
-                          (isArrhesCompleteNoAnimal || isPreReservationPaid) &&
-                          !hasPendingFinancialResolution
-                            ? "text-emerald-700 bg-emerald-50 border-emerald-200/60"
-                            : "text-amber-700 bg-amber-50 border-amber-200/60"
-                        }`}>
-                          {detailText}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 border-t pt-4">
-              <Link
-                href="/reservations?filter=attention"
-                className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
-              >
-                Voir les parcours adoptants à suivre ({reservationsNeedAttention.length}) →
-              </Link>
-            </div>
-          </div>
-
-          {/* 5. Portées en cours */}
-          <div className="rounded-2xl border bg-surface p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between border-b pb-4">
-                <h2 className="text-lg font-semibold text-foreground">Portées en cours</h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  littersInProgress.length > 0
-                    ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                    : "bg-muted-soft text-muted border border-border"
-                }`}>
-                  {littersInProgress.length}
-                </span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {littersInProgress.length === 0 ? (
-                  <p className="text-sm text-muted py-2">Aucune portée en cours pour l’instant.</p>
-                ) : (
-                  littersInProgress.slice(0, 5).map((lit) => {
-                    const dateLabel = lit.actual_birth_date
-                      ? "Née le"
-                      : lit.expected_birth_date
-                      ? "Attendue le"
-                      : "Saillie le";
-                    const dateValue = lit.actual_birth_date
-                      ? lit.actual_birth_date
-                      : lit.expected_birth_date
-                      ? lit.expected_birth_date
-                      : lit.mating_date;
-                    return (
-                      <div key={lit.id} className="flex flex-col gap-2 py-1 text-sm sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <Link
-                            href={`/litters/${lit.id}`}
-                            className="block font-semibold text-accent hover:underline"
-                          >
-                            {lit.name || `Portée ${lit.id.slice(0, 8)}`}
-                          </Link>
-                          <span className="text-xs text-muted">
-                            {dateLabel} {dateValue ? formatLitterDate(dateValue) : "Non précisée"}
-                          </span>
-                        </div>
-                        <span className="h-fit self-start rounded border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 sm:self-center sm:text-right">
-                          {getLitterStatusLabel(lit.status)}
-                        </span>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            <div className="mt-6 border-t pt-4">
-              <Link
-                href="/litters?filter=active"
-                className="text-sm font-semibold text-accent hover:underline inline-flex items-center gap-1"
-              >
-                Voir les portées en cours ({littersInProgress.length}) →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <footer className="border-t pt-6 text-sm text-muted">
-        Phase 1 — consultation d’abord, écritures métier ajoutées par petites PRs ciblées.
-      </footer>
+      <div className="pt-4">
+        <HomeTodayPanel
+          sections={sections}
+          quickActions={quickActions}
+          activeTab={activeTab}
+        />
+      </div>
     </main>
   );
+}
+
+/**
+ * One-click actions for the planned litter care tasks shown on the home page.
+ * Same binding pattern as /calendar/today: each action gets its own command id
+ * and resolves via resolveLitterCareTaskAction. Read-only for members without
+ * write access (empty list).
+ */
+function buildHomeTodayLitterCareQuickActions(
+  sections: Awaited<ReturnType<typeof loadHomeTodaySections>>,
+): LitterCareTodayQuickActions[] {
+  if (sections.breeding.failed) return [];
+  const breeding = sections.breeding.data;
+  if (!breeding.canWrite) return [];
+
+  const todayDate = breeding.todayDate;
+  const projection = projectLitterCareToday(breeding.tasks, {
+    date: todayDate,
+    localTime: "23:59",
+  });
+  const activeTasks = [
+    ...projection.overdue,
+    ...projection.dueToday,
+    ...projection.openWindows,
+  ];
+  return activeTasks
+    .filter((task): task is LitterCareTaskSummary & { status: "planned" } => task.status === "planned")
+    .map((task) => ({
+      taskId: task.id,
+      doneAction: resolveLitterCareTaskAction.bind(null, {
+        taskId: task.id,
+        clientCommandId: crypto.randomUUID(),
+      }),
+      notApplicableAction: resolveLitterCareTaskAction.bind(null, {
+        taskId: task.id,
+        clientCommandId: crypto.randomUUID(),
+      }),
+    }));
 }
