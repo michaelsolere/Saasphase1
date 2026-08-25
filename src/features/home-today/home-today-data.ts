@@ -6,6 +6,10 @@ import {
   listAdopterAppointmentCalendarEvents,
   listReproductiveCycleCalendarEvents,
 } from "@/features/breeding-calendar/breeding-calendar";
+import type {
+  AdopterAppointmentBreedingCalendarEvent,
+  ReproductiveCycleBreedingCalendarEvent,
+} from "@/features/breeding-calendar/breeding-calendar-contract";
 import type { CalendarReminderSummary } from "@/features/breeding-calendar/calendar-reminders-core";
 import { listOrganizationCalendarReminders } from "@/features/breeding-calendar/calendar-reminders";
 import { APPLICATION_TO_VALIDATE_STATUSES } from "@/features/applications/statuses";
@@ -242,8 +246,8 @@ export type HomeTodayBreedingData = {
   litterNames: Record<string, string>;
   canWrite: boolean;
   weighingProjections: LitterWeighingTodayProjection[];
-  appointments: Awaited<ReturnType<typeof listAdopterAppointmentCalendarEvents>>;
-  reproductiveCycles: Awaited<ReturnType<typeof listReproductiveCycleCalendarEvents>>;
+  appointments: AdopterAppointmentBreedingCalendarEvent[];
+  reproductiveCycles: ReproductiveCycleBreedingCalendarEvent[];
   reminders: CalendarReminderSummary[];
 };
 
