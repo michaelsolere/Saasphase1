@@ -6,6 +6,7 @@ import {
   type ContactChronologyEntry,
 } from "@/features/contacts/contact-360-model";
 import type { ReservationOverview } from "@/features/reservations/types";
+import { getReservationStatusLabel } from "@/features/reservations/formatters";
 
 const KIND_BADGE_CLASSES: Record<ContactChronologyEntry["kind"], string> = {
   form_submission: "bg-sky-100 text-sky-900",
@@ -21,6 +22,10 @@ const KIND_BADGE_CLASSES: Record<ContactChronologyEntry["kind"], string> = {
 export function ContactJourneyDossierCard({ reservation }: { reservation: ReservationOverview }) {
   const targetLitter = reservation.litter_name ?? reservation.litter_group_name ?? "Portée non précisée";
   const isFinalized = reservation.status === "adopted";
+  const isClosed = Boolean(
+    reservation.status &&
+      ["cancelled", "withdrawn", "expired", "archived"].includes(reservation.status),
+  );
 
   return (
     <Link
@@ -32,12 +37,16 @@ export function ContactJourneyDossierCard({ reservation }: { reservation: Reserv
         <span className="text-sm font-semibold text-foreground">{targetLitter}</span>
         <span
           className={
-            isFinalized
+            isFinalized || isClosed
               ? "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
               : "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
           }
         >
-          {isFinalized ? "Dossier finalisé" : "Dossier en cours"}
+          {isFinalized
+            ? "Dossier finalisé"
+            : isClosed
+              ? `Dossier clos · ${getReservationStatusLabel(reservation.status)}`
+              : "Dossier en cours"}
         </span>
         {reservation.animal_display_name ? (
           <span className="text-xs font-medium text-muted">
@@ -93,6 +102,7 @@ export function ContactChronologyPanel({
                     {entry.detail}
                   </p>
                 ) : null}
+                {entry.email ? <ContactEmailTechnicalDetails email={entry.email} /> : null}
               </li>
             ))}
           </ol>
@@ -115,5 +125,59 @@ export function ContactSectionError({ label }: { label: string }) {
     <p role="alert" className="text-sm text-amber-800">
       Impossible de charger {label}.
     </p>
+  );
+}
+
+const emailStatusLabels: Record<string, string> = {
+  sent: "Envoyé",
+  failed: "Échec",
+  pending: "En attente",
+};
+
+function ContactEmailTechnicalDetails({
+  email,
+}: {
+  email: ContactChronologyEntry["email"];
+}) {
+  if (!email) {
+    return null;
+  }
+
+  const rows: Array<[string, string]> = [
+    ["Destinataire", email.recipientEmail ?? "Non renseigné"],
+    ["Objet", email.subject ?? "Sans objet"],
+    ["Statut", email.status ? (emailStatusLabels[email.status] ?? email.status) : "Inconnu"],
+    ["Tentatives", String(email.attemptCount ?? 0)],
+  ];
+  if (email.lastErrorCode) {
+    rows.push(["Dernière erreur", email.lastErrorCode]);
+  }
+  rows.push([
+    "Envoyé le",
+    email.sentAt ? formatApplicationDate(email.sentAt) : "Jamais envoyé",
+  ]);
+  if (email.attachmentCount) {
+    rows.push(["Pièces jointes", String(email.attachmentCount)]);
+  }
+
+  return (
+    <details
+      className="mt-2 rounded-lg border bg-background px-3 py-2 text-xs"
+      data-testid={`email-details-${email.sentAt ? "sent" : "pending"}`}
+    >
+      <summary className="cursor-pointer font-semibold text-accent">
+        Détails techniques
+      </summary>
+      <dl className="mt-2 grid gap-1.5 sm:grid-cols-2">
+        {rows.map(([label, value]) => (
+          <div key={label}>
+            <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              {label}
+            </dt>
+            <dd className="mt-0.5 break-words">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }

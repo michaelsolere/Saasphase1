@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/types/database.types";
+import { formatPrice } from "@/features/reservations/formatters";
+import { getPaymentStatusLabel } from "@/features/payments/formatters";
 import {
   buildContactChronology,
   classifyContact360,
@@ -89,7 +91,7 @@ export async function loadContactChronologySources(
         .is("deleted_at", null),
       supabase
         .from("notes")
-        .select("id, body, created_at, created_by, profiles!created_by ( display_name )")
+        .select("id, body, created_at, created_by")
         .eq("contact_id", contactId)
         .eq("note_type", "internal")
         .eq("visibility", "internal"),
@@ -166,8 +168,8 @@ export async function loadContactChronologySources(
     sources.push({
       id: `payment-${raw.id}`,
       kind: "payment",
-      label: `Paiement · ${raw.status}`,
-      detail: `${(raw.amount_cents / 100).toLocaleString("fr-FR")} ${raw.currency}`,
+      label: `Paiement · ${getPaymentStatusLabel(raw.status)}`,
+      detail: formatPrice(raw.amount_cents, raw.currency),
       status: raw.status,
       occurredAt: (row as { paid_at: string | null }).paid_at ?? (row as { created_at: string }).created_at,
       email: null,
@@ -226,9 +228,8 @@ export async function loadContactChronologySources(
       id: string;
       body: string;
       created_at: string;
-      profiles: { display_name: string | null } | { display_name: string | null }[] | null;
+      created_by: string | null;
     };
-    const profile = Array.isArray(raw.profiles) ? raw.profiles[0] : raw.profiles;
     sources.push({
       id: `note-${raw.id}`,
       kind: "note",
@@ -238,7 +239,6 @@ export async function loadContactChronologySources(
       occurredAt: raw.created_at,
       email: null,
     });
-    void profile;
   }
 
   for (const row of manualContacts.data ?? []) {

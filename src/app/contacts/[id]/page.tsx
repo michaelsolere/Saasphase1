@@ -207,8 +207,13 @@ export default async function ContactDetailPage({
     : { data: null, error: null as import("@supabase/supabase-js").PostgrestError | null };
   const contactReservations = rawReservations as ReservationOverview[] | null;
 
+  // A failed reservations read must NOT silently downgrade the page to
+  // standalone mode (lesson from HOME-TODAY review #496): the mode is only
+  // derived from a successfully read list, and a failure is surfaced.
   const hasJourneyDossiers = Boolean(
-    contactReservations && contactReservations.length > 0,
+    !reservationsError &&
+      contactReservations &&
+      contactReservations.length > 0,
   );
 
   // Applications
@@ -491,6 +496,15 @@ export default async function ContactDetailPage({
                   </section>
                 ) : null}
 
+                {!hasJourneyDossiers && reservationsError ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-4">
+                      Dossiers parcours adoptant
+                    </h2>
+                    <ContactSectionError label="les dossiers parcours" />
+                  </section>
+                ) : null}
+
                 {!hasJourneyDossiers && chronologyState && paginatedChronology ? (
                   chronologyState.errors.length > 0 ? (
                     <section className="rounded-2xl border bg-surface p-6 sm:p-8">
@@ -594,8 +608,6 @@ export default async function ContactDetailPage({
                     )}
                   </section>
                 ) : null}
-
-                {hasJourneyDossiers ? null : null}
 
                 {hasDocumentsSection && visibleDocuments ? (
                   <section className="rounded-2xl border bg-surface p-6 sm:p-8">
