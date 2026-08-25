@@ -51,6 +51,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/document-template-pdf-preview.spec.ts",
   "tests/e2e/expected-birth-anchor.spec.ts",
   "tests/e2e/home-today-model.spec.ts",
+  "tests/e2e/home-today-post-adoption-alerts.spec.ts",
   "tests/e2e/fixture-registry.spec.ts",
   "tests/e2e/gestation-anchor.spec.ts",
   "tests/e2e/gestation-default-planning.spec.ts",
