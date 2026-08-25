@@ -206,6 +206,7 @@ test("n’expose aucun identifiant de séance, mesure ou commande", () => {
     "animalId",
     "publicLabel",
     "details",
+    "collarColor",
     "latestWeightGrams",
     "latestMeasuredAt",
     "weightDraft",
