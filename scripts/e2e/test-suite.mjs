@@ -15,6 +15,7 @@ export const pureE2eSpecPaths = Object.freeze([
   "tests/e2e/choice-appointment-planning-core.spec.ts",
   "tests/e2e/choice-appointment-delivery-finalization-core.spec.ts",
   "tests/e2e/choice-appointments-assignment-foundation.spec.ts",
+  "tests/e2e/contact-360-model.spec.ts",
   "tests/e2e/direct-late-sale-core.spec.ts",
   "tests/e2e/adopter-financial-resolution-core.spec.ts",
   "tests/e2e/adopter-activation-fixtures.spec.ts",

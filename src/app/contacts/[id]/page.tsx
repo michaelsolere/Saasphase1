@@ -10,6 +10,17 @@ import { getContactRoleLabel } from "@/features/contacts/formatters";
 import { ContactApplicationAction } from "@/features/contacts/contact-application-action";
 import { NoteForm } from "@/features/contacts/note-form";
 import {
+  loadContactChronologySources,
+} from "@/features/contacts/contact-360-data";
+import {
+  paginateContactChronology,
+} from "@/features/contacts/contact-360-model";
+import {
+  ContactChronologyPanel,
+  ContactJourneyDossierCard,
+  ContactSectionError,
+} from "@/features/contacts/contact-360-view";
+import {
   getDocumentStatusLabel,
   getDocumentTypeLabel,
   getSignatureRequiredLabel,
@@ -19,7 +30,7 @@ import {
   getPaymentStatusLabel,
   getPaymentTypeLabel,
 } from "@/features/payments/formatters";
-import { formatPrice, getReservationStatusLabel } from "@/features/reservations/formatters";
+import { formatPrice } from "@/features/reservations/formatters";
 import type { ReservationOverview } from "@/features/reservations/types";
 import { createClient } from "@/lib/supabase/server";
 import { addContactRole } from "@/features/contacts/actions";
@@ -71,34 +82,6 @@ type RelatedEvent = {
   actual_at: string | null;
   created_at: string;
 };
-
-function getUsefulDocumentDate(document: RelatedDocument) {
-  if (document.signed_at) {
-    return { label: "Signé le", value: document.signed_at };
-  }
-
-  if (document.received_at) {
-    return { label: "Reçu le", value: document.received_at };
-  }
-
-  if (document.sent_at) {
-    return { label: "Envoyé le", value: document.sent_at };
-  }
-
-  if (document.updated_at) {
-    return { label: "Mis à jour le", value: document.updated_at };
-  }
-
-  return { label: "Créé le", value: document.created_at };
-}
-
-function getUsefulEventDate(event: RelatedEvent) {
-  return event.actual_at ?? event.planned_at ?? event.planned_date ?? event.created_at;
-}
-
-function getEventTypeLabel(value: string) {
-  return value.replaceAll("_", " ");
-}
 
 function NotFoundOrUnauthorized() {
   return (
@@ -167,6 +150,7 @@ export default async function ContactDetailPage({
     contact_status?: string;
     note_status?: string;
     role_status?: string;
+    page?: string;
   }>;
 }) {
   const { id } = await params;
@@ -211,20 +195,40 @@ export default async function ContactDetailPage({
         .is("deleted_at", null)
     : { data: null };
 
-  // Fetch applications
-  const { data: contactApplications, error: applicationsError } = contact
+  const contactId = contact?.id ?? null;
+
+  // Journey reservations decide the presentation mode of this contact page.
+  const { data: rawReservations, error: reservationsError } = contactId
+    ? await supabase
+        .from("reservation_overview")
+        .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, adoption_completed_at, created_at")
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: false })
+    : { data: null, error: null as import("@supabase/supabase-js").PostgrestError | null };
+  const contactReservations = rawReservations as ReservationOverview[] | null;
+
+  // A failed reservations read must NOT silently downgrade the page to
+  // standalone mode (lesson from HOME-TODAY review #496): the mode is only
+  // derived from a successfully read list, and a failure is surfaced.
+  const hasJourneyDossiers = Boolean(
+    !reservationsError &&
+      contactReservations &&
+      contactReservations.length > 0,
+  );
+
+  // Applications
+  const { data: contactApplications, error: applicationsError } = contactId
     ? await supabase
         .from("application_overview")
         .select(
           "id, status, species, breed, desired_sex_preference, submitted_at, created_at, public_form_name, public_form_slug",
         )
-        .eq("contact_id", contact.id)
+        .eq("contact_id", contactId)
         .order("submitted_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
-  // Fetch notes
-  const contactId = contact?.id;
+  // Notes
   const { data: notes, error: notesError } = contactId
     ? await supabase
         .from("notes")
@@ -235,18 +239,7 @@ export default async function ContactDetailPage({
         .order("created_at", { ascending: false })
     : { data: null, error: null };
 
-  // Fetch reservations
-  const { data: rawReservations, error: reservationsError } = contactId
-    ? await supabase
-        .from("reservation_overview")
-        .select("id, status, litter_name, litter_group_name, price_cents, paid_cents, currency, animal_id, animal_display_name, reserved_sex_preference, adoption_completed_at, created_at")
-        .eq("contact_id", contactId)
-        .order("created_at", { ascending: false })
-    : { data: null, error: null };
-
-  const contactReservations = rawReservations as ReservationOverview[] | null;
-
-  // Fetch payments
+  // Payments
   const { data: rawPayments, error: paymentsError } = contactId
     ? await supabase
         .from("payments")
@@ -259,7 +252,7 @@ export default async function ContactDetailPage({
 
   const contactPayments = rawPayments as RelatedPayment[] | null;
 
-  // Fetch documents
+  // Documents
   const { data: rawDocuments, error: documentsError } = contactId
     ? await supabase
         .from("documents")
@@ -271,7 +264,7 @@ export default async function ContactDetailPage({
 
   const contactDocuments = rawDocuments as RelatedDocument[] | null;
 
-  // Fetch events
+  // Events
   const { data: rawEvents, error: eventsError } = contactId
     ? await supabase
         .from("events")
@@ -282,6 +275,19 @@ export default async function ContactDetailPage({
     : { data: null, error: null };
 
   const contactEvents = rawEvents as RelatedEvent[] | null;
+
+  // Unified chronology (standalone mode only — never rendered for a contact
+  // that already carries a journey dossier).
+  const chronologyState = contactId && !hasJourneyDossiers
+    ? await loadContactChronologySources(supabase, contactId)
+    : null;
+  const requestedPage = Number.parseInt(query.page ?? "1", 10);
+  const currentPage =
+    Number.isFinite(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const paginatedChronology = chronologyState
+    ? paginateContactChronology(chronologyState.chronology, currentPage)
+    : null;
+
   const activeRoleValues = contactRoles?.map((contactRole) => contactRole.role) ?? [];
   const activeJourneyRole =
     CONTACT_JOURNEY_ROLES.find((role) => activeRoleValues.includes(role)) ??
@@ -303,6 +309,16 @@ export default async function ContactDetailPage({
     ),
   );
   const canCreateApplication = canEditContact && !applicationsError;
+
+  const visiblePayments = hasJourneyDossiers
+    ? (contactPayments ?? []).filter((payment) => !payment.reservation_id)
+    : contactPayments;
+  const visibleDocuments = contactDocuments;
+  const visibleEvents = contactEvents;
+  const hasPaymentsSection = Boolean(visiblePayments && visiblePayments.length > 0) || paymentsError;
+  const hasDocumentsSection = Boolean(visibleDocuments && visibleDocuments.length > 0) || documentsError;
+  const hasEventsSection = Boolean(visibleEvents && visibleEvents.length > 0) || eventsError;
+  const hasNotesSection = Boolean(notes && notes.length > 0) || notesError;
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-6 py-10 sm:px-10 lg:px-12">
@@ -361,7 +377,7 @@ export default async function ContactDetailPage({
             {query.role_status === "already_exists" ? (
               <p
                 role="status"
-                className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950"
               >
                 Ce rôle est déjà actif pour ce contact.
               </p>
@@ -455,221 +471,234 @@ export default async function ContactDetailPage({
                   </dl>
                 </section>
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <h2 className="text-xl font-semibold">
-                        Candidatures liées
-                      </h2>
-                      {canCreateApplication && hasContactApplications ? (
-                        <p className="mt-2 text-sm text-muted">
-                          Créer un nouveau projet d’adoption pour ce contact.
+                {hasJourneyDossiers && contactReservations ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8" data-testid="journey-dossiers">
+                    <h2 className="text-xl font-semibold mb-6">
+                      Dossier{contactReservations.length === 1 ? "" : "s"} parcours adoptant
+                    </h2>
+                    {reservationsError ? (
+                      <ContactSectionError label="les dossiers parcours" />
+                    ) : (
+                      <div className="space-y-4">
+                        {contactReservations.map((reservation) => (
+                          <ContactJourneyDossierCard
+                            key={reservation.id}
+                            reservation={reservation}
+                          />
+                        ))}
+                        <p className="text-xs text-muted">
+                          L’historique détaillé du parcours est disponible dans
+                          chaque dossier — il n’est pas dupliqué sur la fiche
+                          contact.
                         </p>
+                      </div>
+                    )}
+                  </section>
+                ) : null}
+
+                {!hasJourneyDossiers && reservationsError ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-4">
+                      Dossiers parcours adoptant
+                    </h2>
+                    <ContactSectionError label="les dossiers parcours" />
+                  </section>
+                ) : null}
+
+                {!hasJourneyDossiers && chronologyState && paginatedChronology ? (
+                  chronologyState.errors.length > 0 ? (
+                    <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                      <h2 className="text-xl font-semibold mb-4">Chronologie</h2>
+                      <ContactSectionError label="la chronologie du contact" />
+                    </section>
+                  ) : (
+                    <ContactChronologyPanel
+                      entries={paginatedChronology.items}
+                      totalCount={paginatedChronology.totalCount}
+                      hasMore={paginatedChronology.hasMore}
+                      nextPage={currentPage + 1}
+                    />
+                  )
+                ) : null}
+
+                {!hasJourneyDossiers &&
+                contactApplications &&
+                contactApplications.length > 0 ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8" data-testid="standalone-applications">
+                    <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <h2 className="text-xl font-semibold">
+                          Candidatures liées
+                        </h2>
+                        {canCreateApplication ? (
+                          <p className="mt-2 text-sm text-muted">
+                            Créer un nouveau projet d’adoption pour ce contact.
+                          </p>
+                        ) : null}
+                      </div>
+                      {canCreateApplication ? (
+                        <ContactApplicationAction
+                          href={`/contacts/${contact.id}/applications/new`}
+                          hasApplications={hasContactApplications}
+                          hasOpenApplication={hasOpenContactApplication}
+                        />
                       ) : null}
                     </div>
-                    {canCreateApplication ? (
-                      <ContactApplicationAction
-                        href={`/contacts/${contact.id}/applications/new`}
-                        hasApplications={hasContactApplications}
-                        hasOpenApplication={hasOpenContactApplication}
-                      />
-                    ) : null}
-                  </div>
 
-                  {applicationsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les candidatures liées.
-                    </p>
-                  ) : contactApplications && contactApplications.length > 0 ? (
-                    <div className="divide-y divide-border">
-                      {contactApplications.map((app) => {
-                        const sourceForm =
-                          app.public_form_name ??
-                          app.public_form_slug ??
-                          "Source non précisée";
-                        const dateText = formatApplicationDate(
-                          app.submitted_at ?? app.created_at,
-                        );
+                    {applicationsError ? (
+                      <ContactSectionError label="les candidatures liées" />
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {contactApplications.map((app) => {
+                          const sourceForm =
+                            app.public_form_name ??
+                            app.public_form_slug ??
+                            "Source non précisée";
+                          const dateText = formatApplicationDate(
+                            app.submitted_at ?? app.created_at,
+                          );
 
-                        return (
-                          <div
-                            key={app.id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <span className="font-semibold text-foreground text-sm">
-                                    {[app.species, app.breed]
-                                      .filter(Boolean)
-                                      .join(" · ") ||
-                                      "Espèce et race non précisées"}
-                                  </span>
-                                  <span
-                                    className={
-                                      app.status === "to_review"
-                                        ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
-                                        : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
-                                    }
-                                  >
-                                    {getApplicationStatusLabel(app.status)}
-                                  </span>
-                                  {app.id ? (
-                                    <Link
-                                      href={`/candidatures/${app.id}`}
-                                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
-                                    >
-                                      Fiche
-                                    </Link>
-                                  ) : null}
-                                </div>
-                                <p className="text-xs text-muted">
-                                  Préférence :{" "}
-                                  {getSexPreferenceLabel(
-                                    app.desired_sex_preference,
-                                  )}
-                                </p>
-                                <p className="text-xs text-muted">
-                                  Soumise le {dateText} · Source : {sourceForm}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucune candidature liée à ce contact.
-                    </p>
-                  )}
-                </section>
-
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Réservations liées
-                  </h2>
-
-                  {reservationsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les réservations liées.
-                    </p>
-                  ) : contactReservations && contactReservations.length > 0 ? (
-                    <div className="divide-y divide-border">
-                      {contactReservations.map((res) => {
-                        const targetLitter =
-                          res.litter_name ??
-                          res.litter_group_name ??
-                          "Portée non précisée";
-                        const dateText = formatApplicationDate(res.created_at);
-                        const adoptionDateText = formatApplicationDate(
-                          res.adoption_completed_at,
-                        );
-
-                        return (
-                          <div
-                            key={res.id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                              <div className="space-y-1">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <span className="font-semibold text-foreground text-sm">
-                                    {targetLitter}
-                                  </span>
-                                  <span
-                                    className={
-                                      res.status === "active" ||
-                                      res.status === "confirmed_after_birth" ||
-                                      res.status === "animal_assigned"
-                                        ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
-                                        : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
-                                    }
-                                  >
-                                    {getReservationStatusLabel(res.status)}
-                                  </span>
-                                  {res.id ? (
-                                    <Link
-                                      href={`/reservations/${res.id}`}
-                                      className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
-                                    >
-                                      Fiche
-                                    </Link>
-                                  ) : null}
-                                </div>
-                                <p className="text-xs text-muted">
-                                  Préférence : {getSexPreferenceLabel(res.reserved_sex_preference)}
-                                </p>
-                                <p className="text-xs text-muted">
-                                  Tarif : {formatPrice(res.price_cents, res.currency)}
-                                  {res.paid_cents !== null && res.paid_cents !== undefined && res.paid_cents > 0 ? (
-                                    <span className="text-emerald-700 ml-2 font-medium">
-                                      (Payé : {formatPrice(res.paid_cents, res.currency)})
+                          return (
+                            <div
+                              key={app.id}
+                              className="py-5 first:pt-0 last:pb-0"
+                            >
+                              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="font-semibold text-foreground text-sm">
+                                      {[app.species, app.breed]
+                                        .filter(Boolean)
+                                        .join(" · ") ||
+                                        "Espèce et race non précisées"}
                                     </span>
-                                  ) : null}
-                                </p>
-                                <p className="text-xs text-muted">
-                                  Animal :{" "}
-                                  {res.animal_id ? (
-                                    <Link
-                                      href={`/animals/${res.animal_id}`}
-                                      className="font-medium text-accent hover:underline"
+                                    <span
+                                      className={
+                                        app.status === "to_review"
+                                          ? "inline-flex rounded-full bg-accent px-2.5 py-1 text-xs font-semibold text-white"
+                                          : "inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted"
+                                      }
                                     >
-                                      {res.animal_display_name ?? "Animal lié"}
-                                    </Link>
-                                  ) : (
-                                    res.animal_display_name ?? "Non attribué"
-                                  )}
-                                </p>
-                                {res.status === "adopted" ? (
-                                  <p className="text-xs font-medium text-emerald-700">
-                                    Animal adopté via cette réservation.
-                                  </p>
-                                ) : null}
-                                {res.status === "adopted" &&
-                                res.adoption_completed_at ? (
+                                      {getApplicationStatusLabel(app.status)}
+                                    </span>
+                                    {app.id ? (
+                                      <Link
+                                        href={`/candidatures/${app.id}`}
+                                        className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                      >
+                                        Fiche
+                                      </Link>
+                                    ) : null}
+                                  </div>
                                   <p className="text-xs text-muted">
-                                    Date d’adoption effective : {adoptionDateText}
+                                    Préférence :{" "}
+                                    {getSexPreferenceLabel(
+                                      app.desired_sex_preference,
+                                    )}
                                   </p>
-                                ) : null}
+                                  <p className="text-xs text-muted">
+                                    Soumise le {dateText} · Source : {sourceForm}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                ) : null}
+
+                {hasDocumentsSection && visibleDocuments ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-6">
+                      Documents liés
+                    </h2>
+
+                    {documentsError ? (
+                      <ContactSectionError label="les documents liés" />
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {visibleDocuments.map((document) => {
+                          const usefulDate = document.signed_at
+                            ? { label: "Signé le", value: document.signed_at }
+                            : document.received_at
+                              ? { label: "Reçu le", value: document.received_at }
+                              : document.sent_at
+                                ? { label: "Envoyé le", value: document.sent_at }
+                                : document.updated_at
+                                  ? { label: "Mis à jour le", value: document.updated_at }
+                                  : { label: "Créé le", value: document.created_at };
+
+                          return (
+                            <div
+                              key={document.id}
+                              className="py-5 first:pt-0 last:pb-0"
+                            >
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-foreground text-sm">
+                                    {document.title}
+                                  </span>
+                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                    {getDocumentStatusLabel(document.status)}
+                                  </span>
+                                  <Link
+                                    href={`/documents/${document.id}`}
+                                    className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
+                                  >
+                                    Fiche
+                                  </Link>
+                                </div>
                                 <p className="text-xs text-muted">
-                                  Créée le {dateText}
+                                  Type : {getDocumentTypeLabel(document.document_type)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  {usefulDate.label}{" "}
+                                  {formatApplicationDate(usefulDate.value)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Fichier : {document.file_name || "Non renseigné"}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Signature requise :{" "}
+                                  {getSignatureRequiredLabel(
+                                    document.signature_required,
+                                  )}
                                 </p>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucune réservation liée à ce contact.
-                    </p>
-                  )}
-                </section>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                ) : null}
 
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Paiements liés
-                  </h2>
+                {hasPaymentsSection && visiblePayments ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-6">
+                      Paiements hors parcours
+                    </h2>
 
-                  {paymentsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les paiements liés.
-                    </p>
-                  ) : contactPayments && contactPayments.length > 0 ? (
-                    <div className="divide-y divide-border">
-                      {contactPayments.map((payment) => {
-                        const dateText = formatApplicationDate(
-                          payment.paid_at ?? payment.created_at,
-                        );
+                    {paymentsError ? (
+                      <ContactSectionError label="les paiements liés" />
+                    ) : visiblePayments.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        Aucun paiement hors parcours pour ce contact.
+                      </p>
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {visiblePayments.map((payment) => {
+                          const dateText = formatApplicationDate(
+                            payment.paid_at ?? payment.created_at,
+                          );
 
-                        return (
-                          <div
-                            key={payment.id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                          return (
+                            <div
+                              key={payment.id}
+                              className="py-5 first:pt-0 last:pb-0"
+                            >
                               <div className="space-y-1">
                                 <div className="flex flex-wrap items-center gap-3">
                                   <span className="font-semibold text-foreground text-sm">
@@ -691,200 +720,121 @@ export default async function ContactDetailPage({
                                 <p className="text-xs text-muted">
                                   Méthode : {getPaymentMethodLabel(payment.payment_method)}
                                 </p>
-                                <p className="text-xs text-muted">
-                                  Date : {dateText}
-                                </p>
-                                {payment.reservation_id ? (
-                                  <p className="text-xs">
-                                    <Link
-                                      href={`/reservations/${payment.reservation_id}`}
-                                      className="font-medium text-accent hover:underline"
-                                    >
-                                      Réservation liée
-                                    </Link>
-                                  </p>
-                                ) : (
-                                  <p className="text-xs text-muted">
-                                    Aucune réservation liée
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucun paiement lié à ce contact.
-                    </p>
-                  )}
-                </section>
-
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Documents liés
-                  </h2>
-
-                  {documentsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les documents liés.
-                    </p>
-                  ) : contactDocuments && contactDocuments.length > 0 ? (
-                    <div className="divide-y divide-border">
-                      {contactDocuments.map((document) => {
-                        const usefulDate = getUsefulDocumentDate(document);
-
-                        return (
-                          <div
-                            key={document.id}
-                            className="py-5 first:pt-0 last:pb-0"
-                          >
-                            <div className="space-y-2">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <span className="font-semibold text-foreground text-sm">
-                                  {document.title}
-                                </span>
-                                <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                  {getDocumentStatusLabel(document.status)}
-                                </span>
-                                <Link
-                                  href={`/documents/${document.id}`}
-                                  className="inline-flex rounded-md border border-border px-2.5 py-1 text-xs font-semibold leading-none text-accent transition hover:border-accent hover:bg-accent-soft"
-                                >
-                                  Fiche
-                                </Link>
-                              </div>
-                              <p className="text-xs text-muted">
-                                Type : {getDocumentTypeLabel(document.document_type)}
-                              </p>
-                              <p className="text-xs text-muted">
-                                {usefulDate.label}{" "}
-                                {formatApplicationDate(usefulDate.value)}
-                              </p>
-                              <p className="text-xs text-muted">
-                                Fichier : {document.file_name || "Non renseigné"}
-                              </p>
-                              <p className="text-xs text-muted">
-                                Signature requise :{" "}
-                                {getSignatureRequiredLabel(
-                                  document.signature_required,
-                                )}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucun document lié à ce contact.
-                    </p>
-                  )}
-                </section>
-
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold mb-6">
-                    Événements liés
-                  </h2>
-
-                  {eventsError ? (
-                    <p role="alert" className="text-sm text-amber-800">
-                      Impossible de charger les événements liés.
-                    </p>
-                  ) : contactEvents && contactEvents.length > 0 ? (
-                    <div className="divide-y divide-border">
-                      {contactEvents.map((event) => (
-                        <div
-                          key={event.id}
-                          className="py-5 first:pt-0 last:pb-0"
-                        >
-                          <div className="space-y-2">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <span className="font-semibold text-foreground text-sm">
-                                {event.title ||
-                                  getEventTypeLabel(event.event_type)}
-                              </span>
-                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                {event.status}
-                              </span>
-                              <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
-                                Priorité : {event.priority}
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted">
-                              Type : {getEventTypeLabel(event.event_type)}
-                            </p>
-                            <p className="text-xs text-muted">
-                              Date utile :{" "}
-                              {formatApplicationDate(getUsefulEventDate(event))}
-                            </p>
-                            <p className="text-xs text-muted">
-                              Créé le {formatApplicationDate(event.created_at)}
-                            </p>
-                            {event.description ? (
-                              <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
-                                {event.description}
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted">
-                      Aucun événement lié à ce contact.
-                    </p>
-                  )}
-                </section>
-
-                <section className="rounded-2xl border bg-surface p-6 sm:p-8">
-                  <h2 className="text-xl font-semibold">Notes internes</h2>
-
-                  <div className="mt-6 space-y-6">
-                    {notesError ? (
-                      <p role="alert" className="text-sm text-amber-800">
-                        Impossible de charger les notes internes.
-                      </p>
-                    ) : notes && notes.length > 0 ? (
-                      <div className="divide-y divide-border">
-                        {notes.map((note) => {
-                          const authorName =
-                            (
-                              note.profiles as
-                                | { display_name: string | null }
-                                | null
-                            )?.display_name || "Auteur inconnu";
-                          return (
-                            <div
-                              key={note.id}
-                              className="py-4 first:pt-0 last:pb-0"
-                            >
-                              <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
-                                {note.body}
-                              </p>
-                              <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-                                <span>Par {authorName}</span>
-                                <span>•</span>
-                                <span>
-                                  {formatApplicationDate(note.created_at)}
-                                </span>
+                                <p className="text-xs text-muted">Date : {dateText}</p>
                               </div>
                             </div>
                           );
                         })}
                       </div>
-                    ) : (
-                      <p className="text-sm text-muted">
-                        Aucune note interne pour le moment.
-                      </p>
                     )}
-                  </div>
+                  </section>
+                ) : null}
 
-                  {contact.id ? (
-                    <NoteForm contactId={contact.id} />
-                  ) : null}
-                </section>
+                {hasEventsSection && visibleEvents ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold mb-6">
+                      Événements liés
+                    </h2>
+
+                    {eventsError ? (
+                      <ContactSectionError label="les événements liés" />
+                    ) : (
+                      <div className="divide-y divide-border">
+                        {visibleEvents.map((event) => {
+                          const usefulDate =
+                            event.actual_at ??
+                            event.planned_at ??
+                            event.planned_date ??
+                            event.created_at;
+
+                          return (
+                            <div
+                              key={event.id}
+                              className="py-5 first:pt-0 last:pb-0"
+                            >
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <span className="font-semibold text-foreground text-sm">
+                                    {event.title ||
+                                      event.event_type.replaceAll("_", " ")}
+                                  </span>
+                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                    {event.status}
+                                  </span>
+                                  <span className="inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold text-muted">
+                                    Priorité : {event.priority}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted">
+                                  Type : {event.event_type.replaceAll("_", " ")}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Date utile : {formatApplicationDate(usefulDate)}
+                                </p>
+                                <p className="text-xs text-muted">
+                                  Créé le {formatApplicationDate(event.created_at)}
+                                </p>
+                                {event.description ? (
+                                  <p className="whitespace-pre-wrap text-sm leading-6 text-muted">
+                                    {event.description}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                ) : null}
+
+                {hasNotesSection || contact.id ? (
+                  <section className="rounded-2xl border bg-surface p-6 sm:p-8">
+                    <h2 className="text-xl font-semibold">Notes internes</h2>
+
+                    <div className="mt-6 space-y-6">
+                      {notesError ? (
+                        <ContactSectionError label="les notes internes" />
+                      ) : notes && notes.length > 0 ? (
+                        <div className="divide-y divide-border">
+                          {notes.map((note) => {
+                            const authorName =
+                              (
+                                note.profiles as
+                                  | { display_name: string | null }
+                                  | null
+                              )?.display_name || "Auteur inconnu";
+                            return (
+                              <div
+                                key={note.id}
+                                className="py-4 first:pt-0 last:pb-0"
+                              >
+                                <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">
+                                  {note.body}
+                                </p>
+                                <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+                                  <span>Par {authorName}</span>
+                                  <span>•</span>
+                                  <span>
+                                    {formatApplicationDate(note.created_at)}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted">
+                          Aucune note interne pour le moment.
+                        </p>
+                      )}
+                    </div>
+
+                    {contact.id ? (
+                      <NoteForm contactId={contact.id} />
+                    ) : null}
+                  </section>
+                ) : null}
               </div>
 
               <aside className="h-fit rounded-2xl border bg-surface p-6">
