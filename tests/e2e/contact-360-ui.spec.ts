@@ -23,6 +23,8 @@ const sql = (statement: string) => runE2eSqlSync(statement);
 
 const q = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
+test.use({ deviceScaleFactor: 2 });
+
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Email").fill(E2E_OWNER_EMAIL);
@@ -77,6 +79,8 @@ test("veterinarian contact shows a chronology and hides empty journey sections",
     await expect(chronology.getByText("Visite vétérinaire")).toBeVisible();
     await expect(chronology.getByText("Vaccination de rappel planifiée pour le troupeau.")).toBeVisible();
 
+    await page.screenshot({ path: "/tmp/contact360-vet-full.png", fullPage: true });
+
     // Journey-only sections stay hidden for a contact outside the adopter journey.
     await expect(page.getByText("Dossiers parcours adoptant")).toHaveCount(0);
     await expect(page.getByTestId("journey-dossier-card")).toHaveCount(0);
@@ -127,6 +131,11 @@ test("prospect contact with a journey dossier shows dossier cards instead of a c
     await expect(card).toContainText("Dossier en cours");
 
     await expect(page.getByTestId("contact-chronology")).toHaveCount(0);
+
+    await page.screenshot({
+      path: "/tmp/contact360-adoptant-full.png",
+      fullPage: true,
+    });
 
     // The card links to the reservation dossier. The first visit of the
     // reservations detail page compiles on demand in dev: allow a generous
